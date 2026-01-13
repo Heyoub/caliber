@@ -548,62 +548,77 @@ pub struct CaliberConfig {
 *A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
 ### Property 1: Configuration validation rejects invalid values
+
 *For any* CaliberConfig with token_budget <= 0 OR contradiction_threshold outside [0.0, 1.0], validate() SHALL return Err(ConfigError::InvalidValue)
 **Validates: Requirements 3.4, 3.5**
 
 ### Property 2: Configuration validation rejects missing required fields
+
 *For any* CaliberConfig construction attempt missing a required field, the system SHALL return ConfigError::MissingRequired
 **Validates: Requirements 3.2**
 
 ### Property 3: DSL round-trip parsing preserves semantics
+
 *For any* valid CaliberAst, pretty-printing then parsing SHALL produce an equivalent AST
 **Validates: Requirements 5.8**
 
 ### Property 4: Lexer produces Error token for invalid characters
+
 *For any* input string containing characters outside the valid token set, the Lexer SHALL produce at least one TokenKind::Error
 **Validates: Requirements 4.8**
 
 ### Property 5: EmbeddingVector dimension mismatch detection
+
 *For any* two EmbeddingVectors with different dimensions, cosine_similarity() SHALL return Err(VectorError::DimensionMismatch)
 **Validates: Requirements 6.6**
 
 ### Property 6: Provider registry returns error when not configured
+
 *For any* ProviderRegistry with no embedding provider registered, calling embedding() SHALL return Err(LlmError::ProviderNotConfigured)
 **Validates: Requirements 6.4**
 
 ### Property 7: EntityId uses UUIDv7 (timestamp-sortable)
+
 *For any* two EntityIds generated in sequence, the first SHALL sort before the second lexicographically
 **Validates: Requirements 2.3**
 
 ### Property 8: Context assembly respects token budget
+
 *For any* ContextWindow assembled with max_tokens = N, used_tokens SHALL be <= N
 **Validates: Requirements 9.3**
 
 ### Property 9: Lock acquisition records holder
+
 *For any* successful lock acquisition by agent A on resource R, the DistributedLock SHALL have holder_agent_id = A
 **Validates: Requirements 7.3**
 
 ### Property 10: Storage not-found returns correct error
+
 *For any* storage query for a non-existent EntityId, the system SHALL return StorageError::NotFound with the correct entity_type
 **Validates: Requirements 8.4**
 
 ### Property 11: Context sections ordered by priority
+
 *For any* assembled ContextWindow, sections SHALL be ordered by descending priority
 **Validates: Requirements 9.2**
 
 ### Property 12: Token estimation consistency
+
 *For any* text T, estimate_tokens(T) SHALL be >= 0 AND approximately proportional to T.len()
 **Validates: Context assembly token management**
 
 ### Property 13: Truncation respects budget
+
 *For any* text T and budget B, estimate_tokens(truncate_to_token_budget(T, B)) SHALL be <= B
 **Validates: Context assembly truncation**
 
 ### Property 14: Memory commit preserves query/response
+
 *For any* MemoryCommit created with query Q and response R, recall SHALL return the same Q and R
 **Validates: Memory commit layer integrity**
 
 ### Property 15: Recall decisions filters correctly
+
 *For any* set of MemoryCommits, recall_decisions() SHALL only return commits where mode is "deep_work" or "super_think" OR response contains decision keywords
 **Validates: Decision recall filtering**
 
@@ -648,6 +663,7 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
 ```
 
 ### 1. Unit Tests
+
 - Test each entity type's construction and field access
 - Test CaliberConfig validation with valid/invalid inputs
 - Test Lexer tokenization of all token types
@@ -657,6 +673,7 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
 - Test error type construction and conversion
 
 ### 2. Property-Based Tests (proptest)
+
 - Use `proptest` crate for Rust property-based testing
 - Minimum 100 iterations per property test
 - Each test tagged with: **Feature: caliber-core-implementation, Property N: [description]**
@@ -667,12 +684,14 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
   - Token budget constraints
 
 ### 3. Component Tests
+
 - Test each crate in isolation with mocked dependencies
 - Test trait implementations against their contracts
 - Test error propagation through component boundaries
 - Test configuration validation at component level
 
 ### 4. Integration Tests
+
 - Test full DSL → CaliberConfig pipeline
 - Test storage operations via pgrx test framework
 - Test multi-agent coordination scenarios
@@ -680,6 +699,7 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
 - Test PCP validation with real artifacts
 
 ### 5. End-to-End / Smoke Tests
+
 - Test complete agent workflow: trajectory → scope → artifact → note
 - Test multi-agent delegation and handoff
 - Test checkpoint creation and recovery
@@ -687,12 +707,14 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
 - Verify Postgres extension loads and initializes
 
 ### 6. Regression Tests
+
 - Capture bugs as test cases before fixing
 - Test edge cases discovered in production
 - Test backward compatibility of DSL syntax
 - Test config migration between versions
 
 ### 7. Chaos Testing
+
 - Test behavior under storage failures
 - Test lock timeout and expiration
 - Test message delivery failures
@@ -701,6 +723,7 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
 - Test transaction rollback scenarios
 
 ### 8. Mutation Testing (cargo-mutants)
+
 - Verify test suite catches code mutations
 - Target >80% mutation score for core logic
 - Focus on:
@@ -709,12 +732,14 @@ CALIBER requires comprehensive testing at multiple levels. Testing is not an aft
   - Boundary conditions
 
 ### 9. Fuzz Testing (cargo-fuzz)
+
 - Fuzz the DSL lexer with arbitrary byte sequences
 - Fuzz the DSL parser with random token streams
 - Fuzz config validation with random field values
 - Fuzz vector operations with edge-case floats (NaN, Inf)
 
 ### 10. Security / Penetration Testing
+
 - Test SQL injection resistance (even though we don't use SQL in hot path)
 - Test advisory lock exhaustion
 - Test message payload size limits
@@ -771,6 +796,7 @@ stages:
 ```
 
 ### Coverage Targets
+
 - Line coverage: >80%
 - Branch coverage: >70%
 - Mutation score: >80% for core logic
@@ -782,30 +808,37 @@ stages:
 **Remember to do these as you implement!**
 
 ### After Workspace Setup (Req 1)
+
 - [ ] Update DEVLOG.md with workspace structure decisions
 - [ ] Commit with meaningful message
 
 ### After caliber-core (Req 2)
+
 - [ ] Run @code-review on entity types
 - [ ] Update DEVLOG.md with type design decisions
 
 ### After caliber-dsl Lexer (Req 4)
+
 - [ ] Write property tests for lexer
 - [ ] Update DEVLOG.md with parsing approach
 
 ### After caliber-dsl Parser (Req 5)
+
 - [ ] Write round-trip property test
 - [ ] Update DEVLOG.md with AST design
 
 ### After caliber-llm (Req 6)
+
 - [ ] Document VAL design decisions
 - [ ] Note any provider-specific challenges
 
 ### After caliber-agents (Req 7)
+
 - [ ] Document coordination protocol decisions
 - [ ] Note Postgres advisory lock usage
 
 ### Before Final Submission
+
 - [ ] Run @code-review-hackathon
 - [ ] Ensure README has clear setup instructions
 - [ ] Record 2-5 minute demo video

@@ -28,27 +28,32 @@ philosophy: "NOTHING HARD-CODED. This is a FRAMEWORK, not a product."
 SQL is a **human interface** to Postgres. The parsing/planning/optimization overhead is unnecessary for programmatic access.
 
 **WRONG approach (what everyone does):**
+
 ```
 Agent Request → Generate SQL String → Postgres SQL Parser → Query Planner → Executor → Storage
 ```
 
 **RIGHT approach (what CALIBER does):**
+
 ```
 Agent Request → CALIBER DSL → Compiled Rust (pgrx) → Direct Storage Engine Access
 ```
 
 The CALIBER DSL compiles to **Rust code using pgrx**, which talks directly to:
+
 - Heap tuple operations (no SQL INSERT/UPDATE)
 - Buffer manager (direct page access)
 - Index access methods (direct B-tree/HNSW traversal)
 - WAL (direct write-ahead logging)
 
 **SQL exists ONLY for:**
+
 - Human debugging ("show me what's in the trajectory table")
 - Ad-hoc queries during development
 - External tools that need SQL compatibility
 
 **SQL does NOT exist for:**
+
 - Agent memory operations
 - Context assembly
 - Artifact storage
@@ -85,6 +90,7 @@ caliber-pg/          # SYSTEM: The actual pgrx extension
 ```
 
 **Composition over inheritance:**
+
 - Each crate defines TRAITS (interfaces)
 - Zero hard-coded behavior in any crate
 - Components compose via dependency injection
@@ -2050,6 +2056,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
     // ...
 }
 ```
+
 ```
 
 ---
@@ -2947,6 +2954,7 @@ pub fn caliber_create_debug_views() {
 For an AI agent implementing this system, execute in order:
 
 ### Phase 1: Rust/pgrx Foundation
+
 ```
 [ ] Set up Rust project with pgrx
 [ ] cargo pgrx init
@@ -2957,6 +2965,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 2: Direct Storage Functions
+
 ```
 [ ] caliber_trajectory_insert() - direct heap insert
 [ ] caliber_trajectory_get() - index scan
@@ -2967,6 +2976,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 3: Bootstrap SQL (one-time)
+
 ```
 [ ] CREATE TABLE statements for all relations
 [ ] CREATE INDEX statements (B-tree, hash, HNSW)
@@ -2974,6 +2984,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 4: Core Runtime
+
 ```
 [ ] CaliberOrchestrator struct
 [ ] start_trajectory() / complete_trajectory()
@@ -2983,6 +2994,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 5: Context Assembly
+
 ```
 [ ] assemble_context() - main entry
 [ ] assemble_section() - per injection rule
@@ -2991,6 +3003,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 6: PCP Layer
+
 ```
 [ ] PCPRuntime struct
 [ ] validate_context_integrity()
@@ -3000,6 +3013,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 7: Observability
+
 ```
 [ ] Trace event collection
 [ ] Debug query functions
@@ -3007,6 +3021,7 @@ For an AI agent implementing this system, execute in order:
 ```
 
 ### Phase 8: FFI for External Services
+
 ```
 [ ] Embedding service trait
 [ ] HTTP embedding client (libcurl FFI)
@@ -5257,6 +5272,7 @@ pub enum ConfigError {
 | PCP Validation | `PCPValidator` | caliber-pcp (struct, not trait) |
 
 **Deprecated names (do not use):**
+
 - ~~`EmbeddingProvider`~~ → use `EmbeddingProvider`
 - ~~`SummarizationProvider`~~ → use `SummarizationProvider`
 
@@ -5265,6 +5281,7 @@ pub enum ConfigError {
 ## END OF SPECIFICATION
 
 This document is complete. An AI agent with:
+
 1. Rust toolchain + pgrx
 2. PostgreSQL 14+ with pgvector
 3. This specification
@@ -5272,6 +5289,7 @@ This document is complete. An AI agent with:
 ...can implement CALIBER + PCP as a multi-crate workspace.
 
 **Architecture summary:**
+
 - Multi-crate ECS: core, storage, context, pcp, llm, agents, dsl, pg
 - Nothing hard-coded - all values from CaliberConfig
 - NO SQL in hot path (direct pgrx heap/index access)

@@ -41,6 +41,7 @@ When updating DEVLOG.md, include:
 ## Keep It Real
 
 The DEVLOG is for judges to understand your process. Be honest about:
+
 - What worked and what didn't
 - How Kiro helped (or didn't)
 - Time spent on different tasks

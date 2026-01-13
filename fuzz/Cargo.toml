@@ -1,0 +1,30 @@
+[package]
+name = "caliber-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+caliber-dsl = { path = "../caliber-dsl" }
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "lexer_fuzz"
+path = "fuzz_targets/lexer_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parser_fuzz"
+path = "fuzz_targets/parser_fuzz.rs"
+test = false
+doc = false
+bench = false

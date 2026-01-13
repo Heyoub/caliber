@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = [
+    "caliber-core",
+    "caliber-storage",
+    "caliber-context",
+    "caliber-pcp",
+    "caliber-llm",
+    "caliber-agents",
+    "caliber-dsl",
+    "caliber-pg",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/your-org/caliber"
+
+[workspace.dependencies]
+# Core dependencies
+uuid = { version = "1.11", features = ["v7", "serde"] }
+chrono = { version = "0.4.39", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+sha2 = "0.10"
+regex = "1.11"
+once_cell = "1.20"
+
+# pgrx (only for caliber-pg)
+pgrx = "0.12.9"
+
+# Testing
+proptest = "1.5"
+
+# Internal crates
+caliber-core = { path = "caliber-core" }
+caliber-storage = { path = "caliber-storage" }
+caliber-context = { path = "caliber-context" }
+caliber-pcp = { path = "caliber-pcp" }
+caliber-llm = { path = "caliber-llm" }
+caliber-agents = { path = "caliber-agents" }
+caliber-dsl = { path = "caliber-dsl" }
+
+# === PROFILE OPTIMIZATIONS ===
+
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+
+[profile.dev.package."*"]
+opt-level = 2  # Optimize deps even in dev
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+
+[profile.test]
+opt-level = 1  # Faster test compilation

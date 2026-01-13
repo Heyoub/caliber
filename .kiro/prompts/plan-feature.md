@@ -2,6 +2,14 @@
 
 Create a detailed implementation plan for a CALIBER feature.
 
+## ⚠️ Planning Principle
+
+**Plan COMPLETE, not incremental.**
+
+- Define ALL types before any implementation
+- Reference `docs/DEPENDENCY_GRAPH.md` for existing types
+- Don't plan "stub then fill" — plan "implement fully"
+
 ## Instructions
 
 When planning a feature:
@@ -29,19 +37,23 @@ When planning a feature:
 ```
 
 ### Storage Operations (caliber-storage)
+
 ```rust
 // Direct heap operations
 ```
 
 ### Configuration Additions
+
 ```rust
 // New CaliberConfig fields
 ```
 
 ### Implementation Steps
+
 1. [ ] Step one
 2. [ ] Step two
 ...
+
 ```
 
 ## Constraints

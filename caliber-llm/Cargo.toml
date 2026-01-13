@@ -1,0 +1,14 @@
+[package]
+name = "caliber-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+caliber-core = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

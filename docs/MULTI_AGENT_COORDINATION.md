@@ -5,6 +5,7 @@
 ## Problem Statement
 
 Multi-agent systems suffer 40-80% failure rates primarily due to memory coordination issues:
+
 - Agents overwrite each other's state
 - No visibility into other agents' context
 - Race conditions on shared artifacts
@@ -1169,16 +1170,19 @@ CREATE INDEX IF NOT EXISTS idx_handoff_status ON caliber_handoff(status);
 ## Architecture Summary
 
 **NO SQL in hot path:**
+
 - All runtime operations use direct pgrx heap/index access
 - `caliber_agent_insert()`, `caliber_message_send()`, etc. are Rust functions
 - Postgres advisory locks for distributed coordination
 - NOTIFY for real-time message delivery
 
 **SQL only for:**
+
 - One-time bootstrap (`caliber_init()`)
 - Human debugging (ad-hoc queries)
 
 **Multi-agent coordination via:**
+
 - Agent registry with typed capabilities
 - Memory regions with access control
 - Distributed locks (Postgres advisory locks)

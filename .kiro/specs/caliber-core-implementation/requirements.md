@@ -78,7 +78,7 @@ CALIBER (Context Abstraction Layer Integrating Behavioral Extensible Runtime) wi
 4. THE Lexer SHALL tokenize operators: =, !=, >, <, >=, <=, ~, contains, and, or, not
 5. THE Lexer SHALL handle string literals with escape sequences (\n, \t, \\, \")
 6. THE Lexer SHALL handle duration literals (e.g., 30s, 5m, 1h, 7d)
-7. THE Lexer SHALL skip whitespace and comments (// line and /* block */)
+7. THE Lexer SHALL skip whitespace and comments (// line and /*block*/)
 8. WHEN an invalid character is encountered, THE Lexer SHALL produce TokenKind::Error
 
 ---
@@ -179,22 +179,26 @@ CALIBER (Context Abstraction Layer Integrating Behavioral Extensible Runtime) wi
 **Hey future me! Don't forget these for maximum points:**
 
 ### Documentation (20 pts)
+
 - [ ] Update DEVLOG.md after each major milestone
 - [ ] Document decisions and rationale
 - [ ] Keep README.md current with setup instructions
 
 ### Kiro Usage (20 pts)
+
 - [ ] Use @prime at session start
 - [ ] Use @plan-feature before implementing
 - [ ] Use @code-review after implementations
 - [ ] Customize prompts as you learn the workflow
 
 ### Process Transparency
+
 - [ ] Record yourself working (you already started!)
 - [ ] Note time spent on each feature
 - [ ] Document challenges and how you solved them
 
 ### Before Submission
+
 - [ ] Run @code-review-hackathon for final evaluation
 - [ ] Record 2-5 minute demo video
 - [ ] Verify judges can run the project with clear setup instructions

@@ -7,6 +7,7 @@
 **No default providers. No hard-coded dimensions. No assumptions.**
 
 The user explicitly configures:
+
 - Which embedding provider
 - Which summarization provider  
 - Dimensions, models, endpoints
@@ -93,6 +94,7 @@ impl ProviderRegistry {
     }
 }
 ```
+
 ```
 
 ### 1.2 OpenAI Implementation

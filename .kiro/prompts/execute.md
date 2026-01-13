@@ -2,6 +2,16 @@
 
 Implement a planned feature systematically.
 
+## ⚠️ NO STUBS RULE
+
+**NEVER create empty files or TODO placeholders.**
+
+Before creating ANY source file:
+1. Do I know EXACTLY what goes in it? → Create with full content
+2. Am I just making a placeholder? → DON'T CREATE IT
+
+Reference `docs/DEPENDENCY_GRAPH.md` for all type definitions.
+
 ## Instructions
 
 Given a feature plan, implement it following this order:
@@ -15,6 +25,7 @@ Given a feature plan, implement it following this order:
 ## Implementation Rules
 
 ### Types (caliber-core)
+
 ```rust
 #[derive(Debug, Clone, PostgresType)]
 pub struct NewEntity {
@@ -24,6 +35,7 @@ pub struct NewEntity {
 ```
 
 ### Storage (caliber-storage)
+
 ```rust
 // Direct heap operations - NO SQL
 pub fn caliber_entity_insert(entity: &NewEntity) -> CaliberResult<()> {
@@ -32,12 +44,14 @@ pub fn caliber_entity_insert(entity: &NewEntity) -> CaliberResult<()> {
 ```
 
 ### Configuration
+
 ```rust
 // Add to CaliberConfig - user MUST provide
 pub new_field: SomeType,  // Required, no default
 ```
 
 ### Error Handling
+
 ```rust
 // Use CaliberResult everywhere
 pub fn operation() -> CaliberResult<T> {
@@ -48,6 +62,7 @@ pub fn operation() -> CaliberResult<T> {
 ## Validation
 
 After implementation:
+
 1. `cargo build --workspace` — must compile
 2. `cargo clippy --workspace` — no warnings
 3. `cargo test --workspace` — tests pass

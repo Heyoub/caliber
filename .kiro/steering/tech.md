@@ -6,6 +6,17 @@
 - **Database:** PostgreSQL via pgrx extension
 - **DSL:** Custom CALIBER DSL (see docs/DSL_PARSER.md)
 
+## Development Philosophy
+
+**NO STUBS. NO TODOs. COMPLETE CODE ONLY.**
+
+See `.kiro/steering/dev-philosophy.md` for full rationale.
+
+- Every source file has real, working code from creation
+- Reference `docs/DEPENDENCY_GRAPH.md` for all type definitions
+- Create Cargo.toml files first, lib.rs only when implementing
+- Run cargo check ONCE after all code is written, not incrementally
+
 ## Multi-Crate Architecture
 
 ```text
@@ -22,12 +33,14 @@ caliber-pg/          # SYSTEM: pgrx extension (runtime)
 ## Code Standards
 
 ### Rust Conventions
+
 - Use `CaliberResult<T>` for all fallible operations
 - Errors propagate to Postgres via ereport
 - No unwrap() in production code — use `?` operator
 - All config values explicit — no defaults
 
 ### Error Handling
+
 ```rust
 pub enum CaliberError {
     Storage(StorageError),
@@ -40,6 +53,7 @@ pub enum CaliberError {
 ```
 
 ### Configuration Philosophy
+
 ```rust
 // WRONG - Hard-coded defaults
 const DEFAULT_TOKEN_BUDGET: i32 = 8000;
