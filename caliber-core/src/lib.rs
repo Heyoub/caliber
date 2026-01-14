@@ -924,10 +924,12 @@ mod prop_tests {
             };
 
             let result = config.validate();
-            prop_assert!(matches!(
-                result,
-                Err(CaliberError::Config(ConfigError::InvalidValue { ref field, .. })) if field == "token_budget"
-            ));
+            prop_assert!(result.is_err());
+            if let Err(CaliberError::Config(ConfigError::InvalidValue { field, .. })) = result {
+                prop_assert_eq!(field, "token_budget");
+            } else {
+                prop_assert!(false, "Expected ConfigError::InvalidValue");
+            }
         }
 
         /// Property 1: For any contradiction_threshold outside [0.0, 1.0], validate() SHALL return ConfigError::InvalidValue
@@ -962,10 +964,12 @@ mod prop_tests {
             };
 
             let result = config.validate();
-            prop_assert!(matches!(
-                result,
-                Err(CaliberError::Config(ConfigError::InvalidValue { ref field, .. })) if field == "contradiction_threshold"
-            ));
+            prop_assert!(result.is_err());
+            if let Err(CaliberError::Config(ConfigError::InvalidValue { field, .. })) = result {
+                prop_assert_eq!(field, "contradiction_threshold");
+            } else {
+                prop_assert!(false, "Expected ConfigError::InvalidValue for high threshold");
+            }
         }
 
         /// Property 1: For any contradiction_threshold < 0.0, validate() SHALL return ConfigError::InvalidValue
@@ -1000,10 +1004,12 @@ mod prop_tests {
             };
 
             let result = config.validate();
-            prop_assert!(matches!(
-                result,
-                Err(CaliberError::Config(ConfigError::InvalidValue { ref field, .. })) if field == "contradiction_threshold"
-            ));
+            prop_assert!(result.is_err());
+            if let Err(CaliberError::Config(ConfigError::InvalidValue { field, .. })) = result {
+                prop_assert_eq!(field, "contradiction_threshold");
+            } else {
+                prop_assert!(false, "Expected ConfigError::InvalidValue for low threshold");
+            }
         }
 
         /// Property 1: For any valid config values, validate() SHALL return Ok(())
@@ -1069,11 +1075,13 @@ mod prop_tests {
 
             let result = v1.cosine_similarity(&v2);
 
-            prop_assert!(matches!(
-                result,
-                Err(CaliberError::Vector(VectorError::DimensionMismatch { expected, got }))
-                    if expected == dim1 as i32 && got == dim2 as i32
-            ));
+            prop_assert!(result.is_err());
+            if let Err(CaliberError::Vector(VectorError::DimensionMismatch { expected, got })) = result {
+                prop_assert_eq!(expected, dim1 as i32);
+                prop_assert_eq!(got, dim2 as i32);
+            } else {
+                prop_assert!(false, "Expected VectorError::DimensionMismatch");
+            }
         }
 
         /// Property 5: For any two EmbeddingVectors with same dimensions,

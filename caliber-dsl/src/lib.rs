@@ -313,7 +313,7 @@ impl<'a> Lexer<'a> {
 
                 c if c.is_ascii_digit() => self.scan_number_or_duration(),
 
-                c if c.is_alphabetic() || c == '_' => self.scan_identifier(),
+                c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(),
 
                 c => {
                     self.advance();
@@ -338,7 +338,7 @@ impl<'a> Lexer<'a> {
         let start = self.pos;
 
         while let Some(c) = self.peek_char() {
-            if c.is_alphanumeric() || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '_' {
                 self.advance();
             } else {
                 break;
@@ -930,7 +930,7 @@ impl Parser {
         let mut options = Vec::new();
 
         while !self.check(&TokenKind::RBrace) {
-            let field = self.expect_identifier()?;
+            let field = self.expect_field_name()?;
             self.expect(TokenKind::Colon)?;
 
             match field.as_str() {
@@ -939,6 +939,8 @@ impl Parser {
                         TokenKind::Identifier(s) if s == "postgres" => AdapterType::Postgres,
                         TokenKind::Identifier(s) if s == "redis" => AdapterType::Redis,
                         TokenKind::Identifier(s) if s == "memory" => AdapterType::Memory,
+                        // Also handle keywords that match adapter types
+                        TokenKind::Memory => AdapterType::Memory,
                         _ => return Err(self.error("Expected adapter type (postgres, redis, memory)")),
                     };
                     self.advance();
@@ -989,7 +991,7 @@ impl Parser {
         let mut artifacts = Vec::new();
 
         while !self.check(&TokenKind::RBrace) {
-            let field = self.expect_identifier()?;
+            let field = self.expect_field_name()?;
             self.expect(TokenKind::Colon)?;
 
             match field.as_str() {
@@ -1058,14 +1060,18 @@ impl Parser {
 
     /// Parse a field definition.
     fn parse_field_def(&mut self) -> Result<FieldDef, ParseError> {
-        let name = self.expect_identifier()?;
+        let name = self.expect_field_name()?;
         self.expect(TokenKind::Colon)?;
         let field_type = self.parse_field_type()?;
 
         // Check for optional nullable marker
-        let nullable = if self.check(&TokenKind::Identifier("optional".to_string())) {
-            self.advance();
-            true
+        let nullable = if let TokenKind::Identifier(s) = &self.current().kind {
+            if s == "optional" {
+                self.advance();
+                true
+            } else {
+                false
+            }
         } else {
             false
         };
@@ -1328,28 +1334,28 @@ impl Parser {
             TokenKind::Summarize => {
                 self.advance();
                 self.expect(TokenKind::LParen)?;
-                let target = self.expect_identifier()?;
+                let target = self.expect_field_name()?;
                 self.expect(TokenKind::RParen)?;
                 Ok(Action::Summarize(target))
             }
             TokenKind::ExtractArtifacts => {
                 self.advance();
                 self.expect(TokenKind::LParen)?;
-                let target = self.expect_identifier()?;
+                let target = self.expect_field_name()?;
                 self.expect(TokenKind::RParen)?;
                 Ok(Action::ExtractArtifacts(target))
             }
             TokenKind::Checkpoint => {
                 self.advance();
                 self.expect(TokenKind::LParen)?;
-                let target = self.expect_identifier()?;
+                let target = self.expect_field_name()?;
                 self.expect(TokenKind::RParen)?;
                 Ok(Action::Checkpoint(target))
             }
             TokenKind::Prune => {
                 self.advance();
                 self.expect(TokenKind::LParen)?;
-                let target = self.expect_identifier()?;
+                let target = self.expect_field_name()?;
                 self.expect(TokenKind::Comma)?;
                 let criteria = self.parse_filter_expr()?;
                 self.expect(TokenKind::RParen)?;
@@ -1365,7 +1371,7 @@ impl Parser {
             TokenKind::Inject => {
                 self.advance();
                 self.expect(TokenKind::LParen)?;
-                let target = self.expect_identifier()?;
+                let target = self.expect_field_name()?;
                 self.expect(TokenKind::Comma)?;
                 let mode = self.parse_injection_mode()?;
                 self.expect(TokenKind::RParen)?;
@@ -1378,9 +1384,9 @@ impl Parser {
     /// Parse an injection definition (Task 4.6).
     fn parse_injection(&mut self) -> Result<InjectionDef, ParseError> {
         self.expect(TokenKind::Inject)?;
-        let source = self.expect_identifier()?;
+        let source = self.expect_field_name()?;
         self.expect(TokenKind::Into)?;
-        let target = self.expect_identifier()?;
+        let target = self.expect_field_name()?;
         self.expect(TokenKind::LBrace)?;
 
         let mut mode = InjectionMode::Full;
@@ -1389,7 +1395,7 @@ impl Parser {
         let mut filter = None;
 
         while !self.check(&TokenKind::RBrace) {
-            let field = self.expect_identifier()?;
+            let field = self.expect_field_name()?;
             self.expect(TokenKind::Colon)?;
 
             match field.as_str() {
@@ -1485,7 +1491,7 @@ impl Parser {
             return Ok(expr);
         }
 
-        let field = self.expect_identifier()?;
+        let field = self.expect_field_name()?;
         let op = self.parse_compare_op()?;
         let value = self.parse_filter_value()?;
 
@@ -1545,6 +1551,12 @@ impl Parser {
                 let n = *n;
                 self.advance();
                 Ok(FilterValue::Number(n))
+            }
+            TokenKind::Duration(d) => {
+                // Convert duration to a string value for now
+                let d = d.clone();
+                self.advance();
+                Ok(FilterValue::String(d))
             }
             TokenKind::Identifier(s) if s == "true" => {
                 self.advance();
@@ -1624,6 +1636,87 @@ impl Parser {
             }
             _ => Err(self.error("Expected identifier")),
         }
+    }
+
+    /// Expect an identifier or a keyword that can be used as a field name.
+    /// Many keywords in the DSL can also be used as field names (type, mode, filter, etc.)
+    fn expect_field_name(&mut self) -> Result<String, ParseError> {
+        let name = match &self.current().kind {
+            TokenKind::Identifier(s) => s.clone(),
+            // Keywords that can be used as field names
+            TokenKind::Type => "type".to_string(),
+            TokenKind::Mode => "mode".to_string(),
+            TokenKind::Filter => "filter".to_string(),
+            TokenKind::Schema => "schema".to_string(),
+            TokenKind::Retention => "retention".to_string(),
+            TokenKind::Index => "index".to_string(),
+            TokenKind::Lifecycle => "lifecycle".to_string(),
+            TokenKind::Parent => "parent".to_string(),
+            TokenKind::InjectOn => "inject_on".to_string(),
+            TokenKind::Connection => "connection".to_string(),
+            TokenKind::Options => "options".to_string(),
+            TokenKind::Priority => "priority".to_string(),
+            TokenKind::MaxTokens => "max_tokens".to_string(),
+            TokenKind::Schedule => "schedule".to_string(),
+            TokenKind::Artifacts => "artifacts".to_string(),
+            // Field types that can also be field names
+            TokenKind::Embedding => "embedding".to_string(),
+            TokenKind::Uuid => "uuid".to_string(),
+            TokenKind::Text => "text".to_string(),
+            TokenKind::Int => "int".to_string(),
+            TokenKind::Float => "float".to_string(),
+            TokenKind::Bool => "bool".to_string(),
+            TokenKind::Timestamp => "timestamp".to_string(),
+            TokenKind::Json => "json".to_string(),
+            TokenKind::Enum => "enum".to_string(),
+            // Memory types that can be field names
+            TokenKind::Ephemeral => "ephemeral".to_string(),
+            TokenKind::Working => "working".to_string(),
+            TokenKind::Episodic => "episodic".to_string(),
+            TokenKind::Semantic => "semantic".to_string(),
+            TokenKind::Procedural => "procedural".to_string(),
+            TokenKind::Meta => "meta".to_string(),
+            TokenKind::Memory => "memory".to_string(),
+            // Retention/scope keywords
+            TokenKind::Scope => "scope".to_string(),
+            TokenKind::Session => "session".to_string(),
+            TokenKind::Persistent => "persistent".to_string(),
+            // Other keywords that might be field names
+            TokenKind::Context => "context".to_string(),
+            TokenKind::Inject => "inject".to_string(),
+            TokenKind::Policy => "policy".to_string(),
+            TokenKind::Adapter => "adapter".to_string(),
+            TokenKind::Into => "into".to_string(),
+            TokenKind::On => "on".to_string(),
+            TokenKind::Caliber => "caliber".to_string(),
+            // Lifecycle keywords
+            TokenKind::Explicit => "explicit".to_string(),
+            TokenKind::Manual => "manual".to_string(),
+            TokenKind::TaskStart => "task_start".to_string(),
+            TokenKind::TaskEnd => "task_end".to_string(),
+            TokenKind::ScopeClose => "scope_close".to_string(),
+            TokenKind::TurnEnd => "turn_end".to_string(),
+            // Action keywords
+            TokenKind::Summarize => "summarize".to_string(),
+            TokenKind::ExtractArtifacts => "extract_artifacts".to_string(),
+            TokenKind::Checkpoint => "checkpoint".to_string(),
+            TokenKind::Prune => "prune".to_string(),
+            TokenKind::Notify => "notify".to_string(),
+            // Index types
+            TokenKind::Btree => "btree".to_string(),
+            TokenKind::Hash => "hash".to_string(),
+            TokenKind::Gin => "gin".to_string(),
+            TokenKind::Hnsw => "hnsw".to_string(),
+            TokenKind::Ivfflat => "ivfflat".to_string(),
+            // Injection modes
+            TokenKind::Full => "full".to_string(),
+            TokenKind::Summary => "summary".to_string(),
+            TokenKind::TopK => "top_k".to_string(),
+            TokenKind::Relevant => "relevant".to_string(),
+            _ => return Err(self.error("Expected identifier")),
+        };
+        self.advance();
+        Ok(name)
     }
 
     fn expect_string(&mut self) -> Result<String, ParseError> {
@@ -1770,7 +1863,7 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
 
     if !memory.inject_on.is_empty() {
         output.push_str(&format!("{}inject_on: [", indent_str(indent + 1)));
-        let triggers: Vec<String> = memory.inject_on.iter().map(|t| pretty_print_trigger(t)).collect();
+        let triggers: Vec<String> = memory.inject_on.iter().map(pretty_print_trigger).collect();
         output.push_str(&triggers.join(", "));
         output.push_str("]\n");
     }

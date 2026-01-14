@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 caliber-core = { workspace = true }
 caliber-storage = { workspace = true }
+caliber-pcp = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }

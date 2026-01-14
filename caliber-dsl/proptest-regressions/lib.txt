@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc befa5bc2a524ba4ee770b6532ca12c3267d145572714f215bc4c815992fd6bf7 # shrinks to ast = CaliberAst { version: "0.0", definitions: [Injection(InjectionDef { source: "a", target: "a", mode: Full, priority: 1, max_tokens: None, filter: None })] }
+cc 8c3b78372badf598f030987d56e4c78e0e3b5d7954ac3deca2c771780d577279 # shrinks to ast = CaliberAst { version: "0.0", definitions: [Adapter(AdapterDef { name: "a", adapter_type: Memory, connection: "0", options: [] })] }
+cc 8aecae486985dd5af689fd594ed087329b26e85d797f279ebdef807e79762efc # shrinks to prefix = "a", invalid = "À", suffix = ""
+cc 6dce91a50407d6eb836e8ddd7cbb7cf7ecb3228809b0a2f3b63f018eb5076814 # shrinks to ast = CaliberAst { version: "0.0", definitions: [Memory(MemoryDef { name: "a", memory_type: Ephemeral, schema: [FieldDef { name: "a", field_type: Uuid, nullable: false, default: None }, FieldDef { name: "a", field_type: Uuid, nullable: false, default: None }], retention: Persistent, lifecycle: Explicit, parent: None, indexes: [], inject_on: [], artifacts: [] })] }

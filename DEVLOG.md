@@ -385,3 +385,188 @@ CaliberAst
 | @implement-crate | 2 | caliber-core, caliber-dsl |
 | @code-review | 1 | Post-implementation review |
 | @update-devlog | 2 | Keeping log current |
+
+
+---
+
+### January 13, 2026 — caliber-llm (VAL) Implementation
+
+**Completed:**
+
+- ✅ Task 6.1: EmbeddingProvider trait with embed(), embed_batch(), dimensions(), model_id()
+- ✅ Task 6.2: SummarizationProvider trait with summarize(), extract_artifacts(), detect_contradiction()
+- ✅ Task 6.3: ProviderRegistry with explicit registration (no auto-discovery)
+- ✅ Task 6.4: Mock providers for testing (MockEmbeddingProvider, MockSummarizationProvider)
+- ✅ Task 6.5: Property tests for VAL (Property 6)
+
+**VAL Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| Traits are `Send + Sync` | Thread-safe providers for concurrent agent operations |
+| `Arc<dyn Provider>` in registry | Shared ownership, cloneable references |
+| Explicit registration only | No auto-discovery — user controls what's registered |
+| `ProviderNotConfigured` error | Clear error when provider not registered (Req 6.4) |
+| Mock providers included | Testing without real LLM API calls |
+| EmbeddingCache utility | Optional caching to reduce API calls |
+| CostTracker utility | Token usage tracking for cost management |
+
+**Provider Traits:**
+
+| Trait | Methods | Purpose |
+|-------|---------|---------|
+| `EmbeddingProvider` | embed(), embed_batch(), dimensions(), model_id() | Vector embeddings |
+| `SummarizationProvider` | summarize(), extract_artifacts(), detect_contradiction() | Text processing |
+
+**ProviderRegistry API:**
+
+```rust
+let mut registry = ProviderRegistry::new();
+registry.register_embedding(Box::new(my_provider));
+let provider = registry.embedding()?;  // Returns Arc<dyn EmbeddingProvider>
+```
+
+**Mock Provider Behavior:**
+
+| Provider | Behavior |
+|----------|----------|
+| `MockEmbeddingProvider` | Deterministic embeddings from text hash, configurable dimensions |
+| `MockSummarizationProvider` | Truncation-based summaries, Jaccard similarity for contradiction |
+
+**Property Tests (Task 6.5):**
+
+| Property | Description | Validates |
+|----------|-------------|-----------|
+| Property 6 | Empty registry returns ProviderNotConfigured for embedding() | Req 6.4 |
+| Property 6 | Empty registry returns ProviderNotConfigured for summarization() | Req 6.4 |
+| Registered provider | After registration, embedding() returns Ok | Provider lifecycle |
+| Mock dimensions | Mock provider produces correct dimension vectors | Mock correctness |
+| Mock determinism | Same text produces same embedding | Mock reproducibility |
+| Batch count | embed_batch() returns correct number of embeddings | Batch correctness |
+
+**Code Statistics:**
+
+- ~550 lines total in caliber-llm/src/lib.rs
+- Traits: ~100 lines
+- ProviderRegistry: ~100 lines
+- Utilities (cache, tracker): ~150 lines
+- Mock providers: ~150 lines
+- Tests: ~350 lines (16 unit tests + 7 property tests)
+
+**Test Results:**
+
+```
+running 23 tests
+test tests::test_cost_tracker_basic ... ok
+test tests::test_embedding_cache_basic ... ok
+test prop_tests::prop_registry_returns_error_when_embedding_not_configured ... ok
+test prop_tests::prop_registry_returns_error_when_summarization_not_configured ... ok
+test prop_tests::prop_mock_embedding_correct_dimensions ... ok
+... (all 23 tests pass)
+```
+
+**Next Steps:**
+
+- [ ] Implement caliber-context (Task 7)
+- [ ] Implement caliber-pcp (Task 8)
+- [ ] Checkpoint - Component Crates Complete (Task 9)
+
+**Time Spent:** ~20 minutes
+
+
+---
+
+### January 13, 2026 — Checkpoint: Component Crates Complete (Task 9)
+
+**Completed:**
+
+- ✅ Task 9.1: `cargo build --workspace` succeeds
+- ✅ Task 9.2: All property tests pass (150 tests total)
+- ✅ `cargo clippy --workspace -- -D warnings` passes
+
+**Build Verification:**
+
+```
+cargo check --workspace
+    Checking caliber-core v0.1.0
+    Checking caliber-storage v0.1.0
+    Checking caliber-llm v0.1.0
+    Checking caliber-context v0.1.0
+    Checking caliber-dsl v0.1.0
+    Checking caliber-pcp v0.1.0
+    Checking caliber-agents v0.1.0
+    Finished `dev` profile [unoptimized + debuginfo] target(s)
+```
+
+**Test Summary by Crate:**
+
+| Crate | Unit Tests | Property Tests | Total |
+|-------|------------|----------------|-------|
+| caliber-core | 7 | 10 | 17 |
+| caliber-dsl | 21 | 10 | 31 |
+| caliber-llm | 16 | 7 | 23 |
+| caliber-context | 10 | 9 | 19 |
+| caliber-pcp | 16 | 5 | 21 |
+| caliber-agents | 16 | 6 | 22 |
+| caliber-storage | 12 | 5 | 17 |
+| **Total** | **98** | **52** | **150** |
+
+**Property Tests Implemented:**
+
+| Property | Crate | Description | Validates |
+|----------|-------|-------------|-----------|
+| 1 | caliber-core | Config validation rejects invalid values | Req 3.4, 3.5 |
+| 3 | caliber-dsl | DSL round-trip parsing preserves semantics | Req 5.8 |
+| 4 | caliber-dsl | Lexer produces Error token for invalid chars | Req 4.8 |
+| 5 | caliber-core | EmbeddingVector dimension mismatch detection | Req 6.6 |
+| 6 | caliber-llm | Provider registry returns error when not configured | Req 6.4 |
+| 7 | caliber-core | EntityId uses UUIDv7 (timestamp-sortable) | Req 2.3 |
+| 8 | caliber-context | Context assembly respects token budget | Req 9.3 |
+| 9 | caliber-agents | Lock acquisition records holder | Req 7.3 |
+| 10 | caliber-storage | Storage not-found returns correct error | Req 8.4 |
+| 11 | caliber-context | Context sections ordered by priority | Req 9.2 |
+| 12 | caliber-context | Token estimation consistency | Context assembly |
+| 13 | caliber-context | Truncation respects budget | Context assembly |
+| 14 | caliber-pcp | Memory commit preserves query/response | Req 10.1 |
+| 15 | caliber-pcp | Recall decisions filters correctly | Req 10.2 |
+
+**Fixes Applied During Checkpoint:**
+
+1. **caliber-storage type mismatches**: Fixed `entity_type` field to use `EntityType` enum instead of `String`
+2. **caliber-storage field mismatches**: Updated to match caliber-core types:
+   - `Trajectory`: removed `current_scope_id` (doesn't exist)
+   - `Note`: changed `trajectory_ids` → `source_trajectory_ids`
+   - `Turn`: changed `turn_number` → `sequence`
+3. **Missing serde_json dependency**: Added to caliber-storage/Cargo.toml
+4. **Clippy warnings**: Fixed `ok_or_else` → `ok_or`, `map_or` → `is_none_or`/`is_some_and`, `+=` operator
+
+**Code Quality:**
+
+- ✅ No clippy warnings with `-D warnings`
+- ✅ All property tests run 100 iterations
+- ✅ No unwrap() in production code
+- ✅ Consistent error handling with CaliberResult<T>
+
+**Crate Status:**
+
+| Crate | Status | Lines | Notes |
+|-------|--------|-------|-------|
+| caliber-core | ✅ Complete | ~1100 | Entity types, errors, config |
+| caliber-dsl | ✅ Complete | ~2700 | Lexer, parser, pretty-printer |
+| caliber-llm | ✅ Complete | ~550 | VAL traits, mock providers |
+| caliber-context | ✅ Complete | ~700 | Context assembly, token utils |
+| caliber-pcp | ✅ Complete | ~900 | Validation, memory commit, recall |
+| caliber-agents | ✅ Complete | ~1200 | Agent coordination, locks, messages |
+| caliber-storage | ✅ Complete | ~650 | Storage trait, mock implementation |
+| caliber-pg | ⏳ Pending | - | pgrx extension (Task 12) |
+
+**Next Steps:**
+
+- [ ] Implement caliber-agents (Task 10) — DONE
+- [ ] Implement caliber-storage (Task 11) — DONE
+- [ ] Implement caliber-pg (Task 12)
+- [ ] Test infrastructure (Task 13)
+- [ ] Final checkpoint (Task 14)
+
+**Time Spent:** ~15 minutes
+

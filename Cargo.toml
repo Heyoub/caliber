@@ -2,14 +2,15 @@
 resolver = "2"
 members = [
     "caliber-core",
-    "caliber-storage",
+    "caliber-dsl",
+    "caliber-llm",
     "caliber-context",
     "caliber-pcp",
-    "caliber-llm",
+    "caliber-storage",
     "caliber-agents",
-    "caliber-dsl",
-    "caliber-pg",
 ]
+# TODO: Re-add when implemented:
+# "caliber-pg",
 
 [workspace.package]
 version = "0.1.0"

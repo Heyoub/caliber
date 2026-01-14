@@ -143,121 +143,121 @@ AI-Native (us): plan everything → generate all code → cargo check once → f
     - Fuzz with random token streams
   - **🎯 HACKATHON: Update DEVLOG.md with AST design**
 
-- [ ] 5. **FIRST CARGO RUN** - Core Types Complete
+- [x] 5. **FIRST CARGO RUN** - Core Types Complete
   - **NOW run cargo for the first time:**
-  - [ ] 5.1 Run `cargo check --workspace`
+  - [x] 5.1 Run `cargo check --workspace`
     - Fix any compilation errors
-  - [ ] 5.2 Run `cargo test --workspace` for property tests
-  - [ ] 5.3 Run `cargo clippy --workspace -- -D warnings`
+  - [x] 5.2 Run `cargo test --workspace` for property tests
+  - [x] 5.3 Run `cargo clippy --workspace -- -D warnings`
   - **🎯 HACKATHON: Commit with meaningful message, update DEVLOG.md**
 
-- [ ] 6. Implement caliber-llm (VAL)
-  - [ ] 6.1 Create EmbeddingProvider trait
+- [x] 6. Implement caliber-llm (VAL)
+  - [x] 6.1 Create EmbeddingProvider trait
     - embed(), embed_batch(), dimensions(), model_id()
     - _Requirements: 6.1_
-  - [ ] 6.2 Create SummarizationProvider trait
+  - [x] 6.2 Create SummarizationProvider trait
     - summarize(), extract_artifacts(), detect_contradiction()
     - _Requirements: 6.2_
-  - [ ] 6.3 Create ProviderRegistry with explicit registration
+  - [x] 6.3 Create ProviderRegistry with explicit registration
     - _Requirements: 6.3, 6.4_
-  - [ ] 6.4 Create mock providers for testing
+  - [x] 6.4 Create mock providers for testing
     - MockEmbeddingProvider, MockSummarizationProvider
-  - [ ] 6.5 Write property tests for VAL
+  - [x] 6.5 Write property tests for VAL
     - **Property 6: Provider registry returns error when not configured**
     - **Validates: Requirements 6.4**
   - **🎯 HACKATHON: Document VAL design decisions in DEVLOG.md**
 
-- [ ] 7. Implement caliber-context (Context Assembly)
-  - [ ] 7.1 Create ContextPackage struct
+- [x] 7. Implement caliber-context (Context Assembly)
+  - [x] 7.1 Create ContextPackage struct
     - user_input, relevant_notes, recent_artifacts, session_markers, kernel_config
     - _Requirements: 9.1_
-  - [ ] 7.2 Create ContextWindow and ContextSection structs
+  - [x] 7.2 Create ContextWindow and ContextSection structs
     - _Requirements: 9.1_
-  - [ ] 7.3 Implement token estimation (estimate_tokens)
+  - [x] 7.3 Implement token estimation (estimate_tokens)
     - ~0.75 tokens per character
     - _Requirements: 9.3_
-  - [ ] 7.4 Implement smart truncation (truncate_to_token_budget)
+  - [x] 7.4 Implement smart truncation (truncate_to_token_budget)
     - Prefer sentence boundaries, fall back to word boundaries
     - _Requirements: 9.3_
-  - [ ] 7.5 Implement ContextAssembler with assemble()
+  - [x] 7.5 Implement ContextAssembler with assemble()
     - Add sections by priority until budget exhausted
     - Track assembly decisions
     - _Requirements: 9.2, 9.3, 9.4, 9.5_
-  - [ ] 7.6 Write property tests for context assembly
+  - [x] 7.6 Write property tests for context assembly
     - **Property 8: Context assembly respects token budget**
     - **Property 11: Context sections ordered by priority**
     - **Property 12: Token estimation consistency**
     - **Property 13: Truncation respects budget**
     - **Validates: Requirements 9.2, 9.3**
 
-- [ ] 8. Implement caliber-pcp (Validation & Memory Commit)
-  - [ ] 8.1 Create MemoryCommit struct
+- [x] 8. Implement caliber-pcp (Validation & Memory Commit)
+  - [x] 8.1 Create MemoryCommit struct
     - query, response, mode, reasoning_trace, tools_invoked, tokens, cost
     - _Requirements: 10.1_
-  - [ ] 8.2 Create RecallService with recall methods
+  - [x] 8.2 Create RecallService with recall methods
     - recall_previous(), search_interactions(), recall_decisions()
     - _Requirements: 10.1_
-  - [ ] 8.3 Implement decision extraction from responses
+  - [x] 8.3 Implement decision extraction from responses
     - Look for recommend/should/decision/conclude patterns
-  - [ ] 8.4 Create PCPConfig with sub-configs
+  - [x] 8.4 Create PCPConfig with sub-configs
     - ContextDagConfig, RecoveryConfig, DosageConfig, AntiSprawlConfig, GroundingConfig
-  - [ ] 8.5 Create PCPValidator/PCPRuntime struct
+  - [x] 8.5 Create PCPValidator/PCPRuntime struct
     - _Requirements: 10.1_
-  - [ ] 8.6 Implement validate_context_integrity()
+  - [x] 8.6 Implement validate_context_integrity()
     - Returns ValidationResult with issues list
     - _Requirements: 10.1_
-  - [ ] 8.7 Implement detect_contradictions()
+  - [x] 8.7 Implement detect_contradictions()
     - Use embedding similarity
     - _Requirements: 10.3, 10.4_
-  - [ ] 8.8 Implement apply_dosage_limits()
+  - [x] 8.8 Implement apply_dosage_limits()
     - Enforce token/scope/artifact limits
-  - [ ] 8.9 Implement lint_artifact()
+  - [x] 8.9 Implement lint_artifact()
     - Size check, duplicate detection
-  - [ ] 8.10 Implement checkpoint creation and recovery
+  - [x] 8.10 Implement checkpoint creation and recovery
     - create_checkpoint(), recover_from_checkpoint()
     - _Requirements: 10.2, 10.5_
-  - [ ] 8.11 Write property tests for PCP
+  - [x] 8.11 Write property tests for PCP
     - **Property 14: Memory commit preserves query/response**
     - **Property 15: Recall decisions filters correctly**
     - **Validates: Requirements 10.1, 10.2**
 
-- [ ] 9. Checkpoint - Component Crates Complete
-  - [ ] 9.1 Ensure `cargo build --workspace` succeeds
-  - [ ] 9.2 Ensure all property tests pass
+- [x] 9. Checkpoint - Component Crates Complete
+  - [x] 9.1 Ensure `cargo build --workspace` succeeds
+  - [x] 9.2 Ensure all property tests pass
   - **🎯 HACKATHON: Commit, update DEVLOG.md with progress**
 
-- [ ] 10. Implement caliber-agents (Multi-Agent Coordination)
-  - [ ] 10.1 Create Agent struct with status and memory_access
+- [x] 10. Implement caliber-agents (Multi-Agent Coordination)
+  - [x] 10.1 Create Agent struct with status and memory_access
     - _Requirements: 7.1_
-  - [ ] 10.2 Create MemoryRegion enum and MemoryRegionConfig
+  - [x] 10.2 Create MemoryRegion enum and MemoryRegionConfig
     - Private, Team, Public, Collaborative regions
     - Access control with caliber_check_access()
-  - [ ] 10.3 Create DistributedLock struct
+  - [x] 10.3 Create DistributedLock struct
     - _Requirements: 7.2, 7.3_
-  - [ ] 10.4 Create AgentMessage struct and MessageType enum
+  - [x] 10.4 Create AgentMessage struct and MessageType enum
     - _Requirements: 7.4, 7.5_
-  - [ ] 10.5 Create DelegatedTask struct
+  - [x] 10.5 Create DelegatedTask struct
     - _Requirements: 7.6_
-  - [ ] 10.6 Create AgentHandoff struct
+  - [x] 10.6 Create AgentHandoff struct
     - _Requirements: 7.7_
-  - [ ] 10.7 Create Conflict struct and resolution types
+  - [x] 10.7 Create Conflict struct and resolution types
     - ConflictType, ConflictStatus, ResolutionStrategy
     - _Requirements: 7.8_
-  - [ ] 10.8 Write property tests for agents
+  - [x] 10.8 Write property tests for agents
     - **Property 9: Lock acquisition records holder**
     - **Validates: Requirements 7.3**
   - **🎯 HACKATHON: Document coordination protocol in DEVLOG.md**
 
-- [ ] 11. Implement caliber-storage (Storage Traits)
-  - [ ] 11.1 Create StorageTrait with CRUD operations
+- [x] 11. Implement caliber-storage (Storage Traits)
+  - [x] 11.1 Create StorageTrait with CRUD operations
     - trajectory_insert/get, scope_insert/get, artifact_insert/get, note_insert/get
     - _Requirements: 8.1, 8.2_
-  - [ ] 11.2 Create vector_search method signature
+  - [x] 11.2 Create vector_search method signature
     - _Requirements: 8.3_
-  - [ ] 11.3 Define error mapping to StorageError
+  - [x] 11.3 Define error mapping to StorageError
     - _Requirements: 8.4, 8.5_
-  - [ ] 11.4 Create MockStorageTrait for testing
-  - [ ] 11.5 Write property tests for storage
+  - [x] 11.4 Create MockStorageTrait for testing
+  - [x] 11.5 Write property tests for storage
     - **Property 10: Storage not-found returns correct error**
     - **Validates: Requirements 8.4**
 
