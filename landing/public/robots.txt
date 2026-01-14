@@ -1,0 +1,33 @@
+# CALIBER Landing Page - robots.txt
+# https://caliber.dev
+
+User-agent: *
+Allow: /
+
+# AI Crawlers - Welcome!
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Cohere-AI
+Allow: /
+
+# Sitemap
+Sitemap: https://caliber.dev/sitemap.xml
+
+# LLMs.txt for AI context
+# See: https://caliber.dev/llms.txt

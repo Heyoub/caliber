@@ -1,0 +1,167 @@
+---
+/**
+ * Architecture Section Component
+ * Displays ECS architecture diagram and crate structure
+ * Requirements: 3.3
+ */
+
+const crates = [
+  {
+    name: 'caliber-core',
+    type: 'ENTITIES',
+    description: 'Data structures only',
+    color: 'cyan',
+  },
+  {
+    name: 'caliber-storage',
+    type: 'COMPONENT',
+    description: 'Storage trait + pgrx',
+    color: 'purple',
+  },
+  {
+    name: 'caliber-context',
+    type: 'COMPONENT',
+    description: 'Context assembly logic',
+    color: 'purple',
+  },
+  {
+    name: 'caliber-pcp',
+    type: 'COMPONENT',
+    description: 'Validation, checkpoints, recovery',
+    color: 'purple',
+  },
+  {
+    name: 'caliber-llm',
+    type: 'COMPONENT',
+    description: 'VAL (Vector Abstraction Layer)',
+    color: 'purple',
+  },
+  {
+    name: 'caliber-agents',
+    type: 'COMPONENT',
+    description: 'Multi-agent coordination',
+    color: 'purple',
+  },
+  {
+    name: 'caliber-dsl',
+    type: 'SYSTEM',
+    description: 'DSL parser → CaliberConfig',
+    color: 'pink',
+  },
+  {
+    name: 'caliber-pg',
+    type: 'SYSTEM',
+    description: 'pgrx extension (runtime)',
+    color: 'pink',
+  },
+];
+
+const colorClasses = {
+  cyan: 'border-neon-cyan/50 bg-neon-cyan/5',
+  purple: 'border-neon-purple/50 bg-neon-purple/5',
+  pink: 'border-neon-pink/50 bg-neon-pink/5',
+};
+
+const typeColors = {
+  ENTITIES: 'text-neon-cyan',
+  COMPONENT: 'text-neon-purple',
+  SYSTEM: 'text-neon-pink',
+};
+---
+
+<section id="architecture" class="py-16 sm:py-20 px-4 bg-bg-secondary">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-12 sm:mb-16">
+      <h2 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold font-title mb-4">
+        <span class="text-text-primary">ECS</span>
+        <span class="neon-text-purple"> Architecture</span>
+      </h2>
+      <p class="text-text-secondary text-base sm:text-lg max-w-2xl mx-auto px-2">
+        Entity-Component-System pattern for maximum composability. 
+        Each crate has a single responsibility.
+      </p>
+    </div>
+
+    <!-- Architecture Diagram -->
+    <div class="mb-12 sm:mb-16 hidden sm:block">
+      <div class="bg-bg-card border-2 border-border brutalist-box p-4 sm:p-6 md:p-8 overflow-x-auto">
+        <pre class="font-mono text-[10px] sm:text-xs md:text-sm lg:text-base text-text-secondary leading-relaxed whitespace-pre">
+<span class="text-text-muted">┌─────────────────────────────────────────────────────────────┐</span>
+<span class="text-text-muted">│</span>                    <span class="text-neon-cyan font-bold">CALIBER Architecture</span>                      <span class="text-text-muted">│</span>
+<span class="text-text-muted">├─────────────────────────────────────────────────────────────┤</span>
+<span class="text-text-muted">│</span>                                                             <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-pink">┌─────────────┐</span>    <span class="text-neon-pink">┌─────────────┐</span>                    <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-pink">│</span> caliber-dsl <span class="text-neon-pink">│</span>    <span class="text-neon-pink">│</span> caliber-pg  <span class="text-neon-pink">│</span>  <span class="text-text-muted">← SYSTEMS</span>         <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-pink">└──────┬──────┘</span>    <span class="text-neon-pink">└──────┬──────┘</span>                    <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>         <span class="text-text-muted">│</span>                 <span class="text-text-muted">│</span>                            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>         <span class="text-text-muted">▼</span>                 <span class="text-text-muted">▼</span>                            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-purple">┌─────────────┐</span>  <span class="text-neon-purple">┌─────────────┐</span>  <span class="text-neon-purple">┌─────────────┐</span>   <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-purple">│</span>   storage   <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>   context   <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>     pcp     <span class="text-neon-purple">│</span>   <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-purple">└──────┬──────┘</span>  <span class="text-neon-purple">└──────┬──────┘</span>  <span class="text-neon-purple">└──────┬──────┘</span>   <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>         <span class="text-text-muted">│</span>                <span class="text-text-muted">│</span>                <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-purple">┌─────────────┐</span>  <span class="text-neon-purple">┌─────────────┐</span>       <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-purple">│</span>     llm     <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>    agents   <span class="text-neon-purple">│</span>  <span class="text-text-muted">← COMPONENTS</span>     <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>  <span class="text-neon-purple">└──────┬──────┘</span>  <span class="text-neon-purple">└──────┬──────┘</span>                    <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>         <span class="text-text-muted">│</span>                <span class="text-text-muted">│</span>                            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>         <span class="text-text-muted">└────────┬───────┘</span>                            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>                  <span class="text-text-muted">▼</span>                                     <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>           <span class="text-neon-cyan">┌─────────────┐</span>                            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>           <span class="text-neon-cyan">│</span> caliber-core<span class="text-neon-cyan">│</span>  <span class="text-text-muted">← ENTITIES</span>                 <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>           <span class="text-neon-cyan">└─────────────┘</span>                            <span class="text-text-muted">│</span>
+<span class="text-text-muted">│</span>                                                             <span class="text-text-muted">│</span>
+<span class="text-text-muted">└─────────────────────────────────────────────────────────────┘</span>
+        </pre>
+      </div>
+    </div>
+
+    <!-- Crate Grid -->
+    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+      {crates.map((crate) => (
+        <div class={`
+          border-2 brutalist-box p-3 sm:p-4 transition-all duration-200
+          hover:translate-y-[-2px]
+          ${colorClasses[crate.color as keyof typeof colorClasses]}
+        `}>
+          <div class={`text-[10px] sm:text-xs font-mono uppercase tracking-wider mb-1 sm:mb-2 ${typeColors[crate.type as keyof typeof typeColors]}`}>
+            {crate.type}
+          </div>
+          <div class="font-mono text-text-primary font-semibold text-xs sm:text-sm mb-1 truncate">
+            {crate.name}
+          </div>
+          <div class="text-text-muted text-[10px] sm:text-xs line-clamp-2">
+            {crate.description}
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- Key Principles -->
+    <div class="mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+      <div class="bg-bg-card border-2 border-border brutalist-box p-4 sm:p-6">
+        <h3 class="font-title font-bold text-base sm:text-lg text-text-primary mb-2">
+          Direct Postgres Access
+        </h3>
+        <p class="text-text-secondary text-xs sm:text-sm">
+          Bypasses SQL parsing overhead via pgrx. Memory operations happen at native speed.
+        </p>
+      </div>
+      <div class="bg-bg-card border-2 border-border brutalist-box p-4 sm:p-6">
+        <h3 class="font-title font-bold text-base sm:text-lg text-text-primary mb-2">
+          VAL: Vector Abstraction
+        </h3>
+        <p class="text-text-secondary text-xs sm:text-sm">
+          Provider-agnostic embeddings. Any dimension, any provider. No vendor lock-in.
+        </p>
+      </div>
+      <div class="bg-bg-card border-2 border-border brutalist-box p-4 sm:p-6 sm:col-span-2 md:col-span-1">
+        <h3 class="font-title font-bold text-base sm:text-lg text-text-primary mb-2">
+          Custom DSL
+        </h3>
+        <p class="text-text-secondary text-xs sm:text-sm">
+          Compiles to CaliberConfig, not SQL. Type-safe configuration with zero runtime overhead.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

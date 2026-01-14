@@ -1,0 +1,28 @@
+{
+  "name": "caliber-landing",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Landing page for CALIBER - Memory for AI Agents",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^7.2.5",
+    "@tailwindcss/vite": "^4.1.18",
+    "astro": "^5.16.9",
+    "motion": "^12.26.2",
+    "svelte": "^5.46.3",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "fast-check": "^4.5.3",
+    "lighthouse": "^12.8.2"
+  }
+}

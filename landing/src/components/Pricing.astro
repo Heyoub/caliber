@@ -1,0 +1,180 @@
+---
+/**
+ * Pricing Section Component
+ * Displays CALIBER Cloud pricing with storage, hot cache, and trial info
+ * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
+ */
+
+import pricing from '../content/pricing.json';
+---
+
+<section id="pricing" class="py-16 sm:py-20 px-4 bg-bg-primary">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-12 sm:mb-16">
+      <h2 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold font-title mb-4">
+        <span class="text-text-primary">Simple,</span>
+        <span class="neon-text-purple"> Transparent</span>
+        <span class="text-text-primary"> Pricing</span>
+      </h2>
+      <p class="text-text-secondary text-base sm:text-lg max-w-2xl mx-auto px-2">
+        Pay only for what you use. No hidden fees, no surprises.
+      </p>
+    </div>
+
+    <!-- Pricing Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-4xl mx-auto mb-12">
+      <!-- CALIBER Cloud Card -->
+      <div class="bg-bg-card border-2 border-neon-purple brutalist-box p-5 sm:p-6 md:p-8 relative overflow-hidden">
+        <!-- Glow effect -->
+        <div class="absolute inset-0 bg-gradient-to-br from-neon-purple/10 to-transparent pointer-events-none"></div>
+        
+        <div class="relative z-10">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-2xl font-bold font-title text-text-primary">
+              CALIBER Cloud
+            </h3>
+            <span class="px-3 py-1 bg-neon-purple/20 border border-neon-purple/30 text-neon-purple text-xs font-mono uppercase">
+              Managed
+            </span>
+          </div>
+
+          <!-- Storage Pricing -->
+          <div class="space-y-4 mb-8">
+            <div class="flex items-baseline justify-between pb-4 border-b border-border">
+              <div>
+                <span class="text-text-primary font-semibold">Storage</span>
+                <span class="text-text-muted text-sm ml-2">(per {pricing.storage.monthly.unit})</span>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold font-title text-text-primary">
+                  ${pricing.storage.monthly.price}<span class="text-sm text-text-muted">/mo</span>
+                </div>
+                <div class="text-sm text-neon-cyan">
+                  ${pricing.storage.annual.price}/year
+                  <span class="text-text-muted">({pricing.storage.annual.savings})</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-baseline justify-between pb-4 border-b border-border">
+              <div>
+                <span class="text-text-primary font-semibold">Hot Cache</span>
+                <span class="text-text-muted text-sm ml-2">(per {pricing.hotCache.monthly.unit})</span>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold font-title text-text-primary">
+                  ${pricing.hotCache.monthly.price}<span class="text-sm text-text-muted">/mo</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-baseline justify-between">
+              <span class="text-text-primary font-semibold">Agents</span>
+              <span class="text-2xl font-bold font-title neon-text-cyan capitalize">
+                {pricing.agents}
+              </span>
+            </div>
+          </div>
+
+          <!-- Trial Info -->
+          <div class="bg-bg-secondary border border-border brutalist-box-sm p-4 mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 flex items-center justify-center bg-neon-cyan/10 border border-neon-cyan/30 brutalist-box-sm">
+                <svg class="w-5 h-5 text-neon-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <div class="text-text-primary font-semibold">
+                  {pricing.trial.days}-day free trial
+                </div>
+                <div class="text-text-muted text-sm">
+                  {pricing.trial.creditCard ? 'Credit card required' : 'No credit card required'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <a
+            href="#"
+            class="block w-full py-4 bg-neon-purple/20 border-2 border-neon-purple text-center text-text-primary font-semibold brutalist-box hover:bg-neon-purple/30 transition-colors"
+          >
+            Start Free Trial
+          </a>
+        </div>
+      </div>
+
+      <!-- Self-Host Card -->
+      <div class="bg-bg-card border-2 border-border brutalist-box p-5 sm:p-6 md:p-8 relative">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-2xl font-bold font-title text-text-primary">
+            Self-Hosted
+          </h3>
+          <span class="px-3 py-1 bg-neon-cyan/20 border border-neon-cyan/30 text-neon-cyan text-xs font-mono uppercase">
+            Open Source
+          </span>
+        </div>
+
+        <div class="mb-8">
+          <div class="text-5xl font-bold font-title neon-text-cyan mb-2">
+            {pricing.selfHost.price}
+          </div>
+          <div class="text-text-secondary">
+            Forever. Run on your own infrastructure.
+          </div>
+        </div>
+
+        <!-- Features -->
+        <ul class="space-y-3 mb-8">
+          <li class="flex items-center gap-3 text-text-secondary">
+            <svg class="w-5 h-5 text-neon-cyan flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Full source code access
+          </li>
+          <li class="flex items-center gap-3 text-text-secondary">
+            <svg class="w-5 h-5 text-neon-cyan flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            All features included
+          </li>
+          <li class="flex items-center gap-3 text-text-secondary">
+            <svg class="w-5 h-5 text-neon-cyan flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Community support
+          </li>
+          <li class="flex items-center gap-3 text-text-secondary">
+            <svg class="w-5 h-5 text-neon-cyan flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            {pricing.selfHost.license} license
+          </li>
+        </ul>
+
+        <!-- CTA -->
+        <a
+          href="https://github.com/heyoub/caliber"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="block w-full py-4 bg-bg-secondary border-2 border-border text-center text-text-primary font-semibold brutalist-box hover:border-neon-cyan transition-colors"
+        >
+          View on GitHub
+        </a>
+      </div>
+    </div>
+
+    <!-- License Notice -->
+    <div class="text-center text-text-muted text-sm">
+      <p>
+        CALIBER is open source under the 
+        <a href="https://www.gnu.org/licenses/agpl-3.0.en.html" target="_blank" rel="noopener noreferrer" class="text-neon-cyan hover:text-neon-pink">
+          {pricing.selfHost.license}
+        </a> 
+        license. Self-hosting is always free.
+      </p>
+    </div>
+  </div>
+</section>

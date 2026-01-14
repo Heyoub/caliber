@@ -1,0 +1,78 @@
+/* Fonts loaded via preload in Layout.astro for better performance */
+
+@import "tailwindcss";
+@import "./synthbrute.css";
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+code, pre {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Selection styling */
+::selection {
+  background-color: var(--neon-purple);
+  color: var(--text-primary);
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+/* Link defaults */
+a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--neon-pink);
+}
+
+/* Tailwind v4 theme customization */
+@theme {
+  /* Colors */
+  --color-bg-primary: #0a0a0b;
+  --color-bg-secondary: #111113;
+  --color-bg-card: #18181b;
+  --color-border: #27272a;
+  
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  
+  --color-neon-pink: #ec4899;
+  --color-neon-purple: #a855f7;
+  --color-neon-cyan: #22d3ee;
+  
+  --color-rust-primary: #b45309;
+  --color-rust-secondary: #92400e;
+  --color-rust-accent: #f59e0b;
+  
+  /* Fonts */
+  --font-title: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}

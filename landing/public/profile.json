@@ -1,0 +1,78 @@
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "CALIBER",
+  "alternateName": "Context Abstraction Layer Integrating Behavioral Extensible Runtime",
+  "description": "A Postgres-native memory framework for AI agents. Provides persistent, structured memory that survives across sessions, enabling agents to remember context, avoid hallucinations, and coordinate with other agents.",
+  "url": "https://caliber.dev",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS, Windows (via WSL)",
+  "softwareRequirements": "PostgreSQL 14+",
+  "programmingLanguage": "Rust",
+  "license": "https://www.gnu.org/licenses/agpl-3.0.en.html",
+  "isAccessibleForFree": true,
+  "offers": [
+    {
+      "@type": "Offer",
+      "name": "Self-Hosted",
+      "price": "0",
+      "priceCurrency": "USD",
+      "description": "Free forever. Run on your own infrastructure under AGPL-3.0 license."
+    },
+    {
+      "@type": "Offer",
+      "name": "CALIBER Cloud - Storage Monthly",
+      "price": "1",
+      "priceCurrency": "USD",
+      "unitText": "GB/month",
+      "description": "Managed cloud storage for CALIBER memory"
+    },
+    {
+      "@type": "Offer",
+      "name": "CALIBER Cloud - Storage Annual",
+      "price": "10",
+      "priceCurrency": "USD",
+      "unitText": "GB/year",
+      "description": "Annual storage pricing (2 months free)"
+    },
+    {
+      "@type": "Offer",
+      "name": "CALIBER Cloud - Hot Cache",
+      "price": "0.15",
+      "priceCurrency": "USD",
+      "unitText": "MB/month",
+      "description": "High-performance hot cache for frequently accessed memory"
+    }
+  ],
+  "author": {
+    "@type": "Person",
+    "name": "heyoub",
+    "url": "https://heyoub.dev"
+  },
+  "codeRepository": "https://github.com/heyoub/caliber",
+  "keywords": [
+    "AI agents",
+    "memory framework",
+    "PostgreSQL",
+    "Rust",
+    "LLM",
+    "context management",
+    "multi-agent systems",
+    "persistent memory",
+    "vector embeddings",
+    "AI infrastructure"
+  ],
+  "featureList": [
+    "Hierarchical memory: Trajectory → Scope → Artifact → Note",
+    "Direct Postgres storage via pgrx (no SQL parsing overhead)",
+    "VAL (Vector Abstraction Layer) for provider-agnostic embeddings",
+    "Multi-agent coordination with locks, messages, and delegation",
+    "PCP (Persistent Context Protocol) for validation and checkpoints",
+    "Custom DSL that compiles to configuration",
+    "Zero hard-coded defaults - everything configurable",
+    "Full audit trail of assembly decisions"
+  ],
+  "softwareVersion": "0.1.0",
+  "datePublished": "2026-01-14",
+  "inLanguage": "en"
+}

@@ -1,0 +1,110 @@
+---
+/**
+ * Problems Section Component
+ * Displays the 6 core problems CALIBER solves with brutalist card containers
+ * Requirements: 2.1, 2.2, 2.3
+ */
+
+const problems = [
+  {
+    icon: '🧠',
+    title: 'Context Amnesia',
+    description: 'Agents lose context between sessions, forgetting everything they learned.',
+    accent: 'pink',
+  },
+  {
+    icon: '👻',
+    title: 'Hallucination',
+    description: 'Without grounded facts, agents make up information that sounds plausible but is wrong.',
+    accent: 'purple',
+  },
+  {
+    icon: '🔀',
+    title: 'Multi-Agent Chaos',
+    description: '40-80% of multi-agent systems fail due to coordination problems and race conditions.',
+    accent: 'cyan',
+  },
+  {
+    icon: '💸',
+    title: 'Token Waste',
+    description: 'Stuffing entire conversation history into context burns tokens and money.',
+    accent: 'pink',
+  },
+  {
+    icon: '🔒',
+    title: 'Hard-Coded Everything',
+    description: 'Most AI frameworks bake in assumptions that don\'t fit your use case.',
+    accent: 'purple',
+  },
+  {
+    icon: '📋',
+    title: 'No Audit Trail',
+    description: 'When things go wrong, there\'s no way to trace what the agent was thinking.',
+    accent: 'cyan',
+  },
+];
+
+const accentClasses = {
+  pink: 'neon-border-pink hover:shadow-[0_0_30px_rgba(236,72,153,0.4)]',
+  purple: 'neon-border-purple hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]',
+  cyan: 'neon-border-cyan hover:shadow-[0_0_30px_rgba(34,211,238,0.4)]',
+};
+---
+
+<section id="problems" class="py-16 sm:py-20 px-4 bg-bg-secondary">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-12 sm:mb-16">
+      <h2 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold font-title mb-4">
+        <span class="text-text-primary">The Problem with</span>
+        <span class="neon-text-pink"> AI Memory</span>
+      </h2>
+      <p class="text-text-secondary text-base sm:text-lg max-w-2xl mx-auto px-2">
+        Current AI agent frameworks treat memory as an afterthought. 
+        The result? Unreliable, expensive, and impossible to debug.
+      </p>
+    </div>
+
+    <!-- Problem Cards Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+      {problems.map((problem, index) => (
+        <article 
+          class={`
+            group relative bg-bg-card border-2 border-border p-4 sm:p-6
+            brutalist-box transition-all duration-300
+            ${accentClasses[problem.accent as keyof typeof accentClasses]}
+          `}
+          style={`animation-delay: ${index * 100}ms`}
+        >
+          <!-- Glass overlay that bleeds -->
+          <div class="absolute inset-0 glass-panel opacity-0 group-hover:opacity-100 transition-opacity duration-300 -m-1 p-1 pointer-events-none"></div>
+          
+          <div class="relative z-10">
+            <!-- Icon -->
+            <div class="text-3xl sm:text-4xl mb-3 sm:mb-4" role="img" aria-hidden="true">
+              {problem.icon}
+            </div>
+            
+            <!-- Title -->
+            <h3 class="text-lg sm:text-xl font-bold font-title text-text-primary mb-2">
+              {problem.title}
+            </h3>
+            
+            <!-- Description -->
+            <p class="text-text-secondary text-xs sm:text-sm leading-relaxed">
+              {problem.description}
+            </p>
+          </div>
+
+          <!-- Corner accent -->
+          <div class={`
+            absolute top-0 right-0 w-8 h-8 
+            ${problem.accent === 'pink' ? 'bg-neon-pink/20' : ''}
+            ${problem.accent === 'purple' ? 'bg-neon-purple/20' : ''}
+            ${problem.accent === 'cyan' ? 'bg-neon-cyan/20' : ''}
+          `}></div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,134 @@
+---
+/**
+ * Solutions Section Component
+ * Displays how CALIBER solves each problem with code snippets and stats
+ * Requirements: 3.1, 3.2, 3.3, 3.4
+ */
+import CodeBlock from './svelte/CodeBlock.svelte';
+
+const solutions = [
+  {
+    problem: 'Context Amnesia',
+    solution: 'Hierarchical Memory',
+    description: 'Trajectory → Scope → Artifact → Note. Structured memory that persists across sessions.',
+    code: `// Memory hierarchy
+Trajectory (task container)
+├── Scope (context partition)
+│   ├── Turn (ephemeral buffer)
+│   └── Artifact (preserved output)
+└── Note (cross-trajectory knowledge)`,
+    filename: 'memory.rs',
+  },
+  {
+    problem: 'Hallucination',
+    solution: 'PCP Grounding',
+    description: 'Every fact backed by stored artifacts. Validation, checkpoints, contradiction detection.',
+    code: `// PCP validation
+let checkpoint = pcp::create_checkpoint(
+    trajectory_id,
+    scope_id,
+    &artifacts
+)?;
+
+// Verify grounding
+pcp::validate_claim(&claim, &checkpoint)?;`,
+    filename: 'validation.rs',
+  },
+  {
+    problem: 'Multi-Agent Chaos',
+    solution: 'Typed Coordination',
+    description: 'Locks, messages, delegation, handoffs. Built-in primitives for multi-agent systems.',
+    code: `// Agent coordination
+let lock = agents::acquire_lock(
+    resource_id,
+    agent_id,
+    LockMode::Exclusive
+)?;
+
+agents::delegate_task(
+    from_agent,
+    to_agent,
+    &task
+)?;`,
+    filename: 'agents.rs',
+  },
+];
+
+const stats = [
+  { value: '8', label: 'Crates', description: 'Modular architecture' },
+  { value: '165', label: 'Tests', description: 'Comprehensive coverage' },
+  { value: '57', label: 'Property Tests', description: 'Formal verification' },
+  { value: '0', label: 'Hard-coded Defaults', description: 'Everything configurable' },
+];
+---
+
+<section id="solutions" class="py-16 sm:py-20 px-4 bg-bg-primary">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-12 sm:mb-16">
+      <h2 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold font-title mb-4">
+        <span class="neon-text-cyan">CALIBER</span>
+        <span class="text-text-primary"> Fixes This</span>
+      </h2>
+      <p class="text-text-secondary text-base sm:text-lg max-w-2xl mx-auto px-2">
+        A Postgres-native memory framework built from first principles. 
+        No magic, no hidden defaults, just clean architecture.
+      </p>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 mb-12 sm:mb-16">
+      {stats.map((stat) => (
+        <div class="bg-bg-card border-2 border-border brutalist-box p-3 sm:p-4 text-center group hover:border-neon-cyan transition-colors">
+          <div class="text-2xl sm:text-3xl md:text-4xl font-bold font-title neon-text-cyan mb-1">
+            {stat.value}
+          </div>
+          <div class="text-text-primary font-semibold text-xs sm:text-sm">
+            {stat.label}
+          </div>
+          <div class="text-text-muted text-[10px] sm:text-xs mt-1">
+            {stat.description}
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- Solution Cards -->
+    <div class="space-y-6 sm:space-y-8">
+      {solutions.map((item, index) => (
+        <div class={`
+          grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-start
+          ${index % 2 === 1 ? 'md:flex-row-reverse' : ''}
+        `}>
+          <!-- Text Content -->
+          <div class={`
+            space-y-3 sm:space-y-4
+            ${index % 2 === 1 ? 'md:order-2' : ''}
+          `}>
+            <div class="inline-block px-2 sm:px-3 py-1 bg-neon-purple/10 border border-neon-purple/30 text-neon-purple text-[10px] sm:text-xs font-mono uppercase tracking-wider">
+              Solves: {item.problem}
+            </div>
+            <h3 class="text-xl sm:text-2xl md:text-3xl font-bold font-title text-text-primary">
+              {item.solution}
+            </h3>
+            <p class="text-text-secondary text-sm sm:text-base leading-relaxed">
+              {item.description}
+            </p>
+          </div>
+
+          <!-- Code Block -->
+          <div class={`
+            ${index % 2 === 1 ? 'md:order-1' : ''}
+          `}>
+            <CodeBlock 
+              client:visible 
+              code={item.code} 
+              filename={item.filename} 
+              language="rust"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,367 @@
+/* SynthBrute Design System
+ * A fusion of Neo-Brutalist structure with Synthwave/Vaporwave aesthetics
+ * and LiquidGlass effects.
+ */
+
+/* ============================================
+   COLOR PALETTE
+   ============================================ */
+:root {
+  /* Base (Brutalist) */
+  --bg-primary: #0a0a0b;
+  --bg-secondary: #111113;
+  --bg-card: #18181b;
+  --border: #27272a;
+  
+  /* Text */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  
+  /* Synthwave (muted, digestible) */
+  --neon-pink: #ec4899;
+  --neon-purple: #a855f7;
+  --neon-cyan: #22d3ee;
+  
+  /* Industrial Rust */
+  --rust-primary: #b45309;
+  --rust-secondary: #92400e;
+  --rust-accent: #f59e0b;
+  
+  /* Glass */
+  --glass-bg: rgba(24, 24, 27, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+
+/* Titles: Brutalist grotesque */
+.font-title {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Body: Clean, readable */
+.font-body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 400;
+}
+
+/* Code: Monospace */
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ============================================
+   BRUTALIST STRUCTURE
+   ============================================ */
+
+/* Hard edges - 0px or 2px max */
+.brutalist-box {
+  border-radius: 0px;
+  border: 2px solid var(--border);
+}
+
+.brutalist-box-sm {
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+/* Visible grid */
+.brutalist-grid {
+  display: grid;
+  gap: 2px;
+  background: var(--border);
+}
+
+/* ============================================
+   GLASS PANELS (that bleed)
+   ============================================ */
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Intentional bleed outside container */
+.glass-bleed {
+  margin: -8px;
+  padding: calc(1rem + 8px);
+}
+
+.glass-glow {
+  box-shadow: 
+    0 0 20px rgba(236, 72, 153, 0.3),
+    0 0 40px rgba(168, 85, 247, 0.2);
+}
+
+.glass-glow-cyan {
+  box-shadow: 
+    0 0 20px rgba(34, 211, 238, 0.3),
+    0 0 40px rgba(34, 211, 238, 0.15);
+}
+
+/* ============================================
+   NEON EFFECTS
+   ============================================ */
+
+.neon-text-pink {
+  color: var(--neon-pink);
+  text-shadow: 0 0 10px rgba(236, 72, 153, 0.5);
+}
+
+.neon-text-purple {
+  color: var(--neon-purple);
+  text-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+}
+
+.neon-text-cyan {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+}
+
+.neon-border-pink {
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.3);
+}
+
+.neon-border-purple {
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+}
+
+.neon-border-cyan {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.3);
+}
+
+/* ============================================
+   ANIMATION PATTERNS
+   ============================================ */
+
+/* Brutalist: snap-in, no easing */
+@keyframes snap-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.brutalist-enter {
+  animation: snap-in 0.1s steps(1);
+}
+
+/* Glass: spring motion */
+@keyframes spring-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  60% {
+    transform: scale(1.02) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.glass-enter {
+  animation: spring-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Neon pulse */
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.neon-pulse {
+  animation: neon-pulse 2s ease-in-out infinite;
+}
+
+/* Connection line glow pulse */
+@keyframes glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px var(--neon-cyan));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px var(--neon-cyan));
+  }
+}
+
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Fade in sequential */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.bg-primary { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-card { background-color: var(--bg-card); }
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.border-default { border-color: var(--border); }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================
+   RESPONSIVE BREAKPOINTS
+   Tested at: 320px, 768px, 1024px, 1440px, 2560px
+   ============================================ */
+
+/* Prevent horizontal overflow at all viewport widths */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Container max-widths for ultra-wide screens */
+@media (min-width: 2560px) {
+  .max-w-7xl {
+    max-width: 1920px;
+  }
+}
+
+/* Mobile-first responsive padding */
+.section-padding {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .section-padding {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section-padding {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* Mobile text scaling for very small screens (320px) */
+@media (max-width: 359px) {
+  html {
+    font-size: 14px;
+  }
+  
+  h1 {
+    font-size: 1.75rem !important;
+    line-height: 1.2 !important;
+  }
+  
+  h2 {
+    font-size: 1.5rem !important;
+  }
+}
+
+/* Ensure images and media don't overflow */
+img, video, iframe, embed, object {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Pre/code blocks responsive */
+pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch-friendly tap targets on mobile */
+@media (max-width: 767px) {
+  a, button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Increase spacing between interactive elements */
+  .brutalist-box {
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Architecture diagram responsive */
+@media (max-width: 767px) {
+  .architecture-diagram pre {
+    font-size: 0.65rem;
+    line-height: 1.4;
+  }
+}
+
+/* Pricing cards stack on mobile */
+@media (max-width: 767px) {
+  .pricing-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+/* Stats bar responsive */
+@media (max-width: 639px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Solution cards responsive layout */
+@media (max-width: 767px) {
+  .solution-card {
+    grid-template-columns: 1fr;
+  }
+  
+  .solution-card > * {
+    order: unset !important;
+  }
+}

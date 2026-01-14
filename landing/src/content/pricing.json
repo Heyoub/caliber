@@ -1,0 +1,31 @@
+{
+  "storage": {
+    "monthly": {
+      "amount": 1,
+      "unit": "GB",
+      "price": 1
+    },
+    "annual": {
+      "amount": 1,
+      "unit": "GB",
+      "price": 10,
+      "savings": "2 months free"
+    }
+  },
+  "hotCache": {
+    "monthly": {
+      "amount": 1,
+      "unit": "MB",
+      "price": 0.15
+    }
+  },
+  "agents": "unlimited",
+  "trial": {
+    "days": 14,
+    "creditCard": false
+  },
+  "selfHost": {
+    "price": "free",
+    "license": "AGPL-3.0"
+  }
+}

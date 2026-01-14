@@ -1,0 +1,136 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+}
+
+const {
+  title = 'CALIBER — Memory for AI Agents',
+  description = 'A Postgres-native memory framework for AI agents. Hierarchical context, multi-agent coordination, zero hard-coded values.',
+  image = '/og-image.png'
+} = Astro.props;
+
+const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    
+    <!-- Primary Meta Tags -->
+    <title>{title}</title>
+    <meta name="title" content={title} />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="canonical" href={canonicalURL} />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={image} />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={image} />
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#0a0a0b" />
+    
+    <!-- Preconnect to font CDN for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Preload critical fonts for better LCP -->
+    <link 
+      rel="preload" 
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" 
+      as="style"
+    />
+    <link 
+      rel="preload" 
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" 
+      as="style"
+    />
+    
+    <!-- Load fonts with display=swap for better performance -->
+    <link 
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" 
+      rel="stylesheet"
+    />
+    
+    <!-- JSON-LD Structured Data for SEO/AEO -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "CALIBER",
+      "alternateName": "Context Abstraction Layer Integrating Behavioral Extensible Runtime",
+      "description": "A Postgres-native memory framework for AI agents. Provides persistent, structured memory that survives across sessions, enabling agents to remember context, avoid hallucinations, and coordinate with other agents.",
+      "url": "https://caliber.dev",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Linux, macOS, Windows (via WSL)",
+      "softwareRequirements": "PostgreSQL 14+",
+      "programmingLanguage": "Rust",
+      "license": "https://www.gnu.org/licenses/agpl-3.0.en.html",
+      "isAccessibleForFree": true,
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Self-Hosted",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Free forever under AGPL-3.0 license"
+        },
+        {
+          "@type": "Offer",
+          "name": "CALIBER Cloud Storage",
+          "price": "1",
+          "priceCurrency": "USD",
+          "unitText": "GB/month"
+        }
+      ],
+      "author": {
+        "@type": "Person",
+        "name": "heyoub",
+        "url": "https://heyoub.dev"
+      },
+      "codeRepository": "https://github.com/heyoub/caliber",
+      "keywords": ["AI agents", "memory framework", "PostgreSQL", "Rust", "LLM", "context management"]
+    }
+    </script>
+  </head>
+  <body class="min-h-screen bg-bg-primary text-text-primary antialiased">
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  /* Ensure smooth scrolling and proper box-sizing */
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+</style>

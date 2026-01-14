@@ -1,0 +1,53 @@
+---
+/**
+ * Navigation Component
+ * Fixed navigation bar with glass effect and backdrop blur
+ * Requirements: 7.1, 7.2, 8.3
+ */
+import MobileNav from './svelte/MobileNav.svelte';
+
+const navLinks = [
+  { href: '#problems', label: 'Problem' },
+  { href: '#solutions', label: 'Solution' },
+  { href: '#architecture', label: 'Architecture' },
+  { href: '#pricing', label: 'Pricing' },
+  { href: 'https://github.com/heyoub/caliber', label: 'GitHub', external: true },
+];
+---
+
+<nav class="fixed top-0 left-0 right-0 z-50 glass-panel border-b border-border">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+      <!-- Logo -->
+      <a href="/" class="flex items-center gap-2 group">
+        <span class="text-xl font-bold font-title text-neon-cyan group-hover:text-neon-pink transition-colors">
+          CALIBER
+        </span>
+      </a>
+
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex items-center gap-1">
+        {navLinks.map((link) => (
+          <a
+            href={link.href}
+            class="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-200 brutalist-box-sm"
+            {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+          >
+            {link.label}
+            {link.external && (
+              <svg class="inline-block w-3 h-3 ml-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            )}
+          </a>
+        ))}
+      </div>
+
+      <!-- Mobile Navigation (Svelte component) -->
+      <MobileNav client:load />
+    </div>
+  </div>
+</nav>
+
+<!-- Spacer to prevent content from hiding behind fixed nav -->
+<div class="h-16"></div>
