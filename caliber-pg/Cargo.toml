@@ -15,6 +15,7 @@ pg15 = ["pgrx/pg15"]
 pg16 = ["pgrx/pg16"]
 pg17 = ["pgrx/pg17"]
 pg_test = []
+debug = []  # Enable debug endpoints (caliber_debug_*)
 
 [dependencies]
 pgrx = { workspace = true }
@@ -30,6 +31,7 @@ chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 once_cell = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 pgrx-tests = "0.12.9"

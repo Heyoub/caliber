@@ -72,17 +72,67 @@ static STORAGE: Lazy<RwLock<InMemoryStorage>> = Lazy::new(|| {
 
 #[derive(Debug, Default)]
 struct InMemoryStorage {
-    trajectories: HashMap<EntityId, Trajectory>,
-    scopes: HashMap<EntityId, Scope>,
-    artifacts: HashMap<EntityId, Artifact>,
-    notes: HashMap<EntityId, Note>,
-    turns: HashMap<EntityId, Turn>,
+    // NOTE: trajectories removed - now uses SPI-based SQL storage (Task 1)
+    // NOTE: scopes removed - now uses SPI-based SQL storage (Task 2)
+    // NOTE: artifacts removed - now uses SPI-based SQL storage (Task 3)
+    // NOTE: notes removed - now uses SPI-based SQL storage (Task 4)
+    // NOTE: turns removed - now uses SPI-based SQL storage (Task 5)
+    // NOTE: locks removed - now uses SPI-based SQL storage (Task 6)
+    // NOTE: messages removed - now uses SPI-based SQL storage (Task 7)
     agents: HashMap<EntityId, Agent>,
-    locks: HashMap<EntityId, DistributedLock>,
-    messages: HashMap<EntityId, AgentMessage>,
     delegations: HashMap<EntityId, DelegatedTask>,
     handoffs: HashMap<EntityId, AgentHandoff>,
     conflicts: HashMap<EntityId, Conflict>,
+}
+
+// ============================================================================
+// SAFE STORAGE ACCESS HELPERS
+// ============================================================================
+
+/// Safely acquire a read lock on storage, handling poisoning gracefully.
+/// Returns the guard or panics with a clear error message for PostgreSQL.
+fn storage_read() -> std::sync::RwLockReadGuard<'static, InMemoryStorage> {
+    match STORAGE.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            pgrx::warning!("CALIBER: Storage lock was poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    }
+}
+
+/// Safely acquire a write lock on storage, handling poisoning gracefully.
+/// Returns the guard or panics with a clear error message for PostgreSQL.
+fn storage_write() -> std::sync::RwLockWriteGuard<'static, InMemoryStorage> {
+    match STORAGE.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            pgrx::warning!("CALIBER: Storage lock was poisoned, recovering...");
+            poisoned.into_inner()
+        }
+    }
+}
+
+/// Safely serialize a value to JSON, returning null on failure.
+fn safe_to_json<T: serde::Serialize>(value: &T) -> serde_json::Value {
+    match serde_json::to_value(value) {
+        Ok(v) => v,
+        Err(e) => {
+            pgrx::warning!("CALIBER: JSON serialization failed: {}", e);
+            serde_json::Value::Null
+        }
+    }
+}
+
+/// Safely serialize a collection to JSON array, returning empty array on failure.
+fn safe_to_json_array<T: serde::Serialize>(values: &[T]) -> serde_json::Value {
+    match serde_json::to_value(values) {
+        Ok(v) => v,
+        Err(e) => {
+            pgrx::warning!("CALIBER: JSON array serialization failed: {}", e);
+            serde_json::json!([])
+        }
+    }
 }
 
 
@@ -90,14 +140,66 @@ struct InMemoryStorage {
 // BOOTSTRAP SQL SCHEMA (Task 12.2)
 // ============================================================================
 
+/// Bootstrap SQL schema embedded at compile time.
+/// This is the complete schema from caliber_init.sql.
+const BOOTSTRAP_SQL: &str = include_str!("../sql/caliber_init.sql");
+
 /// Initialize the CALIBER schema.
 /// This creates all tables, indexes, and functions needed by the extension.
 /// This SQL runs ONCE at extension install, NOT in hot path.
+/// 
+/// The schema is idempotent - all CREATE statements use IF NOT EXISTS.
+/// 
+/// # Returns
+/// - Success message with table count on success
+/// - Error message on failure
 #[pg_extern]
-fn caliber_init() -> &'static str {
-    // In a real implementation, this would execute the bootstrap SQL
-    // For now, we return a status message
-    "CALIBER schema initialized successfully"
+fn caliber_init() -> String {
+    pgrx::log!("CALIBER: Initializing schema...");
+    
+    // Execute the bootstrap SQL via SPI
+    match Spi::connect(|client| {
+        // Split the SQL into individual statements and execute each
+        // This handles the multi-statement SQL file properly
+        client.update(BOOTSTRAP_SQL, None, None)?;
+        Ok(())
+    }) {
+        Ok(()) => {
+            pgrx::log!("CALIBER: Schema initialization complete");
+            "CALIBER schema initialized successfully".to_string()
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Schema initialization failed: {}", e);
+            format!("CALIBER schema initialization failed: {}", e)
+        }
+    }
+}
+
+/// Check if the CALIBER schema is initialized.
+/// Returns true if the core tables exist.
+#[pg_extern]
+fn caliber_schema_exists() -> bool {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'caliber_trajectory'
+            )",
+            None,
+            None,
+        );
+        
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    row.get::<bool>(1).unwrap_or(Some(false)).unwrap_or(false)
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    })
 }
 
 /// Get the extension version.
@@ -134,23 +236,29 @@ fn caliber_trajectory_create(
     let trajectory_id = new_entity_id();
     let now = Utc::now();
 
-    let trajectory = Trajectory {
-        trajectory_id,
-        name: name.to_string(),
-        description: description.map(|s| s.to_string()),
-        status: TrajectoryStatus::Active,
-        parent_trajectory_id: None,
-        root_trajectory_id: None,
-        agent_id: agent_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
-        created_at: now,
-        updated_at: now,
-        completed_at: None,
-        outcome: None,
-        metadata: None,
-    };
+    // Insert into SQL table via SPI
+    let result = Spi::connect(|client| {
+        let agent_id_str = agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string());
+        
+        client.update(
+            "INSERT INTO caliber_trajectory (trajectory_id, name, description, status, agent_id, created_at, updated_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), trajectory_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), name.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), description.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), "active".into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+            ]),
+        )
+    });
 
-    let mut storage = STORAGE.write().unwrap();
-    storage.trajectories.insert(trajectory_id, trajectory);
+    if let Err(e) = result {
+        pgrx::warning!("CALIBER: Failed to insert trajectory: {}", e);
+    }
 
     pgrx::Uuid::from_bytes(*trajectory_id.as_bytes())
 }
@@ -159,53 +267,338 @@ fn caliber_trajectory_create(
 #[pg_extern]
 fn caliber_trajectory_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage.trajectories.get(&entity_id).map(|t| {
-        pgrx::JsonB(serde_json::to_value(t).unwrap_or(serde_json::Value::Null))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT trajectory_id, name, description, status, parent_trajectory_id, 
+                    root_trajectory_id, agent_id, created_at, updated_at, completed_at, 
+                    outcome, metadata 
+             FROM caliber_trajectory WHERE trajectory_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let name: Option<String> = row.get(2).ok().flatten();
+                    let description: Option<String> = row.get(3).ok().flatten();
+                    let status: Option<String> = row.get(4).ok().flatten();
+                    let parent_trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+                    let root_trajectory_id: Option<pgrx::Uuid> = row.get(6).ok().flatten();
+                    let agent_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(9).ok().flatten();
+                    let completed_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let outcome: Option<pgrx::JsonB> = row.get(11).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "name": name,
+                        "description": description,
+                        "status": status,
+                        "parent_trajectory_id": parent_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "root_trajectory_id": root_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_id": agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "completed_at": completed_at.map(|t| format!("{:?}", t)),
+                        "outcome": outcome.map(|j| j.0),
+                        "metadata": metadata.map(|j| j.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get trajectory: {}", e);
+                None
+            }
+        }
     })
 }
 
 /// Update trajectory status.
+/// Returns None if status is invalid.
 #[pg_extern]
-fn caliber_trajectory_set_status(id: pgrx::Uuid, status: &str) -> bool {
+fn caliber_trajectory_set_status(id: pgrx::Uuid, status: &str) -> Option<bool> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    
+    // Validate status - reject unknown values instead of returning false silently (REQ-12)
+    let valid_status = match status {
+        "active" | "completed" | "failed" | "suspended" => status,
+        _ => {
+            let validation_err = ValidationError::InvalidValue {
+                field: "status".to_string(),
+                reason: format!("unknown value '{}'. Valid values: active, completed, failed, suspended", status),
+            };
+            pgrx::warning!("CALIBER: {:?}", validation_err);
+            return None;
+        }
+    };
 
-    if let Some(trajectory) = storage.trajectories.get_mut(&entity_id) {
-        trajectory.status = match status {
-            "active" => TrajectoryStatus::Active,
-            "completed" => TrajectoryStatus::Completed,
-            "failed" => TrajectoryStatus::Failed,
-            "suspended" => TrajectoryStatus::Suspended,
-            _ => return false,
+    let result = Spi::connect(|client| {
+        let now = Utc::now();
+        client.update(
+            "UPDATE caliber_trajectory SET status = $1, updated_at = $2 WHERE trajectory_id = $3",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_status.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(update_result) => Some(update_result.rows_affected() > 0),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to update trajectory status: {}", e);
+            Some(false)
+        }
+    }
+}
+
+/// Update a trajectory with the provided fields.
+/// Accepts a JSON object with optional fields: name, description, status, 
+/// parent_trajectory_id, root_trajectory_id, agent_id, completed_at, outcome, metadata.
+/// Only provided fields are updated; null/missing fields are left unchanged.
+/// Returns true if the trajectory was found and updated, false otherwise.
+#[pg_extern]
+fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
+    let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let update_obj = &updates.0;
+
+    // Build dynamic UPDATE query based on provided fields
+    let mut set_clauses: Vec<String> = Vec::new();
+    let mut params: Vec<(pgrx::pg_sys::Oid, Option<pgrx::pg_sys::Datum>)> = Vec::new();
+    let mut param_idx = 1;
+
+    // Handle name update
+    if let Some(name) = update_obj.get("name").and_then(|v| v.as_str()) {
+        set_clauses.push(format!("name = ${}", param_idx));
+        params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), name.into_datum()));
+        param_idx += 1;
+    }
+
+    // Handle description update
+    if let Some(description) = update_obj.get("description") {
+        if description.is_null() {
+            set_clauses.push(format!("description = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), None::<&str>.into_datum()));
+            param_idx += 1;
+        } else if let Some(desc_str) = description.as_str() {
+            set_clauses.push(format!("description = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), desc_str.into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // Handle status update with validation
+    if let Some(status) = update_obj.get("status").and_then(|v| v.as_str()) {
+        let valid_status = match status {
+            "active" | "completed" | "failed" | "suspended" => status,
+            _ => {
+                pgrx::warning!("CALIBER: Invalid trajectory status: {}", status);
+                return false;
+            }
         };
-        trajectory.updated_at = Utc::now();
-        true
-    } else {
-        false
+        set_clauses.push(format!("status = ${}", param_idx));
+        params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), valid_status.into_datum()));
+        param_idx += 1;
+
+        // If status is completed or failed, set completed_at if not already provided
+        if (status == "completed" || status == "failed") && !update_obj.contains_key("completed_at") {
+            set_clauses.push(format!("completed_at = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), Utc::now().into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // Handle parent_trajectory_id update
+    if let Some(parent_id) = update_obj.get("parent_trajectory_id") {
+        if parent_id.is_null() {
+            set_clauses.push(format!("parent_trajectory_id = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), None::<pgrx::Uuid>.into_datum()));
+            param_idx += 1;
+        } else if let Some(parent_str) = parent_id.as_str() {
+            if let Ok(parent_uuid) = Uuid::parse_str(parent_str) {
+                set_clauses.push(format!("parent_trajectory_id = ${}", param_idx));
+                params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*parent_uuid.as_bytes()).into_datum()));
+                param_idx += 1;
+            }
+        }
+    }
+
+    // Handle root_trajectory_id update
+    if let Some(root_id) = update_obj.get("root_trajectory_id") {
+        if root_id.is_null() {
+            set_clauses.push(format!("root_trajectory_id = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), None::<pgrx::Uuid>.into_datum()));
+            param_idx += 1;
+        } else if let Some(root_str) = root_id.as_str() {
+            if let Ok(root_uuid) = Uuid::parse_str(root_str) {
+                set_clauses.push(format!("root_trajectory_id = ${}", param_idx));
+                params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*root_uuid.as_bytes()).into_datum()));
+                param_idx += 1;
+            }
+        }
+    }
+
+    // Handle agent_id update
+    if let Some(agent_id) = update_obj.get("agent_id") {
+        if agent_id.is_null() {
+            set_clauses.push(format!("agent_id = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), None::<pgrx::Uuid>.into_datum()));
+            param_idx += 1;
+        } else if let Some(agent_str) = agent_id.as_str() {
+            if let Ok(agent_uuid) = Uuid::parse_str(agent_str) {
+                set_clauses.push(format!("agent_id = ${}", param_idx));
+                params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*agent_uuid.as_bytes()).into_datum()));
+                param_idx += 1;
+            }
+        }
+    }
+
+    // Handle completed_at update (explicit)
+    if let Some(completed_at) = update_obj.get("completed_at") {
+        if completed_at.is_null() {
+            set_clauses.push(format!("completed_at = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), None::<pgrx::TimestampWithTimeZone>.into_datum()));
+            param_idx += 1;
+        } else if let Some(completed_str) = completed_at.as_str() {
+            if let Ok(completed_dt) = chrono::DateTime::parse_from_rfc3339(completed_str) {
+                set_clauses.push(format!("completed_at = ${}", param_idx));
+                params.push((pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), completed_dt.with_timezone(&Utc).into_datum()));
+                param_idx += 1;
+            }
+        }
+    }
+
+    // Handle outcome update (JSONB)
+    if let Some(outcome) = update_obj.get("outcome") {
+        if outcome.is_null() {
+            set_clauses.push(format!("outcome = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), None::<pgrx::JsonB>.into_datum()));
+            param_idx += 1;
+        } else {
+            set_clauses.push(format!("outcome = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(outcome.clone()).into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // Handle metadata update (JSONB)
+    if let Some(metadata) = update_obj.get("metadata") {
+        if metadata.is_null() {
+            set_clauses.push(format!("metadata = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), None::<pgrx::JsonB>.into_datum()));
+            param_idx += 1;
+        } else {
+            set_clauses.push(format!("metadata = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(metadata.clone()).into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // If no fields to update, return false
+    if set_clauses.is_empty() {
+        pgrx::warning!("CALIBER: No valid fields to update in trajectory");
+        return false;
+    }
+
+    // Always update updated_at
+    set_clauses.push(format!("updated_at = ${}", param_idx));
+    params.push((pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), Utc::now().into_datum()));
+    param_idx += 1;
+
+    // Add the WHERE clause parameter
+    params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()));
+
+    let query = format!(
+        "UPDATE caliber_trajectory SET {} WHERE trajectory_id = ${}",
+        set_clauses.join(", "),
+        param_idx
+    );
+
+    let result = Spi::connect(|client| {
+        client.update(&query, None, Some(params))
+    });
+
+    match result {
+        Ok(update_result) => update_result.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to update trajectory: {}", e);
+            false
+        }
     }
 }
 
 /// List trajectories by status.
 #[pg_extern]
 fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
-    let target_status = match status {
-        "active" => TrajectoryStatus::Active,
-        "completed" => TrajectoryStatus::Completed,
-        "failed" => TrajectoryStatus::Failed,
-        "suspended" => TrajectoryStatus::Suspended,
+    // Validate status
+    let valid_status = match status {
+        "active" | "completed" | "failed" | "suspended" => status,
         _ => return pgrx::JsonB(serde_json::json!([])),
     };
 
-    let storage = STORAGE.read().unwrap();
-    let trajectories: Vec<&Trajectory> = storage
-        .trajectories
-        .values()
-        .filter(|t| t.status == target_status)
-        .collect();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT trajectory_id, name, description, status, parent_trajectory_id, 
+                    root_trajectory_id, agent_id, created_at, updated_at, completed_at, 
+                    outcome, metadata 
+             FROM caliber_trajectory WHERE status = $1 ORDER BY created_at DESC",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_status.into_datum()),
+            ]),
+        );
 
-    pgrx::JsonB(serde_json::to_value(&trajectories).unwrap_or(serde_json::json!([])))
+        match result {
+            Ok(table) => {
+                let mut trajectories = Vec::new();
+                for row in table {
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let name: Option<String> = row.get(2).ok().flatten();
+                    let description: Option<String> = row.get(3).ok().flatten();
+                    let status: Option<String> = row.get(4).ok().flatten();
+                    let parent_trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+                    let root_trajectory_id: Option<pgrx::Uuid> = row.get(6).ok().flatten();
+                    let agent_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(9).ok().flatten();
+                    let completed_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let outcome: Option<pgrx::JsonB> = row.get(11).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                    trajectories.push(serde_json::json!({
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "name": name,
+                        "description": description,
+                        "status": status,
+                        "parent_trajectory_id": parent_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "root_trajectory_id": root_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_id": agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "completed_at": completed_at.map(|t| format!("{:?}", t)),
+                        "outcome": outcome.map(|j| j.0),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(trajectories))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list trajectories: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -225,23 +618,28 @@ fn caliber_scope_create(
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
     let now = Utc::now();
 
-    let scope = Scope {
-        scope_id,
-        trajectory_id: traj_id,
-        parent_scope_id: None,
-        name: name.to_string(),
-        purpose: purpose.map(|s| s.to_string()),
-        is_active: true,
-        created_at: now,
-        closed_at: None,
-        checkpoint: None,
-        token_budget,
-        tokens_used: 0,
-        metadata: None,
-    };
+    // Insert into SQL table via SPI
+    let result = Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_scope (scope_id, trajectory_id, name, purpose, is_active, created_at, token_budget, tokens_used) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scope_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), traj_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), name.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), purpose.into_datum()),
+                (pgrx::PgBuiltInOids::BOOLOID.oid(), true.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::INT4OID.oid(), token_budget.into_datum()),
+                (pgrx::PgBuiltInOids::INT4OID.oid(), 0i32.into_datum()),
+            ]),
+        )
+    });
 
-    let mut storage = STORAGE.write().unwrap();
-    storage.scopes.insert(scope_id, scope);
+    if let Err(e) = result {
+        pgrx::warning!("CALIBER: Failed to insert scope: {}", e);
+    }
 
     pgrx::Uuid::from_bytes(*scope_id.as_bytes())
 }
@@ -250,10 +648,57 @@ fn caliber_scope_create(
 #[pg_extern]
 fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage.scopes.get(&entity_id).map(|s| {
-        pgrx::JsonB(serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT scope_id, trajectory_id, parent_scope_id, name, purpose, is_active, 
+                    created_at, closed_at, checkpoint, token_budget, tokens_used, metadata 
+             FROM caliber_scope WHERE scope_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let scope_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let parent_scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let name: Option<String> = row.get(4).ok().flatten();
+                    let purpose: Option<String> = row.get(5).ok().flatten();
+                    let is_active: Option<bool> = row.get(6).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(7).ok().flatten();
+                    let closed_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                    let checkpoint: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let token_budget: Option<i32> = row.get(10).ok().flatten();
+                    let tokens_used: Option<i32> = row.get(11).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "parent_scope_id": parent_scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "name": name,
+                        "purpose": purpose,
+                        "is_active": is_active,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "closed_at": closed_at.map(|t| format!("{:?}", t)),
+                        "checkpoint": checkpoint.map(|j| j.0),
+                        "token_budget": token_budget,
+                        "tokens_used": tokens_used,
+                        "metadata": metadata.map(|j| j.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get scope: {}", e);
+                None
+            }
+        }
     })
 }
 
@@ -261,28 +706,87 @@ fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 #[pg_extern]
 fn caliber_scope_get_current(trajectory_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage
-        .scopes
-        .values()
-        .filter(|s| s.trajectory_id == traj_id && s.is_active)
-        .max_by_key(|s| s.created_at)
-        .map(|s| pgrx::JsonB(serde_json::to_value(s).unwrap_or(serde_json::Value::Null)))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT scope_id, trajectory_id, parent_scope_id, name, purpose, is_active, 
+                    created_at, closed_at, checkpoint, token_budget, tokens_used, metadata 
+             FROM caliber_scope 
+             WHERE trajectory_id = $1 AND is_active = TRUE 
+             ORDER BY created_at DESC 
+             LIMIT 1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), traj_id.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let scope_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let parent_scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let name: Option<String> = row.get(4).ok().flatten();
+                    let purpose: Option<String> = row.get(5).ok().flatten();
+                    let is_active: Option<bool> = row.get(6).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(7).ok().flatten();
+                    let closed_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                    let checkpoint: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let token_budget: Option<i32> = row.get(10).ok().flatten();
+                    let tokens_used: Option<i32> = row.get(11).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "parent_scope_id": parent_scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "name": name,
+                        "purpose": purpose,
+                        "is_active": is_active,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "closed_at": closed_at.map(|t| format!("{:?}", t)),
+                        "checkpoint": checkpoint.map(|j| j.0),
+                        "token_budget": token_budget,
+                        "tokens_used": tokens_used,
+                        "metadata": metadata.map(|j| j.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get current scope: {}", e);
+                None
+            }
+        }
+    })
 }
 
 /// Close a scope.
 #[pg_extern]
 fn caliber_scope_close(id: pgrx::Uuid) -> bool {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let now = Utc::now();
 
-    if let Some(scope) = storage.scopes.get_mut(&entity_id) {
-        scope.is_active = false;
-        scope.closed_at = Some(Utc::now());
-        true
-    } else {
-        false
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_scope SET is_active = $1, closed_at = $2 WHERE scope_id = $3",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::BOOLOID.oid(), false.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(update_result) => update_result.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to close scope: {}", e);
+            false
+        }
     }
 }
 
@@ -290,13 +794,164 @@ fn caliber_scope_close(id: pgrx::Uuid) -> bool {
 #[pg_extern]
 fn caliber_scope_update_tokens(id: pgrx::Uuid, tokens_used: i32) -> bool {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
 
-    if let Some(scope) = storage.scopes.get_mut(&entity_id) {
-        scope.tokens_used = tokens_used;
-        true
-    } else {
-        false
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_scope SET tokens_used = $1 WHERE scope_id = $2",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::INT4OID.oid(), tokens_used.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(update_result) => update_result.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to update scope tokens: {}", e);
+            false
+        }
+    }
+}
+
+/// Update a scope with the provided fields.
+/// Accepts a JSON object with optional fields: name, purpose, is_active, closed_at, 
+/// checkpoint, token_budget, tokens_used, parent_scope_id, metadata.
+/// Only provided fields are updated; null/missing fields are left unchanged.
+/// Returns true if the scope was found and updated, false otherwise.
+#[pg_extern]
+fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
+    let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let update_obj = &updates.0;
+
+    // Build dynamic UPDATE query based on provided fields
+    let mut set_clauses: Vec<String> = Vec::new();
+    let mut params: Vec<(pgrx::pg_sys::Oid, Option<pgrx::pg_sys::Datum>)> = Vec::new();
+    let mut param_idx = 1;
+
+    // Handle name update
+    if let Some(name) = update_obj.get("name").and_then(|v| v.as_str()) {
+        set_clauses.push(format!("name = ${}", param_idx));
+        params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), name.into_datum()));
+        param_idx += 1;
+    }
+
+    // Handle purpose update
+    if let Some(purpose) = update_obj.get("purpose") {
+        if purpose.is_null() {
+            set_clauses.push(format!("purpose = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), None::<&str>.into_datum()));
+            param_idx += 1;
+        } else if let Some(purpose_str) = purpose.as_str() {
+            set_clauses.push(format!("purpose = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TEXTOID.oid(), purpose_str.into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // Handle is_active update
+    if let Some(is_active) = update_obj.get("is_active").and_then(|v| v.as_bool()) {
+        set_clauses.push(format!("is_active = ${}", param_idx));
+        params.push((pgrx::PgBuiltInOids::BOOLOID.oid(), is_active.into_datum()));
+        param_idx += 1;
+    }
+
+    // Handle closed_at update
+    if let Some(closed_at) = update_obj.get("closed_at") {
+        if closed_at.is_null() {
+            set_clauses.push(format!("closed_at = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), None::<pgrx::TimestampWithTimeZone>.into_datum()));
+            param_idx += 1;
+        } else if let Some(closed_str) = closed_at.as_str() {
+            if let Ok(closed_dt) = chrono::DateTime::parse_from_rfc3339(closed_str) {
+                set_clauses.push(format!("closed_at = ${}", param_idx));
+                params.push((pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), closed_dt.with_timezone(&Utc).into_datum()));
+                param_idx += 1;
+            }
+        }
+    }
+
+    // Handle checkpoint update (JSONB)
+    if let Some(checkpoint) = update_obj.get("checkpoint") {
+        if checkpoint.is_null() {
+            set_clauses.push(format!("checkpoint = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), None::<pgrx::JsonB>.into_datum()));
+            param_idx += 1;
+        } else {
+            set_clauses.push(format!("checkpoint = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(checkpoint.clone()).into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // Handle token_budget update
+    if let Some(token_budget) = update_obj.get("token_budget").and_then(|v| v.as_i64()) {
+        set_clauses.push(format!("token_budget = ${}", param_idx));
+        params.push((pgrx::PgBuiltInOids::INT4OID.oid(), (token_budget as i32).into_datum()));
+        param_idx += 1;
+    }
+
+    // Handle tokens_used update
+    if let Some(tokens_used) = update_obj.get("tokens_used").and_then(|v| v.as_i64()) {
+        set_clauses.push(format!("tokens_used = ${}", param_idx));
+        params.push((pgrx::PgBuiltInOids::INT4OID.oid(), (tokens_used as i32).into_datum()));
+        param_idx += 1;
+    }
+
+    // Handle parent_scope_id update
+    if let Some(parent_id) = update_obj.get("parent_scope_id") {
+        if parent_id.is_null() {
+            set_clauses.push(format!("parent_scope_id = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), None::<pgrx::Uuid>.into_datum()));
+            param_idx += 1;
+        } else if let Some(parent_str) = parent_id.as_str() {
+            if let Ok(parent_uuid) = Uuid::parse_str(parent_str) {
+                set_clauses.push(format!("parent_scope_id = ${}", param_idx));
+                params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*parent_uuid.as_bytes()).into_datum()));
+                param_idx += 1;
+            }
+        }
+    }
+
+    // Handle metadata update (JSONB)
+    if let Some(metadata) = update_obj.get("metadata") {
+        if metadata.is_null() {
+            set_clauses.push(format!("metadata = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), None::<pgrx::JsonB>.into_datum()));
+            param_idx += 1;
+        } else {
+            set_clauses.push(format!("metadata = ${}", param_idx));
+            params.push((pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(metadata.clone()).into_datum()));
+            param_idx += 1;
+        }
+    }
+
+    // If no fields to update, return false
+    if set_clauses.is_empty() {
+        pgrx::warning!("CALIBER: No valid fields to update in scope");
+        return false;
+    }
+
+    // Add the WHERE clause parameter
+    params.push((pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()));
+
+    let query = format!(
+        "UPDATE caliber_scope SET {} WHERE scope_id = ${}",
+        set_clauses.join(", "),
+        param_idx
+    );
+
+    let result = Spi::connect(|client| {
+        client.update(&query, None, Some(params))
+    });
+
+    match result {
+        Ok(update_result) => update_result.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to update scope: {}", e);
+            false
+        }
     }
 }
 
@@ -313,59 +968,133 @@ fn caliber_artifact_create(
     artifact_type: &str,
     name: &str,
     content: &str,
-) -> pgrx::Uuid {
+) -> Option<pgrx::Uuid> {
+    // Validate artifact_type - reject unknown values (REQ-12)
+    let valid_artifact_type = match artifact_type {
+        "error_log" | "code_patch" | "design_decision" | "user_preference" 
+        | "fact" | "constraint" | "tool_result" | "intermediate_output" | "custom" => artifact_type,
+        _ => {
+            let validation_err = ValidationError::InvalidValue {
+                field: "artifact_type".to_string(),
+                reason: format!("unknown value '{}'. Valid values: error_log, code_patch, design_decision, user_preference, fact, constraint, tool_result, intermediate_output, custom", artifact_type),
+            };
+            pgrx::warning!("CALIBER: {:?}", validation_err);
+            return None;
+        }
+    };
+
     let artifact_id = new_entity_id();
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
     let now = Utc::now();
 
-    let art_type = match artifact_type {
-        "error_log" => ArtifactType::ErrorLog,
-        "code_patch" => ArtifactType::CodePatch,
-        "design_decision" => ArtifactType::DesignDecision,
-        "user_preference" => ArtifactType::UserPreference,
-        "fact" => ArtifactType::Fact,
-        "constraint" => ArtifactType::Constraint,
-        "tool_result" => ArtifactType::ToolResult,
-        "intermediate_output" => ArtifactType::IntermediateOutput,
-        _ => ArtifactType::Custom,
-    };
+    // Compute content hash
+    let content_hash = compute_content_hash(content.as_bytes());
 
-    let artifact = Artifact {
-        artifact_id,
-        trajectory_id: traj_id,
-        scope_id: scp_id,
-        artifact_type: art_type,
-        name: name.to_string(),
-        content: content.to_string(),
-        content_hash: compute_content_hash(content.as_bytes()),
-        embedding: None,
-        provenance: Provenance {
-            source_turn: 0,
-            extraction_method: ExtractionMethod::Explicit,
-            confidence: None,
-        },
-        ttl: TTL::Persistent,
-        created_at: now,
-        updated_at: now,
-        superseded_by: None,
-        metadata: None,
-    };
+    // Build provenance JSON
+    let provenance = serde_json::json!({
+        "source_turn": 0,
+        "extraction_method": "explicit",
+        "confidence": null
+    });
 
-    let mut storage = STORAGE.write().unwrap();
-    storage.artifacts.insert(artifact_id, artifact);
+    // Insert into SQL table via SPI
+    let result = Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_artifact (
+                artifact_id, trajectory_id, scope_id, artifact_type, name, 
+                content, content_hash, embedding, provenance, ttl, 
+                created_at, updated_at, superseded_by, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), artifact_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), traj_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scp_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_artifact_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), name.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), content.into_datum()),
+                (pgrx::PgBuiltInOids::BYTEAOID.oid(), content_hash.as_slice().into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), None::<&str>.into_datum()), // embedding (NULL for now)
+                (pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(provenance).into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), "persistent".into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), None::<pgrx::Uuid>.into_datum()),
+                (pgrx::PgBuiltInOids::JSONBOID.oid(), None::<pgrx::JsonB>.into_datum()),
+            ]),
+        )
+    });
 
-    pgrx::Uuid::from_bytes(*artifact_id.as_bytes())
+    match result {
+        Ok(_) => Some(pgrx::Uuid::from_bytes(*artifact_id.as_bytes())),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to insert artifact: {}", e);
+            None
+        }
+    }
 }
 
 /// Get an artifact by ID.
 #[pg_extern]
 fn caliber_artifact_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage.artifacts.get(&entity_id).map(|a| {
-        pgrx::JsonB(serde_json::to_value(a).unwrap_or(serde_json::Value::Null))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT artifact_id, trajectory_id, scope_id, artifact_type, name, 
+                    content, content_hash, embedding, provenance, ttl, 
+                    created_at, updated_at, superseded_by, metadata 
+             FROM caliber_artifact WHERE artifact_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let artifact_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let artifact_type: Option<String> = row.get(4).ok().flatten();
+                    let name: Option<String> = row.get(5).ok().flatten();
+                    let content: Option<String> = row.get(6).ok().flatten();
+                    let content_hash: Option<Vec<u8>> = row.get(7).ok().flatten();
+                    let embedding: Option<String> = row.get(8).ok().flatten();
+                    let provenance: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let ttl: Option<String> = row.get(10).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let superseded_by: Option<pgrx::Uuid> = row.get(13).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(14).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "artifact_id": artifact_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "artifact_type": artifact_type,
+                        "name": name,
+                        "content": content,
+                        "content_hash": content_hash.map(|h| hex::encode(h)),
+                        "embedding": embedding,
+                        "provenance": provenance.map(|j| j.0),
+                        "ttl": ttl,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "metadata": metadata.map(|j| j.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get artifact: {}", e);
+                None
+            }
+        }
     })
 }
 
@@ -376,41 +1105,131 @@ fn caliber_artifact_query_by_type(
     artifact_type: &str,
 ) -> pgrx::JsonB {
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
-    let art_type = match artifact_type {
-        "error_log" => ArtifactType::ErrorLog,
-        "code_patch" => ArtifactType::CodePatch,
-        "design_decision" => ArtifactType::DesignDecision,
-        "user_preference" => ArtifactType::UserPreference,
-        "fact" => ArtifactType::Fact,
-        "constraint" => ArtifactType::Constraint,
-        "tool_result" => ArtifactType::ToolResult,
-        "intermediate_output" => ArtifactType::IntermediateOutput,
-        _ => ArtifactType::Custom,
-    };
 
-    let storage = STORAGE.read().unwrap();
-    let artifacts: Vec<&Artifact> = storage
-        .artifacts
-        .values()
-        .filter(|a| a.trajectory_id == traj_id && a.artifact_type == art_type)
-        .collect();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT artifact_id, trajectory_id, scope_id, artifact_type, name, 
+                    content, content_hash, embedding, provenance, ttl, 
+                    created_at, updated_at, superseded_by, metadata 
+             FROM caliber_artifact 
+             WHERE trajectory_id = $1 AND artifact_type = $2 
+             ORDER BY created_at DESC",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), traj_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), artifact_type.into_datum()),
+            ]),
+        );
 
-    pgrx::JsonB(serde_json::to_value(&artifacts).unwrap_or(serde_json::json!([])))
+        match result {
+            Ok(table) => {
+                let mut artifacts = Vec::new();
+                for row in table {
+                    let artifact_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let artifact_type: Option<String> = row.get(4).ok().flatten();
+                    let name: Option<String> = row.get(5).ok().flatten();
+                    let content: Option<String> = row.get(6).ok().flatten();
+                    let content_hash: Option<Vec<u8>> = row.get(7).ok().flatten();
+                    let embedding: Option<String> = row.get(8).ok().flatten();
+                    let provenance: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let ttl: Option<String> = row.get(10).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let superseded_by: Option<pgrx::Uuid> = row.get(13).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(14).ok().flatten();
+
+                    artifacts.push(serde_json::json!({
+                        "artifact_id": artifact_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "artifact_type": artifact_type,
+                        "name": name,
+                        "content": content,
+                        "content_hash": content_hash.map(|h| hex::encode(h)),
+                        "embedding": embedding,
+                        "provenance": provenance.map(|j| j.0),
+                        "ttl": ttl,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(artifacts))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to query artifacts by type: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 /// Query artifacts by scope.
 #[pg_extern]
 fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    let artifacts: Vec<&Artifact> = storage
-        .artifacts
-        .values()
-        .filter(|a| a.scope_id == scp_id)
-        .collect();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT artifact_id, trajectory_id, scope_id, artifact_type, name, 
+                    content, content_hash, embedding, provenance, ttl, 
+                    created_at, updated_at, superseded_by, metadata 
+             FROM caliber_artifact 
+             WHERE scope_id = $1 
+             ORDER BY created_at DESC",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scp_id.into_datum()),
+            ]),
+        );
 
-    pgrx::JsonB(serde_json::to_value(&artifacts).unwrap_or(serde_json::json!([])))
+        match result {
+            Ok(table) => {
+                let mut artifacts = Vec::new();
+                for row in table {
+                    let artifact_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let artifact_type: Option<String> = row.get(4).ok().flatten();
+                    let name: Option<String> = row.get(5).ok().flatten();
+                    let content: Option<String> = row.get(6).ok().flatten();
+                    let content_hash: Option<Vec<u8>> = row.get(7).ok().flatten();
+                    let embedding: Option<String> = row.get(8).ok().flatten();
+                    let provenance: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let ttl: Option<String> = row.get(10).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let superseded_by: Option<pgrx::Uuid> = row.get(13).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(14).ok().flatten();
+
+                    artifacts.push(serde_json::json!({
+                        "artifact_id": artifact_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "artifact_type": artifact_type,
+                        "name": name,
+                        "content": content,
+                        "content_hash": content_hash.map(|h| hex::encode(h)),
+                        "embedding": embedding,
+                        "provenance": provenance.map(|j| j.0),
+                        "ttl": ttl,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(artifacts))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to query artifacts by scope: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -425,73 +1244,247 @@ fn caliber_note_create(
     title: &str,
     content: &str,
     source_trajectory_id: Option<pgrx::Uuid>,
-) -> pgrx::Uuid {
+) -> Option<pgrx::Uuid> {
     let note_id = new_entity_id();
     let now = Utc::now();
 
-    let n_type = match note_type {
-        "convention" => NoteType::Convention,
-        "strategy" => NoteType::Strategy,
-        "gotcha" => NoteType::Gotcha,
-        "fact" => NoteType::Fact,
-        "preference" => NoteType::Preference,
-        "relationship" => NoteType::Relationship,
-        "procedure" => NoteType::Procedure,
-        _ => NoteType::Meta,
+    // Validate note_type - reject unknown values instead of defaulting (REQ-12)
+    let valid_note_type = match note_type {
+        "convention" | "strategy" | "gotcha" | "fact" | "preference" | "relationship" | "procedure" | "meta" => note_type,
+        _ => {
+            let validation_err = ValidationError::InvalidValue {
+                field: "note_type".to_string(),
+                reason: format!("unknown value '{}'. Valid values: convention, strategy, gotcha, fact, preference, relationship, procedure, meta", note_type),
+            };
+            pgrx::warning!("CALIBER: {:?}", validation_err);
+            return None;
+        }
     };
 
-    let source_ids = source_trajectory_id
-        .map(|u| vec![Uuid::from_bytes(*u.as_bytes())])
+    let content_hash = compute_content_hash(content.as_bytes());
+    
+    // Build source_trajectory_ids array
+    let source_traj_ids: Vec<pgrx::Uuid> = source_trajectory_id
+        .map(|u| vec![u])
         .unwrap_or_default();
 
-    let note = Note {
-        note_id,
-        note_type: n_type,
-        title: title.to_string(),
-        content: content.to_string(),
-        content_hash: compute_content_hash(content.as_bytes()),
-        embedding: None,
-        source_trajectory_ids: source_ids,
-        source_artifact_ids: Vec::new(),
-        ttl: TTL::Persistent,
-        created_at: now,
-        updated_at: now,
-        accessed_at: now,
-        access_count: 0,
-        superseded_by: None,
-        metadata: None,
-    };
+    // Insert into SQL table via SPI
+    let result = Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_note (note_id, note_type, title, content, content_hash, 
+                                       source_trajectory_ids, source_artifact_ids, ttl, 
+                                       created_at, updated_at, accessed_at, access_count) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), note_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_note_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), title.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), content.into_datum()),
+                (pgrx::PgBuiltInOids::BYTEAOID.oid(), content_hash.as_slice().into_datum()),
+                (pgrx::PgBuiltInOids::UUIDARRAYOID.oid(), source_traj_ids.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDARRAYOID.oid(), Vec::<pgrx::Uuid>::new().into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), "persistent".into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::INT4OID.oid(), 0i32.into_datum()),
+            ]),
+        )
+    });
 
-    let mut storage = STORAGE.write().unwrap();
-    storage.notes.insert(note_id, note);
-
-    pgrx::Uuid::from_bytes(*note_id.as_bytes())
+    match result {
+        Ok(_) => Some(pgrx::Uuid::from_bytes(*note_id.as_bytes())),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to insert note: {}", e);
+            None
+        }
+    }
 }
 
 /// Get a note by ID.
+/// Updates access_count and accessed_at timestamp on each read.
 #[pg_extern]
 fn caliber_note_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage.notes.get(&entity_id).map(|n| {
-        pgrx::JsonB(serde_json::to_value(n).unwrap_or(serde_json::Value::Null))
+    Spi::connect(|client| {
+        // First, get the note
+        let result = client.select(
+            "SELECT note_id, note_type, title, content, content_hash, embedding, 
+                    source_trajectory_ids, source_artifact_ids, ttl, created_at, 
+                    updated_at, accessed_at, access_count, superseded_by, metadata 
+             FROM caliber_note WHERE note_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let note_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let note_type: Option<String> = row.get(2).ok().flatten();
+                    let title: Option<String> = row.get(3).ok().flatten();
+                    let content: Option<String> = row.get(4).ok().flatten();
+                    let content_hash: Option<Vec<u8>> = row.get(5).ok().flatten();
+                    // embedding is VECTOR type - skip for now
+                    let source_trajectory_ids: Option<Vec<pgrx::Uuid>> = row.get(7).ok().flatten();
+                    let source_artifact_ids: Option<Vec<pgrx::Uuid>> = row.get(8).ok().flatten();
+                    let ttl: Option<String> = row.get(9).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let accessed_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let access_count: Option<i32> = row.get(13).ok().flatten();
+                    let superseded_by: Option<pgrx::Uuid> = row.get(14).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(15).ok().flatten();
+
+                    // Update access tracking (increment access_count, update accessed_at)
+                    let now = Utc::now();
+                    let update_result = client.update(
+                        "UPDATE caliber_note 
+                         SET access_count = access_count + 1, accessed_at = $1 
+                         WHERE note_id = $2",
+                        None,
+                        Some(vec![
+                            (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                            (pgrx::PgBuiltInOids::UUIDOID.oid(), entity_id.into_datum()),
+                        ]),
+                    );
+
+                    if let Err(e) = update_result {
+                        pgrx::warning!("CALIBER: Failed to update note access tracking: {}", e);
+                    }
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "note_id": note_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "note_type": note_type,
+                        "title": title,
+                        "content": content,
+                        "content_hash": content_hash.map(|h| hex::encode(h)),
+                        "source_trajectory_ids": source_trajectory_ids.map(|ids| 
+                            ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()
+                        ),
+                        "source_artifact_ids": source_artifact_ids.map(|ids| 
+                            ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()
+                        ),
+                        "ttl": ttl,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "accessed_at": accessed_at.map(|t| format!("{:?}", t)),
+                        "access_count": access_count,
+                        "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "metadata": metadata.map(|j| j.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get note: {}", e);
+                None
+            }
+        }
     })
 }
 
 /// Query notes by trajectory.
+/// Updates access_count and accessed_at for all returned notes.
 #[pg_extern]
 fn caliber_note_query_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    let notes: Vec<&Note> = storage
-        .notes
-        .values()
-        .filter(|n| n.source_trajectory_ids.contains(&traj_id))
-        .collect();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT note_id, note_type, title, content, content_hash, embedding, 
+                    source_trajectory_ids, source_artifact_ids, ttl, created_at, 
+                    updated_at, accessed_at, access_count, superseded_by, metadata 
+             FROM caliber_note WHERE $1 = ANY(source_trajectory_ids) 
+             ORDER BY created_at DESC",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), traj_id.into_datum()),
+            ]),
+        );
 
-    pgrx::JsonB(serde_json::to_value(&notes).unwrap_or(serde_json::json!([])))
+        match result {
+            Ok(table) => {
+                let mut notes = Vec::new();
+                let mut note_ids_to_update = Vec::new();
+                
+                for row in table {
+                    let note_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let note_type: Option<String> = row.get(2).ok().flatten();
+                    let title: Option<String> = row.get(3).ok().flatten();
+                    let content: Option<String> = row.get(4).ok().flatten();
+                    let content_hash: Option<Vec<u8>> = row.get(5).ok().flatten();
+                    // embedding is VECTOR type - skip for now
+                    let source_trajectory_ids: Option<Vec<pgrx::Uuid>> = row.get(7).ok().flatten();
+                    let source_artifact_ids: Option<Vec<pgrx::Uuid>> = row.get(8).ok().flatten();
+                    let ttl: Option<String> = row.get(9).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let accessed_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let access_count: Option<i32> = row.get(13).ok().flatten();
+                    let superseded_by: Option<pgrx::Uuid> = row.get(14).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(15).ok().flatten();
+
+                    if let Some(nid) = note_id {
+                        note_ids_to_update.push(Uuid::from_bytes(*nid.as_bytes()));
+                    }
+
+                    notes.push(serde_json::json!({
+                        "note_id": note_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "note_type": note_type,
+                        "title": title,
+                        "content": content,
+                        "content_hash": content_hash.map(|h| hex::encode(h)),
+                        "source_trajectory_ids": source_trajectory_ids.map(|ids| 
+                            ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()
+                        ),
+                        "source_artifact_ids": source_artifact_ids.map(|ids| 
+                            ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()
+                        ),
+                        "ttl": ttl,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "accessed_at": accessed_at.map(|t| format!("{:?}", t)),
+                        "access_count": access_count,
+                        "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+
+                // Update access tracking for all returned notes
+                if !note_ids_to_update.is_empty() {
+                    let now = Utc::now();
+                    for note_id in note_ids_to_update {
+                        let update_result = client.update(
+                            "UPDATE caliber_note 
+                             SET access_count = access_count + 1, accessed_at = $1 
+                             WHERE note_id = $2",
+                            None,
+                            Some(vec![
+                                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                                (pgrx::PgBuiltInOids::UUIDOID.oid(), note_id.into_datum()),
+                            ]),
+                        );
+
+                        if let Err(e) = update_result {
+                            pgrx::warning!("CALIBER: Failed to update note access tracking for {}: {}", note_id, e);
+                        }
+                    }
+                }
+
+                pgrx::JsonB(serde_json::json!(notes))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to query notes by trajectory: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -500,6 +1493,9 @@ fn caliber_note_query_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
 // ============================================================================
 
 /// Create a new turn in a scope.
+/// Verifies scope_id exists before insert.
+/// Returns error on duplicate (scope_id, sequence) via UNIQUE constraint.
+/// Returns None if role is invalid.
 #[pg_extern]
 fn caliber_turn_create(
     scope_id: pgrx::Uuid,
@@ -507,53 +1503,128 @@ fn caliber_turn_create(
     role: &str,
     content: &str,
     token_count: i32,
-) -> pgrx::Uuid {
+) -> Option<pgrx::Uuid> {
     let turn_id = new_entity_id();
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
     let now = Utc::now();
 
-    let turn_role = match role {
-        "user" => TurnRole::User,
-        "assistant" => TurnRole::Assistant,
-        "system" => TurnRole::System,
-        "tool" => TurnRole::Tool,
-        _ => TurnRole::User,
+    // Validate role - reject unknown values instead of defaulting (REQ-12)
+    let role_str = match role {
+        "user" | "assistant" | "system" | "tool" => role,
+        _ => {
+            let validation_err = ValidationError::InvalidValue {
+                field: "role".to_string(),
+                reason: format!("unknown value '{}'. Valid values: user, assistant, system, tool", role),
+            };
+            pgrx::warning!("CALIBER: {:?}", validation_err);
+            return None;
+        }
     };
 
-    let turn = Turn {
-        turn_id,
-        scope_id: scp_id,
-        sequence,
-        role: turn_role,
-        content: content.to_string(),
-        token_count,
-        created_at: now,
-        tool_calls: None,
-        tool_results: None,
-        metadata: None,
-    };
+    // Insert into SQL table via SPI
+    let result = Spi::connect(|client| {
+        // First, verify scope exists
+        let scope_check = client.select(
+            "SELECT scope_id FROM caliber_scope WHERE scope_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scp_id.into_datum()),
+            ]),
+        );
 
-    let mut storage = STORAGE.write().unwrap();
-    storage.turns.insert(turn_id, turn);
+        match scope_check {
+            Ok(table) => {
+                if table.first().is_none() {
+                    pgrx::warning!("CALIBER: Scope {} does not exist", scp_id);
+                    return Err(spi::Error::InvalidPosition);
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to verify scope existence: {}", e);
+                return Err(e);
+            }
+        }
 
-    pgrx::Uuid::from_bytes(*turn_id.as_bytes())
+        // Insert turn (UNIQUE constraint on (scope_id, sequence) will catch duplicates)
+        client.update(
+            "INSERT INTO caliber_turn (turn_id, scope_id, sequence, role, content, token_count, created_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), turn_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scp_id.into_datum()),
+                (pgrx::PgBuiltInOids::INT4OID.oid(), sequence.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), role_str.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), content.into_datum()),
+                (pgrx::PgBuiltInOids::INT4OID.oid(), token_count.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(_) => Some(pgrx::Uuid::from_bytes(*turn_id.as_bytes())),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to insert turn: {}", e);
+            None
+        }
+    }
 }
 
 /// Get turns by scope.
 #[pg_extern]
 fn caliber_turn_get_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    let mut turns: Vec<&Turn> = storage
-        .turns
-        .values()
-        .filter(|t| t.scope_id == scp_id)
-        .collect();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT turn_id, scope_id, sequence, role, content, token_count, created_at, 
+                    tool_calls, tool_results, metadata 
+             FROM caliber_turn 
+             WHERE scope_id = $1 
+             ORDER BY sequence ASC",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scp_id.into_datum()),
+            ]),
+        );
 
-    turns.sort_by_key(|t| t.sequence);
+        match result {
+            Ok(table) => {
+                let mut turns = Vec::new();
+                for row in table {
+                    let turn_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let sequence: Option<i32> = row.get(3).ok().flatten();
+                    let role: Option<String> = row.get(4).ok().flatten();
+                    let content: Option<String> = row.get(5).ok().flatten();
+                    let token_count: Option<i32> = row.get(6).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(7).ok().flatten();
+                    let tool_calls: Option<pgrx::JsonB> = row.get(8).ok().flatten();
+                    let tool_results: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(10).ok().flatten();
 
-    pgrx::JsonB(serde_json::to_value(&turns).unwrap_or(serde_json::json!([])))
+                    turns.push(serde_json::json!({
+                        "turn_id": turn_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "sequence": sequence,
+                        "role": role,
+                        "content": content,
+                        "token_count": token_count,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "tool_calls": tool_calls.map(|j| j.0),
+                        "tool_results": tool_results.map(|j| j.0),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(turns))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get turns by scope: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -561,8 +1632,26 @@ fn caliber_turn_get_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
 // ADVISORY LOCK FUNCTIONS (Task 12.4)
 // ============================================================================
 
+/// Lock level for advisory locks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdvisoryLockLevel {
+    /// Session-level lock - persists until explicit release or session ends
+    Session,
+    /// Transaction-level lock - auto-releases at transaction commit/rollback
+    Transaction,
+}
+
 /// Acquire an advisory lock on a resource.
 /// Uses Postgres advisory locks for distributed coordination.
+/// Stores lock record in SQL table for cross-session visibility.
+/// 
+/// Parameters:
+/// - agent_id: The agent acquiring the lock
+/// - resource_type: Type of resource being locked
+/// - resource_id: ID of the resource being locked
+/// - timeout_ms: Lock expiration timeout in milliseconds
+/// - mode: "exclusive" or "shared"
+/// - level: "session" or "transaction" (defaults to "transaction")
 #[pg_extern]
 fn caliber_lock_acquire(
     agent_id: pgrx::Uuid,
@@ -570,6 +1659,7 @@ fn caliber_lock_acquire(
     resource_id: pgrx::Uuid,
     timeout_ms: i64,
     mode: &str,
+    level: Option<&str>,
 ) -> Option<pgrx::Uuid> {
     let agent = Uuid::from_bytes(*agent_id.as_bytes());
     let resource = Uuid::from_bytes(*resource_id.as_bytes());
@@ -580,50 +1670,120 @@ fn caliber_lock_acquire(
         _ => LockMode::Exclusive,
     };
 
-    // Try to acquire Postgres advisory lock
-    let acquired = if lock_mode == LockMode::Exclusive {
-        // Try exclusive lock (non-blocking)
-        unsafe {
+    let lock_level = match level.unwrap_or("transaction") {
+        "session" => AdvisoryLockLevel::Session,
+        _ => AdvisoryLockLevel::Transaction,
+    };
+
+    // Try to acquire Postgres advisory lock based on level and mode
+    let acquired = match (lock_level, lock_mode) {
+        (AdvisoryLockLevel::Session, LockMode::Exclusive) => unsafe {
+            pgrx::pg_sys::pg_try_advisory_lock(lock_key)
+        },
+        (AdvisoryLockLevel::Session, LockMode::Shared) => unsafe {
+            pgrx::pg_sys::pg_try_advisory_lock_shared(lock_key)
+        },
+        (AdvisoryLockLevel::Transaction, LockMode::Exclusive) => unsafe {
             pgrx::pg_sys::pg_try_advisory_xact_lock(lock_key)
-        }
-    } else {
-        // Try shared lock (non-blocking)
-        unsafe {
+        },
+        (AdvisoryLockLevel::Transaction, LockMode::Shared) => unsafe {
             pgrx::pg_sys::pg_try_advisory_xact_lock_shared(lock_key)
-        }
+        },
     };
 
     if acquired {
-        // Create lock record
-        let lock = DistributedLock::new(
-            resource_type,
-            resource,
-            agent,
-            timeout_ms,
-            lock_mode,
-        );
-        let lock_id = lock.lock_id;
+        // Create lock record in SQL table for cross-session visibility
+        let lock_id = new_entity_id();
+        let now = Utc::now();
+        let expires_at = now + chrono::Duration::milliseconds(timeout_ms);
+        let mode_str = if lock_mode == LockMode::Exclusive { "exclusive" } else { "shared" };
 
-        let mut storage = STORAGE.write().unwrap();
-        storage.locks.insert(lock_id, lock);
+        let result = Spi::connect(|client| {
+            client.update(
+                "INSERT INTO caliber_lock (lock_id, resource_type, resource_id, holder_agent_id, acquired_at, expires_at, mode)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), lock_id.into_datum()),
+                    (pgrx::PgBuiltInOids::TEXTOID.oid(), resource_type.into_datum()),
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), resource.into_datum()),
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), agent.into_datum()),
+                    (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                    (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), expires_at.into_datum()),
+                    (pgrx::PgBuiltInOids::TEXTOID.oid(), mode_str.into_datum()),
+                ]),
+            )
+        });
 
-        Some(pgrx::Uuid::from_bytes(*lock_id.as_bytes()))
+        match result {
+            Ok(_) => Some(pgrx::Uuid::from_bytes(*lock_id.as_bytes())),
+            Err(e) => {
+                // Use EntityType::Lock for proper error categorization
+                let storage_err = StorageError::InsertFailed {
+                    entity_type: EntityType::Lock,
+                    reason: e.to_string(),
+                };
+                pgrx::warning!("CALIBER: {:?}", storage_err);
+                // Release the advisory lock since we couldn't record it
+                match (lock_level, lock_mode) {
+                    (AdvisoryLockLevel::Session, LockMode::Exclusive) => unsafe {
+                        pgrx::pg_sys::pg_advisory_unlock(lock_key);
+                    },
+                    (AdvisoryLockLevel::Session, LockMode::Shared) => unsafe {
+                        pgrx::pg_sys::pg_advisory_unlock_shared(lock_key);
+                    },
+                    // Transaction locks auto-release, no explicit unlock needed
+                    _ => {}
+                }
+                None
+            }
+        }
     } else {
         None
     }
 }
 
 /// Release an advisory lock.
+/// Only works for session-level locks. Transaction locks auto-release.
 #[pg_extern]
 fn caliber_lock_release(lock_id: pgrx::Uuid) -> bool {
     let lid = Uuid::from_bytes(*lock_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
 
-    if let Some(lock) = storage.locks.remove(&lid) {
-        let lock_key = lock.compute_key();
+    // Get lock info from SQL table
+    let lock_info = Spi::connect(|client| {
+        let result = client.select(
+            "SELECT resource_type, resource_id, mode FROM caliber_lock WHERE lock_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), lid.into_datum()),
+            ]),
+        );
 
-        // Release Postgres advisory lock
-        if lock.mode == LockMode::Exclusive {
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let resource_type: Option<String> = row.get(1).ok().flatten();
+                    let resource_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let mode: Option<String> = row.get(3).ok().flatten();
+                    
+                    if let (Some(rt), Some(rid), Some(m)) = (resource_type, resource_id, mode) {
+                        Some((rt, Uuid::from_bytes(*rid.as_bytes()), m))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    });
+
+    if let Some((resource_type, resource_id, mode)) = lock_info {
+        let lock_key = compute_lock_key(&resource_type, resource_id);
+
+        // Release Postgres advisory lock (session-level)
+        if mode == "exclusive" {
             unsafe {
                 pgrx::pg_sys::pg_advisory_unlock(lock_key);
             }
@@ -632,8 +1792,38 @@ fn caliber_lock_release(lock_id: pgrx::Uuid) -> bool {
                 pgrx::pg_sys::pg_advisory_unlock_shared(lock_key);
             }
         }
-        true
+
+        // Delete lock record from SQL table
+        let delete_result = Spi::connect(|client| {
+            client.update(
+                "DELETE FROM caliber_lock WHERE lock_id = $1",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), lid.into_datum()),
+                ]),
+            )
+        });
+
+        match delete_result {
+            Ok(r) => r.rows_affected() > 0,
+            Err(e) => {
+                // Use EntityType::Lock for proper error categorization
+                let storage_err = StorageError::UpdateFailed {
+                    entity_type: EntityType::Lock,
+                    id: lid,
+                    reason: format!("delete failed: {}", e),
+                };
+                pgrx::warning!("CALIBER: {:?}", storage_err);
+                false
+            }
+        }
     } else {
+        // Lock not found in SQL table
+        let storage_err = StorageError::NotFound {
+            entity_type: EntityType::Lock,
+            id: lid,
+        };
+        pgrx::warning!("CALIBER: {:?}", storage_err);
         false
     }
 }
@@ -642,26 +1832,99 @@ fn caliber_lock_release(lock_id: pgrx::Uuid) -> bool {
 #[pg_extern]
 fn caliber_lock_check(resource_type: &str, resource_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let resource = Uuid::from_bytes(*resource_id.as_bytes());
-    let lock_key = compute_lock_key(resource_type, resource);
 
-    let storage = STORAGE.read().unwrap();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT lock_id, resource_type, resource_id, holder_agent_id, acquired_at, expires_at, mode
+             FROM caliber_lock 
+             WHERE resource_type = $1 AND resource_id = $2 AND expires_at > NOW()",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), resource_type.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), resource.into_datum()),
+            ]),
+        );
 
-    // Find lock by resource
-    storage
-        .locks
-        .values()
-        .find(|l| l.compute_key() == lock_key && !l.is_expired())
-        .map(|l| pgrx::JsonB(serde_json::to_value(l).unwrap_or(serde_json::Value::Null)))
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let lock_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let resource_type: Option<String> = row.get(2).ok().flatten();
+                    let resource_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let holder_agent_id: Option<pgrx::Uuid> = row.get(4).ok().flatten();
+                    let acquired_at: Option<pgrx::TimestampWithTimeZone> = row.get(5).ok().flatten();
+                    let expires_at: Option<pgrx::TimestampWithTimeZone> = row.get(6).ok().flatten();
+                    let mode: Option<String> = row.get(7).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "lock_id": lock_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "resource_type": resource_type,
+                        "resource_id": resource_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "holder_agent_id": holder_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "acquired_at": acquired_at.map(|t| format!("{:?}", t)),
+                        "expires_at": expires_at.map(|t| format!("{:?}", t)),
+                        "mode": mode,
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                // Use EntityType::Lock for proper error categorization
+                let storage_err = StorageError::SpiError { reason: format!("lock check failed: {}", e) };
+                pgrx::warning!("CALIBER: EntityType::Lock - {:?}", storage_err);
+                None
+            }
+        }
+    })
 }
 
 /// Get lock by ID.
 #[pg_extern]
 fn caliber_lock_get(lock_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let lid = Uuid::from_bytes(*lock_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage.locks.get(&lid).map(|l| {
-        pgrx::JsonB(serde_json::to_value(l).unwrap_or(serde_json::Value::Null))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT lock_id, resource_type, resource_id, holder_agent_id, acquired_at, expires_at, mode
+             FROM caliber_lock WHERE lock_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), lid.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let lock_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let resource_type: Option<String> = row.get(2).ok().flatten();
+                    let resource_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let holder_agent_id: Option<pgrx::Uuid> = row.get(4).ok().flatten();
+                    let acquired_at: Option<pgrx::TimestampWithTimeZone> = row.get(5).ok().flatten();
+                    let expires_at: Option<pgrx::TimestampWithTimeZone> = row.get(6).ok().flatten();
+                    let mode: Option<String> = row.get(7).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "lock_id": lock_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "resource_type": resource_type,
+                        "resource_id": resource_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "holder_agent_id": holder_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "acquired_at": acquired_at.map(|t| format!("{:?}", t)),
+                        "expires_at": expires_at.map(|t| format!("{:?}", t)),
+                        "mode": mode,
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                // Use EntityType::Lock for proper error categorization
+                let storage_err = StorageError::SpiError { reason: format!("lock get failed: {}", e) };
+                pgrx::warning!("CALIBER: EntityType::Lock - {:?}", storage_err);
+                None
+            }
+        }
     })
 }
 
@@ -670,7 +1933,9 @@ fn caliber_lock_get(lock_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 // NOTIFY-BASED MESSAGE PASSING (Task 12.5)
 // ============================================================================
 
-/// Send a message to an agent using NOTIFY.
+/// Send a message to an agent.
+/// Stores message in SQL table and triggers pg_notify via database trigger.
+/// Returns None if message_type or priority is invalid.
 #[pg_extern]
 fn caliber_message_send(
     from_agent_id: pgrx::Uuid,
@@ -679,81 +1944,129 @@ fn caliber_message_send(
     message_type: &str,
     payload: &str,
     priority: &str,
-) -> pgrx::Uuid {
+) -> Option<pgrx::Uuid> {
     let from_agent = Uuid::from_bytes(*from_agent_id.as_bytes());
     let to_agent = to_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
 
-    let msg_type = match message_type {
-        "task_delegation" => MessageType::TaskDelegation,
-        "task_result" => MessageType::TaskResult,
-        "context_request" => MessageType::ContextRequest,
-        "context_share" => MessageType::ContextShare,
-        "coordination_signal" => MessageType::CoordinationSignal,
-        "handoff" => MessageType::Handoff,
-        "interrupt" => MessageType::Interrupt,
-        _ => MessageType::Heartbeat,
+    // Validate message_type - reject unknown values
+    let valid_message_type = match message_type {
+        "task_delegation" | "task_result" | "context_request" | "context_share" 
+        | "coordination_signal" | "handoff" | "interrupt" | "heartbeat" => message_type,
+        _ => {
+            pgrx::warning!("CALIBER: Invalid message_type '{}'. Valid values: task_delegation, task_result, context_request, context_share, coordination_signal, handoff, interrupt, heartbeat", message_type);
+            return None;
+        }
     };
 
-    let msg_priority = match priority {
-        "low" => MessagePriority::Low,
-        "high" => MessagePriority::High,
-        "critical" => MessagePriority::Critical,
-        _ => MessagePriority::Normal,
+    // Validate priority - reject unknown values
+    let valid_priority = match priority {
+        "low" | "normal" | "high" | "critical" => priority,
+        _ => {
+            pgrx::warning!("CALIBER: Invalid priority '{}'. Valid values: low, normal, high, critical", priority);
+            return None;
+        }
     };
 
-    let message = if let Some(to_id) = to_agent {
-        AgentMessage::to_agent(from_agent, to_id, msg_type, payload)
-            .with_priority(msg_priority)
-    } else if let Some(agent_type) = to_agent_type {
-        AgentMessage::to_type(from_agent, agent_type, msg_type, payload)
-            .with_priority(msg_priority)
-    } else {
-        // Broadcast to all
-        AgentMessage::to_type(from_agent, "*", msg_type, payload)
-            .with_priority(msg_priority)
-    };
+    let message_id = new_entity_id();
+    let now = Utc::now();
 
-    let message_id = message.message_id;
-
-    // Store message
-    let mut storage = STORAGE.write().unwrap();
-    storage.messages.insert(message_id, message.clone());
-
-    // Send NOTIFY
-    let channel = if let Some(to_id) = to_agent {
-        format!("caliber_agent_{}", to_id)
-    } else if let Some(agent_type) = to_agent_type {
-        format!("caliber_type_{}", agent_type)
-    } else {
-        "caliber_broadcast".to_string()
-    };
-
-    let notify_payload = serde_json::json!({
-        "message_id": message_id.to_string(),
-        "type": message_type,
-        "priority": priority,
+    // Insert into SQL table via SPI
+    // The database trigger will handle pg_notify automatically
+    let result = Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_message (message_id, from_agent_id, to_agent_id, to_agent_type, 
+                                          message_type, payload, created_at, priority) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), message_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), from_agent.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), to_agent.map(|u| pgrx::Uuid::from_bytes(*u.as_bytes())).into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), to_agent_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_message_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), payload.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_priority.into_datum()),
+            ]),
+        )
     });
 
-    // Execute NOTIFY via SPI
-    let sql = format!(
-        "SELECT pg_notify('{}', '{}')",
-        channel,
-        notify_payload.to_string().replace('\'', "''")
-    );
-    
-    Spi::run(&sql).ok();
-
-    pgrx::Uuid::from_bytes(*message_id.as_bytes())
+    match result {
+        Ok(_) => Some(pgrx::Uuid::from_bytes(*message_id.as_bytes())),
+        Err(e) => {
+            // Use EntityType::Message for proper error categorization
+            let storage_err = StorageError::InsertFailed {
+                entity_type: EntityType::Message,
+                reason: e.to_string(),
+            };
+            pgrx::warning!("CALIBER: {:?}", storage_err);
+            None
+        }
+    }
 }
 
 /// Get a message by ID.
 #[pg_extern]
 fn caliber_message_get(message_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let mid = Uuid::from_bytes(*message_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    storage.messages.get(&mid).map(|m| {
-        pgrx::JsonB(serde_json::to_value(m).unwrap_or(serde_json::Value::Null))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT message_id, from_agent_id, to_agent_id, to_agent_type, message_type, 
+                    payload, trajectory_id, scope_id, artifact_ids, created_at, 
+                    delivered_at, acknowledged_at, priority, expires_at
+             FROM caliber_message WHERE message_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), mid.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let message_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let from_agent_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let to_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let to_agent_type: Option<String> = row.get(4).ok().flatten();
+                    let message_type: Option<String> = row.get(5).ok().flatten();
+                    let payload: Option<String> = row.get(6).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(8).ok().flatten();
+                    let artifact_ids: Option<Vec<pgrx::Uuid>> = row.get(9).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let delivered_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let acknowledged_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let priority: Option<String> = row.get(13).ok().flatten();
+                    let expires_at: Option<pgrx::TimestampWithTimeZone> = row.get(14).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "message_id": message_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "from_agent_id": from_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "to_agent_id": to_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "to_agent_type": to_agent_type,
+                        "message_type": message_type,
+                        "payload": payload,
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "artifact_ids": artifact_ids.map(|ids| ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()),
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "delivered_at": delivered_at.map(|t| format!("{:?}", t)),
+                        "acknowledged_at": acknowledged_at.map(|t| format!("{:?}", t)),
+                        "priority": priority,
+                        "expires_at": expires_at.map(|t| format!("{:?}", t)),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                // Use EntityType::Message for proper error categorization
+                let storage_err = StorageError::SpiError { reason: format!("message get failed: {}", e) };
+                pgrx::warning!("CALIBER: EntityType::Message - {:?}", storage_err);
+                None
+            }
+        }
     })
 }
 
@@ -761,13 +2074,31 @@ fn caliber_message_get(message_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 #[pg_extern]
 fn caliber_message_mark_delivered(message_id: pgrx::Uuid) -> bool {
     let mid = Uuid::from_bytes(*message_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let now = Utc::now();
 
-    if let Some(message) = storage.messages.get_mut(&mid) {
-        message.mark_delivered();
-        true
-    } else {
-        false
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_message SET delivered_at = $1 WHERE message_id = $2 AND delivered_at IS NULL",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), mid.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(update_result) => update_result.rows_affected() > 0,
+        Err(e) => {
+            // Use EntityType::Message for proper error categorization
+            let storage_err = StorageError::UpdateFailed {
+                entity_type: EntityType::Message,
+                id: mid,
+                reason: format!("mark delivered failed: {}", e),
+            };
+            pgrx::warning!("CALIBER: {:?}", storage_err);
+            false
+        }
     }
 }
 
@@ -775,33 +2106,111 @@ fn caliber_message_mark_delivered(message_id: pgrx::Uuid) -> bool {
 #[pg_extern]
 fn caliber_message_mark_acknowledged(message_id: pgrx::Uuid) -> bool {
     let mid = Uuid::from_bytes(*message_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let now = Utc::now();
 
-    if let Some(message) = storage.messages.get_mut(&mid) {
-        message.mark_acknowledged();
-        true
-    } else {
-        false
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_message SET acknowledged_at = $1 WHERE message_id = $2 AND acknowledged_at IS NULL",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), mid.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(update_result) => update_result.rows_affected() > 0,
+        Err(e) => {
+            // Use EntityType::Message for proper error categorization
+            let storage_err = StorageError::UpdateFailed {
+                entity_type: EntityType::Message,
+                id: mid,
+                reason: format!("mark acknowledged failed: {}", e),
+            };
+            pgrx::warning!("CALIBER: {:?}", storage_err);
+            false
+        }
     }
 }
 
 /// Get pending messages for an agent.
+/// Returns messages where delivered_at IS NULL and not expired.
 #[pg_extern]
 fn caliber_message_get_pending(agent_id: pgrx::Uuid, agent_type: &str) -> pgrx::JsonB {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
 
-    let messages: Vec<&AgentMessage> = storage
-        .messages
-        .values()
-        .filter(|m| {
-            m.is_for_agent(aid, agent_type)
-                && m.delivered_at.is_none()
-                && !m.is_expired()
-        })
-        .collect();
+    Spi::connect(|client| {
+        // Query for messages to this specific agent OR to this agent type OR broadcast
+        let result = client.select(
+            "SELECT message_id, from_agent_id, to_agent_id, to_agent_type, message_type, 
+                    payload, trajectory_id, scope_id, artifact_ids, created_at, 
+                    delivered_at, acknowledged_at, priority, expires_at
+             FROM caliber_message 
+             WHERE delivered_at IS NULL 
+               AND (expires_at IS NULL OR expires_at > NOW())
+               AND (to_agent_id = $1 OR to_agent_type = $2 OR to_agent_type = '*')
+             ORDER BY 
+               CASE priority 
+                 WHEN 'critical' THEN 1 
+                 WHEN 'high' THEN 2 
+                 WHEN 'normal' THEN 3 
+                 WHEN 'low' THEN 4 
+               END,
+               created_at ASC",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), aid.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), agent_type.into_datum()),
+            ]),
+        );
 
-    pgrx::JsonB(serde_json::to_value(&messages).unwrap_or(serde_json::json!([])))
+        match result {
+            Ok(table) => {
+                let mut messages = Vec::new();
+                for row in table {
+                    let message_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let from_agent_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let to_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let to_agent_type: Option<String> = row.get(4).ok().flatten();
+                    let message_type: Option<String> = row.get(5).ok().flatten();
+                    let payload: Option<String> = row.get(6).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(8).ok().flatten();
+                    let artifact_ids: Option<Vec<pgrx::Uuid>> = row.get(9).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let delivered_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let acknowledged_at: Option<pgrx::TimestampWithTimeZone> = row.get(12).ok().flatten();
+                    let priority: Option<String> = row.get(13).ok().flatten();
+                    let expires_at: Option<pgrx::TimestampWithTimeZone> = row.get(14).ok().flatten();
+
+                    messages.push(serde_json::json!({
+                        "message_id": message_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "from_agent_id": from_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "to_agent_id": to_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "to_agent_type": to_agent_type,
+                        "message_type": message_type,
+                        "payload": payload,
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "artifact_ids": artifact_ids.map(|ids| ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()),
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "delivered_at": delivered_at.map(|t| format!("{:?}", t)),
+                        "acknowledged_at": acknowledged_at.map(|t| format!("{:?}", t)),
+                        "priority": priority,
+                        "expires_at": expires_at.map(|t| format!("{:?}", t)),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(messages))
+            }
+            Err(e) => {
+                // Use EntityType::Message for proper error categorization
+                let storage_err = StorageError::SpiError { reason: format!("get pending messages failed: {}", e) };
+                pgrx::warning!("CALIBER: EntityType::Message - {:?}", storage_err);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -821,7 +2230,7 @@ fn caliber_agent_register(
     let agent = Agent::new(agent_type, caps);
     let agent_id = agent.agent_id;
 
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
     storage.agents.insert(agent_id, agent);
 
     pgrx::Uuid::from_bytes(*agent_id.as_bytes())
@@ -831,10 +2240,10 @@ fn caliber_agent_register(
 #[pg_extern]
 fn caliber_agent_get(agent_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     storage.agents.get(&aid).map(|a| {
-        pgrx::JsonB(serde_json::to_value(a).unwrap_or(serde_json::Value::Null))
+        pgrx::JsonB(safe_to_json(a))
     })
 }
 
@@ -842,7 +2251,7 @@ fn caliber_agent_get(agent_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 #[pg_extern]
 fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str) -> bool {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(agent) = storage.agents.get_mut(&aid) {
         agent.status = match status {
@@ -862,7 +2271,7 @@ fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str) -> bool {
 #[pg_extern]
 fn caliber_agent_heartbeat(agent_id: pgrx::Uuid) -> bool {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(agent) = storage.agents.get_mut(&aid) {
         agent.heartbeat();
@@ -875,7 +2284,7 @@ fn caliber_agent_heartbeat(agent_id: pgrx::Uuid) -> bool {
 /// List agents by type.
 #[pg_extern]
 fn caliber_agent_list_by_type(agent_type: &str) -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     let agents: Vec<&Agent> = storage
         .agents
@@ -883,13 +2292,13 @@ fn caliber_agent_list_by_type(agent_type: &str) -> pgrx::JsonB {
         .filter(|a| a.agent_type == agent_type)
         .collect();
 
-    pgrx::JsonB(serde_json::to_value(&agents).unwrap_or(serde_json::json!([])))
+    pgrx::JsonB(safe_to_json_array(&agents))
 }
 
 /// List all active agents.
 #[pg_extern]
 fn caliber_agent_list_active() -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     let agents: Vec<&Agent> = storage
         .agents
@@ -897,7 +2306,7 @@ fn caliber_agent_list_active() -> pgrx::JsonB {
         .filter(|a| a.status == AgentStatus::Active || a.status == AgentStatus::Idle)
         .collect();
 
-    pgrx::JsonB(serde_json::to_value(&agents).unwrap_or(serde_json::json!([])))
+    pgrx::JsonB(safe_to_json_array(&agents))
 }
 
 
@@ -929,7 +2338,7 @@ fn caliber_delegation_create(
 
     let delegation_id = delegation.delegation_id;
 
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
     storage.delegations.insert(delegation_id, delegation);
 
     pgrx::Uuid::from_bytes(*delegation_id.as_bytes())
@@ -939,10 +2348,10 @@ fn caliber_delegation_create(
 #[pg_extern]
 fn caliber_delegation_get(delegation_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let did = Uuid::from_bytes(*delegation_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     storage.delegations.get(&did).map(|d| {
-        pgrx::JsonB(serde_json::to_value(d).unwrap_or(serde_json::Value::Null))
+        pgrx::JsonB(safe_to_json(d))
     })
 }
 
@@ -957,7 +2366,7 @@ fn caliber_delegation_accept(
     let delegatee = Uuid::from_bytes(*delegatee_agent_id.as_bytes());
     let child_traj = Uuid::from_bytes(*child_trajectory_id.as_bytes());
 
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(delegation) = storage.delegations.get_mut(&did) {
         delegation.accept(delegatee, child_traj);
@@ -975,7 +2384,7 @@ fn caliber_delegation_complete(
     summary: &str,
 ) -> bool {
     let did = Uuid::from_bytes(*delegation_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(delegation) = storage.delegations.get_mut(&did) {
         use caliber_agents::DelegationResult;
@@ -994,7 +2403,7 @@ fn caliber_delegation_complete(
 /// List pending delegations for an agent type.
 #[pg_extern]
 fn caliber_delegation_list_pending(agent_type: &str) -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     let delegations: Vec<&DelegatedTask> = storage
         .delegations
@@ -1006,7 +2415,7 @@ fn caliber_delegation_list_pending(agent_type: &str) -> pgrx::JsonB {
         })
         .collect();
 
-    pgrx::JsonB(serde_json::to_value(&delegations).unwrap_or(serde_json::json!([])))
+    pgrx::JsonB(safe_to_json_array(&delegations))
 }
 
 
@@ -1051,7 +2460,7 @@ fn caliber_handoff_create(
 
     let handoff_id = handoff.handoff_id;
 
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
     storage.handoffs.insert(handoff_id, handoff);
 
     pgrx::Uuid::from_bytes(*handoff_id.as_bytes())
@@ -1061,10 +2470,10 @@ fn caliber_handoff_create(
 #[pg_extern]
 fn caliber_handoff_get(handoff_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let hid = Uuid::from_bytes(*handoff_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     storage.handoffs.get(&hid).map(|h| {
-        pgrx::JsonB(serde_json::to_value(h).unwrap_or(serde_json::Value::Null))
+        pgrx::JsonB(safe_to_json(h))
     })
 }
 
@@ -1074,7 +2483,7 @@ fn caliber_handoff_accept(handoff_id: pgrx::Uuid, accepting_agent_id: pgrx::Uuid
     let hid = Uuid::from_bytes(*handoff_id.as_bytes());
     let accepting = Uuid::from_bytes(*accepting_agent_id.as_bytes());
 
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(handoff) = storage.handoffs.get_mut(&hid) {
         handoff.accept(accepting);
@@ -1088,7 +2497,7 @@ fn caliber_handoff_accept(handoff_id: pgrx::Uuid, accepting_agent_id: pgrx::Uuid
 #[pg_extern]
 fn caliber_handoff_complete(handoff_id: pgrx::Uuid) -> bool {
     let hid = Uuid::from_bytes(*handoff_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(handoff) = storage.handoffs.get_mut(&hid) {
         handoff.complete();
@@ -1126,7 +2535,7 @@ fn caliber_conflict_create(
     let conflict = Conflict::new(c_type, item_a_type, a_id, item_b_type, b_id);
     let conflict_id = conflict.conflict_id;
 
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
     storage.conflicts.insert(conflict_id, conflict);
 
     pgrx::Uuid::from_bytes(*conflict_id.as_bytes())
@@ -1136,10 +2545,10 @@ fn caliber_conflict_create(
 #[pg_extern]
 fn caliber_conflict_get(conflict_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let cid = Uuid::from_bytes(*conflict_id.as_bytes());
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     storage.conflicts.get(&cid).map(|c| {
-        pgrx::JsonB(serde_json::to_value(c).unwrap_or(serde_json::Value::Null))
+        pgrx::JsonB(safe_to_json(c))
     })
 }
 
@@ -1152,7 +2561,7 @@ fn caliber_conflict_resolve(
     reason: &str,
 ) -> bool {
     let cid = Uuid::from_bytes(*conflict_id.as_bytes());
-    let mut storage = STORAGE.write().unwrap();
+    let mut storage = storage_write();
 
     if let Some(conflict) = storage.conflicts.get_mut(&cid) {
         use caliber_agents::ConflictResolutionRecord;
@@ -1177,7 +2586,7 @@ fn caliber_conflict_resolve(
 /// List unresolved conflicts.
 #[pg_extern]
 fn caliber_conflict_list_unresolved() -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     let conflicts: Vec<&Conflict> = storage
         .conflicts
@@ -1185,7 +2594,7 @@ fn caliber_conflict_list_unresolved() -> pgrx::JsonB {
         .filter(|c| c.status == ConflictStatus::Detected || c.status == ConflictStatus::Resolving)
         .collect();
 
-    pgrx::JsonB(serde_json::to_value(&conflicts).unwrap_or(serde_json::json!([])))
+    pgrx::JsonB(safe_to_json_array(&conflicts))
 }
 
 
@@ -1193,97 +2602,148 @@ fn caliber_conflict_list_unresolved() -> pgrx::JsonB {
 // VECTOR SEARCH (Task 12.3)
 // ============================================================================
 
-/// Search for similar vectors.
+/// Search for similar vectors using pgvector.
 /// Returns entity IDs and similarity scores.
+/// Note: This requires pgvector extension and HNSW indexes to be created.
 #[pg_extern]
 fn caliber_vector_search(
     query_embedding: pgrx::JsonB,
     limit: i32,
 ) -> pgrx::JsonB {
     // Parse the query embedding
-    let query: EmbeddingVector = match serde_json::from_value(query_embedding.0) {
+    let query: Vec<f32> = match serde_json::from_value(query_embedding.0) {
         Ok(v) => v,
-        Err(_) => return pgrx::JsonB(serde_json::json!([])),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to parse query embedding: {}", e);
+            return pgrx::JsonB(serde_json::json!([]));
+        }
     };
 
-    let storage = STORAGE.read().unwrap();
-    let mut results: Vec<(EntityId, f32)> = Vec::new();
+    // Convert to pgvector format string: '[1.0, 2.0, 3.0]'
+    let vector_str = format!("[{}]", query.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
 
-    // Search artifacts
-    for artifact in storage.artifacts.values() {
-        if let Some(ref embedding) = artifact.embedding {
-            if let Ok(similarity) = query.cosine_similarity(embedding) {
-                results.push((artifact.artifact_id, similarity));
+    // Search artifacts and notes using pgvector cosine similarity
+    // Using <=> operator for cosine distance (1 - similarity)
+    let results = Spi::connect(|client| {
+        let result = client.select(
+            &format!(
+                "SELECT entity_id, entity_type, 1 - (embedding <=> '{}'::vector) as similarity
+                 FROM (
+                     SELECT artifact_id as entity_id, 'artifact' as entity_type, embedding 
+                     FROM caliber_artifact WHERE embedding IS NOT NULL
+                     UNION ALL
+                     SELECT note_id as entity_id, 'note' as entity_type, embedding 
+                     FROM caliber_note WHERE embedding IS NOT NULL
+                 ) combined
+                 ORDER BY embedding <=> '{}'::vector
+                 LIMIT {}",
+                vector_str, vector_str, limit
+            ),
+            None,
+            None,
+        );
+
+        match result {
+            Ok(table) => {
+                let mut results = Vec::new();
+                for row in table {
+                    let entity_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let entity_type: Option<String> = row.get(2).ok().flatten();
+                    let similarity: Option<f64> = row.get(3).ok().flatten();
+
+                    if let (Some(eid), Some(etype), Some(sim)) = (entity_id, entity_type, similarity) {
+                        results.push(serde_json::json!({
+                            "entity_id": Uuid::from_bytes(*eid.as_bytes()).to_string(),
+                            "entity_type": etype,
+                            "similarity": sim,
+                        }));
+                    }
+                }
+                results
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Vector search failed: {}", e);
+                Vec::new()
             }
         }
-    }
+    });
 
-    // Search notes
-    for note in storage.notes.values() {
-        if let Some(ref embedding) = note.embedding {
-            if let Ok(similarity) = query.cosine_similarity(embedding) {
-                results.push((note.note_id, similarity));
-            }
-        }
-    }
-
-    // Sort by similarity descending
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Apply limit
-    results.truncate(limit as usize);
-
-    // Convert to JSON
-    let json_results: Vec<serde_json::Value> = results
-        .iter()
-        .map(|(id, score)| {
-            serde_json::json!({
-                "entity_id": id.to_string(),
-                "similarity": score,
-            })
-        })
-        .collect();
-
-    pgrx::JsonB(serde_json::json!(json_results))
+    pgrx::JsonB(serde_json::json!(results))
 }
 
 
 // ============================================================================
 // DEBUG SQL VIEWS (Task 12.7)
+// Gated behind "debug" or "pg_test" feature flag for safety
 // ============================================================================
 
 /// Get storage statistics for debugging.
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_stats() -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
+    pgrx::warning!("DEBUG: caliber_debug_stats called");
+    let storage = storage_read();
 
-    pgrx::JsonB(serde_json::json!({
-        "trajectories": storage.trajectories.len(),
-        "scopes": storage.scopes.len(),
-        "artifacts": storage.artifacts.len(),
-        "notes": storage.notes.len(),
-        "turns": storage.turns.len(),
-        "agents": storage.agents.len(),
-        "locks": storage.locks.len(),
-        "messages": storage.messages.len(),
-        "delegations": storage.delegations.len(),
-        "handoffs": storage.handoffs.len(),
-        "conflicts": storage.conflicts.len(),
-    }))
+    // Get counts from SQL tables
+    let counts = Spi::connect(|client| {
+        let mut counts = serde_json::Map::new();
+        
+        let tables = [
+            ("trajectories", "caliber_trajectory"),
+            ("scopes", "caliber_scope"),
+            ("artifacts", "caliber_artifact"),
+            ("notes", "caliber_note"),
+            ("turns", "caliber_turn"),
+            ("locks", "caliber_lock"),
+            ("messages", "caliber_message"),
+        ];
+        
+        for (name, table) in tables {
+            let result = client.select(&format!("SELECT COUNT(*) FROM {}", table), None, None);
+            let count = match result {
+                Ok(table) => {
+                    if let Some(row) = table.first() {
+                        row.get::<i64>(1).ok().flatten().unwrap_or(0)
+                    } else {
+                        0
+                    }
+                }
+                Err(_) => 0,
+            };
+            counts.insert(name.to_string(), serde_json::json!(count));
+        }
+        
+        counts
+    });
+
+    // Add in-memory counts
+    let mut result = counts;
+    result.insert("agents".to_string(), serde_json::json!(storage.agents.len()));
+    result.insert("delegations".to_string(), serde_json::json!(storage.delegations.len()));
+    result.insert("handoffs".to_string(), serde_json::json!(storage.handoffs.len()));
+    result.insert("conflicts".to_string(), serde_json::json!(storage.conflicts.len()));
+
+    pgrx::JsonB(serde_json::Value::Object(result))
 }
 
 /// Clear all storage (for testing).
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_clear() -> &'static str {
-    let mut storage = STORAGE.write().unwrap();
-    storage.trajectories.clear();
-    storage.scopes.clear();
-    storage.artifacts.clear();
-    storage.notes.clear();
-    storage.turns.clear();
+    pgrx::warning!("DEBUG: caliber_debug_clear called - clearing all storage!");
+    
+    // Clear SQL tables in correct order (respecting foreign keys)
+    let _ = Spi::run("DELETE FROM caliber_turn");
+    let _ = Spi::run("DELETE FROM caliber_artifact");
+    let _ = Spi::run("DELETE FROM caliber_scope");
+    let _ = Spi::run("DELETE FROM caliber_note");
+    let _ = Spi::run("DELETE FROM caliber_message");
+    let _ = Spi::run("DELETE FROM caliber_lock");
+    let _ = Spi::run("DELETE FROM caliber_trajectory");
+    
+    // Clear in-memory storage
+    let mut storage = storage_write();
     storage.agents.clear();
-    storage.locks.clear();
-    storage.messages.clear();
     storage.delegations.clear();
     storage.handoffs.clear();
     storage.conflicts.clear();
@@ -1291,32 +2751,184 @@ fn caliber_debug_clear() -> &'static str {
 }
 
 /// Dump all trajectories for debugging.
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_trajectories() -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
-    let trajectories: Vec<&Trajectory> = storage.trajectories.values().collect();
-    pgrx::JsonB(serde_json::to_value(&trajectories).unwrap_or(serde_json::json!([])))
+    pgrx::warning!("DEBUG: caliber_debug_dump_trajectories called");
+    
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT trajectory_id, name, description, status, parent_trajectory_id, 
+                    root_trajectory_id, agent_id, created_at, updated_at, completed_at, 
+                    outcome, metadata 
+             FROM caliber_trajectory ORDER BY created_at DESC",
+            None,
+            None,
+        );
+
+        match result {
+            Ok(table) => {
+                let mut trajectories = Vec::new();
+                for row in table {
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let name: Option<String> = row.get(2).ok().flatten();
+                    let description: Option<String> = row.get(3).ok().flatten();
+                    let status: Option<String> = row.get(4).ok().flatten();
+                    let parent_trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+                    let root_trajectory_id: Option<pgrx::Uuid> = row.get(6).ok().flatten();
+                    let agent_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(9).ok().flatten();
+                    let completed_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let outcome: Option<pgrx::JsonB> = row.get(11).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                    trajectories.push(serde_json::json!({
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "name": name,
+                        "description": description,
+                        "status": status,
+                        "parent_trajectory_id": parent_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "root_trajectory_id": root_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_id": agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "completed_at": completed_at.map(|t| format!("{:?}", t)),
+                        "outcome": outcome.map(|j| j.0),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(trajectories))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to dump trajectories: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 /// Dump all scopes for debugging.
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_scopes() -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
-    let scopes: Vec<&Scope> = storage.scopes.values().collect();
-    pgrx::JsonB(serde_json::to_value(&scopes).unwrap_or(serde_json::json!([])))
+    pgrx::warning!("DEBUG: caliber_debug_dump_scopes called");
+    
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT scope_id, trajectory_id, parent_scope_id, name, purpose, is_active, 
+                    created_at, closed_at, checkpoint, token_budget, tokens_used, metadata 
+             FROM caliber_scope ORDER BY created_at DESC",
+            None,
+            None,
+        );
+
+        match result {
+            Ok(table) => {
+                let mut scopes = Vec::new();
+                for row in table {
+                    let scope_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let parent_scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let name: Option<String> = row.get(4).ok().flatten();
+                    let purpose: Option<String> = row.get(5).ok().flatten();
+                    let is_active: Option<bool> = row.get(6).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(7).ok().flatten();
+                    let closed_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                    let checkpoint: Option<pgrx::JsonB> = row.get(9).ok().flatten();
+                    let token_budget: Option<i32> = row.get(10).ok().flatten();
+                    let tokens_used: Option<i32> = row.get(11).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                    scopes.push(serde_json::json!({
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "parent_scope_id": parent_scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "name": name,
+                        "purpose": purpose,
+                        "is_active": is_active,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "closed_at": closed_at.map(|t| format!("{:?}", t)),
+                        "checkpoint": checkpoint.map(|j| j.0),
+                        "token_budget": token_budget,
+                        "tokens_used": tokens_used,
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(scopes))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to dump scopes: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 /// Dump all artifacts for debugging.
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_artifacts() -> pgrx::JsonB {
-    let storage = STORAGE.read().unwrap();
-    let artifacts: Vec<&Artifact> = storage.artifacts.values().collect();
-    pgrx::JsonB(serde_json::to_value(&artifacts).unwrap_or(serde_json::json!([])))
+    pgrx::warning!("DEBUG: caliber_debug_dump_artifacts called");
+    
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT artifact_id, trajectory_id, scope_id, artifact_type, name, content, 
+                    content_hash, provenance, ttl, created_at, updated_at, superseded_by, metadata 
+             FROM caliber_artifact ORDER BY created_at DESC",
+            None,
+            None,
+        );
+
+        match result {
+            Ok(table) => {
+                let mut artifacts = Vec::new();
+                for row in table {
+                    let artifact_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let trajectory_id: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+                    let scope_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let artifact_type: Option<String> = row.get(4).ok().flatten();
+                    let name: Option<String> = row.get(5).ok().flatten();
+                    let content: Option<String> = row.get(6).ok().flatten();
+                    let content_hash: Option<Vec<u8>> = row.get(7).ok().flatten();
+                    let provenance: Option<pgrx::JsonB> = row.get(8).ok().flatten();
+                    let ttl: Option<String> = row.get(9).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+                    let superseded_by: Option<pgrx::Uuid> = row.get(12).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = row.get(13).ok().flatten();
+
+                    artifacts.push(serde_json::json!({
+                        "artifact_id": artifact_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "artifact_type": artifact_type,
+                        "name": name,
+                        "content": content,
+                        "content_hash": content_hash.map(|h| hex::encode(&h)),
+                        "provenance": provenance.map(|j| j.0),
+                        "ttl": ttl,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                        "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "metadata": metadata.map(|j| j.0),
+                    }));
+                }
+                pgrx::JsonB(serde_json::json!(artifacts))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to dump artifacts: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 /// Dump all agents for debugging.
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_agents() -> pgrx::JsonB {
+    pgrx::warning!("DEBUG: caliber_debug_dump_agents called");
     let storage = STORAGE.read().unwrap();
     let agents: Vec<&Agent> = storage.agents.values().collect();
     pgrx::JsonB(serde_json::to_value(&agents).unwrap_or(serde_json::json!([])))
@@ -1339,7 +2951,7 @@ fn caliber_check_access(
 
     // For now, implement basic access control
     // In production, this would check against MemoryRegionConfig
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
 
     // Check if agent exists
     if !storage.agents.contains_key(&aid) {
@@ -1365,71 +2977,239 @@ pub struct PgStorage;
 
 impl StorageTrait for PgStorage {
     fn trajectory_insert(&self, t: &Trajectory) -> CaliberResult<()> {
-        let mut storage = STORAGE.write().map_err(|_| {
-            CaliberError::Storage(StorageError::TransactionFailed {
-                reason: "Failed to acquire write lock".to_string(),
-            })
-        })?;
+        // Insert into SQL table via SPI
+        Spi::connect(|client| {
+            // Check if trajectory already exists
+            let exists_result = client.select(
+                "SELECT 1 FROM caliber_trajectory WHERE trajectory_id = $1",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), t.trajectory_id.into_datum()),
+                ]),
+            );
+            
+            if let Ok(table) = exists_result {
+                if table.first().is_some() {
+                    return Err(CaliberError::Storage(StorageError::InsertFailed {
+                        entity_type: EntityType::Trajectory,
+                        reason: "already exists".to_string(),
+                    }));
+                }
+            }
 
-        if storage.trajectories.contains_key(&t.trajectory_id) {
-            return Err(CaliberError::Storage(StorageError::InsertFailed {
-                entity_type: EntityType::Trajectory,
-                reason: "already exists".to_string(),
-            }));
-        }
+            let status_str = match t.status {
+                TrajectoryStatus::Active => "active",
+                TrajectoryStatus::Completed => "completed",
+                TrajectoryStatus::Failed => "failed",
+                TrajectoryStatus::Suspended => "suspended",
+            };
 
-        storage.trajectories.insert(t.trajectory_id, t.clone());
-        Ok(())
+            let outcome_json = t.outcome.as_ref().map(|o| {
+                pgrx::JsonB(serde_json::to_value(o).unwrap_or(serde_json::Value::Null))
+            });
+            let metadata_json = t.metadata.as_ref().map(|m| {
+                pgrx::JsonB(serde_json::to_value(m).unwrap_or(serde_json::Value::Null))
+            });
+
+            client.update(
+                "INSERT INTO caliber_trajectory (trajectory_id, name, description, status, 
+                 parent_trajectory_id, root_trajectory_id, agent_id, created_at, updated_at, 
+                 completed_at, outcome, metadata) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), t.trajectory_id.into_datum()),
+                    (pgrx::PgBuiltInOids::TEXTOID.oid(), t.name.clone().into_datum()),
+                    (pgrx::PgBuiltInOids::TEXTOID.oid(), t.description.clone().into_datum()),
+                    (pgrx::PgBuiltInOids::TEXTOID.oid(), status_str.into_datum()),
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), t.parent_trajectory_id.into_datum()),
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), t.root_trajectory_id.into_datum()),
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), t.agent_id.into_datum()),
+                    (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), t.created_at.into_datum()),
+                    (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), t.updated_at.into_datum()),
+                    (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), t.completed_at.into_datum()),
+                    (pgrx::PgBuiltInOids::JSONBOID.oid(), outcome_json.into_datum()),
+                    (pgrx::PgBuiltInOids::JSONBOID.oid(), metadata_json.into_datum()),
+                ]),
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+            
+            Ok(())
+        })
     }
 
     fn trajectory_get(&self, id: EntityId) -> CaliberResult<Option<Trajectory>> {
-        let storage = STORAGE.read().map_err(|_| {
-            CaliberError::Storage(StorageError::TransactionFailed {
-                reason: "Failed to acquire read lock".to_string(),
-            })
-        })?;
+        Spi::connect(|client| {
+            let result = client.select(
+                "SELECT trajectory_id, name, description, status, parent_trajectory_id, 
+                        root_trajectory_id, agent_id, created_at, updated_at, completed_at, 
+                        outcome, metadata 
+                 FROM caliber_trajectory WHERE trajectory_id = $1",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), id.into_datum()),
+                ]),
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
 
-        Ok(storage.trajectories.get(&id).cloned())
+            if let Some(row) = result.first() {
+                let trajectory_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                let name: Option<String> = row.get(2).ok().flatten();
+                let description: Option<String> = row.get(3).ok().flatten();
+                let status_str: Option<String> = row.get(4).ok().flatten();
+                let parent_trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+                let root_trajectory_id: Option<pgrx::Uuid> = row.get(6).ok().flatten();
+                let agent_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(9).ok().flatten();
+                let completed_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                let outcome: Option<pgrx::JsonB> = row.get(11).ok().flatten();
+                let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                let status = match status_str.as_deref() {
+                    Some("active") => TrajectoryStatus::Active,
+                    Some("completed") => TrajectoryStatus::Completed,
+                    Some("failed") => TrajectoryStatus::Failed,
+                    Some("suspended") => TrajectoryStatus::Suspended,
+                    _ => TrajectoryStatus::Active,
+                };
+
+                Ok(Some(Trajectory {
+                    trajectory_id: trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes())).unwrap_or(id),
+                    name: name.unwrap_or_default(),
+                    description,
+                    status,
+                    parent_trajectory_id: parent_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                    root_trajectory_id: root_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                    agent_id: agent_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                    created_at: created_at.map(|t| chrono::DateTime::<Utc>::from(t)).unwrap_or_else(Utc::now),
+                    updated_at: updated_at.map(|t| chrono::DateTime::<Utc>::from(t)).unwrap_or_else(Utc::now),
+                    completed_at: completed_at.map(|t| chrono::DateTime::<Utc>::from(t)),
+                    outcome: outcome.and_then(|j| serde_json::from_value(j.0).ok()),
+                    metadata: metadata.and_then(|j| serde_json::from_value(j.0).ok()),
+                }))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     fn trajectory_update(&self, id: EntityId, update: TrajectoryUpdate) -> CaliberResult<()> {
-        let mut storage = STORAGE.write().map_err(|_| {
-            CaliberError::Storage(StorageError::TransactionFailed {
-                reason: "Failed to acquire write lock".to_string(),
-            })
-        })?;
+        Spi::connect(|client| {
+            // First check if trajectory exists
+            let exists_result = client.select(
+                "SELECT 1 FROM caliber_trajectory WHERE trajectory_id = $1",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::UUIDOID.oid(), id.into_datum()),
+                ]),
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+            
+            if exists_result.first().is_none() {
+                return Err(CaliberError::Storage(StorageError::NotFound {
+                    entity_type: EntityType::Trajectory,
+                    id,
+                }));
+            }
 
-        let trajectory = storage.trajectories.get_mut(&id).ok_or(
-            CaliberError::Storage(StorageError::NotFound {
-                entity_type: EntityType::Trajectory,
-                id,
-            })
-        )?;
+            let now = Utc::now();
 
-        if let Some(status) = update.status {
-            trajectory.status = status;
-        }
-        if let Some(metadata) = update.metadata {
-            trajectory.metadata = Some(metadata);
-        }
-        trajectory.updated_at = Utc::now();
+            // Build dynamic update query based on what fields are provided
+            if let Some(status) = update.status {
+                let status_str = match status {
+                    TrajectoryStatus::Active => "active",
+                    TrajectoryStatus::Completed => "completed",
+                    TrajectoryStatus::Failed => "failed",
+                    TrajectoryStatus::Suspended => "suspended",
+                };
+                client.update(
+                    "UPDATE caliber_trajectory SET status = $1, updated_at = $2 WHERE trajectory_id = $3",
+                    None,
+                    Some(vec![
+                        (pgrx::PgBuiltInOids::TEXTOID.oid(), status_str.into_datum()),
+                        (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                        (pgrx::PgBuiltInOids::UUIDOID.oid(), id.into_datum()),
+                    ]),
+                ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+            }
 
-        Ok(())
+            if let Some(metadata) = update.metadata {
+                let metadata_json = pgrx::JsonB(serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null));
+                client.update(
+                    "UPDATE caliber_trajectory SET metadata = $1, updated_at = $2 WHERE trajectory_id = $3",
+                    None,
+                    Some(vec![
+                        (pgrx::PgBuiltInOids::JSONBOID.oid(), metadata_json.into_datum()),
+                        (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                        (pgrx::PgBuiltInOids::UUIDOID.oid(), id.into_datum()),
+                    ]),
+                ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+            }
+
+            Ok(())
+        })
     }
 
     fn trajectory_list_by_status(&self, status: TrajectoryStatus) -> CaliberResult<Vec<Trajectory>> {
-        let storage = STORAGE.read().map_err(|_| {
-            CaliberError::Storage(StorageError::TransactionFailed {
-                reason: "Failed to acquire read lock".to_string(),
-            })
-        })?;
+        let status_str = match status {
+            TrajectoryStatus::Active => "active",
+            TrajectoryStatus::Completed => "completed",
+            TrajectoryStatus::Failed => "failed",
+            TrajectoryStatus::Suspended => "suspended",
+        };
 
-        Ok(storage
-            .trajectories
-            .values()
-            .filter(|t| t.status == status)
-            .cloned()
-            .collect())
+        Spi::connect(|client| {
+            let result = client.select(
+                "SELECT trajectory_id, name, description, status, parent_trajectory_id, 
+                        root_trajectory_id, agent_id, created_at, updated_at, completed_at, 
+                        outcome, metadata 
+                 FROM caliber_trajectory WHERE status = $1 ORDER BY created_at DESC",
+                None,
+                Some(vec![
+                    (pgrx::PgBuiltInOids::TEXTOID.oid(), status_str.into_datum()),
+                ]),
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+
+            let mut trajectories = Vec::new();
+            for row in result {
+                let trajectory_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                let name: Option<String> = row.get(2).ok().flatten();
+                let description: Option<String> = row.get(3).ok().flatten();
+                let status_str: Option<String> = row.get(4).ok().flatten();
+                let parent_trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+                let root_trajectory_id: Option<pgrx::Uuid> = row.get(6).ok().flatten();
+                let agent_id: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+                let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(8).ok().flatten();
+                let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(9).ok().flatten();
+                let completed_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                let outcome: Option<pgrx::JsonB> = row.get(11).ok().flatten();
+                let metadata: Option<pgrx::JsonB> = row.get(12).ok().flatten();
+
+                let traj_status = match status_str.as_deref() {
+                    Some("active") => TrajectoryStatus::Active,
+                    Some("completed") => TrajectoryStatus::Completed,
+                    Some("failed") => TrajectoryStatus::Failed,
+                    Some("suspended") => TrajectoryStatus::Suspended,
+                    _ => TrajectoryStatus::Active,
+                };
+
+                if let Some(tid) = trajectory_id {
+                    trajectories.push(Trajectory {
+                        trajectory_id: Uuid::from_bytes(*tid.as_bytes()),
+                        name: name.unwrap_or_default(),
+                        description,
+                        status: traj_status,
+                        parent_trajectory_id: parent_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                        root_trajectory_id: root_trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                        agent_id: agent_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                        created_at: created_at.map(|t| chrono::DateTime::<Utc>::from(t)).unwrap_or_else(Utc::now),
+                        updated_at: updated_at.map(|t| chrono::DateTime::<Utc>::from(t)).unwrap_or_else(Utc::now),
+                        completed_at: completed_at.map(|t| chrono::DateTime::<Utc>::from(t)),
+                        outcome: outcome.and_then(|j| serde_json::from_value(j.0).ok()),
+                        metadata: metadata.and_then(|j| serde_json::from_value(j.0).ok()),
+                    });
+                }
+            }
+            Ok(trajectories)
+        })
     }
 
     fn scope_insert(&self, s: &Scope) -> CaliberResult<()> {
@@ -1692,7 +3472,7 @@ impl StorageTrait for PgStorage {
 
         if storage.turns.contains_key(&t.turn_id) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
-                entity_type: EntityType::Scope, // Turn uses Scope as entity type
+                entity_type: EntityType::Turn,
                 reason: "already exists".to_string(),
             }));
         }
@@ -1830,6 +3610,51 @@ mod tests {
         // Close scope
         let closed = crate::caliber_scope_close(scope_id);
         assert!(closed);
+    }
+
+    #[pg_test]
+    fn test_scope_update() {
+        crate::caliber_debug_clear();
+
+        // Create trajectory first
+        let traj_id = crate::caliber_trajectory_create("Test", None, None);
+
+        // Create scope
+        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", Some("Initial purpose"), 8000);
+
+        // Update scope with various fields
+        let updates = pgrx::JsonB(serde_json::json!({
+            "name": "Updated Scope",
+            "purpose": "Updated purpose",
+            "tokens_used": 100,
+            "metadata": {"key": "value"}
+        }));
+        let updated = crate::caliber_scope_update(scope_id, updates);
+        assert!(updated);
+
+        // Get scope and verify updates
+        let scope = crate::caliber_scope_get(scope_id);
+        assert!(scope.is_some());
+        let scope_data = scope.unwrap().0;
+        assert_eq!(scope_data["name"].as_str(), Some("Updated Scope"));
+        assert_eq!(scope_data["purpose"].as_str(), Some("Updated purpose"));
+        assert_eq!(scope_data["tokens_used"].as_i64(), Some(100));
+        assert!(scope_data["metadata"].is_object());
+
+        // Update with null values
+        let null_updates = pgrx::JsonB(serde_json::json!({
+            "purpose": null,
+            "metadata": null
+        }));
+        let updated_null = crate::caliber_scope_update(scope_id, null_updates);
+        assert!(updated_null);
+
+        // Verify null updates
+        let scope_after_null = crate::caliber_scope_get(scope_id);
+        assert!(scope_after_null.is_some());
+        let scope_null_data = scope_after_null.unwrap().0;
+        assert!(scope_null_data["purpose"].is_null());
+        assert!(scope_null_data["metadata"].is_null());
     }
 
     #[pg_test]

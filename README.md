@@ -22,8 +22,8 @@ A Postgres-native memory framework for AI agents, built as a multi-crate Rust wo
 ### Build & Test (Without PostgreSQL)
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+# Clone the repository (replace with your repo URL)
+git clone https://github.com/your-org/caliber.git
 cd caliber
 
 # Build all crates (excluding pgrx extension)
@@ -57,6 +57,18 @@ cargo pgrx package -p caliber-pg
 # Run pgrx tests
 cargo pgrx test -p caliber-pg
 ```
+
+### Hello World (Postgres, low-level API)
+
+```bash
+psql -c "CREATE EXTENSION caliber;"
+psql -c "SELECT caliber_init();"
+psql -c "SELECT caliber_trajectory_get(caliber_trajectory_create('hello-world', NULL, NULL));"
+psql -c "WITH t AS (SELECT caliber_trajectory_create('hello-world', NULL, NULL) AS id) SELECT caliber_scope_create(t.id, 'scope-1', NULL, 800) FROM t;"
+psql -c "WITH t AS (SELECT caliber_trajectory_create('hello-world', NULL, NULL) AS id) SELECT caliber_scope_get_current(t.id) FROM t;"
+```
+
+Config is required for runtime operations; see `docs/QUICK_REFERENCE.md` for the full JSON shape.
 
 ---
 
@@ -154,40 +166,61 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 
 ---
 
-## 🎯 Usage Example
+## 🎯 Usage Example (Rust, high-level)
 
 ```rust
-use caliber_core::{CaliberConfig, Trajectory, TrajectoryStatus, EntityType};
-use caliber_storage::StorageTrait;
+use caliber_context::{ContextAssembler, ContextPackage};
+use caliber_core::{
+    CaliberConfig,
+    CaliberResult,
+    ContextPersistence,
+    RetryConfig,
+    SectionPriorities,
+    ValidationMode,
+};
+use std::time::Duration;
 use uuid::Uuid;
 
-// Configuration is REQUIRED — no defaults
-let config = CaliberConfig {
-    token_budget: 8000,
-    checkpoint_retention: 5,
-    stale_threshold: std::time::Duration::from_secs(86400 * 30),
-    contradiction_threshold: 0.85,
-    context_persistence: ContextPersistence::Ttl(Duration::from_secs(86400)),
-    validation_mode: ValidationMode::OnMutation,
-    section_priorities: SectionPriorities::default_test(),
-    embedding_provider: None,
-    summarization_provider: None,
-    llm_retry_config: RetryConfig::default_test(),
-    lock_timeout: Duration::from_secs(30),
-    message_retention: Duration::from_secs(86400),
-    delegation_timeout: Duration::from_secs(3600),
-};
+fn main() -> CaliberResult<()> {
+    // Configuration is REQUIRED — no defaults
+    let config = CaliberConfig {
+        token_budget: 8000,
+        checkpoint_retention: 5,
+        stale_threshold: Duration::from_secs(86400 * 30),
+        contradiction_threshold: 0.85,
+        context_window_persistence: ContextPersistence::Ttl(Duration::from_secs(86400)),
+        validation_mode: ValidationMode::OnMutation,
+        section_priorities: SectionPriorities {
+            user: 100,
+            system: 90,
+            artifacts: 80,
+            notes: 70,
+            history: 60,
+            custom: vec![],
+        },
+        embedding_provider: None,
+        summarization_provider: None,
+        llm_retry_config: RetryConfig {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(200),
+            max_backoff: Duration::from_secs(2),
+            backoff_multiplier: 2.0,
+        },
+        lock_timeout: Duration::from_secs(30),
+        message_retention: Duration::from_secs(86400),
+        delegation_timeout: Duration::from_secs(3600),
+    };
 
-// Validate configuration
-config.validate()?;
+    let assembler = ContextAssembler::new(config)?;
+    let trajectory_id = Uuid::now_v7();
+    let scope_id = Uuid::now_v7();
+    let pkg = ContextPackage::new(trajectory_id, scope_id)
+        .with_user_input("Summarize the last scope.".to_string());
 
-// Create a trajectory
-let trajectory = Trajectory {
-    trajectory_id: Uuid::now_v7(),
-    title: "Implement feature X".to_string(),
-    status: TrajectoryStatus::Active,
-    // ... other fields
-};
+    let window = assembler.assemble(pkg)?;
+    println!("Assembled {} sections", window.sections.len());
+    Ok(())
+}
 ```
 
 ---

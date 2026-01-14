@@ -70,6 +70,9 @@ pub enum EntityType {
     Scope,
     Artifact,
     Note,
+    Turn,
+    Lock,
+    Message,
     Agent,
 }
 
@@ -383,6 +386,12 @@ pub enum StorageError {
 
     #[error("Index error on {index_name}: {reason}")]
     IndexError { index_name: String, reason: String },
+
+    #[error("Storage lock poisoned")]
+    LockPoisoned,
+
+    #[error("SPI error: {reason}")]
+    SpiError { reason: String },
 }
 
 /// LLM provider errors.
@@ -543,6 +552,7 @@ pub type CaliberResult<T> = Result<T, CaliberError>;
 pub struct SectionPriorities {
     pub user: i32,
     pub system: i32,
+    pub persona: i32,
     pub artifacts: i32,
     pub notes: i32,
     pub history: i32,
@@ -776,6 +786,7 @@ mod tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,
@@ -808,6 +819,7 @@ mod tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,
@@ -844,6 +856,7 @@ mod tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,
@@ -900,6 +913,7 @@ mod prop_tests {
                 section_priorities: SectionPriorities {
                     user: 100,
                     system: 90,
+                    persona: 85,
                     artifacts: 80,
                     notes: 70,
                     history: 60,
@@ -940,6 +954,7 @@ mod prop_tests {
                 section_priorities: SectionPriorities {
                     user: 100,
                     system: 90,
+                    persona: 85,
                     artifacts: 80,
                     notes: 70,
                     history: 60,
@@ -980,6 +995,7 @@ mod prop_tests {
                 section_priorities: SectionPriorities {
                     user: 100,
                     system: 90,
+                    persona: 85,
                     artifacts: 80,
                     notes: 70,
                     history: 60,
@@ -1024,6 +1040,7 @@ mod prop_tests {
                 section_priorities: SectionPriorities {
                     user: 100,
                     system: 90,
+                    persona: 85,
                     artifacts: 80,
                     notes: 70,
                     history: 60,

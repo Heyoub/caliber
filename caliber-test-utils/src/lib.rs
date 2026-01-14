@@ -439,10 +439,12 @@ pub mod generators {
             0i32..100,
             0i32..100,
             0i32..100,
+            0i32..100,
         )
-            .prop_map(|(user, system, artifacts, notes, history)| SectionPriorities {
+            .prop_map(|(user, system, persona, artifacts, notes, history)| SectionPriorities {
                 user,
                 system,
+                persona,
                 artifacts,
                 notes,
                 history,
@@ -532,6 +534,7 @@ pub mod fixtures {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,

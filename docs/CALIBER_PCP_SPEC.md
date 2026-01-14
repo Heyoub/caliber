@@ -1905,7 +1905,7 @@ impl CaliberOrchestrator {
         let trajectory = caliber_trajectory_get(trajectory_id)
             .expect("Trajectory not found");
         
-        let scopes = caliber_scope_list_by_trajectory(trajectory_id);
+        let scopes = caliber_scope_list_by_trajectory(trajectory_id)?;
         let artifacts = caliber_artifact_list_by_trajectory(trajectory_id);
         
         // Generate notes via LLM
@@ -2152,8 +2152,10 @@ pub enum ConflictResolution {
     Manual,
 }
 
-impl Default for PCPConfig {
-    fn default() -> Self {
+#[cfg(test)]
+impl PCPConfig {
+    /// Test-only example configuration. CALIBER has no runtime defaults.
+    pub fn test_config() -> Self {
         Self {
             context_dag: ContextDagConfig {
                 enabled: true,
@@ -2201,13 +2203,39 @@ impl PCPRuntime {
     pub fn new(config: PCPConfig) -> Self {
         Self { config }
     }
+
+    fn require_context_window(window_id: Uuid) -> CaliberResult<ContextWindow> {
+        caliber_context_window_get(window_id).ok_or_else(|| {
+            CaliberError::Validation(ValidationError::ConstraintViolation {
+                constraint: "context_window_exists".to_string(),
+                reason: format!("Context window {} not found", window_id),
+            })
+        })
+    }
+
+    fn require_trajectory(trajectory_id: Uuid) -> CaliberResult<Trajectory> {
+        caliber_trajectory_get(trajectory_id).ok_or_else(|| {
+            CaliberError::Storage(StorageError::NotFound {
+                entity_type: EntityType::Trajectory,
+                id: trajectory_id,
+            })
+        })
+    }
+
+    fn require_artifact(artifact_id: Uuid) -> CaliberResult<Artifact> {
+        caliber_artifact_get(artifact_id).ok_or_else(|| {
+            CaliberError::Storage(StorageError::NotFound {
+                entity_type: EntityType::Artifact,
+                id: artifact_id,
+            })
+        })
+    }
     
     // === HARM REDUCTION: Context Validation ===
     
     #[pg_extern]
-    pub fn validate_context_integrity(window_id: Uuid) -> ValidationResult {
-        let window = caliber_context_window_get(window_id)
-            .expect("Context window not found");
+    pub fn validate_context_integrity(window_id: Uuid) -> CaliberResult<ValidationResult> {
+        let window = Self::require_context_window(window_id)?;
         
         let mut issues: Vec<ValidationIssue> = Vec::new();
         
@@ -2271,10 +2299,10 @@ impl PCPRuntime {
             }
         }
         
-        ValidationResult {
+        Ok(ValidationResult {
             valid: issues.iter().all(|i| i.severity != Severity::Error),
             issues,
-        }
+        })
     }
     
     fn detect_contradictions(artifacts: &[Artifact]) -> Vec<Contradiction> {
@@ -2315,9 +2343,8 @@ impl PCPRuntime {
     // === RECOVERY ===
     
     #[pg_extern]
-    pub fn create_checkpoint(trajectory_id: Uuid) -> Uuid {
-        let trajectory = caliber_trajectory_get(trajectory_id)
-            .expect("Trajectory not found");
+    pub fn create_checkpoint(trajectory_id: Uuid) -> CaliberResult<Uuid> {
+        let trajectory = Self::require_trajectory(trajectory_id)?;
         
         let scopes = caliber_scope_list_by_trajectory(trajectory_id);
         let active_scope = scopes.iter().find(|s| s.closed_at.is_none());
@@ -2346,11 +2373,11 @@ impl PCPRuntime {
         };
         
         // Direct heap insert
-        caliber_checkpoint_insert(&checkpoint);
+        caliber_checkpoint_insert(&checkpoint)?;
         
         // Prune old checkpoints if over limit
         let max_checkpoints = Self::get_config().recovery_points.max_checkpoints;
-        let existing = caliber_checkpoint_list_by_trajectory(trajectory_id);
+        let existing = caliber_checkpoint_list_by_trajectory(trajectory_id)?;
         
         if existing.len() as i32 > max_checkpoints {
             let to_delete = &existing[max_checkpoints as usize..];
@@ -2359,7 +2386,7 @@ impl PCPRuntime {
             }
         }
         
-        checkpoint_id
+        Ok(checkpoint_id)
     }
     
     #[pg_extern]
@@ -2410,15 +2437,14 @@ impl PCPRuntime {
     // === DOSAGE CONTROL ===
     
     #[pg_extern]
-    pub fn apply_dosage_limits(window_id: Uuid) -> Uuid {
-        let mut window = caliber_context_window_get(window_id)
-            .expect("Context window not found");
+    pub fn apply_dosage_limits(window_id: Uuid) -> CaliberResult<Uuid> {
+        let mut window = Self::require_context_window(window_id)?;
         
         let dosage = &Self::get_config().dosage;
         
         // Already within limits
         if window.used_tokens <= dosage.max_context_tokens {
-            return window_id;
+            return Ok(window_id);
         }
         
         // Sort sections by priority (lower = drop first)
@@ -2459,17 +2485,16 @@ impl PCPRuntime {
             assembly_trace: window.assembly_trace,
         };
         
-        caliber_context_window_insert(&new_window);
+        caliber_context_window_insert(&new_window)?;
         
-        new_window_id
+        Ok(new_window_id)
     }
     
     // === ANTI-SPRAWL ===
     
     #[pg_extern]
-    pub fn lint_artifact(artifact_id: Uuid) -> LintResult {
-        let artifact = caliber_artifact_get(artifact_id)
-            .expect("Artifact not found");
+    pub fn lint_artifact(artifact_id: Uuid) -> CaliberResult<LintResult> {
+        let artifact = Self::require_artifact(artifact_id)?;
         
         let config = &Self::get_config().anti_sprawl;
         let mut issues: Vec<LintIssue> = Vec::new();
@@ -2513,10 +2538,10 @@ impl PCPRuntime {
             }
         }
         
-        LintResult {
+        Ok(LintResult {
             valid: issues.iter().all(|i| i.severity != Severity::Error),
             issues,
-        }
+        })
     }
 }
 

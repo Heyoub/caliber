@@ -437,7 +437,7 @@ impl StorageTrait for MockStorage {
         let mut turns = self.turns.write().unwrap();
         if turns.contains_key(&t.turn_id) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
-                entity_type: EntityType::Scope, // Turn doesn't have its own EntityType, use Scope
+                entity_type: EntityType::Turn,
                 reason: "already exists".to_string(),
             }));
         }

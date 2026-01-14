@@ -918,6 +918,7 @@ impl Parser {
     }
 
     /// Parse an adapter definition (Task 4.3).
+    /// Requires: type, connection (no defaults per REQ-5)
     fn parse_adapter(&mut self) -> Result<AdapterDef, ParseError> {
         self.expect(TokenKind::Adapter)?;
 
@@ -925,8 +926,8 @@ impl Parser {
 
         self.expect(TokenKind::LBrace)?;
 
-        let mut adapter_type = AdapterType::Postgres;
-        let mut connection = String::new();
+        let mut adapter_type: Option<AdapterType> = None;
+        let mut connection: Option<String> = None;
         let mut options = Vec::new();
 
         while !self.check(&TokenKind::RBrace) {
@@ -935,18 +936,22 @@ impl Parser {
 
             match field.as_str() {
                 "type" => {
-                    adapter_type = match &self.current().kind {
+                    adapter_type = Some(match &self.current().kind {
                         TokenKind::Identifier(s) if s == "postgres" => AdapterType::Postgres,
                         TokenKind::Identifier(s) if s == "redis" => AdapterType::Redis,
                         TokenKind::Identifier(s) if s == "memory" => AdapterType::Memory,
                         // Also handle keywords that match adapter types
                         TokenKind::Memory => AdapterType::Memory,
                         _ => return Err(self.error("Expected adapter type (postgres, redis, memory)")),
-                    };
+                    });
                     self.advance();
                 }
                 "connection" => {
-                    connection = self.expect_string()?;
+                    let conn = self.expect_string()?;
+                    if conn.is_empty() {
+                        return Err(self.error("connection string cannot be empty"));
+                    }
+                    connection = Some(conn);
                 }
                 "options" => {
                     self.expect(TokenKind::LBrace)?;
@@ -959,11 +964,15 @@ impl Parser {
                     }
                     self.expect(TokenKind::RBrace)?;
                 }
-                _ => return Err(self.error(&format!("Unknown adapter field: {}", field))),
+                _ => return Err(self.error(&format!("unknown field: {}", field))),
             }
         }
 
         self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields - no defaults allowed
+        let adapter_type = adapter_type.ok_or_else(|| self.error("missing required field: type"))?;
+        let connection = connection.ok_or_else(|| self.error("missing required field: connection"))?;
 
         Ok(AdapterDef {
             name,
@@ -974,6 +983,7 @@ impl Parser {
     }
 
     /// Parse a memory definition (Task 4.4).
+    /// Requires: type, retention (no defaults per REQ-5)
     fn parse_memory(&mut self) -> Result<MemoryDef, ParseError> {
         self.expect(TokenKind::Memory)?;
 
@@ -981,9 +991,9 @@ impl Parser {
 
         self.expect(TokenKind::LBrace)?;
 
-        let mut memory_type = MemoryType::Working;
+        let mut memory_type: Option<MemoryType> = None;
         let mut schema = Vec::new();
-        let mut retention = Retention::Persistent;
+        let mut retention: Option<Retention> = None;
         let mut lifecycle = Lifecycle::Explicit;
         let mut parent = None;
         let mut indexes = Vec::new();
@@ -996,7 +1006,7 @@ impl Parser {
 
             match field.as_str() {
                 "type" => {
-                    memory_type = self.parse_memory_type()?;
+                    memory_type = Some(self.parse_memory_type()?);
                 }
                 "schema" => {
                     self.expect(TokenKind::LBrace)?;
@@ -1007,7 +1017,7 @@ impl Parser {
                     self.expect(TokenKind::RBrace)?;
                 }
                 "retention" => {
-                    retention = self.parse_retention()?;
+                    retention = Some(self.parse_retention()?);
                 }
                 "lifecycle" => {
                     lifecycle = self.parse_lifecycle()?;
@@ -1039,11 +1049,15 @@ impl Parser {
                     }
                     self.expect(TokenKind::RBracket)?;
                 }
-                _ => return Err(self.error(&format!("Unknown memory field: {}", field))),
+                _ => return Err(self.error(&format!("unknown field: {}", field))),
             }
         }
 
         self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields - no defaults allowed
+        let memory_type = memory_type.ok_or_else(|| self.error("missing required field: type"))?;
+        let retention = retention.ok_or_else(|| self.error("missing required field: retention"))?;
 
         Ok(MemoryDef {
             name,
@@ -1382,6 +1396,7 @@ impl Parser {
     }
 
     /// Parse an injection definition (Task 4.6).
+    /// Requires: priority (no defaults per REQ-5)
     fn parse_injection(&mut self) -> Result<InjectionDef, ParseError> {
         self.expect(TokenKind::Inject)?;
         let source = self.expect_field_name()?;
@@ -1390,7 +1405,7 @@ impl Parser {
         self.expect(TokenKind::LBrace)?;
 
         let mut mode = InjectionMode::Full;
-        let mut priority = 50;
+        let mut priority: Option<i32> = None;
         let mut max_tokens = None;
         let mut filter = None;
 
@@ -1400,14 +1415,17 @@ impl Parser {
 
             match field.as_str() {
                 "mode" => mode = self.parse_injection_mode()?,
-                "priority" => priority = self.expect_number()? as i32,
+                "priority" => priority = Some(self.expect_number()? as i32),
                 "max_tokens" => max_tokens = Some(self.expect_number()? as i32),
                 "filter" => filter = Some(self.parse_filter_expr()?),
-                _ => return Err(self.error(&format!("Unknown injection field: {}", field))),
+                _ => return Err(self.error(&format!("unknown field: {}", field))),
             }
         }
 
         self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields - no defaults allowed
+        let priority = priority.ok_or_else(|| self.error("missing required field: priority"))?;
 
         Ok(InjectionDef {
             source,

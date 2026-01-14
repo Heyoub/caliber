@@ -14,8 +14,6 @@ use caliber_core::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use uuid::Uuid;
 
 // Re-export ConflictResolution from caliber-pcp for consistency
@@ -383,12 +381,27 @@ impl DistributedLock {
     }
 }
 
-/// Compute a stable i64 key for advisory locks.
+/// Compute a stable i64 key for advisory locks using FNV-1a hash.
+/// FNV-1a is deterministic across Rust versions and compilations.
 pub fn compute_lock_key(resource_type: &str, resource_id: EntityId) -> i64 {
-    let mut hasher = DefaultHasher::new();
-    resource_type.hash(&mut hasher);
-    resource_id.as_bytes().hash(&mut hasher);
-    hasher.finish() as i64
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    
+    let mut hash = FNV_OFFSET_BASIS;
+    
+    // Hash resource type
+    for byte in resource_type.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    
+    // Hash resource ID bytes
+    for byte in resource_id.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    
+    hash as i64
 }
 
 

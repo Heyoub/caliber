@@ -6,6 +6,16 @@ Building CALIBER (Context Abstraction Layer Integrating Behavioral Extensible Ru
 
 ---
 
+## Kiro Usage
+
+Tracking starts on 2026-01-13 (prior usage not recorded).
+
+| Date | @prime | @plan-feature | @execute | @implement-crate | @code-review | @code-review-hackathon | @update-devlog |
+|------|--------|---------------|----------|------------------|--------------|------------------------|----------------|
+| 2026-01-13 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+
+---
+
 ## Timeline
 
 ### January 12, 2026 — Project Initialization

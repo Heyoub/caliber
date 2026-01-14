@@ -100,6 +100,7 @@ impl ProviderRegistry {
 ### 1.2 OpenAI Implementation
 
 ```rust
+use caliber_core::{CaliberError, CaliberResult, EmbeddingVector, LlmError};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
@@ -107,14 +108,14 @@ pub struct OpenAIEmbeddingProvider {
     client: Client,
     api_key: String,
     model: String,
-    dimensions: usize,
+    dimensions: i32,
 }
 
 #[derive(Serialize)]
 struct OpenAIEmbeddingRequest {
     model: String,
     input: Vec<String>,
-    dimensions: Option<usize>,
+    dimensions: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -128,19 +129,27 @@ struct OpenAIEmbeddingData {
     embedding: Vec<f32>,
 }
 
+fn map_llm_err(provider: &str, err: impl std::fmt::Display) -> CaliberError {
+    CaliberError::Llm(LlmError::RequestFailed {
+        provider: provider.to_string(),
+        status: 0,
+        message: err.to_string(),
+    })
+}
+
 impl OpenAIEmbeddingProvider {
-    pub fn new(api_key: &str, model: Option<&str>, dimensions: Option<usize>) -> Self {
+    pub fn new(api_key: &str, model: &str, dimensions: i32) -> Self {
         Self {
             client: Client::new(),
             api_key: api_key.to_string(),
-            model: model.unwrap_or("text-embedding-3-small").to_string(),
-            dimensions: dimensions.unwrap_or(1536),
+            model: model.to_string(),
+            dimensions,
         }
     }
 }
 
 impl EmbeddingProvider for OpenAIEmbeddingProvider {
-    fn embed(&self, text: &str) -> Result<EmbeddingVector, Box<dyn Error>> {
+    fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector> {
         let response = self.client
             .post("https://api.openai.com/v1/embeddings")
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -150,13 +159,26 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
                 input: vec![text.to_string()],
                 dimensions: Some(self.dimensions),
             })
-            .send()?
-            .json::<OpenAIEmbeddingResponse>()?;
+            .send()
+            .map_err(|e| map_llm_err("openai", e))?
+            .json::<OpenAIEmbeddingResponse>()
+            .map_err(|e| map_llm_err("openai", e))?;
         
-        Ok(response.data[0].embedding.clone())
+        let first = response.data.get(0).ok_or_else(|| {
+            CaliberError::Llm(LlmError::InvalidResponse {
+                provider: "openai".to_string(),
+                reason: "empty embedding response".to_string(),
+            })
+        })?;
+        
+        Ok(EmbeddingVector {
+            data: first.embedding.clone(),
+            model_id: self.model.clone(),
+            dimensions: self.dimensions,
+        })
     }
     
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingVector>, Box<dyn Error>> {
+    fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>> {
         let response = self.client
             .post("https://api.openai.com/v1/embeddings")
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -166,15 +188,21 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
                 input: texts.iter().map(|s| s.to_string()).collect(),
                 dimensions: Some(self.dimensions),
             })
-            .send()?
-            .json::<OpenAIEmbeddingResponse>()?;
+            .send()
+            .map_err(|e| map_llm_err("openai", e))?
+            .json::<OpenAIEmbeddingResponse>()
+            .map_err(|e| map_llm_err("openai", e))?;
         
         let mut sorted = response.data;
         sorted.sort_by_key(|d| d.index);
-        Ok(sorted.into_iter().map(|d| d.embedding).collect())
+        Ok(sorted.into_iter().map(|d| EmbeddingVector {
+            data: d.embedding,
+            model_id: self.model.clone(),
+            dimensions: self.dimensions,
+        }).collect())
     }
     
-    fn dimensions(&self) -> usize { self.dimensions }
+    fn dimensions(&self) -> i32 { self.dimensions }
     fn model_id(&self) -> &str { &self.model }
 }
 ```
@@ -182,26 +210,38 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
 ### 1.3 Ollama Implementation (Local)
 
 ```rust
+use caliber_core::{CaliberError, CaliberResult, EmbeddingVector, LlmError};
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
+
+fn map_llm_err(provider: &str, err: impl std::fmt::Display) -> CaliberError {
+    CaliberError::Llm(LlmError::RequestFailed {
+        provider: provider.to_string(),
+        status: 0,
+        message: err.to_string(),
+    })
+}
+
 pub struct OllamaEmbeddingProvider {
     client: Client,
     base_url: String,
     model: String,
-    dimensions: usize,
+    dimensions: i32,
 }
 
 impl OllamaEmbeddingProvider {
-    pub fn new(base_url: Option<&str>, model: Option<&str>) -> Self {
+    pub fn new(base_url: &str, model: &str, dimensions: i32) -> Self {
         Self {
             client: Client::new(),
-            base_url: base_url.unwrap_or("http://localhost:11434").to_string(),
-            model: model.unwrap_or("nomic-embed-text").to_string(),
-            dimensions: 768,
+            base_url: base_url.to_string(),
+            model: model.to_string(),
+            dimensions,
         }
     }
 }
 
 impl EmbeddingProvider for OllamaEmbeddingProvider {
-    fn embed(&self, text: &str) -> Result<EmbeddingVector, Box<dyn Error>> {
+    fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector> {
         #[derive(Serialize)]
         struct Req { model: String, prompt: String }
         #[derive(Deserialize)]
@@ -210,17 +250,23 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         let response = self.client
             .post(format!("{}/api/embeddings", self.base_url))
             .json(&Req { model: self.model.clone(), prompt: text.to_string() })
-            .send()?
-            .json::<Resp>()?;
+            .send()
+            .map_err(|e| map_llm_err("ollama", e))?
+            .json::<Resp>()
+            .map_err(|e| map_llm_err("ollama", e))?;
         
-        Ok(response.embedding)
+        Ok(EmbeddingVector {
+            data: response.embedding,
+            model_id: self.model.clone(),
+            dimensions: self.dimensions,
+        })
     }
     
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingVector>, Box<dyn Error>> {
+    fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>> {
         texts.iter().map(|t| self.embed(t)).collect()
     }
     
-    fn dimensions(&self) -> usize { self.dimensions }
+    fn dimensions(&self) -> i32 { self.dimensions }
     fn model_id(&self) -> &str { &self.model }
 }
 ```
@@ -230,10 +276,14 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
 ## 2. Summarization Service (Rust)
 
 ```rust
+use caliber_core::{CaliberError, CaliberResult, LlmError};
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
+
 pub trait SummarizationProvider: Send + Sync {
-    fn summarize(&self, content: &str, style: SummarizeStyle) -> Result<String, Box<dyn Error>>;
-    fn extract_artifacts(&self, content: &str, types: &[ArtifactType]) -> Result<Vec<ExtractedArtifact>, Box<dyn Error>>;
-    fn detect_contradiction(&self, a: &str, b: &str) -> Result<bool, Box<dyn Error>>;
+    fn summarize(&self, content: &str, config: &SummarizeConfig) -> CaliberResult<String>;
+    fn extract_artifacts(&self, content: &str, types: &[ArtifactType]) -> CaliberResult<Vec<ExtractedArtifact>>;
+    fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -246,6 +296,14 @@ pub struct ExtractedArtifact {
     pub confidence: f32,
 }
 
+fn map_llm_err(provider: &str, err: impl std::fmt::Display) -> CaliberError {
+    CaliberError::Llm(LlmError::RequestFailed {
+        provider: provider.to_string(),
+        status: 0,
+        message: err.to_string(),
+    })
+}
+
 pub struct AnthropicSummarizationProvider {
     client: Client,
     api_key: String,
@@ -253,15 +311,15 @@ pub struct AnthropicSummarizationProvider {
 }
 
 impl AnthropicSummarizationProvider {
-    pub fn new(api_key: &str, model: Option<&str>) -> Self {
+    pub fn new(api_key: &str, model: &str) -> Self {
         Self {
             client: Client::new(),
             api_key: api_key.to_string(),
-            model: model.unwrap_or("claude-3-haiku-20240307").to_string(),
+            model: model.to_string(),
         }
     }
     
-    fn complete(&self, prompt: &str, max_tokens: i32) -> Result<String, Box<dyn Error>> {
+    fn complete(&self, prompt: &str, max_tokens: i32) -> CaliberResult<String> {
         #[derive(Serialize)]
         struct Req { model: String, max_tokens: i32, messages: Vec<Msg> }
         #[derive(Serialize)]
@@ -280,16 +338,25 @@ impl AnthropicSummarizationProvider {
                 max_tokens,
                 messages: vec![Msg { role: "user".into(), content: prompt.into() }],
             })
-            .send()?
-            .json::<Resp>()?;
+            .send()
+            .map_err(|e| map_llm_err("anthropic", e))?
+            .json::<Resp>()
+            .map_err(|e| map_llm_err("anthropic", e))?;
         
-        Ok(response.content.first().map(|c| c.text.clone()).unwrap_or_default())
+        let first = response.content.first().ok_or_else(|| {
+            CaliberError::Llm(LlmError::InvalidResponse {
+                provider: "anthropic".to_string(),
+                reason: "empty response".to_string(),
+            })
+        })?;
+        
+        Ok(first.text.clone())
     }
 }
 
 impl SummarizationProvider for AnthropicSummarizationProvider {
-    fn summarize(&self, content: &str, style: SummarizeStyle) -> Result<String, Box<dyn Error>> {
-        let prompt = match style {
+    fn summarize(&self, content: &str, config: &SummarizeConfig) -> CaliberResult<String> {
+        let prompt = match config.style {
             SummarizeStyle::Brief => format!("Summarize in 2-3 sentences:\n\n{}", content),
             SummarizeStyle::Detailed => format!("Detailed summary by topic:\n\n{}", content),
             SummarizeStyle::Structured => format!(
@@ -297,10 +364,10 @@ impl SummarizationProvider for AnthropicSummarizationProvider {
                 content
             ),
         };
-        self.complete(&prompt, 500)
+        self.complete(&prompt, config.max_tokens)
     }
     
-    fn extract_artifacts(&self, content: &str, types: &[ArtifactType]) -> Result<Vec<ExtractedArtifact>, Box<dyn Error>> {
+    fn extract_artifacts(&self, content: &str, types: &[ArtifactType]) -> CaliberResult<Vec<ExtractedArtifact>> {
         let type_names: Vec<_> = types.iter().map(|t| format!("{:?}", t).to_lowercase()).collect();
         let prompt = format!(
             "Extract artifacts (types: {}). Format:\n[ARTIFACT:type:confidence]\ncontent\n[/ARTIFACT]\n\n{}",
@@ -308,25 +375,37 @@ impl SummarizationProvider for AnthropicSummarizationProvider {
         );
         
         let response = self.complete(&prompt, 2000)?;
-        let re = regex::Regex::new(r"\[ARTIFACT:(\w+):([0-9.]+)\]\n([\s\S]*?)\n\[/ARTIFACT\]")?;
+        let re = regex::Regex::new(r"\[ARTIFACT:(\w+):([0-9.]+)\]\n([\s\S]*?)\n\[/ARTIFACT\]")
+            .map_err(|e| CaliberError::Llm(LlmError::InvalidResponse {
+                provider: "anthropic".to_string(),
+                reason: e.to_string(),
+            }))?;
         
-        Ok(re.captures_iter(&response).filter_map(|cap| {
+        let mut artifacts = Vec::new();
+        for cap in re.captures_iter(&response) {
             let artifact_type = match &cap[1] {
                 "error_log" => ArtifactType::ErrorLog,
                 "code_patch" => ArtifactType::CodePatch,
                 "design_decision" => ArtifactType::DesignDecision,
                 "fact" => ArtifactType::Fact,
-                _ => return None,
+                _ => continue,
             };
-            Some(ExtractedArtifact {
+            let confidence = cap[2].parse::<f32>().map_err(|_| {
+                CaliberError::Llm(LlmError::InvalidResponse {
+                    provider: "anthropic".to_string(),
+                    reason: "invalid confidence score".to_string(),
+                })
+            })?;
+            artifacts.push(ExtractedArtifact {
                 artifact_type,
                 content: cap[3].trim().to_string(),
-                confidence: cap[2].parse().unwrap_or(0.5),
-            })
-        }).collect())
+                confidence,
+            });
+        }
+        Ok(artifacts)
     }
     
-    fn detect_contradiction(&self, a: &str, b: &str) -> Result<bool, Box<dyn Error>> {
+    fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool> {
         let response = self.complete(&format!("Do these contradict? YES or NO only.\n\nA: {}\nB: {}", a, b), 10)?;
         Ok(response.trim().to_uppercase() == "YES")
     }
@@ -372,7 +451,7 @@ pub struct CachedEmbeddingProvider<T: EmbeddingProvider> {
 }
 
 impl<T: EmbeddingProvider> EmbeddingProvider for CachedEmbeddingProvider<T> {
-    fn embed(&self, text: &str) -> Result<EmbeddingVector, Box<dyn Error>> {
+    fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector> {
         let hash = crate::sha256(text.as_bytes());
         if let Some(cached) = self.cache.get(&hash) { return Ok(cached); }
         let embedding = self.inner.embed(text)?;
@@ -380,12 +459,12 @@ impl<T: EmbeddingProvider> EmbeddingProvider for CachedEmbeddingProvider<T> {
         Ok(embedding)
     }
     
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<EmbeddingVector>, Box<dyn Error>> {
+    fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>> {
         // Check cache, batch uncached, cache results
         texts.iter().map(|t| self.embed(t)).collect()
     }
     
-    fn dimensions(&self) -> usize { self.inner.dimensions() }
+    fn dimensions(&self) -> i32 { self.inner.dimensions() }
     fn model_id(&self) -> &str { self.inner.model_id() }
 }
 ```

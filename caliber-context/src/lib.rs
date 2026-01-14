@@ -543,7 +543,7 @@ impl ContextAssembler {
             let content = self.format_kernel_config(kernel);
             if !content.is_empty() {
                 let mut section =
-                    ContextSection::new(SectionType::Persona, content, self.config.section_priorities.system);
+                    ContextSection::new(SectionType::Persona, content, self.config.section_priorities.persona);
                 section.compressible = false; // Persona shouldn't be truncated
                 sections.push(section);
             }
@@ -696,6 +696,7 @@ mod tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,
@@ -863,6 +864,7 @@ mod prop_tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,

@@ -496,21 +496,32 @@ pub fn extract_decision(response: &str) -> String {
     extract_first_sentence(response)
 }
 
-/// Extract the first sentence from text.
+/// Extract the first sentence from text (Unicode-safe).
 fn extract_first_sentence(text: &str) -> String {
     // Find the first sentence-ending punctuation
     let end_chars = ['.', '!', '?'];
+    let max_chars = 200;
+
+    let mut char_count = 0;
+    let mut last_valid_pos = 0;
 
     for (i, c) in text.char_indices() {
         if end_chars.contains(&c) {
-            // Include the punctuation
-            return text[..=i].trim().to_string();
+            // Include the punctuation - use byte position after the char
+            return text[..i + c.len_utf8()].trim().to_string();
+        }
+        
+        char_count += 1;
+        last_valid_pos = i + c.len_utf8();
+        
+        if char_count >= max_chars {
+            break;
         }
     }
 
-    // No sentence ending found, return first 200 chars
-    if text.len() > 200 {
-        format!("{}...", &text[..200])
+    // No sentence ending found within limit
+    if char_count >= max_chars {
+        format!("{}...", text[..last_valid_pos].trim())
     } else {
         text.to_string()
     }
@@ -687,35 +698,9 @@ impl PCPConfig {
     }
 }
 
-impl Default for PCPConfig {
-    fn default() -> Self {
-        Self {
-            context_dag: ContextDagConfig {
-                max_depth: 10,
-                prune_strategy: PruneStrategy::Hybrid,
-            },
-            recovery: RecoveryConfig {
-                enabled: true,
-                frequency: RecoveryFrequency::OnScopeClose,
-                max_checkpoints: 5,
-            },
-            dosage: DosageConfig {
-                max_tokens_per_scope: 100000,
-                max_artifacts_per_scope: 100,
-                max_notes_per_trajectory: 1000,
-            },
-            anti_sprawl: AntiSprawlConfig {
-                max_trajectory_depth: 5,
-                max_concurrent_scopes: 10,
-            },
-            grounding: GroundingConfig {
-                require_artifact_backing: false,
-                contradiction_threshold: 0.8,
-                conflict_resolution: ConflictResolution::LastWriteWins,
-            },
-        }
-    }
-}
+// NOTE: Default impl intentionally removed per REQ-6 (PCP Configuration Without Defaults)
+// All PCPConfig values must be explicitly provided by the user.
+// This follows the CALIBER philosophy: "NOTHING HARD-CODED. This is a FRAMEWORK, not a product."
 
 
 // ============================================================================
@@ -1596,6 +1581,7 @@ mod tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,
@@ -1934,6 +1920,7 @@ mod prop_tests {
             section_priorities: SectionPriorities {
                 user: 100,
                 system: 90,
+                persona: 85,
                 artifacts: 80,
                 notes: 70,
                 history: 60,
