@@ -2803,14 +2803,15 @@ mod prop_tests {
             arb_identifier(),
             arb_injection_mode(),
             1i32..100i32,
+            prop::option::of(arb_simple_filter_expr()),
         )
-            .prop_map(|(source, target, mode, priority)| InjectionDef {
+            .prop_map(|(source, target, mode, priority, filter)| InjectionDef {
                 source,
                 target,
                 mode,
                 priority,
                 max_tokens: None,
-                filter: None,
+                filter,
             })
     }
 

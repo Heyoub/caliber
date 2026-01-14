@@ -1051,7 +1051,8 @@ mod tests {
             // Verify all entity types can be generated
             match et {
                 EntityType::Trajectory | EntityType::Scope | EntityType::Artifact |
-                EntityType::Note | EntityType::Agent => {}
+                EntityType::Note | EntityType::Agent | EntityType::Turn |
+                EntityType::Lock | EntityType::Message => {}
             }
         }
     }

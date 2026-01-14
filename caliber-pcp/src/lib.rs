@@ -616,6 +616,22 @@ pub struct GroundingConfig {
     pub conflict_resolution: ConflictResolution,
 }
 
+/// Configuration for artifact linting.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LintingConfig {
+    /// Maximum artifact content size in bytes
+    pub max_artifact_size: usize,
+    /// Minimum confidence threshold for artifacts (0.0-1.0)
+    pub min_confidence_threshold: f32,
+}
+
+/// Configuration for staleness detection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StalenessConfig {
+    /// Number of hours after which a scope is considered stale
+    pub stale_hours: i64,
+}
+
 /// Master PCP configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PCPConfig {
@@ -629,6 +645,10 @@ pub struct PCPConfig {
     pub anti_sprawl: AntiSprawlConfig,
     /// Grounding configuration
     pub grounding: GroundingConfig,
+    /// Linting configuration
+    pub linting: LintingConfig,
+    /// Staleness configuration
+    pub staleness: StalenessConfig,
 }
 
 impl PCPConfig {
@@ -691,6 +711,30 @@ impl PCPConfig {
             return Err(CaliberError::Validation(ValidationError::InvalidValue {
                 field: "grounding.contradiction_threshold".to_string(),
                 reason: "must be between 0.0 and 1.0".to_string(),
+            }));
+        }
+
+        // Validate linting config
+        if self.linting.max_artifact_size == 0 {
+            return Err(CaliberError::Validation(ValidationError::InvalidValue {
+                field: "linting.max_artifact_size".to_string(),
+                reason: "must be positive".to_string(),
+            }));
+        }
+        if self.linting.min_confidence_threshold < 0.0
+            || self.linting.min_confidence_threshold > 1.0
+        {
+            return Err(CaliberError::Validation(ValidationError::InvalidValue {
+                field: "linting.min_confidence_threshold".to_string(),
+                reason: "must be between 0.0 and 1.0".to_string(),
+            }));
+        }
+
+        // Validate staleness config
+        if self.staleness.stale_hours <= 0 {
+            return Err(CaliberError::Validation(ValidationError::InvalidValue {
+                field: "staleness.stale_hours".to_string(),
+                reason: "must be positive".to_string(),
             }));
         }
 
@@ -1029,17 +1073,16 @@ impl PCPRuntime {
         let now = Utc::now();
         let age = now.signed_duration_since(scope.created_at);
 
-        // Convert stale threshold to chrono Duration for comparison
-        // Note: We use a simple check here - in production you'd want more sophisticated staleness detection
-        let stale_hours = 24 * 30; // Default 30 days if not configured differently
-        if age.num_hours() > stale_hours && scope.is_active {
+        // Use configured staleness threshold
+        if age.num_hours() > self.config.staleness.stale_hours && scope.is_active {
             result.add_issue(ValidationIssue {
                 severity: Severity::Warning,
                 issue_type: IssueType::StaleData,
                 message: format!(
-                    "Scope {} is {} hours old and still active",
+                    "Scope {} is {} hours old and still active (threshold: {} hours)",
                     scope.scope_id,
-                    age.num_hours()
+                    age.num_hours(),
+                    self.config.staleness.stale_hours
                 ),
                 entity_id: Some(scope.scope_id),
             });
@@ -1269,11 +1312,8 @@ impl PCPRuntime {
 // ARTIFACT LINTING (Task 8.9)
 // ============================================================================
 
-/// Maximum artifact content size in bytes (default 1MB).
-const MAX_ARTIFACT_SIZE: usize = 1024 * 1024;
-
-/// Minimum confidence threshold for artifacts.
-const MIN_CONFIDENCE_THRESHOLD: f32 = 0.3;
+// NOTE: MAX_ARTIFACT_SIZE and MIN_CONFIDENCE_THRESHOLD removed per REQ-6.
+// These values must come from PCPConfig - no hard-coded defaults.
 
 impl PCPRuntime {
     /// Lint an artifact for quality issues.
@@ -1309,13 +1349,14 @@ impl PCPRuntime {
 
     /// Check if artifact content is too large.
     fn check_artifact_size(&self, result: &mut LintResult, artifact: &Artifact) {
-        if artifact.content.len() > MAX_ARTIFACT_SIZE {
+        let max_size = self.config.linting.max_artifact_size;
+        if artifact.content.len() > max_size {
             result.add_issue(LintIssue {
                 issue_type: LintIssueType::TooLarge,
                 message: format!(
                     "Artifact content size ({} bytes) exceeds maximum ({} bytes)",
                     artifact.content.len(),
-                    MAX_ARTIFACT_SIZE
+                    max_size
                 ),
                 artifact_id: artifact.artifact_id,
             });
@@ -1363,13 +1404,14 @@ impl PCPRuntime {
 
     /// Check artifact confidence score.
     fn check_artifact_confidence(&self, result: &mut LintResult, artifact: &Artifact) {
+        let min_threshold = self.config.linting.min_confidence_threshold;
         if let Some(confidence) = artifact.provenance.confidence {
-            if confidence < MIN_CONFIDENCE_THRESHOLD {
+            if confidence < min_threshold {
                 result.add_issue(LintIssue {
                     issue_type: LintIssueType::LowConfidence,
                     message: format!(
                         "Artifact confidence ({:.2}) is below threshold ({:.2})",
-                        confidence, MIN_CONFIDENCE_THRESHOLD
+                        confidence, min_threshold
                     ),
                     artifact_id: artifact.artifact_id,
                 });
@@ -1607,7 +1649,38 @@ mod tests {
     }
 
     fn make_test_pcp_config() -> PCPConfig {
-        PCPConfig::default()
+        PCPConfig {
+            context_dag: ContextDagConfig {
+                max_depth: 10,
+                prune_strategy: PruneStrategy::OldestFirst,
+            },
+            recovery: RecoveryConfig {
+                enabled: true,
+                frequency: RecoveryFrequency::OnScopeClose,
+                max_checkpoints: 5,
+            },
+            dosage: DosageConfig {
+                max_tokens_per_scope: 8000,
+                max_artifacts_per_scope: 100,
+                max_notes_per_trajectory: 500,
+            },
+            anti_sprawl: AntiSprawlConfig {
+                max_trajectory_depth: 5,
+                max_concurrent_scopes: 10,
+            },
+            grounding: GroundingConfig {
+                require_artifact_backing: false,
+                contradiction_threshold: 0.85,
+                conflict_resolution: ConflictResolution::LastWriteWins,
+            },
+            linting: LintingConfig {
+                max_artifact_size: 1024 * 1024, // 1MB
+                min_confidence_threshold: 0.3,
+            },
+            staleness: StalenessConfig {
+                stale_hours: 24 * 30, // 30 days
+            },
+        }
     }
 
     fn make_test_scope() -> Scope {
@@ -1774,21 +1847,21 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_pcp_config_default() {
-        let config = PCPConfig::default();
+    fn test_pcp_config_valid() {
+        let config = make_test_pcp_config();
         assert!(config.validate().is_ok());
     }
 
     #[test]
     fn test_pcp_config_invalid_max_depth() {
-        let mut config = PCPConfig::default();
+        let mut config = make_test_pcp_config();
         config.context_dag.max_depth = 0;
         assert!(config.validate().is_err());
     }
 
     #[test]
     fn test_pcp_config_invalid_threshold() {
-        let mut config = PCPConfig::default();
+        let mut config = make_test_pcp_config();
         config.grounding.contradiction_threshold = 1.5;
         assert!(config.validate().is_err());
     }

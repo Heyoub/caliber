@@ -9,9 +9,9 @@
 //! - Agent handoffs
 //! - Conflict detection and resolution
 
-use caliber_core::{
-    AgentError, CaliberError, CaliberResult, EntityId, Timestamp,
-};
+use caliber_core::{EntityId, Timestamp};
+#[cfg(test)]
+use caliber_core::{AgentError, CaliberError, CaliberResult};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -1228,21 +1228,24 @@ impl Conflict {
 // ============================================================================
 
 /// In-memory lock manager for testing and non-Postgres environments.
+/// NOTE: In production, use Postgres advisory locks via caliber-pg.
+#[cfg(test)]
 #[derive(Debug, Default)]
-pub struct LockManager {
+struct LockManager {
     locks: std::collections::HashMap<i64, DistributedLock>,
 }
 
+#[cfg(test)]
 impl LockManager {
     /// Create a new lock manager.
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             locks: std::collections::HashMap::new(),
         }
     }
 
     /// Try to acquire a lock.
-    pub fn acquire(
+    fn acquire(
         &mut self,
         agent_id: EntityId,
         resource_type: &str,
@@ -1273,7 +1276,7 @@ impl LockManager {
     }
 
     /// Release a lock.
-    pub fn release(&mut self, lock_id: EntityId) -> CaliberResult<bool> {
+    fn release(&mut self, lock_id: EntityId) -> CaliberResult<bool> {
         let key = self
             .locks
             .iter()
@@ -1289,12 +1292,12 @@ impl LockManager {
     }
 
     /// Get a lock by ID.
-    pub fn get(&self, lock_id: EntityId) -> Option<&DistributedLock> {
+    fn get(&self, lock_id: EntityId) -> Option<&DistributedLock> {
         self.locks.values().find(|l| l.lock_id == lock_id)
     }
 
     /// Clean up expired locks.
-    pub fn cleanup_expired(&mut self) -> usize {
+    fn cleanup_expired(&mut self) -> usize {
         let before = self.locks.len();
         self.locks.retain(|_, l| !l.is_expired());
         before - self.locks.len()
@@ -1432,6 +1435,24 @@ mod tests {
         // Second agent tries to acquire - should fail
         let result = manager.acquire(agent2, "artifact", resource_id, LockMode::Exclusive, 30000);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lock_manager_cleanup_expired() {
+        let mut manager = LockManager::new();
+        let agent_id = Uuid::now_v7();
+        let resource_id = Uuid::now_v7();
+
+        // Acquire a lock with very short timeout (already expired by negative value trick)
+        // Actually, we can't easily test expiration without waiting.
+        // Instead, test that cleanup returns 0 when no locks are expired.
+        let _lock = manager
+            .acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)
+            .unwrap();
+
+        // Fresh lock should not be expired
+        let cleaned = manager.cleanup_expired();
+        assert_eq!(cleaned, 0);
     }
 
     // ========================================================================

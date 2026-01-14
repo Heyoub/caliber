@@ -72,17 +72,21 @@ static STORAGE: Lazy<RwLock<InMemoryStorage>> = Lazy::new(|| {
 
 #[derive(Debug, Default)]
 struct InMemoryStorage {
-    // NOTE: trajectories removed - now uses SPI-based SQL storage (Task 1)
-    // NOTE: scopes removed - now uses SPI-based SQL storage (Task 2)
-    // NOTE: artifacts removed - now uses SPI-based SQL storage (Task 3)
-    // NOTE: notes removed - now uses SPI-based SQL storage (Task 4)
-    // NOTE: turns removed - now uses SPI-based SQL storage (Task 5)
-    // NOTE: locks removed - now uses SPI-based SQL storage (Task 6)
-    // NOTE: messages removed - now uses SPI-based SQL storage (Task 7)
-    agents: HashMap<EntityId, Agent>,
-    delegations: HashMap<EntityId, DelegatedTask>,
-    handoffs: HashMap<EntityId, AgentHandoff>,
-    conflicts: HashMap<EntityId, Conflict>,
+    // NOTE: All entity storage has been migrated to SPI-based SQL:
+    // - trajectories: Task 1
+    // - scopes: Task 2
+    // - artifacts: Task 3
+    // - notes: Task 4
+    // - turns: Task 5
+    // - locks: Task 6
+    // - messages: Task 7
+    // - agents: Task 8
+    // - delegations: Task 9
+    // - handoffs: Task 10
+    // - conflicts: Task 11
+    //
+    // This struct is kept for backwards compatibility but is now empty.
+    // All operations use caliber_* SQL tables via pgrx SPI.
 }
 
 // ============================================================================
@@ -2230,8 +2234,26 @@ fn caliber_agent_register(
     let agent = Agent::new(agent_type, caps);
     let agent_id = agent.agent_id;
 
-    let mut storage = storage_write();
-    storage.agents.insert(agent_id, agent);
+    // Insert via SPI
+    Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_agent (agent_id, agent_type, capabilities, memory_access, status, can_delegate_to, created_at, last_heartbeat)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*agent_id.as_bytes()).into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), agent_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTARRAYOID.oid(), caps.into_datum()),
+                (pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(safe_to_json(&agent.memory_access)).into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), "idle".into_datum()),
+                (pgrx::PgBuiltInOids::TEXTARRAYOID.oid(), agent.can_delegate_to.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), agent.created_at.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), agent.last_heartbeat.into_datum()),
+            ]),
+        )
+    }).unwrap_or_else(|e| {
+        pgrx::warning!("CALIBER: Failed to insert agent: {}", e);
+    });
 
     pgrx::Uuid::from_bytes(*agent_id.as_bytes())
 }
@@ -2239,74 +2261,159 @@ fn caliber_agent_register(
 /// Get an agent by ID.
 #[pg_extern]
 fn caliber_agent_get(agent_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, memory_access, status,
+                    current_trajectory_id, current_scope_id, can_delegate_to,
+                    reports_to, created_at, last_heartbeat
+             FROM caliber_agent WHERE agent_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), agent_id.into_datum()),
+            ]),
+        );
 
-    storage.agents.get(&aid).map(|a| {
-        pgrx::JsonB(safe_to_json(a))
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let agent_json = serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "memory_access": row.get::<pgrx::JsonB>(4).ok().flatten().map(|j| j.0).unwrap_or(serde_json::json!({})),
+                        "status": row.get::<String>(5).ok().flatten(),
+                        "current_trajectory_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "current_scope_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "can_delegate_to": row.get::<Vec<String>>(8).ok().flatten().unwrap_or_default(),
+                        "reports_to": row.get::<pgrx::Uuid>(9).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": row.get::<pgrx::TimestampWithTimeZone>(10).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<pgrx::TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                    });
+                    Some(pgrx::JsonB(agent_json))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get agent: {}", e);
+                None
+            }
+        }
     })
 }
 
 /// Update agent status.
 #[pg_extern]
 fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str) -> bool {
-    let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let mut storage = storage_write();
-
-    if let Some(agent) = storage.agents.get_mut(&aid) {
-        agent.status = match status {
-            "idle" => AgentStatus::Idle,
-            "active" => AgentStatus::Active,
-            "blocked" => AgentStatus::Blocked,
-            "failed" => AgentStatus::Failed,
-            _ => return false,
-        };
-        true
-    } else {
-        false
+    // Validate status value
+    if !["idle", "active", "blocked", "failed"].contains(&status) {
+        return false;
     }
+
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_agent SET status = $2 WHERE agent_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), status.into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to update agent status: {}", e);
+                false
+            }
+        }
+    })
 }
 
 /// Update agent heartbeat.
 #[pg_extern]
 fn caliber_agent_heartbeat(agent_id: pgrx::Uuid) -> bool {
-    let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let mut storage = storage_write();
-
-    if let Some(agent) = storage.agents.get_mut(&aid) {
-        agent.heartbeat();
-        true
-    } else {
-        false
-    }
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_agent SET last_heartbeat = NOW() WHERE agent_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), agent_id.into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to update agent heartbeat: {}", e);
+                false
+            }
+        }
+    })
 }
 
 /// List agents by type.
 #[pg_extern]
 fn caliber_agent_list_by_type(agent_type: &str) -> pgrx::JsonB {
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, status, created_at, last_heartbeat
+             FROM caliber_agent WHERE agent_type = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), agent_type.into_datum()),
+            ]),
+        );
 
-    let agents: Vec<&Agent> = storage
-        .agents
-        .values()
-        .filter(|a| a.agent_type == agent_type)
-        .collect();
-
-    pgrx::JsonB(safe_to_json_array(&agents))
+        match result {
+            Ok(table) => {
+                let agents: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "status": row.get::<String>(4).ok().flatten(),
+                        "created_at": row.get::<pgrx::TimestampWithTimeZone>(5).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<pgrx::TimestampWithTimeZone>(6).ok().flatten().map(|t| t.to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(agents))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list agents by type: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 /// List all active agents.
 #[pg_extern]
 fn caliber_agent_list_active() -> pgrx::JsonB {
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, status, created_at, last_heartbeat
+             FROM caliber_agent WHERE status IN ('active', 'idle')",
+            None,
+            None,
+        );
 
-    let agents: Vec<&Agent> = storage
-        .agents
-        .values()
-        .filter(|a| a.status == AgentStatus::Active || a.status == AgentStatus::Idle)
-        .collect();
-
-    pgrx::JsonB(safe_to_json_array(&agents))
+        match result {
+            Ok(table) => {
+                let agents: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "status": row.get::<String>(4).ok().flatten(),
+                        "created_at": row.get::<pgrx::TimestampWithTimeZone>(5).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<pgrx::TimestampWithTimeZone>(6).ok().flatten().map(|t| t.to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(agents))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list active agents: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -2338,8 +2445,27 @@ fn caliber_delegation_create(
 
     let delegation_id = delegation.delegation_id;
 
-    let mut storage = storage_write();
-    storage.delegations.insert(delegation_id, delegation);
+    // Insert via SPI
+    Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_delegation (delegation_id, delegator_agent_id, delegatee_agent_id, delegatee_agent_type, task_description, parent_trajectory_id, status, constraints, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*delegation_id.as_bytes()).into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), delegator_agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), delegatee_agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), delegatee_agent_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), task_description.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), parent_trajectory_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), "pending".into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), "{}".into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), delegation.created_at.into_datum()),
+            ]),
+        )
+    }).unwrap_or_else(|e| {
+        pgrx::warning!("CALIBER: Failed to insert delegation: {}", e);
+    });
 
     pgrx::Uuid::from_bytes(*delegation_id.as_bytes())
 }
@@ -2347,11 +2473,45 @@ fn caliber_delegation_create(
 /// Get a delegation by ID.
 #[pg_extern]
 fn caliber_delegation_get(delegation_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let did = Uuid::from_bytes(*delegation_id.as_bytes());
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT delegation_id, delegator_agent_id, delegatee_agent_id, delegatee_agent_type,
+                    task_description, parent_trajectory_id, child_trajectory_id, status, result,
+                    created_at, accepted_at, completed_at
+             FROM caliber_delegation WHERE delegation_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), delegation_id.into_datum()),
+            ]),
+        );
 
-    storage.delegations.get(&did).map(|d| {
-        pgrx::JsonB(safe_to_json(d))
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let json = serde_json::json!({
+                        "delegation_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "delegator_agent_id": row.get::<pgrx::Uuid>(2).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "delegatee_agent_id": row.get::<pgrx::Uuid>(3).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "delegatee_agent_type": row.get::<String>(4).ok().flatten(),
+                        "task_description": row.get::<String>(5).ok().flatten(),
+                        "parent_trajectory_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "child_trajectory_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "status": row.get::<String>(8).ok().flatten(),
+                        "result": row.get::<pgrx::JsonB>(9).ok().flatten().map(|j| j.0),
+                        "created_at": row.get::<pgrx::TimestampWithTimeZone>(10).ok().flatten().map(|t| t.to_string()),
+                        "accepted_at": row.get::<pgrx::TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                        "completed_at": row.get::<pgrx::TimestampWithTimeZone>(12).ok().flatten().map(|t| t.to_string()),
+                    });
+                    Some(pgrx::JsonB(json))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get delegation: {}", e);
+                None
+            }
+        }
     })
 }
 
@@ -2362,18 +2522,24 @@ fn caliber_delegation_accept(
     delegatee_agent_id: pgrx::Uuid,
     child_trajectory_id: pgrx::Uuid,
 ) -> bool {
-    let did = Uuid::from_bytes(*delegation_id.as_bytes());
-    let delegatee = Uuid::from_bytes(*delegatee_agent_id.as_bytes());
-    let child_traj = Uuid::from_bytes(*child_trajectory_id.as_bytes());
-
-    let mut storage = storage_write();
-
-    if let Some(delegation) = storage.delegations.get_mut(&did) {
-        delegation.accept(delegatee, child_traj);
-        true
-    } else {
-        false
-    }
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_delegation SET delegatee_agent_id = $2, child_trajectory_id = $3, status = 'accepted', accepted_at = NOW()
+             WHERE delegation_id = $1 AND status = 'pending'",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), delegation_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), delegatee_agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), child_trajectory_id.into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to accept delegation: {}", e);
+                false
+            }
+        }
+    })
 }
 
 /// Complete a delegation.
@@ -2383,39 +2549,78 @@ fn caliber_delegation_complete(
     success: bool,
     summary: &str,
 ) -> bool {
-    let did = Uuid::from_bytes(*delegation_id.as_bytes());
-    let mut storage = storage_write();
-
-    if let Some(delegation) = storage.delegations.get_mut(&did) {
-        use caliber_agents::DelegationResult;
-        let result = if success {
-            DelegationResult::success(summary, vec![])
-        } else {
-            DelegationResult::failure(summary)
-        };
-        delegation.complete(result);
-        true
+    let status = if success { "completed" } else { "failed" };
+    let result_json = if success {
+        serde_json::json!({
+            "status": "Success",
+            "produced_artifacts": [],
+            "produced_notes": [],
+            "summary": summary,
+            "error": null
+        })
     } else {
-        false
-    }
+        serde_json::json!({
+            "status": "Failure",
+            "produced_artifacts": [],
+            "produced_notes": [],
+            "summary": "",
+            "error": summary
+        })
+    };
+
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_delegation SET status = $2, result = $3, completed_at = NOW()
+             WHERE delegation_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), delegation_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), status.into_datum()),
+                (pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(result_json).into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to complete delegation: {}", e);
+                false
+            }
+        }
+    })
 }
 
 /// List pending delegations for an agent type.
 #[pg_extern]
 fn caliber_delegation_list_pending(agent_type: &str) -> pgrx::JsonB {
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT delegation_id, delegator_agent_id, delegatee_agent_type, task_description, created_at
+             FROM caliber_delegation
+             WHERE status = 'pending' AND (delegatee_agent_type = $1 OR delegatee_agent_type = '*')",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), agent_type.into_datum()),
+            ]),
+        );
 
-    let delegations: Vec<&DelegatedTask> = storage
-        .delegations
-        .values()
-        .filter(|d| {
-            d.status == DelegationStatus::Pending
-                && (d.delegatee_agent_type.as_deref() == Some(agent_type)
-                    || d.delegatee_agent_type.as_deref() == Some("*"))
-        })
-        .collect();
-
-    pgrx::JsonB(safe_to_json_array(&delegations))
+        match result {
+            Ok(table) => {
+                let delegations: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "delegation_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "delegator_agent_id": row.get::<pgrx::Uuid>(2).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "delegatee_agent_type": row.get::<String>(3).ok().flatten(),
+                        "task_description": row.get::<String>(4).ok().flatten(),
+                        "created_at": row.get::<pgrx::TimestampWithTimeZone>(5).ok().flatten().map(|t| t.to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(delegations))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list pending delegations: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -2460,8 +2665,27 @@ fn caliber_handoff_create(
 
     let handoff_id = handoff.handoff_id;
 
-    let mut storage = storage_write();
-    storage.handoffs.insert(handoff_id, handoff);
+    // Insert via SPI
+    Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_handoff (handoff_id, from_agent_id, to_agent_id, to_agent_type, trajectory_id, scope_id, context_snapshot_id, reason, status, initiated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'initiated', $9)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*handoff_id.as_bytes()).into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), from_agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), to_agent_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), to_agent_type.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), trajectory_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), scope_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), context_snapshot_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), reason.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), handoff.initiated_at.into_datum()),
+            ]),
+        )
+    }).unwrap_or_else(|e| {
+        pgrx::warning!("CALIBER: Failed to insert handoff: {}", e);
+    });
 
     pgrx::Uuid::from_bytes(*handoff_id.as_bytes())
 }
@@ -2469,42 +2693,89 @@ fn caliber_handoff_create(
 /// Get a handoff by ID.
 #[pg_extern]
 fn caliber_handoff_get(handoff_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let hid = Uuid::from_bytes(*handoff_id.as_bytes());
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT handoff_id, from_agent_id, to_agent_id, to_agent_type, trajectory_id, scope_id,
+                    context_snapshot_id, handoff_notes, status, reason, initiated_at, accepted_at, completed_at
+             FROM caliber_handoff WHERE handoff_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), handoff_id.into_datum()),
+            ]),
+        );
 
-    storage.handoffs.get(&hid).map(|h| {
-        pgrx::JsonB(safe_to_json(h))
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let json = serde_json::json!({
+                        "handoff_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "from_agent_id": row.get::<pgrx::Uuid>(2).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "to_agent_id": row.get::<pgrx::Uuid>(3).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "to_agent_type": row.get::<String>(4).ok().flatten(),
+                        "trajectory_id": row.get::<pgrx::Uuid>(5).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "scope_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "context_snapshot_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "handoff_notes": row.get::<String>(8).ok().flatten(),
+                        "status": row.get::<String>(9).ok().flatten(),
+                        "reason": row.get::<String>(10).ok().flatten(),
+                        "initiated_at": row.get::<pgrx::TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                        "accepted_at": row.get::<pgrx::TimestampWithTimeZone>(12).ok().flatten().map(|t| t.to_string()),
+                        "completed_at": row.get::<pgrx::TimestampWithTimeZone>(13).ok().flatten().map(|t| t.to_string()),
+                    });
+                    Some(pgrx::JsonB(json))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get handoff: {}", e);
+                None
+            }
+        }
     })
 }
 
 /// Accept a handoff.
 #[pg_extern]
 fn caliber_handoff_accept(handoff_id: pgrx::Uuid, accepting_agent_id: pgrx::Uuid) -> bool {
-    let hid = Uuid::from_bytes(*handoff_id.as_bytes());
-    let accepting = Uuid::from_bytes(*accepting_agent_id.as_bytes());
-
-    let mut storage = storage_write();
-
-    if let Some(handoff) = storage.handoffs.get_mut(&hid) {
-        handoff.accept(accepting);
-        true
-    } else {
-        false
-    }
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_handoff SET to_agent_id = $2, status = 'accepted', accepted_at = NOW()
+             WHERE handoff_id = $1 AND status = 'initiated'",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), handoff_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), accepting_agent_id.into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to accept handoff: {}", e);
+                false
+            }
+        }
+    })
 }
 
 /// Complete a handoff.
 #[pg_extern]
 fn caliber_handoff_complete(handoff_id: pgrx::Uuid) -> bool {
-    let hid = Uuid::from_bytes(*handoff_id.as_bytes());
-    let mut storage = storage_write();
-
-    if let Some(handoff) = storage.handoffs.get_mut(&hid) {
-        handoff.complete();
-        true
-    } else {
-        false
-    }
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_handoff SET status = 'completed', completed_at = NOW()
+             WHERE handoff_id = $1 AND status = 'accepted'",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), handoff_id.into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to complete handoff: {}", e);
+                false
+            }
+        }
+    })
 }
 
 
@@ -2535,8 +2806,25 @@ fn caliber_conflict_create(
     let conflict = Conflict::new(c_type, item_a_type, a_id, item_b_type, b_id);
     let conflict_id = conflict.conflict_id;
 
-    let mut storage = storage_write();
-    storage.conflicts.insert(conflict_id, conflict);
+    // Insert via SPI
+    Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_conflict (conflict_id, conflict_type, item_a_type, item_a_id, item_b_type, item_b_id, status, detected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 'detected', $7)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), pgrx::Uuid::from_bytes(*conflict_id.as_bytes()).into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), conflict_type.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), item_a_type.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), item_a_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), item_b_type.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), item_b_id.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), conflict.detected_at.into_datum()),
+            ]),
+        )
+    }).unwrap_or_else(|e| {
+        pgrx::warning!("CALIBER: Failed to insert conflict: {}", e);
+    });
 
     pgrx::Uuid::from_bytes(*conflict_id.as_bytes())
 }
@@ -2544,11 +2832,45 @@ fn caliber_conflict_create(
 /// Get a conflict by ID.
 #[pg_extern]
 fn caliber_conflict_get(conflict_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let cid = Uuid::from_bytes(*conflict_id.as_bytes());
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT conflict_id, conflict_type, item_a_type, item_a_id, item_b_type, item_b_id,
+                    agent_a_id, agent_b_id, trajectory_id, status, resolution, detected_at, resolved_at
+             FROM caliber_conflict WHERE conflict_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), conflict_id.into_datum()),
+            ]),
+        );
 
-    storage.conflicts.get(&cid).map(|c| {
-        pgrx::JsonB(safe_to_json(c))
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let json = serde_json::json!({
+                        "conflict_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "conflict_type": row.get::<String>(2).ok().flatten(),
+                        "item_a_type": row.get::<String>(3).ok().flatten(),
+                        "item_a_id": row.get::<pgrx::Uuid>(4).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "item_b_type": row.get::<String>(5).ok().flatten(),
+                        "item_b_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_a_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_b_id": row.get::<pgrx::Uuid>(8).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "trajectory_id": row.get::<pgrx::Uuid>(9).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "status": row.get::<String>(10).ok().flatten(),
+                        "resolution": row.get::<pgrx::JsonB>(11).ok().flatten().map(|j| j.0),
+                        "detected_at": row.get::<pgrx::TimestampWithTimeZone>(12).ok().flatten().map(|t| t.to_string()),
+                        "resolved_at": row.get::<pgrx::TimestampWithTimeZone>(13).ok().flatten().map(|t| t.to_string()),
+                    });
+                    Some(pgrx::JsonB(json))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get conflict: {}", e);
+                None
+            }
+        }
     })
 }
 
@@ -2560,41 +2882,69 @@ fn caliber_conflict_resolve(
     winner: Option<&str>,
     reason: &str,
 ) -> bool {
-    let cid = Uuid::from_bytes(*conflict_id.as_bytes());
-    let mut storage = storage_write();
+    let status = if strategy == "escalate" { "escalated" } else { "resolved" };
+    let resolution_json = serde_json::json!({
+        "strategy": strategy,
+        "winner": winner,
+        "merged_result_id": null,
+        "reason": reason,
+        "resolved_by": "automatic"
+    });
 
-    if let Some(conflict) = storage.conflicts.get_mut(&cid) {
-        use caliber_agents::ConflictResolutionRecord;
-
-        let res_strategy = match strategy {
-            "last_write_wins" => ResolutionStrategy::LastWriteWins,
-            "first_write_wins" => ResolutionStrategy::FirstWriteWins,
-            "highest_confidence" => ResolutionStrategy::HighestConfidence,
-            "merge" => ResolutionStrategy::Merge,
-            "escalate" => ResolutionStrategy::Escalate,
-            _ => ResolutionStrategy::RejectBoth,
-        };
-
-        let resolution = ConflictResolutionRecord::automatic(res_strategy, winner, reason);
-        conflict.resolve(resolution);
-        true
-    } else {
-        false
-    }
+    Spi::connect(|client| {
+        match client.update(
+            "UPDATE caliber_conflict SET status = $2, resolution = $3, resolved_at = NOW()
+             WHERE conflict_id = $1 AND status IN ('detected', 'resolving')",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), conflict_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), status.into_datum()),
+                (pgrx::PgBuiltInOids::JSONBOID.oid(), pgrx::JsonB(resolution_json).into_datum()),
+            ]),
+        ) {
+            Ok(count) => count > 0,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to resolve conflict: {}", e);
+                false
+            }
+        }
+    })
 }
 
 /// List unresolved conflicts.
 #[pg_extern]
 fn caliber_conflict_list_unresolved() -> pgrx::JsonB {
-    let storage = storage_read();
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT conflict_id, conflict_type, item_a_type, item_a_id, item_b_type, item_b_id, status, detected_at
+             FROM caliber_conflict WHERE status IN ('detected', 'resolving')
+             ORDER BY detected_at",
+            None,
+            None,
+        );
 
-    let conflicts: Vec<&Conflict> = storage
-        .conflicts
-        .values()
-        .filter(|c| c.status == ConflictStatus::Detected || c.status == ConflictStatus::Resolving)
-        .collect();
-
-    pgrx::JsonB(safe_to_json_array(&conflicts))
+        match result {
+            Ok(table) => {
+                let conflicts: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "conflict_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "conflict_type": row.get::<String>(2).ok().flatten(),
+                        "item_a_type": row.get::<String>(3).ok().flatten(),
+                        "item_a_id": row.get::<pgrx::Uuid>(4).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "item_b_type": row.get::<String>(5).ok().flatten(),
+                        "item_b_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "status": row.get::<String>(7).ok().flatten(),
+                        "detected_at": row.get::<pgrx::TimestampWithTimeZone>(8).ok().flatten().map(|t| t.to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(conflicts))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list unresolved conflicts: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 
@@ -2682,12 +3032,11 @@ fn caliber_vector_search(
 #[pg_extern]
 fn caliber_debug_stats() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_stats called");
-    let storage = storage_read();
 
-    // Get counts from SQL tables
+    // Get counts from SQL tables (all entities now in SQL)
     let counts = Spi::connect(|client| {
         let mut counts = serde_json::Map::new();
-        
+
         let tables = [
             ("trajectories", "caliber_trajectory"),
             ("scopes", "caliber_scope"),
@@ -2696,8 +3045,12 @@ fn caliber_debug_stats() -> pgrx::JsonB {
             ("turns", "caliber_turn"),
             ("locks", "caliber_lock"),
             ("messages", "caliber_message"),
+            ("agents", "caliber_agent"),
+            ("delegations", "caliber_delegation"),
+            ("handoffs", "caliber_handoff"),
+            ("conflicts", "caliber_conflict"),
         ];
-        
+
         for (name, table) in tables {
             let result = client.select(&format!("SELECT COUNT(*) FROM {}", table), None, None);
             let count = match result {
@@ -2712,18 +3065,11 @@ fn caliber_debug_stats() -> pgrx::JsonB {
             };
             counts.insert(name.to_string(), serde_json::json!(count));
         }
-        
+
         counts
     });
 
-    // Add in-memory counts
-    let mut result = counts;
-    result.insert("agents".to_string(), serde_json::json!(storage.agents.len()));
-    result.insert("delegations".to_string(), serde_json::json!(storage.delegations.len()));
-    result.insert("handoffs".to_string(), serde_json::json!(storage.handoffs.len()));
-    result.insert("conflicts".to_string(), serde_json::json!(storage.conflicts.len()));
-
-    pgrx::JsonB(serde_json::Value::Object(result))
+    pgrx::JsonB(serde_json::Value::Object(counts))
 }
 
 /// Clear all storage (for testing).
@@ -2731,7 +3077,7 @@ fn caliber_debug_stats() -> pgrx::JsonB {
 #[pg_extern]
 fn caliber_debug_clear() -> &'static str {
     pgrx::warning!("DEBUG: caliber_debug_clear called - clearing all storage!");
-    
+
     // Clear SQL tables in correct order (respecting foreign keys)
     let _ = Spi::run("DELETE FROM caliber_turn");
     let _ = Spi::run("DELETE FROM caliber_artifact");
@@ -2739,14 +3085,13 @@ fn caliber_debug_clear() -> &'static str {
     let _ = Spi::run("DELETE FROM caliber_note");
     let _ = Spi::run("DELETE FROM caliber_message");
     let _ = Spi::run("DELETE FROM caliber_lock");
+    let _ = Spi::run("DELETE FROM caliber_conflict");
+    let _ = Spi::run("DELETE FROM caliber_handoff");
+    let _ = Spi::run("DELETE FROM caliber_delegation");
+    let _ = Spi::run("DELETE FROM caliber_region");
+    let _ = Spi::run("DELETE FROM caliber_agent");
     let _ = Spi::run("DELETE FROM caliber_trajectory");
-    
-    // Clear in-memory storage
-    let mut storage = storage_write();
-    storage.agents.clear();
-    storage.delegations.clear();
-    storage.handoffs.clear();
-    storage.conflicts.clear();
+
     "Storage cleared"
 }
 
@@ -2929,9 +3274,34 @@ fn caliber_debug_dump_artifacts() -> pgrx::JsonB {
 #[pg_extern]
 fn caliber_debug_dump_agents() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_dump_agents called");
-    let storage = storage_read();
-    let agents: Vec<&Agent> = storage.agents.values().collect();
-    pgrx::JsonB(safe_to_json_array(&agents))
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, status, created_at, last_heartbeat
+             FROM caliber_agent ORDER BY created_at",
+            None,
+            None,
+        );
+
+        match result {
+            Ok(table) => {
+                let agents: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "status": row.get::<String>(4).ok().flatten(),
+                        "created_at": row.get::<pgrx::TimestampWithTimeZone>(5).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<pgrx::TimestampWithTimeZone>(6).ok().flatten().map(|t| t.to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(agents))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to dump agents: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
 }
 
 

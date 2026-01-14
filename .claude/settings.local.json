@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: wire up unused code and complete async LLM rewrite\n\nProduction hardening fixes:\n- caliber-llm: Complete async rewrite with ProviderAdapter, Echo/Ping\n  discovery, CircuitBreaker, EventListener, routing strategies\n- caliber-pg: Migrated all agent/delegation/handoff/conflict functions\n  from HashMap to real Postgres SQL via SPI\n- caliber-pcp: Added LintingConfig/StalenessConfig, removed hard-coded\n  constants \\(MAX_ARTIFACT_SIZE, MIN_CONFIDENCE_THRESHOLD, stale_hours\\)\n- caliber-agents: LockManager moved to #[cfg\\(test\\)] \\(test-only mock\\)\n- caliber-dsl: Wired up arb_simple_filter_expr\\(\\) in arb_injection_def\\(\\)\n- caliber-llm: health_cache_ttl now actually used in LeastLatency routing\n- caliber-test-utils: Added Turn, Lock, Message to EntityType match\n\n156 tests pass, 0 warnings.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}
