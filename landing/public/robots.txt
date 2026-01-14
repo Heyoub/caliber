@@ -1,5 +1,5 @@
 # CALIBER Landing Page - robots.txt
-# https://caliber.dev
+# https://caliber.run
 
 User-agent: *
 Allow: /
@@ -27,7 +27,7 @@ User-agent: Cohere-AI
 Allow: /
 
 # Sitemap
-Sitemap: https://caliber.dev/sitemap.xml
+Sitemap: https://caliber.run/sitemap.xml
 
 # LLMs.txt for AI context
-# See: https://caliber.dev/llms.txt
+# See: https://caliber.run/llms.txt

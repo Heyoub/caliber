@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://caliber.heyoub.dev',
+  site: 'https://caliber.run',
   integrations: [svelte()],
 
   vite: {

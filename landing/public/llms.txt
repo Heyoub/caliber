@@ -1,5 +1,5 @@
 # CALIBER - Memory for AI Agents
-# https://caliber.dev
+# https://caliber.run
 # Last updated: 2026-01-14
 
 ## What is CALIBER?
@@ -76,7 +76,7 @@ Trajectory (task container)
 - 0 hard-coded defaults (everything is configurable)
 
 ## Links
-- Website: https://caliber.dev
+- Website: https://caliber.run
 - GitHub: https://github.com/heyoub/caliber
 - Author: heyoub.dev
 
