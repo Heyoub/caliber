@@ -2929,9 +2929,9 @@ fn caliber_debug_dump_artifacts() -> pgrx::JsonB {
 #[pg_extern]
 fn caliber_debug_dump_agents() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_dump_agents called");
-    let storage = STORAGE.read().unwrap();
+    let storage = storage_read();
     let agents: Vec<&Agent> = storage.agents.values().collect();
-    pgrx::JsonB(serde_json::to_value(&agents).unwrap_or(serde_json::json!([])))
+    pgrx::JsonB(safe_to_json_array(&agents))
 }
 
 
@@ -2939,7 +2939,135 @@ fn caliber_debug_dump_agents() -> pgrx::JsonB {
 // ACCESS CONTROL (Task 12.3)
 // ============================================================================
 
+/// Access operation type for permission checking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AccessOperation {
+    Read,
+    Write,
+}
+
+/// Enforce access control for a memory region.
+/// Returns Ok(()) if access is allowed, Err with PermissionDenied otherwise.
+fn enforce_access(
+    agent_id: Uuid,
+    region_id: Uuid,
+    operation: AccessOperation,
+) -> CaliberResult<()> {
+    // Get region config from SQL table
+    let region_config = Spi::connect(|client| {
+        let result = client.select(
+            "SELECT region_id, region_type, owner_agent_id, team_id, readers, writers, require_lock
+             FROM caliber_region WHERE region_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), region_id.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let region_type: Option<String> = row.get(2).ok().flatten();
+                    let owner_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let _team_id: Option<pgrx::Uuid> = row.get(4).ok().flatten();
+                    let readers: Option<Vec<pgrx::Uuid>> = row.get(5).ok().flatten();
+                    let writers: Option<Vec<pgrx::Uuid>> = row.get(6).ok().flatten();
+                    let require_lock: Option<bool> = row.get(7).ok().flatten();
+
+                    Some((
+                        region_type.unwrap_or_default(),
+                        owner_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+                        readers.unwrap_or_default().iter().map(|u| Uuid::from_bytes(*u.as_bytes())).collect::<Vec<_>>(),
+                        writers.unwrap_or_default().iter().map(|u| Uuid::from_bytes(*u.as_bytes())).collect::<Vec<_>>(),
+                        require_lock.unwrap_or(false),
+                    ))
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    });
+
+    // If region not found, deny access
+    let (region_type, owner_agent_id, readers, writers, require_lock) = match region_config {
+        Some(config) => config,
+        None => {
+            return Err(CaliberError::Agent(AgentError::PermissionDenied {
+                agent_id,
+                action: format!("{:?}", operation).to_lowercase(),
+                resource: format!("region:{}", region_id),
+            }));
+        }
+    };
+
+    let owner_id = owner_agent_id.unwrap_or(Uuid::nil());
+
+    // Check permission based on region type and operation
+    let allowed = match operation {
+        AccessOperation::Read => {
+            match region_type.as_str() {
+                "private" => agent_id == owner_id,
+                "team" => agent_id == owner_id || readers.contains(&agent_id),
+                "public" | "collaborative" => true,
+                _ => false,
+            }
+        }
+        AccessOperation::Write => {
+            let base_allowed = match region_type.as_str() {
+                "private" => agent_id == owner_id,
+                "team" => agent_id == owner_id || writers.contains(&agent_id),
+                "public" => agent_id == owner_id,
+                "collaborative" => true,
+                _ => false,
+            };
+
+            // For collaborative regions, also check if lock is held when required
+            if base_allowed && require_lock && region_type == "collaborative" {
+                // Check if agent holds a lock on this region
+                let holds_lock = Spi::connect(|client| {
+                    let result = client.select(
+                        "SELECT 1 FROM caliber_lock 
+                         WHERE resource_type = 'region' AND resource_id = $1 
+                         AND holder_agent_id = $2 AND expires_at > NOW()",
+                        None,
+                        Some(vec![
+                            (pgrx::PgBuiltInOids::UUIDOID.oid(), region_id.into_datum()),
+                            (pgrx::PgBuiltInOids::UUIDOID.oid(), agent_id.into_datum()),
+                        ]),
+                    );
+                    match result {
+                        Ok(table) => table.first().is_some(),
+                        Err(_) => false,
+                    }
+                });
+
+                if !holds_lock {
+                    return Err(CaliberError::Agent(AgentError::LockAcquisitionFailed {
+                        resource: format!("region:{}", region_id),
+                        holder: Uuid::nil(), // Unknown holder
+                    }));
+                }
+                true
+            } else {
+                base_allowed
+            }
+        }
+    };
+
+    if allowed {
+        Ok(())
+    } else {
+        Err(CaliberError::Agent(AgentError::PermissionDenied {
+            agent_id,
+            action: format!("{:?}", operation).to_lowercase(),
+            resource: format!("region:{}", region_id),
+        }))
+    }
+}
+
 /// Check if an agent has access to a memory region.
+/// Returns true if access is allowed, false otherwise.
 #[pg_extern]
 fn caliber_check_access(
     agent_id: pgrx::Uuid,
@@ -2947,22 +3075,267 @@ fn caliber_check_access(
     access_type: &str,
 ) -> bool {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
-    let _rid = Uuid::from_bytes(*region_id.as_bytes());
+    let rid = Uuid::from_bytes(*region_id.as_bytes());
 
-    // For now, implement basic access control
-    // In production, this would check against MemoryRegionConfig
-    let storage = storage_read();
+    let operation = match access_type {
+        "read" => AccessOperation::Read,
+        "write" => AccessOperation::Write,
+        _ => return false,
+    };
 
-    // Check if agent exists
-    if !storage.agents.contains_key(&aid) {
-        return false;
+    match enforce_access(aid, rid, operation) {
+        Ok(()) => true,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Access denied - {:?}", e);
+            false
+        }
     }
+}
 
-    // Basic implementation: allow all access for registered agents
-    // In production, this would check MemoryRegionConfig permissions
-    match access_type {
-        "read" | "write" => true,
-        _ => false,
+/// Create a new memory region.
+#[pg_extern]
+fn caliber_region_create(
+    owner_agent_id: pgrx::Uuid,
+    region_type: &str,
+    team_id: Option<pgrx::Uuid>,
+    require_lock: bool,
+) -> Option<pgrx::Uuid> {
+    let owner = Uuid::from_bytes(*owner_agent_id.as_bytes());
+    let region_id = new_entity_id();
+    let now = Utc::now();
+
+    // Validate region_type
+    let valid_region_type = match region_type {
+        "private" | "team" | "public" | "collaborative" => region_type,
+        _ => {
+            pgrx::warning!("CALIBER: Invalid region_type '{}'. Valid values: private, team, public, collaborative", region_type);
+            return None;
+        }
+    };
+
+    // Determine default conflict resolution based on region type
+    let conflict_resolution = match valid_region_type {
+        "collaborative" => "escalate",
+        _ => "last_write_wins",
+    };
+
+    // Determine version tracking based on region type
+    let version_tracking = matches!(valid_region_type, "team" | "collaborative");
+
+    // For private regions, owner is the only reader/writer
+    let (readers, writers) = if valid_region_type == "private" {
+        (vec![pgrx::Uuid::from_bytes(*owner.as_bytes())], vec![pgrx::Uuid::from_bytes(*owner.as_bytes())])
+    } else if valid_region_type == "public" {
+        (Vec::new(), vec![pgrx::Uuid::from_bytes(*owner.as_bytes())])
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    let result = Spi::connect(|client| {
+        client.update(
+            "INSERT INTO caliber_region (region_id, region_type, owner_agent_id, team_id, 
+                                         readers, writers, require_lock, conflict_resolution, 
+                                         version_tracking, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), region_id.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), valid_region_type.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), owner.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), team_id.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDARRAYOID.oid(), readers.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDARRAYOID.oid(), writers.into_datum()),
+                (pgrx::PgBuiltInOids::BOOLOID.oid(), require_lock.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), conflict_resolution.into_datum()),
+                (pgrx::PgBuiltInOids::BOOLOID.oid(), version_tracking.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(_) => Some(pgrx::Uuid::from_bytes(*region_id.as_bytes())),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to create region: {}", e);
+            None
+        }
+    }
+}
+
+/// Get a memory region by ID.
+#[pg_extern]
+fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+    let rid = Uuid::from_bytes(*region_id.as_bytes());
+
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT region_id, region_type, owner_agent_id, team_id, readers, writers, 
+                    require_lock, conflict_resolution, version_tracking, created_at, updated_at
+             FROM caliber_region WHERE region_id = $1",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), rid.into_datum()),
+            ]),
+        );
+
+        match result {
+            Ok(table) => {
+                if let Some(row) = table.first() {
+                    let region_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                    let region_type: Option<String> = row.get(2).ok().flatten();
+                    let owner_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+                    let team_id: Option<pgrx::Uuid> = row.get(4).ok().flatten();
+                    let readers: Option<Vec<pgrx::Uuid>> = row.get(5).ok().flatten();
+                    let writers: Option<Vec<pgrx::Uuid>> = row.get(6).ok().flatten();
+                    let require_lock: Option<bool> = row.get(7).ok().flatten();
+                    let conflict_resolution: Option<String> = row.get(8).ok().flatten();
+                    let version_tracking: Option<bool> = row.get(9).ok().flatten();
+                    let created_at: Option<pgrx::TimestampWithTimeZone> = row.get(10).ok().flatten();
+                    let updated_at: Option<pgrx::TimestampWithTimeZone> = row.get(11).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "region_id": region_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "region_type": region_type,
+                        "owner_agent_id": owner_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "team_id": team_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "readers": readers.map(|ids| ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()),
+                        "writers": writers.map(|ids| ids.iter().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()),
+                        "require_lock": require_lock,
+                        "conflict_resolution": conflict_resolution,
+                        "version_tracking": version_tracking,
+                        "created_at": created_at.map(|t| format!("{:?}", t)),
+                        "updated_at": updated_at.map(|t| format!("{:?}", t)),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get region: {}", e);
+                None
+            }
+        }
+    })
+}
+
+/// Add a reader to a memory region.
+#[pg_extern]
+fn caliber_region_add_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+    let rid = Uuid::from_bytes(*region_id.as_bytes());
+    let aid = Uuid::from_bytes(*agent_id.as_bytes());
+    let now = Utc::now();
+
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_region 
+             SET readers = array_append(readers, $1), updated_at = $2 
+             WHERE region_id = $3 AND NOT ($1 = ANY(readers))",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), aid.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), rid.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(r) => r.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to add reader: {}", e);
+            false
+        }
+    }
+}
+
+/// Add a writer to a memory region.
+#[pg_extern]
+fn caliber_region_add_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+    let rid = Uuid::from_bytes(*region_id.as_bytes());
+    let aid = Uuid::from_bytes(*agent_id.as_bytes());
+    let now = Utc::now();
+
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_region 
+             SET writers = array_append(writers, $1), updated_at = $2 
+             WHERE region_id = $3 AND NOT ($1 = ANY(writers))",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), aid.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), rid.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(r) => r.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to add writer: {}", e);
+            false
+        }
+    }
+}
+
+/// Remove a reader from a memory region.
+#[pg_extern]
+fn caliber_region_remove_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+    let rid = Uuid::from_bytes(*region_id.as_bytes());
+    let aid = Uuid::from_bytes(*agent_id.as_bytes());
+    let now = Utc::now();
+
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_region 
+             SET readers = array_remove(readers, $1), updated_at = $2 
+             WHERE region_id = $3",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), aid.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), rid.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(r) => r.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to remove reader: {}", e);
+            false
+        }
+    }
+}
+
+/// Remove a writer from a memory region.
+#[pg_extern]
+fn caliber_region_remove_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+    let rid = Uuid::from_bytes(*region_id.as_bytes());
+    let aid = Uuid::from_bytes(*agent_id.as_bytes());
+    let now = Utc::now();
+
+    let result = Spi::connect(|client| {
+        client.update(
+            "UPDATE caliber_region 
+             SET writers = array_remove(writers, $1), updated_at = $2 
+             WHERE region_id = $3",
+            None,
+            Some(vec![
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), aid.into_datum()),
+                (pgrx::PgBuiltInOids::TIMESTAMPTZOID.oid(), now.into_datum()),
+                (pgrx::PgBuiltInOids::UUIDOID.oid(), rid.into_datum()),
+            ]),
+        )
+    });
+
+    match result {
+        Ok(r) => r.rows_affected() > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to remove writer: {}", e);
+            false
+        }
     }
 }
 

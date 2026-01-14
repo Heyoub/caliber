@@ -198,6 +198,21 @@ CREATE TABLE IF NOT EXISTS caliber_handoff (
     reason TEXT NOT NULL
 );
 
+-- Region: Memory region access control
+CREATE TABLE IF NOT EXISTS caliber_region (
+    region_id UUID PRIMARY KEY,
+    region_type TEXT NOT NULL CHECK (region_type IN ('private', 'team', 'public', 'collaborative')),
+    owner_agent_id UUID NOT NULL REFERENCES caliber_agent(agent_id),
+    team_id UUID,
+    readers UUID[] NOT NULL DEFAULT '{}',
+    writers UUID[] NOT NULL DEFAULT '{}',
+    require_lock BOOLEAN NOT NULL DEFAULT FALSE,
+    conflict_resolution TEXT NOT NULL DEFAULT 'last_write_wins' CHECK (conflict_resolution IN ('last_write_wins', 'highest_confidence', 'escalate')),
+    version_tracking BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 -- ============================================================================
 -- INDEXES
@@ -265,6 +280,13 @@ CREATE INDEX IF NOT EXISTS idx_conflict_items ON caliber_conflict(item_a_id, ite
 CREATE INDEX IF NOT EXISTS idx_handoff_from ON caliber_handoff(from_agent_id);
 CREATE INDEX IF NOT EXISTS idx_handoff_to ON caliber_handoff(to_agent_id) WHERE to_agent_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_handoff_status ON caliber_handoff(status);
+
+-- Region indexes
+CREATE INDEX IF NOT EXISTS idx_region_owner ON caliber_region(owner_agent_id);
+CREATE INDEX IF NOT EXISTS idx_region_type ON caliber_region(region_type);
+CREATE INDEX IF NOT EXISTS idx_region_team ON caliber_region(team_id) WHERE team_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_region_readers ON caliber_region USING gin(readers);
+CREATE INDEX IF NOT EXISTS idx_region_writers ON caliber_region USING gin(writers);
 
 
 -- ============================================================================
