@@ -1,0 +1,25 @@
+[package]
+name = "caliber-test-utils"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Test utilities, generators, and fixtures for CALIBER"
+
+[dependencies]
+# Internal crates
+caliber-core = { workspace = true }
+caliber-storage = { workspace = true }
+caliber-llm = { workspace = true }
+caliber-agents = { workspace = true }
+caliber-context = { workspace = true }
+caliber-pcp = { workspace = true }
+caliber-dsl = { workspace = true }
+
+# Core dependencies
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Testing
+proptest = { workspace = true }

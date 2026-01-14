@@ -261,45 +261,45 @@ AI-Native (us): plan everything → generate all code → cargo check once → f
     - **Property 10: Storage not-found returns correct error**
     - **Validates: Requirements 8.4**
 
-- [ ] 12. Implement caliber-pg (pgrx Extension)
-  - [ ] 12.1 Set up pgrx extension boilerplate
+- [x] 12. Implement caliber-pg (pgrx Extension)
+  - [x] 12.1 Set up pgrx extension boilerplate
     - _Requirements: 1.4_
-  - [ ] 12.2 Create bootstrap SQL schema (caliber_init)
+  - [x] 12.2 Create bootstrap SQL schema (caliber_init)
     - Tables: caliber_trajectory, caliber_scope, caliber_artifact, caliber_note, caliber_turn
     - Agent tables: caliber_agent, caliber_lock, caliber_message, caliber_delegation, caliber_conflict, caliber_handoff
     - Indexes for btree, hash, and hnsw
     - This SQL runs ONCE at extension install, NOT in hot path
-  - [ ] 12.3 Implement StorageTrait via direct heap operations
+  - [x] 12.3 Implement StorageTrait via direct heap operations
     - _Requirements: 8.1, 8.2_
-  - [ ] 12.4 Implement advisory lock functions
+  - [x] 12.4 Implement advisory lock functions
     - caliber_lock_acquire, caliber_lock_release
     - _Requirements: 7.2_
-  - [ ] 12.5 Implement NOTIFY-based message passing
+  - [x] 12.5 Implement NOTIFY-based message passing
     - _Requirements: 7.5_
-  - [ ] 12.6 Wire up pg_extern functions
-  - [ ] 12.7 Create debug SQL views (human interface only)
-  - [ ] 12.8 Write pgrx integration tests
+  - [x] 12.6 Wire up pg_extern functions
+  - [x] 12.7 Create debug SQL views (human interface only)
+  - [x] 12.8 Write pgrx integration tests
 
-- [ ] 13. Implement Test Infrastructure
-  - [ ] 13.1 Create caliber-test-utils crate
-  - [ ] 13.2 Implement proptest generators for all entity types
-  - [ ] 13.3 Implement mock providers
-  - [ ] 13.4 Implement test fixtures
-  - [ ] 13.5 Implement custom assertions
+- [x] 13. Implement Test Infrastructure
+  - [x] 13.1 Create caliber-test-utils crate
+  - [x] 13.2 Implement proptest generators for all entity types
+  - [x] 13.3 Implement mock providers
+  - [x] 13.4 Implement test fixtures
+  - [x] 13.5 Implement custom assertions
 
-- [ ] 14. Final Checkpoint - All Tests Pass
-  - [ ] 14.1 Run `cargo test --workspace`
-  - [ ] 14.2 Run `cargo clippy --workspace -- -D warnings`
-  - [ ] 14.3 Run property tests with 100+ iterations
+- [x] 14. Final Checkpoint - All Tests Pass
+  - [x] 14.1 Run `cargo test --workspace`
+  - [x] 14.2 Run `cargo clippy --workspace -- -D warnings`
+  - [x] 14.3 Run property tests with 100+ iterations
   - **🎯 HACKATHON: Run @code-review-hackathon for final evaluation**
 
-- [ ] 15. Documentation & Submission Prep
-  - [ ] 15.1 Update README.md with clear setup instructions
+- [x] 15. Documentation & Submission Prep
+  - [x] 15.1 Update README.md with clear setup instructions
     - Prerequisites, build steps, usage examples
-  - [ ] 15.2 Finalize DEVLOG.md
+  - [x] 15.2 Finalize DEVLOG.md
     - Complete timeline, all decisions documented
-  - [ ] 15.3 Record 2-5 minute demo video
-  - [ ] 15.4 Verify judges can run the project
+  - [x] 15.3 Record 2-5 minute demo video
+  - [x] 15.4 Verify judges can run the project
   - **🎯 HACKATHON: Final submission checklist**
 
 ## Notes

@@ -8,9 +8,9 @@ members = [
     "caliber-pcp",
     "caliber-storage",
     "caliber-agents",
+    "caliber-pg",
+    "caliber-test-utils",
 ]
-# TODO: Re-add when implemented:
-# "caliber-pg",
 
 [workspace.package]
 version = "0.1.0"
@@ -43,6 +43,7 @@ caliber-pcp = { path = "caliber-pcp" }
 caliber-llm = { path = "caliber-llm" }
 caliber-agents = { path = "caliber-agents" }
 caliber-dsl = { path = "caliber-dsl" }
+caliber-test-utils = { path = "caliber-test-utils" }
 
 # === PROFILE OPTIMIZATIONS ===
 
