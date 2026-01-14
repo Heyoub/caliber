@@ -86,32 +86,30 @@ const typeColors = {
     <!-- Architecture Diagram -->
     <div class="mb-12 sm:mb-16 hidden sm:block">
       <div class="bg-bg-card border-2 border-border brutalist-box p-4 sm:p-6 md:p-8 overflow-x-auto">
-        <pre class="font-mono text-[10px] sm:text-xs md:text-sm lg:text-base text-text-secondary leading-relaxed whitespace-pre">
-<span class="text-text-muted">┌─────────────────────────────────────────────────────────────┐</span>
-<span class="text-text-muted">│</span>                    <span class="text-neon-cyan font-bold">CALIBER Architecture</span>                      <span class="text-text-muted">│</span>
-<span class="text-text-muted">├─────────────────────────────────────────────────────────────┤</span>
-<span class="text-text-muted">│</span>                                                             <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-pink">┌─────────────┐</span>    <span class="text-neon-pink">┌─────────────┐</span>                    <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-pink">│</span> caliber-dsl <span class="text-neon-pink">│</span>    <span class="text-neon-pink">│</span> caliber-pg  <span class="text-neon-pink">│</span>  <span class="text-text-muted">← SYSTEMS</span>         <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-pink">└──────┬──────┘</span>    <span class="text-neon-pink">└──────┬──────┘</span>                    <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>         <span class="text-text-muted">│</span>                 <span class="text-text-muted">│</span>                            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>         <span class="text-text-muted">▼</span>                 <span class="text-text-muted">▼</span>                            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-purple">┌─────────────┐</span>  <span class="text-neon-purple">┌─────────────┐</span>  <span class="text-neon-purple">┌─────────────┐</span>   <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-purple">│</span>   storage   <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>   context   <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>     pcp     <span class="text-neon-purple">│</span>   <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-purple">└──────┬──────┘</span>  <span class="text-neon-purple">└──────┬──────┘</span>  <span class="text-neon-purple">└──────┬──────┘</span>   <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>         <span class="text-text-muted">│</span>                <span class="text-text-muted">│</span>                <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-purple">┌─────────────┐</span>  <span class="text-neon-purple">┌─────────────┐</span>       <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-purple">│</span>     llm     <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>    agents   <span class="text-neon-purple">│</span>  <span class="text-text-muted">← COMPONENTS</span>     <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>  <span class="text-neon-purple">└──────┬──────┘</span>  <span class="text-neon-purple">└──────┬──────┘</span>                    <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>         <span class="text-text-muted">│</span>                <span class="text-text-muted">│</span>                            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>         <span class="text-text-muted">└────────┬───────┘</span>                            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>                  <span class="text-text-muted">▼</span>                                     <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>           <span class="text-neon-cyan">┌─────────────┐</span>                            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>           <span class="text-neon-cyan">│</span> caliber-core<span class="text-neon-cyan">│</span>  <span class="text-text-muted">← ENTITIES</span>                 <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>           <span class="text-neon-cyan">└─────────────┘</span>                            <span class="text-text-muted">│</span>
-<span class="text-text-muted">│</span>                                                             <span class="text-text-muted">│</span>
-<span class="text-text-muted">└─────────────────────────────────────────────────────────────┘</span>
-        </pre>
+        <pre class="font-mono text-[10px] sm:text-xs md:text-sm lg:text-base text-text-secondary leading-relaxed whitespace-pre"><span class="text-text-muted">┌───────────────────────────────────────────────────────┐
+│</span>                 <span class="text-neon-cyan font-bold">CALIBER Architecture</span>                  <span class="text-text-muted">│
+├───────────────────────────────────────────────────────┤
+│</span>                                                       <span class="text-text-muted">│
+│</span>   <span class="text-neon-pink">┌─────────────┐</span>    <span class="text-neon-pink">┌─────────────┐</span>              <span class="text-text-muted">│
+│</span>   <span class="text-neon-pink">│</span> caliber-dsl <span class="text-neon-pink">│</span>    <span class="text-neon-pink">│</span> caliber-pg  <span class="text-neon-pink">│</span>  <span class="text-text-muted">← SYSTEMS</span>   <span class="text-text-muted">│
+│</span>   <span class="text-neon-pink">└──────┬──────┘</span>    <span class="text-neon-pink">└──────┬──────┘</span>              <span class="text-text-muted">│
+│</span>          <span class="text-text-muted">│</span>                 <span class="text-text-muted">│</span>                      <span class="text-text-muted">│
+│</span>          <span class="text-text-muted">▼</span>                 <span class="text-text-muted">▼</span>                      <span class="text-text-muted">│
+│</span>   <span class="text-neon-purple">┌─────────┐</span>  <span class="text-neon-purple">┌─────────┐</span>  <span class="text-neon-purple">┌─────────┐</span>         <span class="text-text-muted">│
+│</span>   <span class="text-neon-purple">│</span> storage <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span> context <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>   pcp   <span class="text-neon-purple">│</span>         <span class="text-text-muted">│
+│</span>   <span class="text-neon-purple">└────┬────┘</span>  <span class="text-neon-purple">└────┬────┘</span>  <span class="text-neon-purple">└────┬────┘</span>         <span class="text-text-muted">│
+│</span>        <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>               <span class="text-text-muted">│
+│</span>   <span class="text-neon-purple">┌─────────┐</span>  <span class="text-neon-purple">┌─────────┐</span>       <span class="text-text-muted">│</span>               <span class="text-text-muted">│
+│</span>   <span class="text-neon-purple">│</span>   llm   <span class="text-neon-purple">│</span>  <span class="text-neon-purple">│</span>  agents <span class="text-neon-purple">│</span>  <span class="text-text-muted">← COMPONENTS</span>      <span class="text-text-muted">│
+│</span>   <span class="text-neon-purple">└────┬────┘</span>  <span class="text-neon-purple">└────┬────┘</span>                      <span class="text-text-muted">│
+│</span>        <span class="text-text-muted">│</span>            <span class="text-text-muted">│</span>                            <span class="text-text-muted">│
+│</span>        <span class="text-text-muted">└──────┬─────┘</span>                            <span class="text-text-muted">│
+│</span>               <span class="text-text-muted">▼</span>                                   <span class="text-text-muted">│
+│</span>        <span class="text-neon-cyan">┌─────────────┐</span>                          <span class="text-text-muted">│
+│</span>        <span class="text-neon-cyan">│</span> caliber-core<span class="text-neon-cyan">│</span>  <span class="text-text-muted">← ENTITIES</span>               <span class="text-text-muted">│
+│</span>        <span class="text-neon-cyan">└─────────────┘</span>                          <span class="text-text-muted">│
+│</span>                                                       <span class="text-text-muted">│
+└───────────────────────────────────────────────────────┘</span></pre>
       </div>
     </div>
 
