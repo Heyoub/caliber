@@ -61,7 +61,10 @@ pub fn trajectory_create_heap(
 ) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(trajectory::TABLE_NAME, LockMode::RowExclusive)?;
-    
+
+    // Validate relation schema matches expectations
+    validate_trajectory_relation(&rel)?;
+
     // Get current transaction timestamp for created_at/updated_at
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
@@ -73,50 +76,51 @@ pub fn trajectory_create_heap(
     // Build datum array - must match column order in caliber_trajectory table
     let mut values: [pg_sys::Datum; trajectory::NUM_COLS] = [pg_sys::Datum::from(0); trajectory::NUM_COLS];
     let mut nulls: [bool; trajectory::NUM_COLS] = [false; trajectory::NUM_COLS];
-    
+
+    // Use helper for optional fields (description, agent_id, outcome, metadata)
+    let (desc_datum, agent_datum, outcome_datum, metadata_datum,
+         desc_null, agent_null, outcome_null, metadata_null) =
+        build_optional_datums(description, agent_id, None, None);
+
     // Column 1: trajectory_id (UUID, NOT NULL)
     values[trajectory::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id);
-    
+
     // Column 2: name (TEXT, NOT NULL)
     values[trajectory::NAME as usize - 1] = string_to_datum(name);
-    
+
     // Column 3: description (TEXT, nullable)
-    if let Some(desc) = description {
-        values[trajectory::DESCRIPTION as usize - 1] = string_to_datum(desc);
-    } else {
-        nulls[trajectory::DESCRIPTION as usize - 1] = true;
-    }
-    
+    values[trajectory::DESCRIPTION as usize - 1] = desc_datum;
+    nulls[trajectory::DESCRIPTION as usize - 1] = desc_null;
+
     // Column 4: status (TEXT, NOT NULL) - default to "active"
     values[trajectory::STATUS as usize - 1] = string_to_datum("active");
-    
+
     // Column 5: parent_trajectory_id (UUID, nullable)
     nulls[trajectory::PARENT_TRAJECTORY_ID as usize - 1] = true;
-    
+
     // Column 6: root_trajectory_id (UUID, nullable)
     nulls[trajectory::ROOT_TRAJECTORY_ID as usize - 1] = true;
-    
+
     // Column 7: agent_id (UUID, nullable)
-    if let Some(aid) = agent_id {
-        values[trajectory::AGENT_ID as usize - 1] = uuid_to_datum(aid);
-    } else {
-        nulls[trajectory::AGENT_ID as usize - 1] = true;
-    }
-    
+    values[trajectory::AGENT_ID as usize - 1] = agent_datum;
+    nulls[trajectory::AGENT_ID as usize - 1] = agent_null;
+
     // Column 8: created_at (TIMESTAMPTZ, NOT NULL)
     values[trajectory::CREATED_AT as usize - 1] = now_datum;
-    
+
     // Column 9: updated_at (TIMESTAMPTZ, NOT NULL)
     values[trajectory::UPDATED_AT as usize - 1] = now_datum;
-    
+
     // Column 10: completed_at (TIMESTAMPTZ, nullable)
     nulls[trajectory::COMPLETED_AT as usize - 1] = true;
-    
+
     // Column 11: outcome (JSONB, nullable)
-    nulls[trajectory::OUTCOME as usize - 1] = true;
-    
+    values[trajectory::OUTCOME as usize - 1] = outcome_datum;
+    nulls[trajectory::OUTCOME as usize - 1] = outcome_null;
+
     // Column 12: metadata (JSONB, nullable)
-    nulls[trajectory::METADATA as usize - 1] = true;
+    values[trajectory::METADATA as usize - 1] = metadata_datum;
+    nulls[trajectory::METADATA as usize - 1] = metadata_null;
     
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -464,6 +468,59 @@ pub fn trajectory_list_by_status_heap(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Validate that a HeapRelation is suitable for trajectory operations.
+/// This ensures the relation schema matches what we expect before operations.
+fn validate_trajectory_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != trajectory::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Trajectory relation has {} columns, expected {}",
+                natts,
+                trajectory::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Build datum values for optional trajectory fields.
+/// Uses option_string_to_datum, option_uuid_to_datum, option_json_to_datum
+/// for proper NULL handling in PostgreSQL.
+fn build_optional_datums(
+    description: Option<&str>,
+    agent_id: Option<EntityId>,
+    outcome: Option<&serde_json::Value>,
+    metadata: Option<&serde_json::Value>,
+) -> (pg_sys::Datum, pg_sys::Datum, pg_sys::Datum, pg_sys::Datum, bool, bool, bool, bool) {
+    let (desc_datum, desc_null) = if let Some(d) = description {
+        (option_string_to_datum(Some(d)), false)
+    } else {
+        (pg_sys::Datum::from(0), true)
+    };
+
+    let (agent_datum, agent_null) = if let Some(a) = agent_id {
+        (option_uuid_to_datum(Some(a)), false)
+    } else {
+        (pg_sys::Datum::from(0), true)
+    };
+
+    let (outcome_datum, outcome_null) = if let Some(o) = outcome {
+        (option_json_to_datum(Some(o)), false)
+    } else {
+        (pg_sys::Datum::from(0), true)
+    };
+
+    let (metadata_datum, metadata_null) = if let Some(m) = metadata {
+        (option_json_to_datum(Some(m)), false)
+    } else {
+        (pg_sys::Datum::from(0), true)
+    };
+
+    (desc_datum, agent_datum, outcome_datum, metadata_datum,
+     desc_null, agent_null, outcome_null, metadata_null)
+}
 
 /// Convert a TrajectoryStatus enum to its string representation.
 fn status_to_str(status: TrajectoryStatus) -> &'static str {

@@ -20,12 +20,16 @@
 //! - Status queries: Use btree index on status column
 //! - Vector similarity: Use HNSW index on embedding column
 
+// Prelude provides common pgrx types and traits used throughout
+#[allow(unused_imports)]
 use pgrx::prelude::*;
 use pgrx::pg_sys;
 use pgrx::PgRelation;
 
 use caliber_core::{CaliberError, CaliberResult, StorageError};
 
+// HeapRelation is used for type signatures in index operations
+#[allow(unused_imports)]
 use crate::heap_ops::HeapRelation;
 
 /// Strategy numbers for btree index scans.
@@ -134,13 +138,11 @@ impl IndexRelation {
 /// * `Err(CaliberError)` - If the index cannot be opened
 pub fn open_index(name: &str) -> CaliberResult<IndexRelation> {
     // In pgrx 0.16+, this returns Result<PgRelation, &str>
-    let rel = unsafe {
-        PgRelation::open_with_name_and_share_lock(name)
-            .map_err(|e| CaliberError::Storage(StorageError::IndexError {
-                index_name: name.to_string(),
-                reason: format!("Failed to open index: {}", e),
-            }))?
-    };
+    let rel = PgRelation::open_with_name_and_share_lock(name)
+        .map_err(|e| CaliberError::Storage(StorageError::IndexError {
+            index_name: name.to_string(),
+            reason: format!("Failed to open index: {}", e),
+        }))?;
 
     if rel.as_ptr().is_null() {
         return Err(CaliberError::Storage(StorageError::IndexError {
@@ -223,8 +225,8 @@ pub fn get_index_list(rel: &HeapRelation) -> Vec<pg_sys::Oid> {
 pub fn update_indexes_for_insert(
     rel: &HeapRelation,
     tuple: *mut pg_sys::HeapTupleData,
-    values: &[pg_sys::Datum],
-    nulls: &[bool],
+    _values: &[pg_sys::Datum],  // Reserved for manual index updates if needed
+    _nulls: &[bool],            // Reserved for manual index updates if needed
 ) -> CaliberResult<()> {
     if tuple.is_null() {
         return Err(CaliberError::Storage(StorageError::IndexError {
@@ -256,6 +258,8 @@ pub fn update_indexes_for_insert(
 /// A RAII wrapper for index scans.
 pub struct IndexScanner {
     scan: *mut pg_sys::IndexScanDescData,
+    /// The heap relation - stored for potential future use in cleanup/revalidation.
+    #[allow(dead_code)]
     heap_rel: pg_sys::Relation,
     slot: *mut pg_sys::TupleTableSlot,
 }

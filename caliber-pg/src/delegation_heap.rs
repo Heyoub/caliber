@@ -44,7 +44,8 @@ pub fn delegation_create_heap(
     deadline: Option<chrono::DateTime<chrono::Utc>>,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::RowExclusive)?;
-    
+    validate_delegation_relation(&rel)?;
+
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
@@ -54,68 +55,63 @@ pub fn delegation_create_heap(
     
     let mut values: [pg_sys::Datum; delegation::NUM_COLS] = [pg_sys::Datum::from(0); delegation::NUM_COLS];
     let mut nulls: [bool; delegation::NUM_COLS] = [false; delegation::NUM_COLS];
-    
+
+    // Use helper for optional fields (delegatee_agent_id, child_trajectory_id, deadline)
+    let ((delegatee_datum, delegatee_null), (child_datum, child_null), (deadline_datum, deadline_null)) =
+        build_optional_delegation_datums(delegatee_agent_id, child_trajectory_id, deadline);
+
     // Set required fields
     values[delegation::DELEGATION_ID as usize - 1] = uuid_to_datum(delegation_id);
     values[delegation::DELEGATOR_AGENT_ID as usize - 1] = uuid_to_datum(delegator_agent_id);
-    
+
     // Set optional delegatee_agent_id
-    if let Some(agent_id) = delegatee_agent_id {
-        values[delegation::DELEGATEE_AGENT_ID as usize - 1] = uuid_to_datum(agent_id);
-    } else {
-        nulls[delegation::DELEGATEE_AGENT_ID as usize - 1] = true;
-    }
-    
+    values[delegation::DELEGATEE_AGENT_ID as usize - 1] = delegatee_datum;
+    nulls[delegation::DELEGATEE_AGENT_ID as usize - 1] = delegatee_null;
+
     // Set optional delegatee_agent_type
     if let Some(agent_type) = delegatee_agent_type {
         values[delegation::DELEGATEE_AGENT_TYPE as usize - 1] = string_to_datum(agent_type);
     } else {
         nulls[delegation::DELEGATEE_AGENT_TYPE as usize - 1] = true;
     }
-    
+
     // Set task_description
     values[delegation::TASK_DESCRIPTION as usize - 1] = string_to_datum(task_description);
-    
+
     // Set parent_trajectory_id
     values[delegation::PARENT_TRAJECTORY_ID as usize - 1] = uuid_to_datum(parent_trajectory_id);
-    
+
     // Set optional child_trajectory_id
-    if let Some(child_id) = child_trajectory_id {
-        values[delegation::CHILD_TRAJECTORY_ID as usize - 1] = uuid_to_datum(child_id);
-    } else {
-        nulls[delegation::CHILD_TRAJECTORY_ID as usize - 1] = true;
-    }
-    
+    values[delegation::CHILD_TRAJECTORY_ID as usize - 1] = child_datum;
+    nulls[delegation::CHILD_TRAJECTORY_ID as usize - 1] = child_null;
+
     // Set shared_artifacts array
     if shared_artifacts.is_empty() {
         nulls[delegation::SHARED_ARTIFACTS as usize - 1] = true;
     } else {
         values[delegation::SHARED_ARTIFACTS as usize - 1] = uuid_array_to_datum(shared_artifacts);
     }
-    
+
     // Set shared_notes array
     if shared_notes.is_empty() {
         nulls[delegation::SHARED_NOTES as usize - 1] = true;
     } else {
         values[delegation::SHARED_NOTES as usize - 1] = uuid_array_to_datum(shared_notes);
     }
-    
+
     // Set optional additional_context
     if let Some(context) = additional_context {
         values[delegation::ADDITIONAL_CONTEXT as usize - 1] = string_to_datum(context);
     } else {
         nulls[delegation::ADDITIONAL_CONTEXT as usize - 1] = true;
     }
-    
+
     // Set constraints
     values[delegation::CONSTRAINTS as usize - 1] = string_to_datum(constraints);
-    
+
     // Set optional deadline
-    if let Some(dl) = deadline {
-        values[delegation::DEADLINE as usize - 1] = option_datetime_to_datum(Some(dl));
-    } else {
-        nulls[delegation::DEADLINE as usize - 1] = true;
-    }
+    values[delegation::DEADLINE as usize - 1] = deadline_datum;
+    nulls[delegation::DEADLINE as usize - 1] = deadline_null;
     
     // Set status - default to "pending"
     values[delegation::STATUS as usize - 1] = string_to_datum("pending");
@@ -317,6 +313,42 @@ pub fn delegation_list_pending_heap() -> CaliberResult<Vec<DelegatedTask>> {
     }
     
     Ok(results)
+}
+
+/// Validate that a HeapRelation is suitable for delegation operations.
+fn validate_delegation_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != delegation::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Delegation relation has {} columns, expected {}",
+                natts,
+                delegation::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Build optional delegation datums using proper helpers.
+fn build_optional_delegation_datums(
+    delegatee_agent_id: Option<EntityId>,
+    child_trajectory_id: Option<EntityId>,
+    deadline: Option<chrono::DateTime<chrono::Utc>>,
+) -> ((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool)) {
+    let delegatee = match delegatee_agent_id {
+        Some(id) => (uuid_to_datum(id), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+    let child = match child_trajectory_id {
+        Some(id) => (uuid_to_datum(id), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+    let dl = match deadline {
+        Some(dt) => (option_datetime_to_datum(Some(dt)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+    (delegatee, child, dl)
 }
 
 fn tuple_to_delegation(

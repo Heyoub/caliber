@@ -63,7 +63,10 @@ pub fn scope_create_heap(
 ) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
-    
+
+    // Validate relation schema matches expectations
+    validate_scope_relation(&rel)?;
+
     // Get current transaction timestamp for created_at
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
@@ -380,8 +383,8 @@ pub fn scope_update_tokens_heap(
     let tuple_desc = rel.tuple_desc();
     
     // Extract current values and nulls
-    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
-    
+    let (mut values, nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+
     // Update tokens_used
     values[scope::TOKENS_USED as usize - 1] = i32_to_datum(tokens_used);
     
@@ -401,6 +404,81 @@ pub fn scope_update_tokens_heap(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Validate that a HeapRelation is suitable for scope operations.
+/// This ensures the relation schema matches what we expect before operations.
+fn validate_scope_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != scope::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Scope relation has {} columns, expected {}",
+                natts,
+                scope::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Update the checkpoint for a scope using direct heap operations.
+/// This uses json_to_datum for proper JSONB serialization.
+pub fn scope_update_checkpoint_heap(
+    id: EntityId,
+    checkpoint: Option<&Checkpoint>,
+) -> CaliberResult<bool> {
+    let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
+    validate_scope_relation(&rel)?;
+
+    let index_rel = open_index(scope::PK_INDEX)?;
+    let snapshot = get_active_snapshot();
+
+    let mut scan_key = pg_sys::ScanKeyData::default();
+    init_scan_key(
+        &mut scan_key,
+        1,
+        BTreeStrategy::Equal,
+        operator_oids::UUID_EQ,
+        uuid_to_datum(id),
+    );
+
+    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+
+    let old_tuple = match scanner.next() {
+        Some(t) => t,
+        None => return Ok(false),
+    };
+
+    let tid = scanner.current_tid()
+        .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+            entity_type: EntityType::Scope,
+            id,
+            reason: "Failed to get TID".to_string(),
+        }))?;
+
+    let tuple_desc = rel.tuple_desc();
+    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+
+    // Update checkpoint using json_to_datum
+    if let Some(cp) = checkpoint {
+        let checkpoint_json = serde_json::to_value(cp)
+            .map_err(|e| CaliberError::Storage(StorageError::UpdateFailed {
+                entity_type: EntityType::Scope,
+                id,
+                reason: format!("Failed to serialize checkpoint: {}", e),
+            }))?;
+        values[scope::CHECKPOINT as usize - 1] = json_to_datum(&checkpoint_json);
+        nulls[scope::CHECKPOINT as usize - 1] = false;
+    } else {
+        nulls[scope::CHECKPOINT as usize - 1] = true;
+    }
+
+    let new_tuple = form_tuple(&rel, &values, &nulls)?;
+    update_tuple(&rel, &tid, new_tuple)?;
+    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+
+    Ok(true)
+}
 
 /// Convert a heap tuple to a Scope struct.
 fn tuple_to_scope(

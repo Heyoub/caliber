@@ -43,7 +43,8 @@ pub fn handoff_create_heap(
     reason: HandoffReason,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(handoff::TABLE_NAME, HeapLockMode::RowExclusive)?;
-    
+    validate_handoff_relation(&rel)?;
+
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
@@ -264,6 +265,21 @@ pub fn handoff_complete_heap(handoff_id: EntityId) -> CaliberResult<bool> {
     } else {
         Ok(false)
     }
+}
+
+/// Validate that a HeapRelation is suitable for handoff operations.
+fn validate_handoff_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != handoff::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Handoff relation has {} columns, expected {}",
+                natts,
+                handoff::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
 }
 
 fn tuple_to_handoff(

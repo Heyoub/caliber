@@ -40,7 +40,8 @@ pub fn conflict_create_heap(
     trajectory_id: Option<EntityId>,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::RowExclusive)?;
-    
+    validate_conflict_relation(&rel)?;
+
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
@@ -67,31 +68,26 @@ pub fn conflict_create_heap(
     // Set item A
     values[conflict::ITEM_A_TYPE as usize - 1] = string_to_datum(item_a_type);
     values[conflict::ITEM_A_ID as usize - 1] = uuid_to_datum(item_a_id);
-    
+
     // Set item B
     values[conflict::ITEM_B_TYPE as usize - 1] = string_to_datum(item_b_type);
     values[conflict::ITEM_B_ID as usize - 1] = uuid_to_datum(item_b_id);
-    
+
+    // Use helper for optional agent and trajectory fields
+    let ((agent_a_datum, agent_a_null), (agent_b_datum, agent_b_null), (traj_datum, traj_null)) =
+        build_optional_conflict_agents(agent_a_id, agent_b_id, trajectory_id);
+
     // Set optional agent_a_id
-    if let Some(agent_id) = agent_a_id {
-        values[conflict::AGENT_A_ID as usize - 1] = uuid_to_datum(agent_id);
-    } else {
-        nulls[conflict::AGENT_A_ID as usize - 1] = true;
-    }
-    
+    values[conflict::AGENT_A_ID as usize - 1] = agent_a_datum;
+    nulls[conflict::AGENT_A_ID as usize - 1] = agent_a_null;
+
     // Set optional agent_b_id
-    if let Some(agent_id) = agent_b_id {
-        values[conflict::AGENT_B_ID as usize - 1] = uuid_to_datum(agent_id);
-    } else {
-        nulls[conflict::AGENT_B_ID as usize - 1] = true;
-    }
-    
+    values[conflict::AGENT_B_ID as usize - 1] = agent_b_datum;
+    nulls[conflict::AGENT_B_ID as usize - 1] = agent_b_null;
+
     // Set optional trajectory_id
-    if let Some(traj_id) = trajectory_id {
-        values[conflict::TRAJECTORY_ID as usize - 1] = uuid_to_datum(traj_id);
-    } else {
-        nulls[conflict::TRAJECTORY_ID as usize - 1] = true;
-    }
+    values[conflict::TRAJECTORY_ID as usize - 1] = traj_datum;
+    nulls[conflict::TRAJECTORY_ID as usize - 1] = traj_null;
     
     // Set status - default to "detected"
     values[conflict::STATUS as usize - 1] = string_to_datum("detected");
@@ -243,6 +239,42 @@ pub fn conflict_list_pending_heap() -> CaliberResult<Vec<Conflict>> {
     }
     
     Ok(results)
+}
+
+/// Validate that a HeapRelation is suitable for conflict operations.
+fn validate_conflict_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != conflict::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Conflict relation has {} columns, expected {}",
+                natts,
+                conflict::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Build optional conflict datums using proper helper.
+fn build_optional_conflict_agents(
+    agent_a_id: Option<EntityId>,
+    agent_b_id: Option<EntityId>,
+    trajectory_id: Option<EntityId>,
+) -> ((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool)) {
+    let a = match agent_a_id {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+    let b = match agent_b_id {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+    let t = match trajectory_id {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+    (a, b, t)
 }
 
 fn tuple_to_conflict(

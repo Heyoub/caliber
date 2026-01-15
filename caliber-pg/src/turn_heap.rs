@@ -63,6 +63,9 @@ pub fn turn_create_heap(
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(turn::TABLE_NAME, LockMode::RowExclusive)?;
 
+    // Validate relation schema matches expectations
+    validate_turn_relation(&rel)?;
+
     // Get current transaction timestamp for created_at
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
@@ -186,6 +189,22 @@ pub fn turn_get_by_scope_heap(scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Validate that a HeapRelation is suitable for turn operations.
+/// This ensures the relation schema matches what we expect before operations.
+fn validate_turn_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != turn::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Turn relation has {} columns, expected {}",
+                natts,
+                turn::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
 
 /// Convert a TurnRole enum to its string representation.
 fn role_to_str(role: TurnRole) -> &'static str {

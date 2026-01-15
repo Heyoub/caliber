@@ -70,7 +70,8 @@ pub fn note_create_heap(
 ) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(note::TABLE_NAME, LockMode::RowExclusive)?;
-    
+    validate_note_relation(&rel)?;
+
     // Get current transaction timestamp
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
@@ -396,6 +397,21 @@ pub fn note_update_heap(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Validate that a HeapRelation is suitable for note operations.
+fn validate_note_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != note::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Note relation has {} columns, expected {}",
+                natts,
+                note::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
 
 /// Convert a NoteType enum to its string representation.
 fn note_type_to_str(t: NoteType) -> &'static str {
