@@ -1,0 +1,710 @@
+//! Direct heap operations for Message entities.
+//!
+//! This module provides hot-path operations for inter-agent messages that bypass SQL
+//! parsing entirely by using direct heap access via pgrx.
+
+use pgrx::prelude::*;
+use pgrx::pg_sys;
+
+use caliber_core::{
+    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
+};
+use caliber_agents::{AgentMessage, MessageType, MessagePriority};
+
+use crate::column_maps::message;
+use crate::heap_ops::{
+    current_timestamp, form_tuple, insert_tuple, open_relation, update_tuple,
+    LockMode as HeapLockMode, HeapRelation, get_active_snapshot,
+    timestamp_to_pgrx,
+};
+use crate::index_ops::{
+    init_scan_key, open_index, update_indexes_for_insert,
+    BTreeStrategy, IndexScanner, operator_oids,
+};
+use crate::tuple_extract::{
+    extract_uuid, extract_text, extract_timestamp, extract_uuid_array,
+    extract_values_and_nulls, uuid_to_datum, string_to_datum,
+    timestamp_to_chrono, uuid_array_to_datum, option_uuid_to_datum,
+    option_string_to_datum, option_datetime_to_datum,
+};
+
+/// Send a message by inserting a message record using direct heap operations.
+pub fn message_send_heap(
+    message_id: EntityId,
+    from_agent_id: EntityId,
+    to_agent_id: Option<EntityId>,
+    to_agent_type: Option<&str>,
+    message_type: MessageType,
+    payload: &str,
+    trajectory_id: Option<EntityId>,
+    scope_id: Option<EntityId>,
+    artifact_ids: &[EntityId],
+    priority: MessagePriority,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> CaliberResult<EntityId> {
+    let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
+    
+    let now = current_timestamp();
+    let now_datum = timestamp_to_pgrx(now).into_datum()
+        .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
+            entity_type: EntityType::Message,
+            reason: "Failed to convert timestamp to datum".to_string(),
+        }))?;
+    
+    let mut values: [pg_sys::Datum; message::NUM_COLS] = [pg_sys::Datum::from(0); message::NUM_COLS];
+    let mut nulls: [bool; message::NUM_COLS] = [false; message::NUM_COLS];
+    
+    // Set required fields
+    values[message::MESSAGE_ID as usize - 1] = uuid_to_datum(message_id);
+    values[message::FROM_AGENT_ID as usize - 1] = uuid_to_datum(from_agent_id);
+    
+    // Set optional to_agent_id
+    if let Some(to_id) = to_agent_id {
+        values[message::TO_AGENT_ID as usize - 1] = uuid_to_datum(to_id);
+    } else {
+        nulls[message::TO_AGENT_ID as usize - 1] = true;
+    }
+    
+    // Set optional to_agent_type
+    if let Some(to_type) = to_agent_type {
+        values[message::TO_AGENT_TYPE as usize - 1] = string_to_datum(to_type);
+    } else {
+        nulls[message::TO_AGENT_TYPE as usize - 1] = true;
+    }
+    
+    // Set message_type
+    let message_type_str = match message_type {
+        MessageType::TaskDelegation => "task_delegation",
+        MessageType::TaskResult => "task_result",
+        MessageType::ContextRequest => "context_request",
+        MessageType::ContextShare => "context_share",
+        MessageType::CoordinationSignal => "coordination_signal",
+        MessageType::Handoff => "handoff",
+        MessageType::Interrupt => "interrupt",
+        MessageType::Heartbeat => "heartbeat",
+    };
+    values[message::MESSAGE_TYPE as usize - 1] = string_to_datum(message_type_str);
+    
+    // Set payload
+    values[message::PAYLOAD as usize - 1] = string_to_datum(payload);
+    
+    // Set optional trajectory_id
+    if let Some(traj_id) = trajectory_id {
+        values[message::TRAJECTORY_ID as usize - 1] = uuid_to_datum(traj_id);
+    } else {
+        nulls[message::TRAJECTORY_ID as usize - 1] = true;
+    }
+    
+    // Set optional scope_id
+    if let Some(sc_id) = scope_id {
+        values[message::SCOPE_ID as usize - 1] = uuid_to_datum(sc_id);
+    } else {
+        nulls[message::SCOPE_ID as usize - 1] = true;
+    }
+    
+    // Set artifact_ids array
+    if artifact_ids.is_empty() {
+        nulls[message::ARTIFACT_IDS as usize - 1] = true;
+    } else {
+        values[message::ARTIFACT_IDS as usize - 1] = uuid_array_to_datum(artifact_ids);
+    }
+    
+    // Set timestamps
+    values[message::CREATED_AT as usize - 1] = now_datum;
+    nulls[message::DELIVERED_AT as usize - 1] = true;
+    nulls[message::ACKNOWLEDGED_AT as usize - 1] = true;
+    
+    // Set priority
+    let priority_str = match priority {
+        MessagePriority::Low => "low",
+        MessagePriority::Normal => "normal",
+        MessagePriority::High => "high",
+        MessagePriority::Critical => "critical",
+    };
+    values[message::PRIORITY as usize - 1] = string_to_datum(priority_str);
+    
+    // Set optional expires_at
+    if let Some(exp) = expires_at {
+        let exp_datum = timestamp_to_pgrx(unsafe { 
+            pg_sys::GetCurrentTransactionStartTimestamp() 
+        }).into_datum()
+            .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
+                entity_type: EntityType::Message,
+                reason: "Failed to convert expires_at to datum".to_string(),
+            }))?;
+        values[message::EXPIRES_AT as usize - 1] = exp_datum;
+    } else {
+        nulls[message::EXPIRES_AT as usize - 1] = true;
+    }
+    
+    let tuple = form_tuple(&rel, &values, &nulls)?;
+    let _tid = insert_tuple(&rel, tuple)?;
+    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    
+    Ok(message_id)
+}
+
+/// Get a message by ID using direct heap operations.
+pub fn message_get_heap(message_id: EntityId) -> CaliberResult<Option<AgentMessage>> {
+    let rel = open_relation(message::TABLE_NAME, HeapLockMode::AccessShare)?;
+    let index_rel = open_index(message::PK_INDEX)?;
+    let snapshot = get_active_snapshot();
+    
+    let mut scan_key = pg_sys::ScanKeyData::default();
+    init_scan_key(
+        &mut scan_key,
+        1,
+        BTreeStrategy::Equal,
+        operator_oids::UUID_EQ,
+        uuid_to_datum(message_id),
+    );
+    
+    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    
+    if let Some(tuple) = scanner.next() {
+        let tuple_desc = rel.tuple_desc();
+        let message = tuple_to_message(tuple, tuple_desc)?;
+        Ok(Some(message))
+    } else {
+        Ok(None)
+    }
+}
+
+/// List messages for a specific agent using direct heap operations.
+pub fn message_list_for_agent_heap(to_agent_id: EntityId) -> CaliberResult<Vec<AgentMessage>> {
+    let rel = open_relation(message::TABLE_NAME, HeapLockMode::AccessShare)?;
+    let index_rel = open_index(message::TO_AGENT_INDEX)?;
+    let snapshot = get_active_snapshot();
+    
+    let mut scan_key = pg_sys::ScanKeyData::default();
+    init_scan_key(
+        &mut scan_key,
+        1,
+        BTreeStrategy::Equal,
+        operator_oids::UUID_EQ,
+        uuid_to_datum(to_agent_id),
+    );
+    
+    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    
+    let tuple_desc = rel.tuple_desc();
+    let mut results = Vec::new();
+    
+    while let Some(tuple) = scanner.next() {
+        let message = tuple_to_message(tuple, tuple_desc)?;
+        results.push(message);
+    }
+    
+    Ok(results)
+}
+
+/// Acknowledge a message by updating its acknowledged_at field using direct heap operations.
+pub fn message_acknowledge_heap(message_id: EntityId) -> CaliberResult<bool> {
+    let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
+    let index_rel = open_index(message::PK_INDEX)?;
+    let snapshot = get_active_snapshot();
+    
+    let mut scan_key = pg_sys::ScanKeyData::default();
+    init_scan_key(
+        &mut scan_key,
+        1,
+        BTreeStrategy::Equal,
+        operator_oids::UUID_EQ,
+        uuid_to_datum(message_id),
+    );
+    
+    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    
+    if let Some(old_tuple) = scanner.next() {
+        let tuple_desc = rel.tuple_desc();
+        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        
+        // Update acknowledged_at to current timestamp
+        let now = current_timestamp();
+        let now_datum = timestamp_to_pgrx(now).into_datum()
+            .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+                entity_type: EntityType::Message,
+                id: message_id,
+                reason: "Failed to convert timestamp to datum".to_string(),
+            }))?;
+        
+        values[message::ACKNOWLEDGED_AT as usize - 1] = now_datum;
+        nulls[message::ACKNOWLEDGED_AT as usize - 1] = false;
+        
+        let new_tuple = form_tuple(&rel, &values, &nulls)?;
+        let old_tid = scanner.current_tid()
+            .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "Failed to get TID of message tuple".to_string(),
+            }))?;
+        
+        update_tuple(&rel, &old_tid, new_tuple)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn tuple_to_message(
+    tuple: *mut pg_sys::HeapTupleData,
+    tuple_desc: pg_sys::TupleDesc,
+) -> CaliberResult<AgentMessage> {
+    let message_id = extract_uuid(tuple, tuple_desc, message::MESSAGE_ID)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "message_id is NULL".to_string(),
+        }))?;
+    
+    let from_agent_id = extract_uuid(tuple, tuple_desc, message::FROM_AGENT_ID)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "from_agent_id is NULL".to_string(),
+        }))?;
+    
+    let to_agent_id = extract_uuid(tuple, tuple_desc, message::TO_AGENT_ID)?;
+    let to_agent_type = extract_text(tuple, tuple_desc, message::TO_AGENT_TYPE)?;
+    
+    let message_type_str = extract_text(tuple, tuple_desc, message::MESSAGE_TYPE)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "message_type is NULL".to_string(),
+        }))?;
+    let message_type = match message_type_str.as_str() {
+        "task_delegation" => MessageType::TaskDelegation,
+        "task_result" => MessageType::TaskResult,
+        "context_request" => MessageType::ContextRequest,
+        "context_share" => MessageType::ContextShare,
+        "coordination_signal" => MessageType::CoordinationSignal,
+        "handoff" => MessageType::Handoff,
+        "interrupt" => MessageType::Interrupt,
+        "heartbeat" => MessageType::Heartbeat,
+        _ => MessageType::CoordinationSignal,
+    };
+    
+    let payload = extract_text(tuple, tuple_desc, message::PAYLOAD)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "payload is NULL".to_string(),
+        }))?;
+    
+    let trajectory_id = extract_uuid(tuple, tuple_desc, message::TRAJECTORY_ID)?;
+    let scope_id = extract_uuid(tuple, tuple_desc, message::SCOPE_ID)?;
+    
+    let artifact_ids = extract_uuid_array(tuple, tuple_desc, message::ARTIFACT_IDS)?
+        .unwrap_or_default();
+    
+    let created_at_ts = extract_timestamp(tuple, tuple_desc, message::CREATED_AT)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "created_at is NULL".to_string(),
+        }))?;
+    let created_at = timestamp_to_chrono(created_at_ts);
+    
+    let delivered_at = extract_timestamp(tuple, tuple_desc, message::DELIVERED_AT)?
+        .map(timestamp_to_chrono);
+    
+    let acknowledged_at = extract_timestamp(tuple, tuple_desc, message::ACKNOWLEDGED_AT)?
+        .map(timestamp_to_chrono);
+    
+    let priority_str = extract_text(tuple, tuple_desc, message::PRIORITY)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "priority is NULL".to_string(),
+        }))?;
+    let priority = match priority_str.as_str() {
+        "low" => MessagePriority::Low,
+        "normal" => MessagePriority::Normal,
+        "high" => MessagePriority::High,
+        "critical" => MessagePriority::Critical,
+        _ => MessagePriority::Normal,
+    };
+    
+    let expires_at = extract_timestamp(tuple, tuple_desc, message::EXPIRES_AT)?
+        .map(timestamp_to_chrono);
+    
+    Ok(AgentMessage {
+        message_id,
+        from_agent_id,
+        to_agent_id,
+        to_agent_type,
+        message_type,
+        payload,
+        trajectory_id,
+        scope_id,
+        artifact_ids,
+        created_at,
+        delivered_at,
+        acknowledged_at,
+        priority,
+        expires_at,
+    })
+}
+
+// ============================================================================
+// PROPERTY-BASED TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use chrono::Duration;
+
+    // ========================================================================
+    // Test Helpers - Generators for Message data
+    // ========================================================================
+
+    /// Generate a random EntityId
+    fn arb_entity_id() -> impl Strategy<Value = EntityId> {
+        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+    }
+
+    /// Generate an optional EntityId
+    fn arb_optional_entity_id() -> impl Strategy<Value = Option<EntityId>> {
+        prop_oneof![
+            1 => Just(None),
+            3 => arb_entity_id().prop_map(Some),
+        ]
+    }
+
+    /// Generate an optional agent type string
+    fn arb_optional_agent_type() -> impl Strategy<Value = Option<String>> {
+        prop_oneof![
+            1 => Just(None),
+            3 => prop_oneof![
+                Just(Some("coordinator".to_string())),
+                Just(Some("worker".to_string())),
+                Just(Some("specialist".to_string())),
+            ],
+        ]
+    }
+
+    /// Generate a message type
+    fn arb_message_type() -> impl Strategy<Value = MessageType> {
+        prop_oneof![
+            Just(MessageType::TaskDelegation),
+            Just(MessageType::TaskResult),
+            Just(MessageType::ContextRequest),
+            Just(MessageType::ContextShare),
+            Just(MessageType::CoordinationSignal),
+            Just(MessageType::Handoff),
+            Just(MessageType::Interrupt),
+            Just(MessageType::Heartbeat),
+        ]
+    }
+
+    /// Generate a payload string
+    fn arb_payload() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just("{}".to_string()),
+            Just(r#"{"task":"process_data"}"#.to_string()),
+            Just(r#"{"status":"completed","result":"success"}"#.to_string()),
+            Just(r#"{"request":"context","scope_id":"abc123"}"#.to_string()),
+        ]
+    }
+
+    /// Generate a message priority
+    fn arb_priority() -> impl Strategy<Value = MessagePriority> {
+        prop_oneof![
+            Just(MessagePriority::Low),
+            Just(MessagePriority::Normal),
+            Just(MessagePriority::High),
+            Just(MessagePriority::Critical),
+        ]
+    }
+
+    /// Generate an optional future expiration time
+    fn arb_optional_expires_at() -> impl Strategy<Value = Option<chrono::DateTime<chrono::Utc>>> {
+        prop_oneof![
+            2 => Just(None),
+            1 => (60i64..3600i64).prop_map(|seconds| {
+                Some(chrono::Utc::now() + Duration::seconds(seconds))
+            }),
+        ]
+    }
+
+    /// Generate a vector of artifact IDs (0-5 items)
+    fn arb_artifact_ids() -> impl Strategy<Value = Vec<EntityId>> {
+        prop::collection::vec(arb_entity_id(), 0..=5)
+    }
+
+    // ========================================================================
+    // Property 1: Insert-Get Round Trip (Message)
+    // Feature: caliber-pg-hot-path, Property 1: Insert-Get Round Trip
+    // Validates: Requirements 7.1, 7.2
+    // ========================================================================
+
+    #[cfg(feature = "pg_test")]
+    mod pg_tests {
+        use super::*;
+        use pgrx_tests::pg_test;
+
+        /// Property 1: Insert-Get Round Trip (Message)
+        /// 
+        /// *For any* valid message data, inserting via direct heap then getting
+        /// via direct heap SHALL return an equivalent message.
+        ///
+        /// **Validates: Requirements 7.1, 7.2**
+        #[pg_test]
+        fn prop_message_insert_get_roundtrip() {
+            use proptest::test_runner::{TestRunner, Config};
+
+            let config = Config::with_cases(100);
+            let mut runner = TestRunner::new(config);
+
+            let strategy = (
+                arb_entity_id(),
+                arb_entity_id(),
+                arb_optional_entity_id(),
+                arb_optional_agent_type(),
+                arb_message_type(),
+                arb_payload(),
+                arb_optional_entity_id(),
+                arb_optional_entity_id(),
+                arb_artifact_ids(),
+                arb_priority(),
+                arb_optional_expires_at(),
+            );
+
+            runner.run(&strategy, |(
+                from_agent_id,
+                to_agent_id_val,
+                to_agent_id,
+                to_agent_type,
+                message_type,
+                payload,
+                trajectory_id,
+                scope_id,
+                artifact_ids,
+                priority,
+                expires_at,
+            )| {
+                // Generate a new message ID
+                let message_id = caliber_core::new_entity_id();
+
+                // Insert via heap
+                let result = message_send_heap(
+                    message_id,
+                    from_agent_id,
+                    to_agent_id,
+                    to_agent_type.as_deref(),
+                    message_type,
+                    &payload,
+                    trajectory_id,
+                    scope_id,
+                    &artifact_ids,
+                    priority,
+                    expires_at,
+                );
+                prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
+                prop_assert_eq!(result.unwrap(), message_id);
+
+                // Get via heap
+                let get_result = message_get_heap(message_id);
+                prop_assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result.err());
+                
+                let message = get_result.unwrap();
+                prop_assert!(message.is_some(), "Message should be found");
+                
+                let m = message.unwrap();
+                
+                // Verify round-trip preserves data
+                prop_assert_eq!(m.message_id, message_id);
+                prop_assert_eq!(m.from_agent_id, from_agent_id);
+                prop_assert_eq!(m.to_agent_id, to_agent_id);
+                prop_assert_eq!(m.to_agent_type, to_agent_type);
+                prop_assert_eq!(m.message_type, message_type);
+                prop_assert_eq!(m.payload, payload);
+                prop_assert_eq!(m.trajectory_id, trajectory_id);
+                prop_assert_eq!(m.scope_id, scope_id);
+                prop_assert_eq!(m.artifact_ids, artifact_ids);
+                prop_assert_eq!(m.priority, priority);
+                
+                // Timestamps should be set
+                prop_assert!(m.created_at <= chrono::Utc::now());
+                prop_assert!(m.delivered_at.is_none(), "delivered_at should be None initially");
+                prop_assert!(m.acknowledged_at.is_none(), "acknowledged_at should be None initially");
+
+                Ok(())
+            }).unwrap();
+        }
+
+        /// Property 1 (edge case): Get non-existent message returns None
+        ///
+        /// *For any* random UUID that was never inserted, getting it SHALL
+        /// return Ok(None), not an error.
+        ///
+        /// **Validates: Requirements 7.2**
+        #[pg_test]
+        fn prop_message_get_nonexistent_returns_none() {
+            use proptest::test_runner::{TestRunner, Config};
+
+            let config = Config::with_cases(100);
+            let mut runner = TestRunner::new(config);
+
+            runner.run(&any::<[u8; 16]>(), |bytes| {
+                let random_id = uuid::Uuid::from_bytes(bytes);
+                
+                let result = message_get_heap(random_id);
+                prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
+                prop_assert!(result.unwrap().is_none(), "Non-existent message should return None");
+
+                Ok(())
+            }).unwrap();
+        }
+
+        /// Property 2: Update Persistence (Message - acknowledge)
+        ///
+        /// *For any* message that has been inserted, acknowledging it SHALL
+        /// update the acknowledged_at field and persist the change.
+        ///
+        /// **Validates: Requirements 7.4**
+        #[pg_test]
+        fn prop_message_acknowledge_persistence() {
+            use proptest::test_runner::{TestRunner, Config};
+
+            let config = Config::with_cases(100);
+            let mut runner = TestRunner::new(config);
+
+            let strategy = (
+                arb_entity_id(),
+                arb_entity_id(),
+                arb_optional_entity_id(),
+                arb_optional_agent_type(),
+                arb_message_type(),
+                arb_payload(),
+                arb_optional_entity_id(),
+                arb_optional_entity_id(),
+                arb_artifact_ids(),
+                arb_priority(),
+                arb_optional_expires_at(),
+            );
+
+            runner.run(&strategy, |(
+                from_agent_id,
+                to_agent_id_val,
+                to_agent_id,
+                to_agent_type,
+                message_type,
+                payload,
+                trajectory_id,
+                scope_id,
+                artifact_ids,
+                priority,
+                expires_at,
+            )| {
+                // Generate a new message ID
+                let message_id = caliber_core::new_entity_id();
+
+                // Insert via heap
+                let insert_result = message_send_heap(
+                    message_id,
+                    from_agent_id,
+                    to_agent_id,
+                    to_agent_type.as_deref(),
+                    message_type,
+                    &payload,
+                    trajectory_id,
+                    scope_id,
+                    &artifact_ids,
+                    priority,
+                    expires_at,
+                );
+                prop_assert!(insert_result.is_ok(), "Insert should succeed");
+
+                // Verify acknowledged_at is None initially
+                let get_before = message_get_heap(message_id);
+                prop_assert!(get_before.is_ok(), "Get before acknowledge should succeed");
+                let msg_before = get_before.unwrap().unwrap();
+                prop_assert!(msg_before.acknowledged_at.is_none(), "acknowledged_at should be None before acknowledge");
+
+                // Acknowledge the message
+                let ack_result = message_acknowledge_heap(message_id);
+                prop_assert!(ack_result.is_ok(), "Acknowledge should succeed: {:?}", ack_result.err());
+                prop_assert!(ack_result.unwrap(), "Acknowledge should return true for existing message");
+
+                // Verify acknowledged_at is now set
+                let get_after = message_get_heap(message_id);
+                prop_assert!(get_after.is_ok(), "Get after acknowledge should succeed");
+                let msg_after = get_after.unwrap().unwrap();
+                prop_assert!(msg_after.acknowledged_at.is_some(), "acknowledged_at should be set after acknowledge");
+                prop_assert!(msg_after.acknowledged_at.unwrap() <= chrono::Utc::now(), "acknowledged_at should be <= now");
+
+                Ok(())
+            }).unwrap();
+        }
+
+        /// Property 3: Index Consistency - To Agent Index
+        ///
+        /// *For any* message inserted via direct heap with a to_agent_id,
+        /// querying via the to_agent index SHALL return that message.
+        ///
+        /// **Validates: Requirements 7.3, 13.1, 13.2, 13.4, 13.5**
+        #[pg_test]
+        fn prop_message_to_agent_index_consistency() {
+            use proptest::test_runner::{TestRunner, Config};
+
+            let config = Config::with_cases(100);
+            let mut runner = TestRunner::new(config);
+
+            let strategy = (
+                arb_entity_id(),
+                arb_entity_id(),
+                arb_entity_id(), // Always provide to_agent_id for this test
+                arb_optional_agent_type(),
+                arb_message_type(),
+                arb_payload(),
+                arb_optional_entity_id(),
+                arb_optional_entity_id(),
+                arb_artifact_ids(),
+                arb_priority(),
+                arb_optional_expires_at(),
+            );
+
+            runner.run(&strategy, |(
+                from_agent_id,
+                to_agent_id_val,
+                to_agent_id,
+                to_agent_type,
+                message_type,
+                payload,
+                trajectory_id,
+                scope_id,
+                artifact_ids,
+                priority,
+                expires_at,
+            )| {
+                // Generate a new message ID
+                let message_id = caliber_core::new_entity_id();
+
+                // Insert via heap with to_agent_id
+                let insert_result = message_send_heap(
+                    message_id,
+                    from_agent_id,
+                    Some(to_agent_id),
+                    to_agent_type.as_deref(),
+                    message_type,
+                    &payload,
+                    trajectory_id,
+                    scope_id,
+                    &artifact_ids,
+                    priority,
+                    expires_at,
+                );
+                prop_assert!(insert_result.is_ok(), "Insert should succeed");
+
+                // Query via to_agent index
+                let list_result = message_list_for_agent_heap(to_agent_id);
+                prop_assert!(list_result.is_ok(), "List for agent should succeed: {:?}", list_result.err());
+                
+                let messages = list_result.unwrap();
+                prop_assert!(
+                    messages.iter().any(|m| m.message_id == message_id),
+                    "Inserted message should be found via to_agent index"
+                );
+
+                // Verify the found message has correct data
+                let found_message = messages.iter().find(|m| m.message_id == message_id).unwrap();
+                prop_assert_eq!(found_message.from_agent_id, from_agent_id);
+                prop_assert_eq!(found_message.to_agent_id, Some(to_agent_id));
+                prop_assert_eq!(found_message.message_type, message_type);
+                prop_assert_eq!(found_message.priority, priority);
+
+                Ok(())
+            }).unwrap();
+        }
+    }
+}

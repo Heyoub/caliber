@@ -60,6 +60,17 @@ pub enum TTL {
     Scope,
     /// Expires after specified duration in milliseconds
     Duration(DurationMs),
+    // Semantic aliases for common TTL patterns
+    /// Ephemeral - expires when scope closes (alias for Scope)
+    Ephemeral,
+    /// Short-term retention (~1 hour)
+    ShortTerm,
+    /// Medium-term retention (~24 hours)
+    MediumTerm,
+    /// Long-term retention (~7 days)
+    LongTerm,
+    /// Permanent - never expires (alias for Persistent)
+    Permanent,
 }
 
 
@@ -74,6 +85,9 @@ pub enum EntityType {
     Lock,
     Message,
     Agent,
+    Delegation,
+    Handoff,
+    Conflict,
 }
 
 /// Memory category for hierarchical memory organization.
@@ -122,6 +136,7 @@ pub enum TurnRole {
 /// Type of artifact produced during a trajectory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ArtifactType {
+    // Core artifact types
     ErrorLog,
     CodePatch,
     DesignDecision,
@@ -131,6 +146,23 @@ pub enum ArtifactType {
     ToolResult,
     IntermediateOutput,
     Custom,
+    // Extended artifact types for full-featured system
+    /// Source code artifacts
+    Code,
+    /// Documentation, specifications
+    Document,
+    /// Structured data outputs
+    Data,
+    /// Configuration files
+    Config,
+    /// General logs (non-error)
+    Log,
+    /// Summaries, abstracts
+    Summary,
+    /// Decision records
+    Decision,
+    /// Plans, roadmaps
+    Plan,
 }
 
 /// Method used to extract an artifact.
@@ -144,6 +176,7 @@ pub enum ExtractionMethod {
 /// Type of note (cross-trajectory knowledge).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NoteType {
+    // Core note types
     Convention,
     Strategy,
     Gotcha,
@@ -152,6 +185,13 @@ pub enum NoteType {
     Relationship,
     Procedure,
     Meta,
+    // Extended note types for full-featured system
+    /// Discovered insights
+    Insight,
+    /// Corrections to previous knowledge
+    Correction,
+    /// Summary notes
+    Summary,
 }
 
 // ============================================================================
