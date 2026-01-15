@@ -12,7 +12,8 @@
       "Bash(ls:*)",
       "Bash(find:*)",
       "WebFetch(domain:docs.rs)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(cat:*)"
     ]
   }
 }

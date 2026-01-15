@@ -11,13 +11,22 @@ This design ensures a single source of truth for all CALIBER operations, enablin
 
 ## Prerequisites
 
-**CRITICAL:** Before implementing caliber-api and caliber-tui, the `caliber-pg` crate MUST be migrated from SPI-based SQL to direct heap operations. This is a separate spec (`caliber-pg-hot-path`) that must be completed first.
+**✅ PREREQUISITE COMPLETE - READY TO BUILD**
 
-**Why:** The CALIBER spec mandates NO SQL IN HOT PATH. The current implementation uses `Spi::connect()` which still involves SQL parsing overhead. Direct heap operations via pgrx (`heap_form_tuple`, `simple_heap_insert`, `index_beginscan`) bypass SQL entirely for maximum performance.
+The `caliber-pg` crate has been successfully migrated to production-ready state:
+- ✅ Zero compiler warnings - clean build
+- ✅ Type alignment complete (ExtractionMethod, CaliberConfig, Checkpoint, RawContent, MemoryAccess, MemoryRegionConfig)
+- ✅ Timestamp conversion wired up via chrono_to_timestamp helpers
+- ✅ Direct heap operations implemented (heap_form_tuple, simple_heap_insert, index_beginscan)
+- ✅ All imports wired up with real functionality - no dead code
+- ✅ Helper functions DRY up heap operations (build_optional_* pattern)
+
+**What This Means:**
+The caliber-pg extension is now production-ready. All `caliber_*` pg_extern functions are available for the API layer to call. Direct heap operations bypass SQL parsing entirely for maximum performance.
 
 **Dependency Chain:**
-1. `caliber-pg-hot-path` spec - Migrate SPI → Direct Heap (MUST DO FIRST)
-2. `caliber-api` crate - REST/gRPC/WebSocket layer
+1. ~~`caliber-pg-hot-path` spec~~ ✅ **COMPLETE**
+2. `caliber-api` crate - REST/gRPC/WebSocket layer ⬅️ **START HERE**
 3. `caliber-tui` crate - Terminal UI
 
 ## Architecture
@@ -86,25 +95,21 @@ This design ensures a single source of truth for all CALIBER operations, enablin
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Current State vs Target State
+### Implementation State
 
-**Current State:** `caliber-pg` uses SPI (Server Programming Interface) which still involves SQL parsing:
+**✅ PRODUCTION READY:** `caliber-pg` now uses direct heap operations with zero SQL parsing overhead:
 ```rust
-// CURRENT - uses SPI (SQL parsing overhead)
-Spi::connect(|client| {
-    client.update("INSERT INTO caliber_trajectory ...", None, Some(params))
-})
+// IMPLEMENTED - direct heap manipulation (no SQL)
+use crate::heap_ops::{open_relation, insert_tuple};
+use crate::tuple_extract::{extract_uuid, extract_text};
+
+let rel = open_relation("caliber_trajectory", AccessShareLock)?;
+let values: [Datum; N] = [...];
+let nulls: [bool; N] = [...];
+let tid = insert_tuple(&rel, &values, &nulls)?;
 ```
 
-**Target State:** Direct heap operations bypass SQL entirely:
-```rust
-// TARGET - direct heap manipulation (no SQL)
-let rel = PgRelation::open_with_name("caliber_trajectory");
-let heap_tuple = heap_form_tuple(tuple_desc, values, nulls);
-simple_heap_insert(rel, heap_tuple);
-```
-
-**Note:** The API layer will call the existing `caliber_*` pg_extern functions. The hot-path optimization (migrating from SPI to direct heap) is a separate concern that should be addressed in `caliber-pg` before or during TUI development. The API design is agnostic to this internal implementation detail.
+**For API Developers:** The API layer calls the existing `caliber_*` pg_extern functions via PostgreSQL connection. These functions internally use direct heap operations - you don't need to worry about the implementation details. Just call the functions and enjoy the performance.
 
 ## Components and Interfaces
 

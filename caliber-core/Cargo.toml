@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["openapi"]
+openapi = ["dep:utoipa"]
+
 [dependencies]
 uuid = { workspace = true }
 chrono = { workspace = true }
@@ -11,6 +15,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
+
+# OpenAPI schema generation (optional)
+utoipa = { version = "5.3", features = ["uuid", "chrono"], optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

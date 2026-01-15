@@ -25,6 +25,7 @@ pub use caliber_pcp::ConflictResolution;
 
 /// Agent status in the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum AgentStatus {
     /// Agent is idle and available for work
     Idle,
@@ -38,6 +39,7 @@ pub enum AgentStatus {
 
 /// Permission scope for memory access.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum PermissionScope {
     /// Only own resources
     Own,
@@ -49,6 +51,7 @@ pub enum PermissionScope {
 
 /// A single memory permission entry.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryPermission {
     /// Type of memory (e.g., "artifact", "note", "trajectory")
     pub memory_type: String,
@@ -60,6 +63,7 @@ pub struct MemoryPermission {
 
 /// Memory access configuration for an agent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryAccess {
     /// Read permissions
     pub read: Vec<MemoryPermission>,
@@ -86,8 +90,10 @@ impl Default for MemoryAccess {
 
 /// An agent in the multi-agent system.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Agent {
     /// Unique identifier for this agent
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub agent_id: EntityId,
     /// Type of agent (e.g., "coder", "reviewer", "planner")
     pub agent_type: String,
@@ -99,18 +105,23 @@ pub struct Agent {
     /// Current status
     pub status: AgentStatus,
     /// Current trajectory being worked on
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub current_trajectory_id: Option<EntityId>,
     /// Current scope being worked on
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub current_scope_id: Option<EntityId>,
 
     /// Agent types this agent can delegate to
     pub can_delegate_to: Vec<String>,
     /// Supervisor agent (if any)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub reports_to: Option<EntityId>,
 
     /// When this agent was created
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     /// Last heartbeat timestamp
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub last_heartbeat: Timestamp,
 }
 
@@ -174,6 +185,7 @@ impl Agent {
 
 /// Type of memory region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum MemoryRegion {
     /// Only owning agent can access
     Private,
@@ -187,19 +199,25 @@ pub enum MemoryRegion {
 
 /// Configuration for a memory region.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryRegionConfig {
     /// Unique identifier for this region
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub region_id: EntityId,
     /// Type of region
     pub region_type: MemoryRegion,
     /// Agent that owns this region
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub owner_agent_id: EntityId,
     /// Team this region belongs to (if applicable)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub team_id: Option<EntityId>,
 
     /// Agents with read access
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub readers: Vec<EntityId>,
     /// Agents with write access
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub writers: Vec<EntityId>,
 
     /// Whether writes require a lock
@@ -316,6 +334,7 @@ impl MemoryRegionConfig {
 
 /// Lock mode for distributed locks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum LockMode {
     /// Exclusive lock - only one holder
     Exclusive,
@@ -325,18 +344,24 @@ pub enum LockMode {
 
 /// A distributed lock on a resource.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DistributedLock {
     /// Unique identifier for this lock
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub lock_id: EntityId,
     /// Type of resource being locked
     pub resource_type: String,
     /// ID of the resource being locked
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub resource_id: EntityId,
     /// Agent holding the lock
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub holder_agent_id: EntityId,
     /// When the lock was acquired
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub acquired_at: Timestamp,
     /// When the lock expires
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub expires_at: Timestamp,
     /// Lock mode
     pub mode: LockMode,
@@ -411,6 +436,7 @@ pub fn compute_lock_key(resource_type: &str, resource_id: EntityId) -> i64 {
 
 /// Type of agent message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum MessageType {
     /// Task delegation request
     TaskDelegation,
@@ -432,6 +458,7 @@ pub enum MessageType {
 
 /// Priority level for messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum MessagePriority {
     /// Low priority - can be delayed
     Low,
@@ -445,13 +472,17 @@ pub enum MessagePriority {
 
 /// A message between agents.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentMessage {
     /// Unique identifier for this message
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub message_id: EntityId,
 
     /// Agent sending the message
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub from_agent_id: EntityId,
     /// Specific agent to receive (if targeted)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub to_agent_id: Option<EntityId>,
     /// Agent type to receive (for broadcast)
     pub to_agent_type: Option<String>,
@@ -462,22 +493,29 @@ pub struct AgentMessage {
     pub payload: String,
 
     /// Related trajectory (if any)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub trajectory_id: Option<EntityId>,
     /// Related scope (if any)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub scope_id: Option<EntityId>,
     /// Related artifacts (if any)
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub artifact_ids: Vec<EntityId>,
 
     /// When the message was created
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     /// When the message was delivered
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub delivered_at: Option<Timestamp>,
     /// When the message was acknowledged
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub acknowledged_at: Option<Timestamp>,
 
     /// Message priority
     pub priority: MessagePriority,
     /// When the message expires
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub expires_at: Option<Timestamp>,
 }
 
@@ -600,6 +638,7 @@ impl AgentMessage {
 
 /// Status of a delegated task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum DelegationStatus {
     /// Task is pending acceptance
     Pending,
@@ -617,6 +656,7 @@ pub enum DelegationStatus {
 
 /// Result status of a delegation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum DelegationResultStatus {
     /// Task completed successfully
     Success,
@@ -628,12 +668,15 @@ pub enum DelegationResultStatus {
 
 /// Result of a delegated task.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationResult {
     /// Status of the result
     pub status: DelegationResultStatus,
     /// Artifacts produced by the task
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub produced_artifacts: Vec<EntityId>,
     /// Notes produced by the task
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub produced_notes: Vec<EntityId>,
     /// Summary of what was accomplished
     pub summary: String,
@@ -678,13 +721,17 @@ impl DelegationResult {
 
 /// A delegated task between agents.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegatedTask {
     /// Unique identifier for this delegation
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub delegation_id: EntityId,
 
     /// Agent delegating the task
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub delegator_agent_id: EntityId,
     /// Specific agent to delegate to (if targeted)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub delegatee_agent_id: Option<EntityId>,
     /// Agent type to delegate to (for broadcast)
     pub delegatee_agent_type: Option<String>,
@@ -692,13 +739,17 @@ pub struct DelegatedTask {
     /// Description of the task
     pub task_description: String,
     /// Parent trajectory
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub parent_trajectory_id: EntityId,
     /// Child trajectory created for this task
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub child_trajectory_id: Option<EntityId>,
 
     /// Artifacts shared with the delegatee
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub shared_artifacts: Vec<EntityId>,
     /// Notes shared with the delegatee
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub shared_notes: Vec<EntityId>,
     /// Additional context (JSON)
     pub additional_context: Option<String>,
@@ -706,6 +757,7 @@ pub struct DelegatedTask {
     /// Constraints for the task (JSON)
     pub constraints: String,
     /// Deadline for completion
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub deadline: Option<Timestamp>,
 
     /// Current status
@@ -714,10 +766,13 @@ pub struct DelegatedTask {
     pub result: Option<DelegationResult>,
 
     /// When the delegation was created
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     /// When the delegation was accepted
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub accepted_at: Option<Timestamp>,
     /// When the delegation was completed
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub completed_at: Option<Timestamp>,
 }
 
@@ -844,6 +899,7 @@ impl DelegatedTask {
 
 /// Status of a handoff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum HandoffStatus {
     /// Handoff has been initiated
     Initiated,
@@ -857,6 +913,7 @@ pub enum HandoffStatus {
 
 /// Reason for a handoff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum HandoffReason {
     /// Current agent lacks required capability
     CapabilityMismatch,
@@ -876,23 +933,30 @@ pub enum HandoffReason {
 
 /// A handoff between agents.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentHandoff {
     /// Unique identifier for this handoff
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub handoff_id: EntityId,
 
     /// Agent initiating the handoff
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub from_agent_id: EntityId,
     /// Specific agent to hand off to (if targeted)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub to_agent_id: Option<EntityId>,
     /// Agent type to hand off to (for broadcast)
     pub to_agent_type: Option<String>,
 
     /// Trajectory being handed off
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
     /// Scope being handed off
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
 
     /// Context snapshot ID
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub context_snapshot_id: EntityId,
     /// Notes for the receiving agent
     pub handoff_notes: String,
@@ -908,10 +972,13 @@ pub struct AgentHandoff {
     pub status: HandoffStatus,
 
     /// When the handoff was initiated
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub initiated_at: Timestamp,
     /// When the handoff was accepted
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub accepted_at: Option<Timestamp>,
     /// When the handoff was completed
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub completed_at: Option<Timestamp>,
 
     /// Reason for the handoff
@@ -1027,6 +1094,7 @@ impl AgentHandoff {
 
 /// Type of conflict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ConflictType {
     /// Two agents wrote to the same resource concurrently
     ConcurrentWrite,
@@ -1042,6 +1110,7 @@ pub enum ConflictType {
 
 /// Status of a conflict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ConflictStatus {
     /// Conflict has been detected
     Detected,
@@ -1055,6 +1124,7 @@ pub enum ConflictStatus {
 
 /// Strategy for resolving a conflict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ResolutionStrategy {
     /// Last write wins
     LastWriteWins,
@@ -1072,12 +1142,14 @@ pub enum ResolutionStrategy {
 
 /// Record of how a conflict was resolved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ConflictResolutionRecord {
     /// Strategy used
     pub strategy: ResolutionStrategy,
     /// Winner (if applicable): "a", "b", or "merged"
     pub winner: Option<String>,
     /// ID of merged result (if applicable)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub merged_result_id: Option<EntityId>,
     /// Reason for the resolution
     pub reason: String,
@@ -1122,8 +1194,10 @@ impl ConflictResolutionRecord {
 
 /// A detected conflict between items.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Conflict {
     /// Unique identifier for this conflict
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub conflict_id: EntityId,
     /// Type of conflict
     pub conflict_type: ConflictType,
@@ -1131,18 +1205,23 @@ pub struct Conflict {
     /// Type of first item
     pub item_a_type: String,
     /// ID of first item
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub item_a_id: EntityId,
     /// Type of second item
     pub item_b_type: String,
     /// ID of second item
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub item_b_id: EntityId,
 
     /// Agent that created first item (if known)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub agent_a_id: Option<EntityId>,
     /// Agent that created second item (if known)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub agent_b_id: Option<EntityId>,
 
     /// Related trajectory (if any)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub trajectory_id: Option<EntityId>,
 
     /// Current status
@@ -1151,8 +1230,10 @@ pub struct Conflict {
     pub resolution: Option<ConflictResolutionRecord>,
 
     /// When the conflict was detected
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub detected_at: Timestamp,
     /// When the conflict was resolved
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub resolved_at: Option<Timestamp>,
 }
 

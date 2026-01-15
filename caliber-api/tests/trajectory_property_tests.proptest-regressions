@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b05299c1b4e92ae76cd074370629283cb21d68e4bf1668b4ccfea79e085b8e33 # shrinks to name = "aaa-0", metadata = None
+cc f1dfc5fb706ee9c9f4a4bbec1a1d41db96f7f167a5f96d484751477abbbd9cfc # shrinks to random_id_bytes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+cc d7491213c6d4f34e944c628b87770e235679ddc5935f8356812653fb62302d9a # shrinks to create_req = CreateTrajectoryRequest { name: "aaa-0", description: None, parent_trajectory_id: None, agent_id: None, metadata: None }, new_status = Active
+cc ad74730d7b73da46831b60b2a588a2304e038f0e6655b82fa400b79630cdc8bc # shrinks to name = "aaa-0"
+cc d6ffa4761cade0ca2c7f7f597ba9191c5395ce49ca6ef983f9de6bf5810179c0 # shrinks to create_req = CreateTrajectoryRequest { name: "aaa-0", description: None, parent_trajectory_id: None, agent_id: None, metadata: None }
+cc 9cb323e07fbfd327c180fded84c06a7ee689d3ae0cc9b7b93fe96c7a1740c868 # shrinks to create_req = CreateTrajectoryRequest { name: "aaa-0", description: None, parent_trajectory_id: None, agent_id: None, metadata: None }, update_req = UpdateTrajectoryRequest { name: None, description: Some("Aaa flp  mk."), status: None, metadata: None }

@@ -1,0 +1,819 @@
+// CALIBER gRPC Service Definitions
+//
+// This file defines the gRPC service interface for the CALIBER memory framework.
+// All message types mirror the REST API request/response types for consistency.
+
+syntax = "proto3";
+
+package caliber;
+
+// ============================================================================
+// CORE TYPES
+// ============================================================================
+
+// EntityId is represented as a string (UUID format)
+// Timestamp is represented as int64 (Unix timestamp in milliseconds)
+
+// ============================================================================
+// TRAJECTORY SERVICE
+// ============================================================================
+
+service TrajectoryService {
+  rpc CreateTrajectory(CreateTrajectoryRequest) returns (TrajectoryResponse);
+  rpc GetTrajectory(GetTrajectoryRequest) returns (TrajectoryResponse);
+  rpc ListTrajectories(ListTrajectoriesRequest) returns (ListTrajectoriesResponse);
+  rpc UpdateTrajectory(UpdateTrajectoryRequest) returns (TrajectoryResponse);
+  rpc DeleteTrajectory(DeleteTrajectoryRequest) returns (Empty);
+  rpc ListTrajectoryScopes(ListTrajectoryScopesRequest) returns (ListScopesResponse);
+  rpc ListTrajectoryChildren(ListTrajectoryChildrenRequest) returns (ListTrajectoriesResponse);
+}
+
+message CreateTrajectoryRequest {
+  string name = 1;
+  optional string description = 2;
+  optional string parent_trajectory_id = 3;
+  optional string agent_id = 4;
+  optional string metadata = 5; // JSON string
+}
+
+message GetTrajectoryRequest {
+  string trajectory_id = 1;
+}
+
+message ListTrajectoriesRequest {
+  optional string status = 1;
+  optional string agent_id = 2;
+  optional string parent_id = 3;
+  optional int32 limit = 4;
+  optional int32 offset = 5;
+}
+
+message UpdateTrajectoryRequest {
+  string trajectory_id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string status = 4;
+  optional string metadata = 5; // JSON string
+}
+
+message DeleteTrajectoryRequest {
+  string trajectory_id = 1;
+}
+
+message ListTrajectoryScopesRequest {
+  string trajectory_id = 1;
+}
+
+message ListTrajectoryChildrenRequest {
+  string trajectory_id = 1;
+}
+
+message TrajectoryResponse {
+  string trajectory_id = 1;
+  string name = 2;
+  optional string description = 3;
+  string status = 4;
+  optional string parent_trajectory_id = 5;
+  optional string root_trajectory_id = 6;
+  optional string agent_id = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+  optional int64 completed_at = 10;
+  optional TrajectoryOutcome outcome = 11;
+  optional string metadata = 12; // JSON string
+}
+
+message TrajectoryOutcome {
+  string status = 1;
+  string summary = 2;
+  repeated string produced_artifacts = 3;
+  repeated string produced_notes = 4;
+  optional string error = 5;
+}
+
+message ListTrajectoriesResponse {
+  repeated TrajectoryResponse trajectories = 1;
+  int32 total = 2;
+}
+
+// ============================================================================
+// SCOPE SERVICE
+// ============================================================================
+
+service ScopeService {
+  rpc CreateScope(CreateScopeRequest) returns (ScopeResponse);
+  rpc GetScope(GetScopeRequest) returns (ScopeResponse);
+  rpc UpdateScope(UpdateScopeRequest) returns (ScopeResponse);
+  rpc CreateCheckpoint(CreateCheckpointRequest) returns (CheckpointResponse);
+  rpc CloseScope(CloseScopeRequest) returns (ScopeResponse);
+  rpc ListScopeTurns(ListScopeTurnsRequest) returns (ListTurnsResponse);
+  rpc ListScopeArtifacts(ListScopeArtifactsRequest) returns (ListArtifactsResponse);
+}
+
+message CreateScopeRequest {
+  string trajectory_id = 1;
+  optional string parent_scope_id = 2;
+  string name = 3;
+  optional string purpose = 4;
+  int32 token_budget = 5;
+  optional string metadata = 6; // JSON string
+}
+
+message GetScopeRequest {
+  string scope_id = 1;
+}
+
+message UpdateScopeRequest {
+  string scope_id = 1;
+  optional string name = 2;
+  optional string purpose = 3;
+  optional int32 token_budget = 4;
+  optional string metadata = 5; // JSON string
+}
+
+message CreateCheckpointRequest {
+  string scope_id = 1;
+  bytes context_state = 2;
+  bool recoverable = 3;
+}
+
+message CloseScopeRequest {
+  string scope_id = 1;
+}
+
+message ListScopeTurnsRequest {
+  string scope_id = 1;
+}
+
+message ListScopeArtifactsRequest {
+  string scope_id = 1;
+}
+
+message ScopeResponse {
+  string scope_id = 1;
+  string trajectory_id = 2;
+  optional string parent_scope_id = 3;
+  string name = 4;
+  optional string purpose = 5;
+  bool is_active = 6;
+  int64 created_at = 7;
+  optional int64 closed_at = 8;
+  optional CheckpointResponse checkpoint = 9;
+  int32 token_budget = 10;
+  int32 tokens_used = 11;
+  optional string metadata = 12; // JSON string
+}
+
+message CheckpointResponse {
+  bytes context_state = 1;
+  bool recoverable = 2;
+}
+
+message ListScopesResponse {
+  repeated ScopeResponse scopes = 1;
+}
+
+// ============================================================================
+// ARTIFACT SERVICE
+// ============================================================================
+
+service ArtifactService {
+  rpc CreateArtifact(CreateArtifactRequest) returns (ArtifactResponse);
+  rpc GetArtifact(GetArtifactRequest) returns (ArtifactResponse);
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse);
+  rpc UpdateArtifact(UpdateArtifactRequest) returns (ArtifactResponse);
+  rpc DeleteArtifact(DeleteArtifactRequest) returns (Empty);
+  rpc SearchArtifacts(SearchRequest) returns (SearchResponse);
+}
+
+message CreateArtifactRequest {
+  string trajectory_id = 1;
+  string scope_id = 2;
+  string artifact_type = 3;
+  string name = 4;
+  string content = 5;
+  int32 source_turn = 6;
+  string extraction_method = 7;
+  optional float confidence = 8;
+  string ttl = 9; // JSON string
+  optional string metadata = 10; // JSON string
+}
+
+message GetArtifactRequest {
+  string artifact_id = 1;
+}
+
+message ListArtifactsRequest {
+  optional string artifact_type = 1;
+  optional string trajectory_id = 2;
+  optional string scope_id = 3;
+  optional int64 created_after = 4;
+  optional int64 created_before = 5;
+  optional int32 limit = 6;
+  optional int32 offset = 7;
+}
+
+message UpdateArtifactRequest {
+  string artifact_id = 1;
+  optional string name = 2;
+  optional string content = 3;
+  optional string artifact_type = 4;
+  optional string ttl = 5; // JSON string
+  optional string metadata = 6; // JSON string
+}
+
+message DeleteArtifactRequest {
+  string artifact_id = 1;
+}
+
+message ArtifactResponse {
+  string artifact_id = 1;
+  string trajectory_id = 2;
+  string scope_id = 3;
+  string artifact_type = 4;
+  string name = 5;
+  string content = 6;
+  bytes content_hash = 7;
+  optional Embedding embedding = 8;
+  Provenance provenance = 9;
+  string ttl = 10; // JSON string
+  int64 created_at = 11;
+  int64 updated_at = 12;
+  optional string superseded_by = 13;
+  optional string metadata = 14; // JSON string
+}
+
+message Provenance {
+  int32 source_turn = 1;
+  string extraction_method = 2;
+  optional float confidence = 3;
+}
+
+message Embedding {
+  repeated float data = 1;
+  string model_id = 2;
+  int32 dimensions = 3;
+}
+
+message ListArtifactsResponse {
+  repeated ArtifactResponse artifacts = 1;
+  int32 total = 2;
+}
+
+// ============================================================================
+// NOTE SERVICE
+// ============================================================================
+
+service NoteService {
+  rpc CreateNote(CreateNoteRequest) returns (NoteResponse);
+  rpc GetNote(GetNoteRequest) returns (NoteResponse);
+  rpc ListNotes(ListNotesRequest) returns (ListNotesResponse);
+  rpc UpdateNote(UpdateNoteRequest) returns (NoteResponse);
+  rpc DeleteNote(DeleteNoteRequest) returns (Empty);
+  rpc SearchNotes(SearchRequest) returns (SearchResponse);
+}
+
+message CreateNoteRequest {
+  string note_type = 1;
+  string title = 2;
+  string content = 3;
+  repeated string source_trajectory_ids = 4;
+  repeated string source_artifact_ids = 5;
+  string ttl = 6; // JSON string
+  optional string metadata = 7; // JSON string
+}
+
+message GetNoteRequest {
+  string note_id = 1;
+}
+
+message ListNotesRequest {
+  optional string note_type = 1;
+  optional string source_trajectory_id = 2;
+  optional int64 created_after = 3;
+  optional int64 created_before = 4;
+  optional int32 limit = 5;
+  optional int32 offset = 6;
+}
+
+message UpdateNoteRequest {
+  string note_id = 1;
+  optional string title = 2;
+  optional string content = 3;
+  optional string note_type = 4;
+  optional string ttl = 5; // JSON string
+  optional string metadata = 6; // JSON string
+}
+
+message DeleteNoteRequest {
+  string note_id = 1;
+}
+
+message NoteResponse {
+  string note_id = 1;
+  string note_type = 2;
+  string title = 3;
+  string content = 4;
+  bytes content_hash = 5;
+  optional Embedding embedding = 6;
+  repeated string source_trajectory_ids = 7;
+  repeated string source_artifact_ids = 8;
+  string ttl = 9; // JSON string
+  int64 created_at = 10;
+  int64 updated_at = 11;
+  int64 accessed_at = 12;
+  int32 access_count = 13;
+  optional string superseded_by = 14;
+  optional string metadata = 15; // JSON string
+}
+
+message ListNotesResponse {
+  repeated NoteResponse notes = 1;
+  int32 total = 2;
+}
+
+// ============================================================================
+// TURN SERVICE
+// ============================================================================
+
+service TurnService {
+  rpc CreateTurn(CreateTurnRequest) returns (TurnResponse);
+  rpc GetTurn(GetTurnRequest) returns (TurnResponse);
+}
+
+message CreateTurnRequest {
+  string scope_id = 1;
+  int32 sequence = 2;
+  string role = 3;
+  string content = 4;
+  int32 token_count = 5;
+  optional string tool_calls = 6; // JSON string
+  optional string tool_results = 7; // JSON string
+  optional string metadata = 8; // JSON string
+}
+
+message GetTurnRequest {
+  string turn_id = 1;
+}
+
+message TurnResponse {
+  string turn_id = 1;
+  string scope_id = 2;
+  int32 sequence = 3;
+  string role = 4;
+  string content = 5;
+  int32 token_count = 6;
+  int64 created_at = 7;
+  optional string tool_calls = 8; // JSON string
+  optional string tool_results = 9; // JSON string
+  optional string metadata = 10; // JSON string
+}
+
+message ListTurnsResponse {
+  repeated TurnResponse turns = 1;
+}
+
+// ============================================================================
+// AGENT SERVICE
+// ============================================================================
+
+service AgentService {
+  rpc RegisterAgent(RegisterAgentRequest) returns (AgentResponse);
+  rpc GetAgent(GetAgentRequest) returns (AgentResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc UpdateAgent(UpdateAgentRequest) returns (AgentResponse);
+  rpc UnregisterAgent(UnregisterAgentRequest) returns (Empty);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message RegisterAgentRequest {
+  string agent_type = 1;
+  repeated string capabilities = 2;
+  MemoryAccess memory_access = 3;
+  repeated string can_delegate_to = 4;
+  optional string reports_to = 5;
+}
+
+message GetAgentRequest {
+  string agent_id = 1;
+}
+
+message ListAgentsRequest {
+  optional string agent_type = 1;
+  optional string status = 2;
+}
+
+message UpdateAgentRequest {
+  string agent_id = 1;
+  optional string status = 2;
+  optional string current_trajectory_id = 3;
+  optional string current_scope_id = 4;
+  repeated string capabilities = 5;
+  optional MemoryAccess memory_access = 6;
+}
+
+message UnregisterAgentRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatResponse {
+  int64 timestamp = 1;
+}
+
+message AgentResponse {
+  string agent_id = 1;
+  string agent_type = 2;
+  repeated string capabilities = 3;
+  MemoryAccess memory_access = 4;
+  string status = 5;
+  optional string current_trajectory_id = 6;
+  optional string current_scope_id = 7;
+  repeated string can_delegate_to = 8;
+  optional string reports_to = 9;
+  int64 created_at = 10;
+  int64 last_heartbeat = 11;
+}
+
+message MemoryAccess {
+  repeated MemoryPermission read = 1;
+  repeated MemoryPermission write = 2;
+}
+
+message MemoryPermission {
+  string memory_type = 1;
+  string scope = 2;
+  optional string filter = 3;
+}
+
+message ListAgentsResponse {
+  repeated AgentResponse agents = 1;
+}
+
+// ============================================================================
+// LOCK SERVICE
+// ============================================================================
+
+service LockService {
+  rpc AcquireLock(AcquireLockRequest) returns (LockResponse);
+  rpc ReleaseLock(ReleaseLockRequest) returns (Empty);
+  rpc ExtendLock(ExtendLockRequest) returns (LockResponse);
+  rpc ListLocks(ListLocksRequest) returns (ListLocksResponse);
+}
+
+message AcquireLockRequest {
+  string resource_type = 1;
+  string resource_id = 2;
+  string holder_agent_id = 3;
+  int64 timeout_ms = 4;
+  string mode = 5;
+}
+
+message ReleaseLockRequest {
+  string lock_id = 1;
+}
+
+message ExtendLockRequest {
+  string lock_id = 1;
+  int64 additional_ms = 2;
+}
+
+message ListLocksRequest {
+  optional string resource_type = 1;
+  optional string holder_agent_id = 2;
+}
+
+message LockResponse {
+  string lock_id = 1;
+  string resource_type = 2;
+  string resource_id = 3;
+  string holder_agent_id = 4;
+  int64 acquired_at = 5;
+  int64 expires_at = 6;
+  string mode = 7;
+}
+
+message ListLocksResponse {
+  repeated LockResponse locks = 1;
+}
+
+// ============================================================================
+// MESSAGE SERVICE
+// ============================================================================
+
+service MessageService {
+  rpc SendMessage(SendMessageRequest) returns (MessageResponse);
+  rpc GetMessage(GetMessageRequest) returns (MessageResponse);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc AcknowledgeMessage(AcknowledgeMessageRequest) returns (MessageResponse);
+}
+
+message SendMessageRequest {
+  string from_agent_id = 1;
+  optional string to_agent_id = 2;
+  optional string to_agent_type = 3;
+  string message_type = 4;
+  string payload = 5;
+  optional string trajectory_id = 6;
+  optional string scope_id = 7;
+  repeated string artifact_ids = 8;
+  string priority = 9;
+  optional int64 expires_at = 10;
+}
+
+message GetMessageRequest {
+  string message_id = 1;
+}
+
+message ListMessagesRequest {
+  optional string message_type = 1;
+  optional string from_agent_id = 2;
+  optional string to_agent_id = 3;
+  optional string trajectory_id = 4;
+}
+
+message AcknowledgeMessageRequest {
+  string message_id = 1;
+}
+
+message MessageResponse {
+  string message_id = 1;
+  string from_agent_id = 2;
+  optional string to_agent_id = 3;
+  optional string to_agent_type = 4;
+  string message_type = 5;
+  string payload = 6;
+  optional string trajectory_id = 7;
+  optional string scope_id = 8;
+  repeated string artifact_ids = 9;
+  int64 created_at = 10;
+  optional int64 delivered_at = 11;
+  optional int64 acknowledged_at = 12;
+  string priority = 13;
+  optional int64 expires_at = 14;
+}
+
+message ListMessagesResponse {
+  repeated MessageResponse messages = 1;
+}
+
+// ============================================================================
+// DELEGATION SERVICE
+// ============================================================================
+
+service DelegationService {
+  rpc CreateDelegation(CreateDelegationRequest) returns (DelegationResponse);
+  rpc GetDelegation(GetDelegationRequest) returns (DelegationResponse);
+  rpc AcceptDelegation(AcceptDelegationRequest) returns (DelegationResponse);
+  rpc RejectDelegation(RejectDelegationRequest) returns (DelegationResponse);
+  rpc CompleteDelegation(CompleteDelegationRequest) returns (DelegationResponse);
+}
+
+message CreateDelegationRequest {
+  string from_agent_id = 1;
+  string to_agent_id = 2;
+  string trajectory_id = 3;
+  string scope_id = 4;
+  string task_description = 5;
+  optional int64 expected_completion = 6;
+  optional string context = 7; // JSON string
+}
+
+message GetDelegationRequest {
+  string delegation_id = 1;
+}
+
+message AcceptDelegationRequest {
+  string delegation_id = 1;
+}
+
+message RejectDelegationRequest {
+  string delegation_id = 1;
+  string reason = 2;
+}
+
+message CompleteDelegationRequest {
+  string delegation_id = 1;
+  DelegationResult result = 2;
+}
+
+message DelegationResponse {
+  string delegation_id = 1;
+  string from_agent_id = 2;
+  string to_agent_id = 3;
+  string trajectory_id = 4;
+  string scope_id = 5;
+  string task_description = 6;
+  string status = 7;
+  int64 created_at = 8;
+  optional int64 accepted_at = 9;
+  optional int64 completed_at = 10;
+  optional int64 expected_completion = 11;
+  optional DelegationResult result = 12;
+  optional string context = 13; // JSON string
+}
+
+message DelegationResult {
+  string status = 1;
+  optional string output = 2;
+  repeated string artifacts = 3;
+  optional string error = 4;
+}
+
+// ============================================================================
+// HANDOFF SERVICE
+// ============================================================================
+
+service HandoffService {
+  rpc CreateHandoff(CreateHandoffRequest) returns (HandoffResponse);
+  rpc GetHandoff(GetHandoffRequest) returns (HandoffResponse);
+  rpc AcceptHandoff(AcceptHandoffRequest) returns (HandoffResponse);
+  rpc CompleteHandoff(CompleteHandoffRequest) returns (HandoffResponse);
+}
+
+message CreateHandoffRequest {
+  string from_agent_id = 1;
+  string to_agent_id = 2;
+  string trajectory_id = 3;
+  string scope_id = 4;
+  string reason = 5;
+  bytes context_snapshot = 6;
+}
+
+message GetHandoffRequest {
+  string handoff_id = 1;
+}
+
+message AcceptHandoffRequest {
+  string handoff_id = 1;
+}
+
+message CompleteHandoffRequest {
+  string handoff_id = 1;
+}
+
+message HandoffResponse {
+  string handoff_id = 1;
+  string from_agent_id = 2;
+  string to_agent_id = 3;
+  string trajectory_id = 4;
+  string scope_id = 5;
+  string reason = 6;
+  string status = 7;
+  int64 created_at = 8;
+  optional int64 accepted_at = 9;
+  optional int64 completed_at = 10;
+  bytes context_snapshot = 11;
+}
+
+// ============================================================================
+// DSL SERVICE
+// ============================================================================
+
+service DslService {
+  rpc ValidateDsl(ValidateDslRequest) returns (ValidateDslResponse);
+  rpc ParseDsl(ParseDslRequest) returns (ParseDslResponse);
+}
+
+message ValidateDslRequest {
+  string source = 1;
+}
+
+message ValidateDslResponse {
+  bool valid = 1;
+  repeated ParseError errors = 2;
+  optional string ast = 3; // JSON string
+}
+
+message ParseDslRequest {
+  string source = 1;
+}
+
+message ParseDslResponse {
+  string ast = 1; // JSON string
+}
+
+message ParseError {
+  uint32 line = 1;
+  uint32 column = 2;
+  string message = 3;
+}
+
+// ============================================================================
+// CONFIG SERVICE
+// ============================================================================
+
+service ConfigService {
+  rpc GetConfig(GetConfigRequest) returns (ConfigResponse);
+  rpc UpdateConfig(UpdateConfigRequest) returns (ConfigResponse);
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+}
+
+message GetConfigRequest {}
+
+message UpdateConfigRequest {
+  string config = 1; // JSON string
+}
+
+message ValidateConfigRequest {
+  string config = 1; // JSON string
+}
+
+message ConfigResponse {
+  string config = 1; // JSON string
+  bool valid = 2;
+  repeated string errors = 3;
+}
+
+message ValidateConfigResponse {
+  bool valid = 1;
+  repeated string errors = 2;
+}
+
+// ============================================================================
+// TENANT SERVICE
+// ============================================================================
+
+service TenantService {
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  rpc GetTenant(GetTenantRequest) returns (TenantInfo);
+}
+
+message ListTenantsRequest {}
+
+message GetTenantRequest {
+  string tenant_id = 1;
+}
+
+message TenantInfo {
+  string tenant_id = 1;
+  string name = 2;
+  string status = 3;
+  int64 created_at = 4;
+}
+
+message ListTenantsResponse {
+  repeated TenantInfo tenants = 1;
+}
+
+// ============================================================================
+// SEARCH SERVICE
+// ============================================================================
+
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  repeated string entity_types = 2;
+  repeated FilterExpr filters = 3;
+  optional int32 limit = 4;
+}
+
+message FilterExpr {
+  string field = 1;
+  string operator = 2;
+  string value = 3; // JSON string
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+  int32 total = 2;
+}
+
+message SearchResult {
+  string entity_type = 1;
+  string id = 2;
+  string name = 3;
+  string snippet = 4;
+  float score = 5;
+}
+
+// ============================================================================
+// EVENT STREAMING SERVICE
+// ============================================================================
+
+service EventService {
+  rpc SubscribeEvents(SubscribeRequest) returns (stream Event);
+}
+
+message SubscribeRequest {
+  optional string tenant_id = 1;
+  repeated string event_types = 2; // Filter by event types (empty = all)
+}
+
+message Event {
+  string event_type = 1;
+  int64 timestamp = 2;
+  string payload = 3; // JSON string containing the event data
+}
+
+// ============================================================================
+// COMMON TYPES
+// ============================================================================
+
+message Empty {}

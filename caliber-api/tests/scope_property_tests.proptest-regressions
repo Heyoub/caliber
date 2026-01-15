@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 203a509513a32942c8a636dc35e5253bf4058bf51607281e1acf05ca6b22c6e8 # shrinks to name = "scope-0"
+cc ca0dec74d24b215129895b4fbc5bb1d28b64333e5984ff9321293f49d58213f0 # shrinks to name = "scope-0", token_budget = 1
+cc 25ac4a0d07e7d53008b746fff916853df3b027ba518cd4c3badbdabae720e363 # shrinks to name = "scope-0"
+cc 62611ba0e0996479576bc8dbb13904e4317470d1768276fbf50e3423fd51f049 # shrinks to name = "scope-0", metadata = None
+cc 877b551279e8da8a8bbdf69664bbe89a0c0d89435798b69c7be138e55086ae2b # shrinks to name = "scope-0", token_budget = 1
+cc 63e0e80816507c3a3a7a88888d61d203daa55dcf676b8c0789a0daf47d2d2c20 # shrinks to random_id_bytes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+cc 2ed4ad52fe707e19a9f84800b3bc05b332a50d3809c712aa9e619f91aa872753 # shrinks to name = "scope-0", purpose = None, token_budget = 1, metadata = None

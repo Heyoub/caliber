@@ -1,0 +1,71 @@
+[package]
+name = "caliber-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["openapi", "swagger-ui"]
+openapi = ["caliber-core/openapi", "caliber-agents/openapi", "caliber-pcp/openapi"]
+swagger-ui = ["dep:utoipa-swagger-ui"]
+
+[dependencies]
+# Core CALIBER dependencies
+caliber-core = { workspace = true }
+caliber-agents = { workspace = true }
+caliber-pcp = { workspace = true }
+caliber-storage = { workspace = true }
+caliber-dsl = { workspace = true }
+
+# Web framework - Axum for REST API
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = { version = "0.5", features = ["timeout", "limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+
+# gRPC framework - Tonic
+tonic = { version = "0.12", features = ["transport", "tls"] }
+prost = "0.13"
+
+# Async runtime
+tokio = { version = "1.42", features = ["full"] }
+
+# PostgreSQL connection pool
+deadpool-postgres = "0.14"
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
+
+# WebSocket support
+tokio-tungstenite = "0.24"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+
+# Authentication
+jsonwebtoken = "9.3"
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# OpenAPI documentation
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true, optional = true }
+
+# Streaming support
+tokio-stream = { workspace = true }
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[dev-dependencies]
+proptest = { workspace = true }
+caliber-test-utils = { workspace = true }
