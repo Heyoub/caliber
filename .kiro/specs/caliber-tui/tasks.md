@@ -152,7 +152,7 @@ This plan implements the full CALIBER TUI system consisting of two crates:
     - **Property 1: API Completeness (Agent)**
     - **Validates: Requirements 1.1**
 
-  - [-] 8.4 Tenant isolation test (tests/tenant_property_tests.rs)
+  - [ ] 8.4 Tenant isolation test (tests/tenant_property_tests.rs)
     - **Property 5: Tenant Isolation**
     - **Validates: Requirements 1.6, 2.5**
 
