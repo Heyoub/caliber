@@ -33,5 +33,6 @@ pub use middleware::{
     AuthMiddlewareState,
 };
 pub use openapi::ApiDoc;
+pub use routes::create_api_router;
 pub use types::*;
 pub use ws::WsState;
