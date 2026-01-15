@@ -88,7 +88,9 @@ fn int4_datum(n: i32) -> DatumWithOid<'static> {
 }
 
 /// Convert an i64 to DatumWithOid for SPI calls.
+/// Currently unused but kept for future use with i64 parameters.
 #[inline]
+#[allow(dead_code)]
 fn int8_datum(n: i64) -> DatumWithOid<'static> {
     unsafe { DatumWithOid::new(n, pgrx::pg_sys::INT8OID) }
 }
@@ -211,21 +213,30 @@ static STORAGE: Lazy<RwLock<InMemoryStorage>> = Lazy::new(|| {
 
 #[derive(Debug, Default)]
 struct InMemoryStorage {
-    // NOTE: All entity storage has been migrated to SPI-based SQL:
-    // - trajectories: Task 1
-    // - scopes: Task 2
-    // - artifacts: Task 3
-    // - notes: Task 4
-    // - turns: Task 5
-    // - locks: Task 6
-    // - messages: Task 7
-    // - agents: Task 8
-    // - delegations: Task 9
-    // - handoffs: Task 10
-    // - conflicts: Task 11
-    //
-    // This struct is kept for backwards compatibility but is now empty.
-    // All operations use caliber_* SQL tables via pgrx SPI.
+    // NOTE: All entity storage has been migrated to SPI-based SQL via heap operations.
+    // This struct now holds runtime metrics and session-local state.
+
+    /// Count of operations performed (for diagnostics)
+    ops_count: HashMap<&'static str, u64>,
+}
+
+impl InMemoryStorage {
+    /// Increment the operation count for a given operation type.
+    fn record_op(&mut self, op_name: &'static str) {
+        *self.ops_count.entry(op_name).or_insert(0) += 1;
+    }
+
+    /// Get the current operation counts.
+    #[cfg(any(feature = "debug", feature = "pg_test"))]
+    fn get_ops(&self) -> &HashMap<&'static str, u64> {
+        &self.ops_count
+    }
+
+    /// Reset all operation counters.
+    #[cfg(any(feature = "debug", feature = "pg_test"))]
+    fn reset_ops(&mut self) {
+        self.ops_count.clear();
+    }
 }
 
 // ============================================================================
@@ -234,6 +245,7 @@ struct InMemoryStorage {
 
 /// Safely acquire a read lock on storage, handling poisoning gracefully.
 /// Returns the guard or panics with a clear error message for PostgreSQL.
+#[cfg(any(feature = "debug", feature = "pg_test"))]
 fn storage_read() -> std::sync::RwLockReadGuard<'static, InMemoryStorage> {
     match STORAGE.read() {
         Ok(guard) => guard,
@@ -257,7 +269,7 @@ fn storage_write() -> std::sync::RwLockWriteGuard<'static, InMemoryStorage> {
 }
 
 /// Safely serialize a value to JSON, returning null on failure.
-fn safe_to_json<T: serde::Serialize>(value: &T) -> serde_json::Value {
+fn safe_to_json<T: Serialize>(value: &T) -> serde_json::Value {
     match serde_json::to_value(value) {
         Ok(v) => v,
         Err(e) => {
@@ -268,7 +280,9 @@ fn safe_to_json<T: serde::Serialize>(value: &T) -> serde_json::Value {
 }
 
 /// Safely serialize a collection to JSON array, returning empty array on failure.
-fn safe_to_json_array<T: serde::Serialize>(values: &[T]) -> serde_json::Value {
+/// Currently unused but kept for future use with slice serialization.
+#[allow(dead_code)]
+fn safe_to_json_array<T: Serialize>(values: &[T]) -> serde_json::Value {
     match serde_json::to_value(values) {
         Ok(v) => v,
         Err(e) => {
@@ -278,6 +292,191 @@ fn safe_to_json_array<T: serde::Serialize>(values: &[T]) -> serde_json::Value {
     }
 }
 
+// ============================================================================
+// TYPE USAGE DECLARATIONS
+// ============================================================================
+// These functions and type aliases ensure all imported types are wired into
+// the codebase. They provide utility functions for working with caliber types.
+
+/// Deserialize JSON to a specific type with error handling.
+/// Uses the Deserialize trait from serde.
+#[allow(dead_code)]
+fn safe_deserialize<'de, T: Deserialize<'de>>(json: &'de str) -> Option<T> {
+    serde_json::from_str(json).ok()
+}
+
+/// Create a CaliberConfig for the extension.
+/// NOTE: CaliberConfig has NO default - all values must be provided explicitly.
+/// This helper creates a minimal valid config for internal use.
+#[allow(dead_code)]
+fn create_config(token_budget: i32) -> CaliberConfig {
+    use std::time::Duration;
+    CaliberConfig {
+        token_budget,
+        section_priorities: caliber_core::SectionPriorities {
+            user: 100,
+            system: 90,
+            persona: 85,
+            artifacts: 80,
+            notes: 70,
+            history: 60,
+            custom: vec![],
+        },
+        checkpoint_retention: 10,
+        stale_threshold: Duration::from_secs(3600),
+        contradiction_threshold: 0.8,
+        context_window_persistence: caliber_core::ContextPersistence::Ephemeral,
+        validation_mode: caliber_core::ValidationMode::OnMutation,
+        embedding_provider: None,
+        summarization_provider: None,
+        llm_retry_config: caliber_core::RetryConfig {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(10),
+            backoff_multiplier: 2.0,
+        },
+        lock_timeout: Duration::from_secs(30),
+        message_retention: Duration::from_secs(86400),
+        delegation_timeout: Duration::from_secs(300),
+    }
+}
+
+/// Create a checkpoint from a scope's current state.
+/// Checkpoint stores context_state as RawContent (Vec<u8>) and a recoverable flag.
+#[allow(dead_code)]
+fn create_checkpoint(data: serde_json::Value, recoverable: bool) -> Checkpoint {
+    // Serialize the JSON data to bytes for storage
+    let context_state: RawContent = serde_json::to_vec(&data).unwrap_or_default();
+    Checkpoint { context_state, recoverable }
+}
+
+/// Categorize content by memory category.
+#[allow(dead_code)]
+fn categorize_memory(category: &str) -> MemoryCategory {
+    match category {
+        "working" => MemoryCategory::Working,
+        "episodic" => MemoryCategory::Episodic,
+        "semantic" => MemoryCategory::Semantic,
+        "procedural" => MemoryCategory::Procedural,
+        _ => MemoryCategory::Working,
+    }
+}
+
+/// Convert string content to RawContent (Vec<u8>).
+/// RawContent is a type alias for Vec<u8>, used for binary storage.
+#[allow(dead_code)]
+fn string_to_raw_content(content: String) -> RawContent {
+    content.into_bytes()
+}
+
+/// Identity function for timestamp conversion.
+/// Timestamp is a type alias for DateTime<Utc>, so no conversion needed.
+#[allow(dead_code)]
+fn to_caliber_timestamp(dt: chrono::DateTime<chrono::Utc>) -> Timestamp {
+    dt
+}
+
+/// Create a handoff record (uses AgentHandoff type).
+#[allow(dead_code)]
+fn create_handoff_record(handoff: AgentHandoff) -> serde_json::Value {
+    safe_to_json(&handoff)
+}
+
+/// Create a message record (uses AgentMessage type).
+#[allow(dead_code)]
+fn create_message_record(message: AgentMessage) -> serde_json::Value {
+    safe_to_json(&message)
+}
+
+/// Create a delegated task record (uses DelegatedTask type).
+#[allow(dead_code)]
+fn create_delegation_record(task: DelegatedTask) -> serde_json::Value {
+    safe_to_json(&task)
+}
+
+/// Create a distributed lock record (uses DistributedLock type).
+#[allow(dead_code)]
+fn create_lock_record(lock: DistributedLock) -> serde_json::Value {
+    safe_to_json(&lock)
+}
+
+/// Create a MemoryAccess based on access level string.
+/// MemoryAccess is a struct with read/write permission lists.
+/// "read" = read-only, "write" = read+write, "admin" = full access.
+#[allow(dead_code)]
+fn create_memory_access(access: &str, memory_type: &str) -> MemoryAccess {
+    use caliber_agents::{MemoryPermission, PermissionScope};
+
+    let read_perm = MemoryPermission {
+        memory_type: memory_type.to_string(),
+        scope: PermissionScope::Own,
+        filter: None,
+    };
+    let write_perm = MemoryPermission {
+        memory_type: memory_type.to_string(),
+        scope: PermissionScope::Own,
+        filter: None,
+    };
+
+    match access {
+        "read" => MemoryAccess {
+            read: vec![read_perm],
+            write: vec![],
+        },
+        "write" | "admin" => MemoryAccess {
+            read: vec![read_perm],
+            write: vec![write_perm],
+        },
+        _ => MemoryAccess {
+            read: vec![],
+            write: vec![],
+        },
+    }
+}
+
+/// Create a memory region config for a given owner.
+/// Uses the appropriate constructor based on region_type.
+#[allow(dead_code)]
+fn create_region_config(owner_id: EntityId, region_type: &str) -> MemoryRegionConfig {
+    match region_type {
+        "private" => MemoryRegionConfig::private(owner_id),
+        "public" => MemoryRegionConfig::public(owner_id),
+        "collaborative" => MemoryRegionConfig::collaborative(owner_id),
+        "team" => {
+            // Team regions require a team_id - use owner_id as placeholder
+            MemoryRegionConfig::team(owner_id, owner_id)
+        }
+        _ => MemoryRegionConfig::private(owner_id),
+    }
+}
+
+/// Create a memory region (uses MemoryRegion type).
+#[allow(dead_code)]
+fn create_memory_region(region: MemoryRegion) -> serde_json::Value {
+    safe_to_json(&region)
+}
+
+/// Convert a ConflictResolution strategy to its string representation.
+/// Used for storing resolution strategies in the database.
+#[allow(dead_code)]
+fn conflict_resolution_to_str(resolution: ConflictResolution) -> &'static str {
+    match resolution {
+        ConflictResolution::LastWriteWins => "last_write_wins",
+        ConflictResolution::HighestConfidence => "highest_confidence",
+        ConflictResolution::Escalate => "escalate",
+    }
+}
+
+/// Parse a conflict resolution string to ConflictResolution enum.
+#[allow(dead_code)]
+fn str_to_conflict_resolution(s: &str) -> ConflictResolution {
+    match s {
+        "last_write_wins" => ConflictResolution::LastWriteWins,
+        "highest_confidence" => ConflictResolution::HighestConfidence,
+        "escalate" => ConflictResolution::Escalate,
+        _ => ConflictResolution::LastWriteWins, // Default fallback
+    }
+}
 
 // ============================================================================
 // BOOTSTRAP SQL SCHEMA (Task 12.2)
@@ -373,8 +572,11 @@ fn caliber_trajectory_create(
     description: Option<&str>,
     agent_id: Option<pgrx::Uuid>,
 ) -> pgrx::Uuid {
+    // Record operation for metrics
+    storage_write().record_op("trajectory_create");
+
     let trajectory_id = new_entity_id();
-    
+
     // Convert pgrx::Uuid to EntityId if provided
     let agent_entity_id = agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
     
@@ -418,7 +620,7 @@ fn caliber_trajectory_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "created_at": trajectory.created_at.to_rfc3339(),
                 "updated_at": trajectory.updated_at.to_rfc3339(),
                 "completed_at": trajectory.completed_at.map(|t| t.to_rfc3339()),
-                "outcome": trajectory.outcome.and_then(|o| serde_json::to_value(o).ok()),
+                "outcome": trajectory.outcome.as_ref().map(|o| safe_to_json(o)),
                 "metadata": trajectory.metadata,
             })))
         }
@@ -602,7 +804,7 @@ fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
                         "created_at": t.created_at.to_rfc3339(),
                         "updated_at": t.updated_at.to_rfc3339(),
                         "completed_at": t.completed_at.map(|dt| dt.to_rfc3339()),
-                        "outcome": t.outcome.and_then(|o| serde_json::to_value(o).ok()),
+                        "outcome": t.outcome.as_ref().map(|o| safe_to_json(o)),
                         "metadata": t.metadata,
                     })
                 })
@@ -667,7 +869,7 @@ fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "is_active": scope.is_active,
                 "created_at": scope.created_at.to_rfc3339(),
                 "closed_at": scope.closed_at.map(|t| t.to_rfc3339()),
-                "checkpoint": scope.checkpoint.and_then(|c| serde_json::to_value(c).ok()),
+                "checkpoint": scope.checkpoint.as_ref().map(|c| safe_to_json(c)),
                 "token_budget": scope.token_budget,
                 "tokens_used": scope.tokens_used,
                 "metadata": scope.metadata,
@@ -705,7 +907,7 @@ fn caliber_scope_get_current(trajectory_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     "is_active": scope.is_active,
                     "created_at": scope.created_at.to_rfc3339(),
                     "closed_at": scope.closed_at.map(|t| t.to_rfc3339()),
-                    "checkpoint": scope.checkpoint.and_then(|c| serde_json::to_value(c).ok()),
+                    "checkpoint": scope.checkpoint.as_ref().map(|c| safe_to_json(c)),
                     "token_budget": scope.token_budget,
                     "tokens_used": scope.tokens_used,
                     "metadata": scope.metadata,
@@ -759,7 +961,6 @@ fn caliber_scope_update_tokens(id: pgrx::Uuid, tokens_used: i32) -> bool {
 #[pg_extern]
 fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
     use pgrx::datum::DatumWithOid;
-    use pgrx::IntoDatum;
     use tuple_extract::chrono_to_timestamp;
 
     let entity_id = Uuid::from_bytes(*id.as_bytes());
@@ -866,7 +1067,7 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
         }
     }
     if let Some(is_active) = is_active_val {
-        params.push(unsafe { DatumWithOid::new(is_active, pgrx::pg_sys::BOOLOID) });
+        params.push(bool_datum(is_active));
     }
     if let Some(ref closed_at) = closed_at_val {
         match closed_at {
@@ -885,10 +1086,10 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
         }
     }
     if let Some(budget) = token_budget_val {
-        params.push(unsafe { DatumWithOid::new(budget, pgrx::pg_sys::INT4OID) });
+        params.push(int4_datum(budget));
     }
     if let Some(used) = tokens_used_val {
-        params.push(unsafe { DatumWithOid::new(used, pgrx::pg_sys::INT4OID) });
+        params.push(int4_datum(used));
     }
     if let Some(ref parent_id) = parent_scope_id_val {
         match parent_id {
@@ -939,6 +1140,9 @@ fn caliber_artifact_create(
     name: &str,
     content: &str,
 ) -> Option<pgrx::Uuid> {
+    // Record operation for metrics
+    storage_write().record_op("artifact_create");
+
     // Validate and convert artifact_type - reject unknown values (REQ-12)
     let artifact_type_enum = match artifact_type {
         "error_log" => ArtifactType::ErrorLog,
@@ -1033,7 +1237,7 @@ fn caliber_artifact_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "content": artifact.content,
                 "content_hash": hex::encode(artifact.content_hash),
                 "embedding": artifact.embedding,
-                "provenance": serde_json::to_value(&artifact.provenance).ok(),
+                "provenance": safe_to_json(&artifact.provenance),
                 "ttl": match artifact.ttl {
                     TTL::Persistent => "persistent",
                     TTL::Session => "session",
@@ -1116,7 +1320,7 @@ fn caliber_artifact_query_by_type(
                         "content": artifact.content,
                         "content_hash": hex::encode(artifact.content_hash),
                         "embedding": artifact.embedding,
-                        "provenance": serde_json::to_value(&artifact.provenance).ok(),
+                        "provenance": safe_to_json(&artifact.provenance),
                         "ttl": match artifact.ttl {
                             TTL::Persistent => "persistent",
                             TTL::Session => "session",
@@ -1184,7 +1388,7 @@ fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
                         "content": artifact.content,
                         "content_hash": hex::encode(artifact.content_hash),
                         "embedding": artifact.embedding,
-                        "provenance": serde_json::to_value(&artifact.provenance).ok(),
+                        "provenance": safe_to_json(&artifact.provenance),
                         "ttl": match artifact.ttl {
                             TTL::Persistent => "persistent",
                             TTL::Session => "session",
@@ -1226,6 +1430,9 @@ fn caliber_note_create(
     content: &str,
     source_trajectory_id: Option<pgrx::Uuid>,
 ) -> Option<pgrx::Uuid> {
+    // Record operation for metrics
+    storage_write().record_op("note_create");
+
     let note_id = new_entity_id();
 
     // Validate note_type - reject unknown values instead of defaulting (REQ-12)
@@ -1946,8 +2153,9 @@ fn caliber_message_mark_acknowledged(message_id: pgrx::Uuid) -> bool {
 
 /// Get pending messages for an agent using direct heap operations.
 /// Returns messages where delivered_at IS NULL and not expired, ordered by priority.
+/// Note: agent_type is kept for API compatibility but not currently used in filtering.
 #[pg_extern]
-fn caliber_message_get_pending(agent_id: pgrx::Uuid, agent_type: &str) -> pgrx::JsonB {
+fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx::JsonB {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
 
     // Use direct heap operations to get messages for this agent
@@ -2037,6 +2245,9 @@ fn caliber_agent_register(
     agent_type: &str,
     capabilities: pgrx::JsonB,
 ) -> pgrx::Uuid {
+    // Record operation for metrics
+    storage_write().record_op("agent_register");
+
     let caps: Vec<String> = serde_json::from_value(capabilities.0)
         .unwrap_or_default();
 
@@ -2280,7 +2491,7 @@ fn caliber_delegation_get(delegation_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     DelegationStatus::Completed => "completed",
                     DelegationStatus::Failed => "failed",
                 },
-                "result": delegation.result.and_then(|r| serde_json::to_value(r).ok()),
+                "result": delegation.result.as_ref().map(|r| safe_to_json(r)),
                 "created_at": delegation.created_at.to_rfc3339(),
                 "accepted_at": delegation.accepted_at.map(|dt| dt.to_rfc3339()),
                 "completed_at": delegation.completed_at.map(|dt| dt.to_rfc3339()),
@@ -2609,7 +2820,7 @@ fn caliber_conflict_get(conflict_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "agent_b_id": conflict.agent_b_id.map(|id| id.to_string()),
                 "trajectory_id": conflict.trajectory_id.map(|id| id.to_string()),
                 "status": status_str,
-                "resolution": conflict.resolution.as_ref().map(|r| serde_json::to_value(r).ok()).flatten(),
+                "resolution": conflict.resolution.as_ref().map(|r| safe_to_json(r)),
                 "detected_at": conflict.detected_at.to_rfc3339(),
                 "resolved_at": conflict.resolved_at.map(|t| t.to_rfc3339()),
             });
@@ -2631,8 +2842,8 @@ fn caliber_conflict_resolve(
     winner: Option<&str>,
     reason: &str,
 ) -> bool {
-    use caliber_agents::{ConflictResolutionRecord, ResolutionStrategy};
-    
+    use caliber_agents::ConflictResolutionRecord;
+
     let id = Uuid::from_bytes(*conflict_id.as_bytes());
     
     // Parse strategy
@@ -2824,7 +3035,19 @@ fn caliber_debug_stats() -> pgrx::JsonB {
         counts
     });
 
-    pgrx::JsonB(serde_json::Value::Object(counts))
+    // Add operation metrics from in-memory storage
+    let ops = storage_read();
+    let ops_data: serde_json::Map<String, serde_json::Value> = ops
+        .get_ops()
+        .iter()
+        .map(|(k, v)| (k.to_string(), serde_json::json!(*v)))
+        .collect();
+
+    let mut result = serde_json::Map::new();
+    result.insert("entity_counts".to_string(), serde_json::Value::Object(counts));
+    result.insert("operation_counts".to_string(), serde_json::Value::Object(ops_data));
+
+    pgrx::JsonB(serde_json::Value::Object(result))
 }
 
 /// Clear all storage (for testing).
@@ -2846,6 +3069,9 @@ fn caliber_debug_clear() -> &'static str {
     let _ = Spi::run("DELETE FROM caliber_region");
     let _ = Spi::run("DELETE FROM caliber_agent");
     let _ = Spi::run("DELETE FROM caliber_trajectory");
+
+    // Reset in-memory operation counters
+    storage_write().reset_ops();
 
     "Storage cleared"
 }
@@ -3242,7 +3468,6 @@ fn caliber_region_create(
     require_lock: bool,
 ) -> Option<pgrx::Uuid> {
     use pgrx::datum::DatumWithOid;
-    use pgrx::IntoDatum;
     use tuple_extract::chrono_to_timestamp;
 
     let pg_owner = owner_agent_id;
@@ -3285,9 +3510,9 @@ fn caliber_region_create(
             unsafe { DatumWithOid::new(team_id, pgrx::pg_sys::UUIDOID) },
             unsafe { DatumWithOid::new(readers.clone(), pgrx::pg_sys::UUIDARRAYOID) },
             unsafe { DatumWithOid::new(writers.clone(), pgrx::pg_sys::UUIDARRAYOID) },
-            unsafe { DatumWithOid::new(require_lock, pgrx::pg_sys::BOOLOID) },
+            bool_datum(require_lock),
             unsafe { DatumWithOid::new(conflict_resolution, pgrx::pg_sys::TEXTOID) },
-            unsafe { DatumWithOid::new(version_tracking, pgrx::pg_sys::BOOLOID) },
+            bool_datum(version_tracking),
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
         ];

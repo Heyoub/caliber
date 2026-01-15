@@ -38,7 +38,8 @@ pub fn agent_register_heap(
     reports_to: Option<EntityId>,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
-    
+    validate_agent_relation(&rel)?;
+
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
@@ -85,14 +86,12 @@ pub fn agent_register_heap(
     } else {
         values[agent::CAN_DELEGATE_TO as usize - 1] = text_array_to_datum(can_delegate_to);
     }
-    
-    // Set optional reports_to
-    if let Some(supervisor_id) = reports_to {
-        values[agent::REPORTS_TO as usize - 1] = uuid_to_datum(supervisor_id);
-    } else {
-        nulls[agent::REPORTS_TO as usize - 1] = true;
-    }
-    
+
+    // Set optional reports_to using helper
+    let (reports_to_datum, reports_to_null) = build_optional_agent_uuid(reports_to);
+    values[agent::REPORTS_TO as usize - 1] = reports_to_datum;
+    nulls[agent::REPORTS_TO as usize - 1] = reports_to_null;
+
     // Set timestamps
     values[agent::CREATED_AT as usize - 1] = now_datum;
     values[agent::LAST_HEARTBEAT as usize - 1] = now_datum;
@@ -244,6 +243,29 @@ pub fn agent_list_by_type_heap(agent_type: &str) -> CaliberResult<Vec<Agent>> {
     }
     
     Ok(results)
+}
+
+/// Validate that a HeapRelation is suitable for agent operations.
+fn validate_agent_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != agent::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Agent relation has {} columns, expected {}",
+                natts,
+                agent::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Build optional UUID datum using proper helper.
+fn build_optional_agent_uuid(reports_to: Option<EntityId>) -> (pg_sys::Datum, bool) {
+    match reports_to {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    }
 }
 
 fn tuple_to_agent(

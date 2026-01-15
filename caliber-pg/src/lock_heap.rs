@@ -24,7 +24,7 @@ use crate::index_ops::{
 use crate::tuple_extract::{
     extract_uuid, extract_text, extract_timestamp,
     extract_values_and_nulls, uuid_to_datum, string_to_datum,
-    timestamp_to_chrono,
+    timestamp_to_chrono, chrono_to_timestamp,
 };
 
 /// Acquire a lock by inserting a lock record using direct heap operations.
@@ -37,7 +37,8 @@ pub fn lock_acquire_heap(
     mode: LockMode,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::RowExclusive)?;
-    
+    validate_lock_relation(&rel)?;
+
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
@@ -45,16 +46,14 @@ pub fn lock_acquire_heap(
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     
-    let expires_datum = timestamp_to_pgrx(unsafe { 
-        pg_sys::GetCurrentTransactionStartTimestamp() 
-    }).into_datum()
+    let expires_datum = chrono_to_timestamp(expires_at).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Lock,
             reason: "Failed to convert expires_at to datum".to_string(),
         }))?;
-    
+
     let mut values: [pg_sys::Datum; lock::NUM_COLS] = [pg_sys::Datum::from(0); lock::NUM_COLS];
-    let mut nulls: [bool; lock::NUM_COLS] = [false; lock::NUM_COLS];
+    let nulls: [bool; lock::NUM_COLS] = [false; lock::NUM_COLS];
     
     values[lock::LOCK_ID as usize - 1] = uuid_to_datum(lock_id);
     values[lock::RESOURCE_TYPE as usize - 1] = string_to_datum(resource_type);
@@ -175,6 +174,21 @@ pub fn lock_list_by_resource_heap(
     Ok(results)
 }
 
+/// Validate that a HeapRelation is suitable for lock operations.
+fn validate_lock_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != lock::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Lock relation has {} columns, expected {}",
+                natts,
+                lock::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
 fn tuple_to_lock(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -230,6 +244,58 @@ fn tuple_to_lock(
         expires_at,
         mode,
     })
+}
+
+/// Extend a lock's expiration time using direct heap operations.
+/// Uses extract_values_and_nulls to read existing tuple and update expires_at.
+pub fn lock_extend_heap(
+    lock_id: EntityId,
+    new_expires_at: chrono::DateTime<chrono::Utc>,
+) -> CaliberResult<bool> {
+    use crate::heap_ops::update_tuple;
+
+    let rel = open_relation(lock::TABLE_NAME, HeapLockMode::RowExclusive)?;
+    let index_rel = open_index(lock::PK_INDEX)?;
+    let snapshot = get_active_snapshot();
+    let tuple_desc = rel.tuple_desc();
+
+    let mut scan_key = pg_sys::ScanKeyData::default();
+    init_scan_key(
+        &mut scan_key,
+        1,
+        BTreeStrategy::Equal,
+        operator_oids::UUID_EQ,
+        uuid_to_datum(lock_id),
+    );
+
+    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+
+    if let Some(tuple) = scanner.next() {
+        let tid = scanner.current_tid()
+            .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "Failed to get TID of lock tuple".to_string(),
+            }))?;
+
+        // Extract existing values using extract_values_and_nulls
+        let (mut values, mut nulls) = extract_values_and_nulls(tuple, tuple_desc)?;
+
+        // Update expires_at
+        values[lock::EXPIRES_AT as usize - 1] = chrono_to_timestamp(new_expires_at).into_datum()
+            .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+                entity_type: EntityType::Lock,
+                id: lock_id,
+                reason: "Failed to convert expires_at to datum".to_string(),
+            }))?;
+        nulls[lock::EXPIRES_AT as usize - 1] = false;
+
+        // Form and update tuple
+        let new_tuple = form_tuple(&rel, &values, &nulls)?;
+        update_tuple(&rel, &tid, new_tuple)?;
+
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 // ============================================================================

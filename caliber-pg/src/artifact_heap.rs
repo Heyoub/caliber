@@ -75,7 +75,8 @@ pub fn artifact_create_heap(
 ) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(artifact::TABLE_NAME, LockMode::RowExclusive)?;
-    
+    validate_artifact_relation(&rel)?;
+
     // Get current transaction timestamp for created_at/updated_at
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
@@ -457,6 +458,57 @@ pub fn artifact_update_heap(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Validate that a HeapRelation is suitable for artifact operations.
+fn validate_artifact_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != artifact::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Artifact relation has {} columns, expected {}",
+                natts,
+                artifact::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Convert an ExtractionMethod to its string representation.
+/// This is used for storing the extraction method in the database.
+pub fn extraction_method_to_str(method: &ExtractionMethod) -> &'static str {
+    match method {
+        ExtractionMethod::Explicit => "explicit",
+        ExtractionMethod::Inferred => "inferred",
+        ExtractionMethod::UserProvided => "user_provided",
+    }
+}
+
+/// Parse an extraction method string to ExtractionMethod enum.
+pub fn str_to_extraction_method(s: &str) -> ExtractionMethod {
+    match s {
+        "explicit" | "explicit_save" => ExtractionMethod::Explicit,
+        "inferred" | "automatic_extraction" | "system_inferred" => ExtractionMethod::Inferred,
+        "user_provided" | "agent_suggestion" => ExtractionMethod::UserProvided,
+        _ => ExtractionMethod::Inferred, // Default fallback
+    }
+}
+
+/// Convert binary data to a datum for storage.
+/// This is useful for storing raw binary artifacts (images, PDFs, etc.).
+pub fn binary_data_to_datum(data: &[u8]) -> pg_sys::Datum {
+    bytea_to_datum(data)
+}
+
+/// Extract binary data from a tuple at the specified column.
+/// This is useful for retrieving raw binary artifacts.
+pub fn extract_binary_data(
+    tuple: *mut pg_sys::HeapTupleData,
+    tuple_desc: pg_sys::TupleDesc,
+    attno: i16,
+) -> CaliberResult<Option<Vec<u8>>> {
+    extract_bytea(tuple, tuple_desc, attno)
+}
 
 /// Convert an ArtifactType enum to its string representation.
 fn artifact_type_to_str(t: ArtifactType) -> &'static str {

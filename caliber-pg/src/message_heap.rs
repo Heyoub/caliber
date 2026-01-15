@@ -43,7 +43,8 @@ pub fn message_send_heap(
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
-    
+    validate_message_relation(&rel)?;
+
     let now = current_timestamp();
     let now_datum = timestamp_to_pgrx(now).into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
@@ -53,25 +54,24 @@ pub fn message_send_heap(
     
     let mut values: [pg_sys::Datum; message::NUM_COLS] = [pg_sys::Datum::from(0); message::NUM_COLS];
     let mut nulls: [bool; message::NUM_COLS] = [false; message::NUM_COLS];
-    
+
+    // Use helper for optional fields
+    let (to_agent_datum, to_type_datum, traj_datum, scope_datum, expires_datum,
+         to_agent_null, to_type_null, traj_null, scope_null, expires_null) =
+        build_optional_message_datums(to_agent_id, to_agent_type, trajectory_id, scope_id, expires_at);
+
     // Set required fields
     values[message::MESSAGE_ID as usize - 1] = uuid_to_datum(message_id);
     values[message::FROM_AGENT_ID as usize - 1] = uuid_to_datum(from_agent_id);
-    
+
     // Set optional to_agent_id
-    if let Some(to_id) = to_agent_id {
-        values[message::TO_AGENT_ID as usize - 1] = uuid_to_datum(to_id);
-    } else {
-        nulls[message::TO_AGENT_ID as usize - 1] = true;
-    }
-    
+    values[message::TO_AGENT_ID as usize - 1] = to_agent_datum;
+    nulls[message::TO_AGENT_ID as usize - 1] = to_agent_null;
+
     // Set optional to_agent_type
-    if let Some(to_type) = to_agent_type {
-        values[message::TO_AGENT_TYPE as usize - 1] = string_to_datum(to_type);
-    } else {
-        nulls[message::TO_AGENT_TYPE as usize - 1] = true;
-    }
-    
+    values[message::TO_AGENT_TYPE as usize - 1] = to_type_datum;
+    nulls[message::TO_AGENT_TYPE as usize - 1] = to_type_null;
+
     // Set message_type
     let message_type_str = match message_type {
         MessageType::TaskDelegation => "task_delegation",
@@ -84,36 +84,30 @@ pub fn message_send_heap(
         MessageType::Heartbeat => "heartbeat",
     };
     values[message::MESSAGE_TYPE as usize - 1] = string_to_datum(message_type_str);
-    
+
     // Set payload
     values[message::PAYLOAD as usize - 1] = string_to_datum(payload);
-    
+
     // Set optional trajectory_id
-    if let Some(traj_id) = trajectory_id {
-        values[message::TRAJECTORY_ID as usize - 1] = uuid_to_datum(traj_id);
-    } else {
-        nulls[message::TRAJECTORY_ID as usize - 1] = true;
-    }
-    
+    values[message::TRAJECTORY_ID as usize - 1] = traj_datum;
+    nulls[message::TRAJECTORY_ID as usize - 1] = traj_null;
+
     // Set optional scope_id
-    if let Some(sc_id) = scope_id {
-        values[message::SCOPE_ID as usize - 1] = uuid_to_datum(sc_id);
-    } else {
-        nulls[message::SCOPE_ID as usize - 1] = true;
-    }
-    
+    values[message::SCOPE_ID as usize - 1] = scope_datum;
+    nulls[message::SCOPE_ID as usize - 1] = scope_null;
+
     // Set artifact_ids array
     if artifact_ids.is_empty() {
         nulls[message::ARTIFACT_IDS as usize - 1] = true;
     } else {
         values[message::ARTIFACT_IDS as usize - 1] = uuid_array_to_datum(artifact_ids);
     }
-    
+
     // Set timestamps
     values[message::CREATED_AT as usize - 1] = now_datum;
     nulls[message::DELIVERED_AT as usize - 1] = true;
     nulls[message::ACKNOWLEDGED_AT as usize - 1] = true;
-    
+
     // Set priority
     let priority_str = match priority {
         MessagePriority::Low => "low",
@@ -122,20 +116,10 @@ pub fn message_send_heap(
         MessagePriority::Critical => "critical",
     };
     values[message::PRIORITY as usize - 1] = string_to_datum(priority_str);
-    
+
     // Set optional expires_at
-    if let Some(exp) = expires_at {
-        let exp_datum = timestamp_to_pgrx(unsafe { 
-            pg_sys::GetCurrentTransactionStartTimestamp() 
-        }).into_datum()
-            .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
-                entity_type: EntityType::Message,
-                reason: "Failed to convert expires_at to datum".to_string(),
-            }))?;
-        values[message::EXPIRES_AT as usize - 1] = exp_datum;
-    } else {
-        nulls[message::EXPIRES_AT as usize - 1] = true;
-    }
+    values[message::EXPIRES_AT as usize - 1] = expires_datum;
+    nulls[message::EXPIRES_AT as usize - 1] = expires_null;
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = insert_tuple(&rel, tuple)?;
@@ -242,6 +226,59 @@ pub fn message_acknowledge_heap(message_id: EntityId) -> CaliberResult<bool> {
     } else {
         Ok(false)
     }
+}
+
+/// Validate that a HeapRelation is suitable for message operations.
+fn validate_message_relation(rel: &HeapRelation) -> CaliberResult<()> {
+    let natts = rel.natts();
+    if natts != message::NUM_COLS as i16 {
+        return Err(CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!(
+                "Message relation has {} columns, expected {}",
+                natts,
+                message::NUM_COLS
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Build optional datum values for message fields using proper option_* helpers.
+fn build_optional_message_datums(
+    to_agent_id: Option<EntityId>,
+    to_agent_type: Option<&str>,
+    trajectory_id: Option<EntityId>,
+    scope_id: Option<EntityId>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> (pg_sys::Datum, pg_sys::Datum, pg_sys::Datum, pg_sys::Datum, pg_sys::Datum,
+      bool, bool, bool, bool, bool) {
+    let (to_agent_datum, to_agent_null) = match to_agent_id {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+
+    let (to_type_datum, to_type_null) = match to_agent_type {
+        Some(t) => (option_string_to_datum(Some(t)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+
+    let (traj_datum, traj_null) = match trajectory_id {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+
+    let (scope_datum, scope_null) = match scope_id {
+        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+
+    let (expires_datum, expires_null) = match expires_at {
+        Some(dt) => (option_datetime_to_datum(Some(dt)), false),
+        None => (pg_sys::Datum::from(0), true),
+    };
+
+    (to_agent_datum, to_type_datum, traj_datum, scope_datum, expires_datum,
+     to_agent_null, to_type_null, traj_null, scope_null, expires_null)
 }
 
 fn tuple_to_message(

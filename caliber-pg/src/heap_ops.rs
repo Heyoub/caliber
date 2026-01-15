@@ -32,6 +32,8 @@
 //! update_indexes_for_insert(&rel, tuple, tid)?;
 //! ```
 
+// Prelude provides common pgrx types and traits used throughout
+#[allow(unused_imports)]
 use pgrx::prelude::*;
 use pgrx::pg_sys;
 use pgrx::PgRelation;
@@ -129,12 +131,10 @@ impl HeapRelation {
 pub fn open_relation(name: &str, lock_mode: LockMode) -> CaliberResult<HeapRelation> {
     // Use PgRelation's safe wrapper which handles the lock acquisition
     // In pgrx 0.16+, this returns Result<PgRelation, &str>
-    let rel = unsafe {
-        PgRelation::open_with_name_and_share_lock(name)
-            .map_err(|e| CaliberError::Storage(StorageError::TransactionFailed {
-                reason: format!("Failed to open relation '{}': {}", name, e),
-            }))?
-    };
+    let rel = PgRelation::open_with_name_and_share_lock(name)
+        .map_err(|e| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!("Failed to open relation '{}': {}", name, e),
+        }))?;
 
     // Verify the relation was opened successfully
     if rel.as_ptr().is_null() {
