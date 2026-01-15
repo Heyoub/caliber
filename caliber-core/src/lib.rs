@@ -51,6 +51,7 @@ pub fn compute_content_hash(content: &[u8]) -> ContentHash {
 
 /// Time-to-live configuration for memory entries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TTL {
     /// Never expires
     Persistent,
@@ -76,6 +77,7 @@ pub enum TTL {
 
 /// Entity type discriminator for polymorphic references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum EntityType {
     Trajectory,
     Scope,
@@ -92,6 +94,7 @@ pub enum EntityType {
 
 /// Memory category for hierarchical memory organization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum MemoryCategory {
     /// Session/scope-bound, dies with scope
     Ephemeral,
@@ -109,6 +112,7 @@ pub enum MemoryCategory {
 
 /// Status of a trajectory (task container).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TrajectoryStatus {
     Active,
     Completed,
@@ -118,6 +122,7 @@ pub enum TrajectoryStatus {
 
 /// Outcome status for completed trajectories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum OutcomeStatus {
     Success,
     Partial,
@@ -126,6 +131,7 @@ pub enum OutcomeStatus {
 
 /// Role of a turn in conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TurnRole {
     User,
     Assistant,
@@ -135,6 +141,7 @@ pub enum TurnRole {
 
 /// Type of artifact produced during a trajectory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ArtifactType {
     // Core artifact types
     ErrorLog,
@@ -167,6 +174,7 @@ pub enum ArtifactType {
 
 /// Method used to extract an artifact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ExtractionMethod {
     Explicit,
     Inferred,
@@ -175,6 +183,7 @@ pub enum ExtractionMethod {
 
 /// Type of note (cross-trajectory knowledge).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum NoteType {
     // Core note types
     Convention,
@@ -201,6 +210,7 @@ pub enum NoteType {
 /// Embedding vector with dynamic dimensions.
 /// Supports any embedding model dimension (e.g., 384, 768, 1536, 3072).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EmbeddingVector {
     /// The embedding data as a vector of f32 values.
     pub data: Vec<f32>,
@@ -277,35 +287,49 @@ impl EmbeddingVector {
 
 /// Reference to an entity by type and ID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EntityRef {
     pub entity_type: EntityType,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: EntityId,
 }
 
 /// Trajectory - top-level task container.
 /// A trajectory represents a complete task or goal being pursued.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Trajectory {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
     pub name: String,
     pub description: Option<String>,
     pub status: TrajectoryStatus,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub parent_trajectory_id: Option<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub root_trajectory_id: Option<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub agent_id: Option<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub updated_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub completed_at: Option<Timestamp>,
     pub outcome: Option<TrajectoryOutcome>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Outcome of a completed trajectory.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TrajectoryOutcome {
     pub status: OutcomeStatus,
     pub summary: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub produced_artifacts: Vec<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub produced_notes: Vec<EntityId>,
     pub error: Option<String>,
 }
@@ -313,24 +337,33 @@ pub struct TrajectoryOutcome {
 /// Scope - partitioned context window within a trajectory.
 /// Scopes provide isolation and checkpointing boundaries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Scope {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub parent_scope_id: Option<EntityId>,
     pub name: String,
     pub purpose: Option<String>,
     pub is_active: bool,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub closed_at: Option<Timestamp>,
     pub checkpoint: Option<Checkpoint>,
     pub token_budget: i32,
     pub tokens_used: i32,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Checkpoint for scope recovery.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Checkpoint {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "byte"))]
     pub context_state: RawContent,
     pub recoverable: bool,
 }
@@ -338,25 +371,35 @@ pub struct Checkpoint {
 /// Artifact - typed output preserved across scopes.
 /// Artifacts survive scope closure and can be referenced later.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Artifact {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub artifact_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
     pub artifact_type: ArtifactType,
     pub name: String,
     pub content: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "byte"))]
     pub content_hash: ContentHash,
     pub embedding: Option<EmbeddingVector>,
     pub provenance: Provenance,
     pub ttl: TTL,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub updated_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub superseded_by: Option<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Provenance information for an artifact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Provenance {
     pub source_turn: i32,
     pub extraction_method: ExtractionMethod,
@@ -366,37 +409,54 @@ pub struct Provenance {
 /// Note - long-term cross-trajectory knowledge.
 /// Notes persist beyond individual trajectories.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Note {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub note_id: EntityId,
     pub note_type: NoteType,
     pub title: String,
     pub content: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "byte"))]
     pub content_hash: ContentHash,
     pub embedding: Option<EmbeddingVector>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub source_trajectory_ids: Vec<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub source_artifact_ids: Vec<EntityId>,
     pub ttl: TTL,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub updated_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub accessed_at: Timestamp,
     pub access_count: i32,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub superseded_by: Option<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Turn - ephemeral conversation buffer entry.
 /// Turns die with their scope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Turn {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub turn_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
     pub sequence: i32,
     pub role: TurnRole,
     pub content: String,
     pub token_count: i32,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub tool_calls: Option<serde_json::Value>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub tool_results: Option<serde_json::Value>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -589,6 +649,7 @@ pub type CaliberResult<T> = Result<T, CaliberError>;
 
 /// Section priorities for context assembly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SectionPriorities {
     pub user: i32,
     pub system: i32,
@@ -596,15 +657,18 @@ pub struct SectionPriorities {
     pub artifacts: i32,
     pub notes: i32,
     pub history: i32,
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Vec<Object>>))]
     pub custom: Vec<(String, i32)>,
 }
 
 /// Context persistence mode.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ContextPersistence {
     /// Context is not persisted
     Ephemeral,
-    /// Context persists for specified duration
+    /// Context persists for specified duration (in nanoseconds)
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     Ttl(Duration),
     /// Context persists permanently
     Permanent,
@@ -612,6 +676,7 @@ pub enum ContextPersistence {
 
 /// Validation mode for PCP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ValidationMode {
     /// Validate only on mutations
     OnMutation,
@@ -621,6 +686,7 @@ pub enum ValidationMode {
 
 /// LLM provider configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProviderConfig {
     pub provider_type: String,
     pub endpoint: Option<String>,
@@ -630,9 +696,14 @@ pub struct ProviderConfig {
 
 /// Retry configuration for LLM operations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RetryConfig {
     pub max_retries: i32,
+    /// Initial backoff duration in nanoseconds
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     pub initial_backoff: Duration,
+    /// Maximum backoff duration in nanoseconds
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     pub max_backoff: Duration,
     pub backoff_multiplier: f32,
 }
@@ -640,6 +711,7 @@ pub struct RetryConfig {
 /// Master configuration struct.
 /// ALL values are required - no defaults anywhere.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaliberConfig {
     // Context assembly (REQUIRED)
     pub token_budget: i32,
@@ -647,6 +719,8 @@ pub struct CaliberConfig {
 
     // PCP settings (REQUIRED)
     pub checkpoint_retention: i32,
+    /// Stale threshold duration in nanoseconds
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     pub stale_threshold: Duration,
     pub contradiction_threshold: f32,
 
@@ -660,8 +734,14 @@ pub struct CaliberConfig {
     pub llm_retry_config: RetryConfig,
 
     // Multi-agent (REQUIRED)
+    /// Lock timeout duration in nanoseconds
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     pub lock_timeout: Duration,
+    /// Message retention duration in nanoseconds
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     pub message_retention: Duration,
+    /// Delegation timeout duration in nanoseconds
+    #[cfg_attr(feature = "openapi", schema(value_type = u64))]
     pub delegation_timeout: Duration,
 }
 

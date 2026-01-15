@@ -1,0 +1,1319 @@
+//! gRPC Service Implementation
+//!
+//! This module implements all gRPC services defined in proto/caliber.proto.
+//! The implementation reuses the REST handler logic from the routes modules,
+//! ensuring REST-gRPC parity.
+//!
+//! All services call caliber_* pg_extern functions via the DbClient, maintaining
+//! the hot-path optimization (no SQL parsing overhead).
+
+use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
+use tonic::{Request, Response, Status};
+
+use crate::{
+    db::DbClient,
+    error::ApiError,
+    events::WsEvent,
+    types::*,
+    ws::WsState,
+};
+
+// Include the generated protobuf code
+pub mod proto {
+    tonic::include_proto!("caliber");
+}
+
+use proto::*;
+
+// ============================================================================
+// CONVERSION HELPERS
+// ============================================================================
+
+/// Convert ApiError to tonic Status
+impl From<ApiError> for Status {
+    fn from(err: ApiError) -> Self {
+        match err.code {
+            crate::error::ErrorCode::Unauthorized => Status::unauthenticated(err.message),
+            crate::error::ErrorCode::Forbidden => Status::permission_denied(err.message),
+            crate::error::ErrorCode::EntityNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::ValidationFailed => Status::invalid_argument(err.message),
+            crate::error::ErrorCode::InvalidInput => Status::invalid_argument(err.message),
+            crate::error::ErrorCode::MissingField => Status::invalid_argument(err.message),
+            crate::error::ErrorCode::EntityAlreadyExists => Status::already_exists(err.message),
+            crate::error::ErrorCode::ConcurrentModification => Status::aborted(err.message),
+            crate::error::ErrorCode::LockConflict => Status::resource_exhausted(err.message),
+            crate::error::ErrorCode::InternalError => Status::internal(err.message),
+            crate::error::ErrorCode::DatabaseError => Status::internal(err.message),
+            crate::error::ErrorCode::ServiceUnavailable => Status::unavailable(err.message),
+            crate::error::ErrorCode::TenantNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::InvalidToken => Status::unauthenticated(err.message),
+            crate::error::ErrorCode::TokenExpired => Status::unauthenticated(err.message),
+        }
+    }
+}
+
+// ============================================================================
+// TRAJECTORY SERVICE IMPLEMENTATION
+// ============================================================================
+
+pub struct TrajectoryServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl TrajectoryServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
+    async fn create_trajectory(
+        &self,
+        request: Request<CreateTrajectoryRequest>,
+    ) -> Result<Response<TrajectoryResponse>, Status> {
+        let req = request.into_inner();
+        
+        // Convert proto request to internal type
+        let create_req = crate::types::CreateTrajectoryRequest {
+            name: req.name,
+            description: req.description,
+            parent_trajectory_id: req.parent_trajectory_id.and_then(|id| id.parse().ok()),
+            agent_id: req.agent_id.and_then(|id| id.parse().ok()),
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        
+        // Reuse REST handler logic
+        let trajectory = self.db.trajectory_create(&create_req).await.map_err(ApiError::from)?;
+        
+        // Broadcast event
+        self.ws.broadcast(WsEvent::TrajectoryCreated {
+            trajectory: trajectory.clone(),
+        });
+        
+        // Convert to proto response
+        let response = trajectory_to_proto(&trajectory);
+        Ok(Response::new(response))
+    }
+
+    async fn get_trajectory(
+        &self,
+        request: Request<GetTrajectoryRequest>,
+    ) -> Result<Response<TrajectoryResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        
+        let trajectory = self.db.trajectory_get(id).await.map_err(ApiError::from)?
+            .ok_or_else(|| Status::not_found("Trajectory not found"))?;
+        
+        let response = trajectory_to_proto(&trajectory);
+        Ok(Response::new(response))
+    }
+
+    async fn list_trajectories(
+        &self,
+        request: Request<ListTrajectoriesRequest>,
+    ) -> Result<Response<ListTrajectoriesResponse>, Status> {
+        let req = request.into_inner();
+        
+        // Convert proto request to internal type
+        let list_req = crate::types::ListTrajectoriesRequest {
+            status: req.status.and_then(|s| s.parse().ok()),
+            agent_id: req.agent_id.and_then(|id| id.parse().ok()),
+            parent_id: req.parent_id.and_then(|id| id.parse().ok()),
+            limit: req.limit,
+            offset: req.offset,
+        };
+        
+        // For now, require status filter
+        let status = list_req.status.ok_or_else(|| Status::invalid_argument("status filter required"))?;
+        let mut trajectories = self.db.trajectory_list_by_status(status).await.map_err(ApiError::from)?;
+        
+        // Apply filters
+        if let Some(agent_id) = list_req.agent_id {
+            trajectories.retain(|t| t.agent_id == Some(agent_id));
+        }
+        if let Some(parent_id) = list_req.parent_id {
+            trajectories.retain(|t| t.parent_trajectory_id == Some(parent_id));
+        }
+        
+        // Apply pagination
+        let total = trajectories.len() as i32;
+        let offset = list_req.offset.unwrap_or(0) as usize;
+        let limit = list_req.limit.unwrap_or(100) as usize;
+        
+        let paginated: Vec<_> = trajectories.into_iter().skip(offset).take(limit).collect();
+        
+        let response = ListTrajectoriesResponse {
+            trajectories: paginated.into_iter().map(|t| trajectory_to_proto(&t)).collect(),
+            total,
+        };
+        
+        Ok(Response::new(response))
+    }
+
+    async fn update_trajectory(
+        &self,
+        request: Request<UpdateTrajectoryRequest>,
+    ) -> Result<Response<TrajectoryResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        
+        let update_req = crate::types::UpdateTrajectoryRequest {
+            name: req.name,
+            description: req.description,
+            status: req.status.and_then(|s| s.parse().ok()),
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        
+        let trajectory = self.db.trajectory_update(id, &update_req).await.map_err(ApiError::from)?;
+        
+        self.ws.broadcast(WsEvent::TrajectoryUpdated {
+            trajectory: trajectory.clone(),
+        });
+        
+        let response = trajectory_to_proto(&trajectory);
+        Ok(Response::new(response))
+    }
+
+    async fn delete_trajectory(
+        &self,
+        request: Request<DeleteTrajectoryRequest>,
+    ) -> Result<Response<Empty>, Status> {
+        let req = request.into_inner();
+        let _id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        
+        // TODO: Implement when caliber_trajectory_delete is available
+        Err(Status::unimplemented("Trajectory deletion not yet implemented"))
+    }
+
+    async fn list_trajectory_scopes(
+        &self,
+        request: Request<ListTrajectoryScopesRequest>,
+    ) -> Result<Response<ListScopesResponse>, Status> {
+        let req = request.into_inner();
+        let _id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        
+        // TODO: Implement when caliber_scope_list_by_trajectory is available
+        let response = ListScopesResponse { scopes: vec![] };
+        Ok(Response::new(response))
+    }
+
+    async fn list_trajectory_children(
+        &self,
+        request: Request<ListTrajectoryChildrenRequest>,
+    ) -> Result<Response<ListTrajectoriesResponse>, Status> {
+        let req = request.into_inner();
+        let _id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        
+        // TODO: Implement when caliber_trajectory_list_children is available
+        let response = ListTrajectoriesResponse {
+            trajectories: vec![],
+            total: 0,
+        };
+        Ok(Response::new(response))
+    }
+}
+
+// ============================================================================
+// SCOPE SERVICE IMPLEMENTATION
+// ============================================================================
+
+pub struct ScopeServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl ScopeServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl scope_service_server::ScopeService for ScopeServiceImpl {
+    async fn create_scope(
+        &self,
+        request: Request<CreateScopeRequest>,
+    ) -> Result<Response<ScopeResponse>, Status> {
+        let req = request.into_inner();
+        
+        let create_req = crate::types::CreateScopeRequest {
+            trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
+            parent_scope_id: req.parent_scope_id.and_then(|id| id.parse().ok()),
+            name: req.name,
+            purpose: req.purpose,
+            token_budget: req.token_budget,
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        
+        let scope = self.db.scope_create(&create_req).await.map_err(ApiError::from)?;
+        
+        self.ws.broadcast(WsEvent::ScopeCreated {
+            scope: scope.clone(),
+        });
+        
+        let response = scope_to_proto(&scope);
+        Ok(Response::new(response))
+    }
+
+    async fn get_scope(
+        &self,
+        request: Request<GetScopeRequest>,
+    ) -> Result<Response<ScopeResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        
+        let scope = self.db.scope_get(id).await.map_err(ApiError::from)?
+            .ok_or_else(|| Status::not_found("Scope not found"))?;
+        
+        let response = scope_to_proto(&scope);
+        Ok(Response::new(response))
+    }
+
+    async fn update_scope(
+        &self,
+        request: Request<UpdateScopeRequest>,
+    ) -> Result<Response<ScopeResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        
+        let update_req = crate::types::UpdateScopeRequest {
+            name: req.name,
+            purpose: req.purpose,
+            token_budget: req.token_budget,
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        
+        let scope = self.db.scope_update(id, &update_req).await.map_err(ApiError::from)?;
+        
+        self.ws.broadcast(WsEvent::ScopeUpdated {
+            scope: scope.clone(),
+        });
+        
+        let response = scope_to_proto(&scope);
+        Ok(Response::new(response))
+    }
+
+    async fn create_checkpoint(
+        &self,
+        request: Request<CreateCheckpointRequest>,
+    ) -> Result<Response<CheckpointResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        
+        let checkpoint_req = crate::types::CreateCheckpointRequest {
+            context_state: req.context_state,
+            recoverable: req.recoverable,
+        };
+        
+        let checkpoint = self.db.scope_create_checkpoint(id, &checkpoint_req).await.map_err(ApiError::from)?;
+        
+        let response = CheckpointResponse {
+            context_state: checkpoint.context_state,
+            recoverable: checkpoint.recoverable,
+        };
+        
+        Ok(Response::new(response))
+    }
+
+    async fn close_scope(
+        &self,
+        request: Request<CloseScopeRequest>,
+    ) -> Result<Response<ScopeResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        
+        let scope = self.db.scope_close(id).await.map_err(ApiError::from)?;
+        
+        self.ws.broadcast(WsEvent::ScopeClosed {
+            scope: scope.clone(),
+        });
+        
+        let response = scope_to_proto(&scope);
+        Ok(Response::new(response))
+    }
+
+    async fn list_scope_turns(
+        &self,
+        request: Request<ListScopeTurnsRequest>,
+    ) -> Result<Response<ListTurnsResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        
+        let turns = self.db.turn_list_by_scope(id).await.map_err(ApiError::from)?;
+        
+        let response = ListTurnsResponse {
+            turns: turns.into_iter().map(|t| turn_to_proto(&t)).collect(),
+        };
+        
+        Ok(Response::new(response))
+    }
+
+    async fn list_scope_artifacts(
+        &self,
+        request: Request<ListScopeArtifactsRequest>,
+    ) -> Result<Response<ListArtifactsResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        
+        let artifacts = self.db.artifact_list_by_scope(id).await.map_err(ApiError::from)?;
+        
+        let response = ListArtifactsResponse {
+            artifacts: artifacts.into_iter().map(|a| artifact_to_proto(&a)).collect(),
+            total: artifacts.len() as i32,
+        };
+        
+        Ok(Response::new(response))
+    }
+}
+
+// ============================================================================
+// EVENT SERVICE IMPLEMENTATION (Streaming)
+// ============================================================================
+
+pub struct EventServiceImpl {
+    ws: Arc<WsState>,
+}
+
+impl EventServiceImpl {
+    pub fn new(ws: Arc<WsState>) -> Self {
+        Self { ws }
+    }
+}
+
+#[tonic::async_trait]
+impl event_service_server::EventService for EventServiceImpl {
+    type SubscribeEventsStream = Pin<Box<dyn Stream<Item = Result<Event, Status>> + Send>>;
+
+    async fn subscribe_events(
+        &self,
+        request: Request<SubscribeRequest>,
+    ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
+        let req = request.into_inner();
+        let event_types = req.event_types;
+        
+        // Subscribe to broadcast channel
+        let rx = self.ws.subscribe();
+        
+        // Convert broadcast stream to gRPC stream
+        let stream = BroadcastStream::new(rx)
+            .filter_map(move |result| {
+                let event_types = event_types.clone();
+                async move {
+                    match result {
+                        Ok(ws_event) => {
+                            // Convert WsEvent to proto Event
+                            let event_type = ws_event_type(&ws_event);
+                            
+                            // Filter by event types if specified
+                            if !event_types.is_empty() && !event_types.contains(&event_type) {
+                                return None;
+                            }
+                            
+                            let payload = serde_json::to_string(&ws_event).ok()?;
+                            let timestamp = chrono::Utc::now().timestamp_millis();
+                            
+                            Some(Ok(Event {
+                                event_type,
+                                timestamp,
+                                payload,
+                            }))
+                        }
+                        Err(_) => None, // Lagged, skip
+                    }
+                }
+            });
+        
+        Ok(Response::new(Box::pin(stream)))
+    }
+}
+
+/// Extract event type string from WsEvent
+fn ws_event_type(event: &WsEvent) -> String {
+    match event {
+        WsEvent::TrajectoryCreated { .. } => "TrajectoryCreated".to_string(),
+        WsEvent::TrajectoryUpdated { .. } => "TrajectoryUpdated".to_string(),
+        WsEvent::TrajectoryDeleted { .. } => "TrajectoryDeleted".to_string(),
+        WsEvent::ScopeCreated { .. } => "ScopeCreated".to_string(),
+        WsEvent::ScopeUpdated { .. } => "ScopeUpdated".to_string(),
+        WsEvent::ScopeClosed { .. } => "ScopeClosed".to_string(),
+        WsEvent::ArtifactCreated { .. } => "ArtifactCreated".to_string(),
+        WsEvent::ArtifactUpdated { .. } => "ArtifactUpdated".to_string(),
+        WsEvent::ArtifactDeleted { .. } => "ArtifactDeleted".to_string(),
+        WsEvent::NoteCreated { .. } => "NoteCreated".to_string(),
+        WsEvent::NoteUpdated { .. } => "NoteUpdated".to_string(),
+        WsEvent::NoteDeleted { .. } => "NoteDeleted".to_string(),
+        WsEvent::TurnCreated { .. } => "TurnCreated".to_string(),
+        WsEvent::AgentRegistered { .. } => "AgentRegistered".to_string(),
+        WsEvent::AgentStatusChanged { .. } => "AgentStatusChanged".to_string(),
+        WsEvent::AgentHeartbeat { .. } => "AgentHeartbeat".to_string(),
+        WsEvent::LockAcquired { .. } => "LockAcquired".to_string(),
+        WsEvent::LockReleased { .. } => "LockReleased".to_string(),
+        WsEvent::LockExpired { .. } => "LockExpired".to_string(),
+        WsEvent::MessageSent { .. } => "MessageSent".to_string(),
+        WsEvent::MessageDelivered { .. } => "MessageDelivered".to_string(),
+        WsEvent::MessageAcknowledged { .. } => "MessageAcknowledged".to_string(),
+        WsEvent::Connected { .. } => "Connected".to_string(),
+        WsEvent::Disconnected { .. } => "Disconnected".to_string(),
+        WsEvent::Error { .. } => "Error".to_string(),
+    }
+}
+
+// ============================================================================
+// CONVERSION FUNCTIONS (Internal Types → Proto Types)
+// ============================================================================
+
+fn trajectory_to_proto(t: &crate::types::TrajectoryResponse) -> TrajectoryResponse {
+    TrajectoryResponse {
+        trajectory_id: t.trajectory_id.to_string(),
+        name: t.name.clone(),
+        description: t.description.clone(),
+        status: t.status.to_string(),
+        parent_trajectory_id: t.parent_trajectory_id.map(|id| id.to_string()),
+        root_trajectory_id: t.root_trajectory_id.map(|id| id.to_string()),
+        agent_id: t.agent_id.map(|id| id.to_string()),
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        completed_at: t.completed_at,
+        outcome: t.outcome.as_ref().map(|o| TrajectoryOutcome {
+            status: o.status.to_string(),
+            summary: o.summary.clone(),
+            produced_artifacts: o.produced_artifacts.iter().map(|id| id.to_string()).collect(),
+            produced_notes: o.produced_notes.iter().map(|id| id.to_string()).collect(),
+            error: o.error.clone(),
+        }),
+        metadata: t.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+    }
+}
+
+fn scope_to_proto(s: &crate::types::ScopeResponse) -> ScopeResponse {
+    ScopeResponse {
+        scope_id: s.scope_id.to_string(),
+        trajectory_id: s.trajectory_id.to_string(),
+        parent_scope_id: s.parent_scope_id.map(|id| id.to_string()),
+        name: s.name.clone(),
+        purpose: s.purpose.clone(),
+        is_active: s.is_active,
+        created_at: s.created_at,
+        closed_at: s.closed_at,
+        checkpoint: s.checkpoint.as_ref().map(|c| CheckpointResponse {
+            context_state: c.context_state.clone(),
+            recoverable: c.recoverable,
+        }),
+        token_budget: s.token_budget,
+        tokens_used: s.tokens_used,
+        metadata: s.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+    }
+}
+
+fn artifact_to_proto(a: &crate::types::ArtifactResponse) -> ArtifactResponse {
+    ArtifactResponse {
+        artifact_id: a.artifact_id.to_string(),
+        trajectory_id: a.trajectory_id.to_string(),
+        scope_id: a.scope_id.to_string(),
+        artifact_type: a.artifact_type.to_string(),
+        name: a.name.clone(),
+        content: a.content.clone(),
+        content_hash: a.content_hash.to_vec(),
+        embedding: a.embedding.as_ref().map(|e| Embedding {
+            data: e.data.clone(),
+            model_id: e.model_id.clone(),
+            dimensions: e.dimensions,
+        }),
+        provenance: Some(Provenance {
+            source_turn: a.provenance.source_turn,
+            extraction_method: a.provenance.extraction_method.to_string(),
+            confidence: a.provenance.confidence,
+        }),
+        ttl: serde_json::to_string(&a.ttl).unwrap_or_default(),
+        created_at: a.created_at,
+        updated_at: a.updated_at,
+        superseded_by: a.superseded_by.map(|id| id.to_string()),
+        metadata: a.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+    }
+}
+
+fn note_to_proto(n: &crate::types::NoteResponse) -> NoteResponse {
+    NoteResponse {
+        note_id: n.note_id.to_string(),
+        note_type: n.note_type.to_string(),
+        title: n.title.clone(),
+        content: n.content.clone(),
+        content_hash: n.content_hash.to_vec(),
+        embedding: n.embedding.as_ref().map(|e| Embedding {
+            data: e.data.clone(),
+            model_id: e.model_id.clone(),
+            dimensions: e.dimensions,
+        }),
+        source_trajectory_ids: n.source_trajectory_ids.iter().map(|id| id.to_string()).collect(),
+        source_artifact_ids: n.source_artifact_ids.iter().map(|id| id.to_string()).collect(),
+        ttl: serde_json::to_string(&n.ttl).unwrap_or_default(),
+        created_at: n.created_at,
+        updated_at: n.updated_at,
+        accessed_at: n.accessed_at,
+        access_count: n.access_count,
+        superseded_by: n.superseded_by.map(|id| id.to_string()),
+        metadata: n.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+    }
+}
+
+fn turn_to_proto(t: &crate::types::TurnResponse) -> TurnResponse {
+    TurnResponse {
+        turn_id: t.turn_id.to_string(),
+        scope_id: t.scope_id.to_string(),
+        sequence: t.sequence,
+        role: t.role.to_string(),
+        content: t.content.clone(),
+        token_count: t.token_count,
+        created_at: t.created_at,
+        tool_calls: t.tool_calls.as_ref().map(|tc| serde_json::to_string(tc).unwrap_or_default()),
+        tool_results: t.tool_results.as_ref().map(|tr| serde_json::to_string(tr).unwrap_or_default()),
+        metadata: t.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+    }
+}
+
+fn agent_to_proto(a: &crate::types::AgentResponse) -> AgentResponse {
+    AgentResponse {
+        agent_id: a.agent_id.to_string(),
+        agent_type: a.agent_type.to_string(),
+        capabilities: a.capabilities.clone(),
+        memory_access: Some(MemoryAccess {
+            read: a.memory_access.read.iter().map(|p| MemoryPermission {
+                memory_type: p.memory_type.to_string(),
+                scope: p.scope.clone(),
+                filter: p.filter.clone(),
+            }).collect(),
+            write: a.memory_access.write.iter().map(|p| MemoryPermission {
+                memory_type: p.memory_type.to_string(),
+                scope: p.scope.clone(),
+                filter: p.filter.clone(),
+            }).collect(),
+        }),
+        status: a.status.to_string(),
+        current_trajectory_id: a.current_trajectory_id.map(|id| id.to_string()),
+        current_scope_id: a.current_scope_id.map(|id| id.to_string()),
+        can_delegate_to: a.can_delegate_to.iter().map(|id| id.to_string()).collect(),
+        reports_to: a.reports_to.map(|id| id.to_string()),
+        created_at: a.created_at,
+        last_heartbeat: a.last_heartbeat,
+    }
+}
+
+fn lock_to_proto(l: &crate::types::LockResponse) -> LockResponse {
+    LockResponse {
+        lock_id: l.lock_id.to_string(),
+        resource_type: l.resource_type.to_string(),
+        resource_id: l.resource_id.to_string(),
+        holder_agent_id: l.holder_agent_id.to_string(),
+        acquired_at: l.acquired_at,
+        expires_at: l.expires_at,
+        mode: l.mode.to_string(),
+    }
+}
+
+fn message_to_proto(m: &crate::types::MessageResponse) -> MessageResponse {
+    MessageResponse {
+        message_id: m.message_id.to_string(),
+        from_agent_id: m.from_agent_id.to_string(),
+        to_agent_id: m.to_agent_id.map(|id| id.to_string()),
+        to_agent_type: m.to_agent_type.clone(),
+        message_type: m.message_type.to_string(),
+        payload: m.payload.clone(),
+        trajectory_id: m.trajectory_id.map(|id| id.to_string()),
+        scope_id: m.scope_id.map(|id| id.to_string()),
+        artifact_ids: m.artifact_ids.iter().map(|id| id.to_string()).collect(),
+        created_at: m.created_at,
+        delivered_at: m.delivered_at,
+        acknowledged_at: m.acknowledged_at,
+        priority: m.priority.to_string(),
+        expires_at: m.expires_at,
+    }
+}
+
+fn delegation_to_proto(d: &crate::types::DelegationResponse) -> DelegationResponse {
+    DelegationResponse {
+        delegation_id: d.delegation_id.to_string(),
+        from_agent_id: d.from_agent_id.to_string(),
+        to_agent_id: d.to_agent_id.to_string(),
+        trajectory_id: d.trajectory_id.to_string(),
+        scope_id: d.scope_id.to_string(),
+        task_description: d.task_description.clone(),
+        status: d.status.to_string(),
+        created_at: d.created_at,
+        accepted_at: d.accepted_at,
+        completed_at: d.completed_at,
+        expected_completion: d.expected_completion,
+        result: d.result.as_ref().map(|r| DelegationResult {
+            status: r.status.to_string(),
+            output: r.output.clone(),
+            artifacts: r.artifacts.iter().map(|id| id.to_string()).collect(),
+            error: r.error.clone(),
+        }),
+        context: d.context.as_ref().map(|c| serde_json::to_string(c).unwrap_or_default()),
+    }
+}
+
+fn handoff_to_proto(h: &crate::types::HandoffResponse) -> HandoffResponse {
+    HandoffResponse {
+        handoff_id: h.handoff_id.to_string(),
+        from_agent_id: h.from_agent_id.to_string(),
+        to_agent_id: h.to_agent_id.to_string(),
+        trajectory_id: h.trajectory_id.to_string(),
+        scope_id: h.scope_id.to_string(),
+        reason: h.reason.clone(),
+        status: h.status.to_string(),
+        created_at: h.created_at,
+        accepted_at: h.accepted_at,
+        completed_at: h.completed_at,
+        context_snapshot: h.context_snapshot.clone(),
+    }
+}
+
+// ============================================================================
+// REMAINING SERVICE STUBS (Following REST Handler Pattern)
+// ============================================================================
+// Note: These services follow the same pattern as Trajectory/Scope services.
+// They reuse REST handler logic and convert between proto and internal types.
+// Full implementations will be added as caliber-pg functions become available.
+
+// Artifact Service - mirrors routes/artifact.rs
+pub struct ArtifactServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl ArtifactServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
+    async fn create_artifact(&self, request: Request<CreateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        let req = request.into_inner();
+        let create_req = crate::types::CreateArtifactRequest {
+            trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
+            scope_id: req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?,
+            artifact_type: req.artifact_type.parse().map_err(|_| Status::invalid_argument("Invalid artifact_type"))?,
+            name: req.name,
+            content: req.content,
+            source_turn: req.source_turn,
+            extraction_method: req.extraction_method.parse().map_err(|_| Status::invalid_argument("Invalid extraction_method"))?,
+            confidence: req.confidence,
+            ttl: serde_json::from_str(&req.ttl).map_err(|_| Status::invalid_argument("Invalid TTL"))?,
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        let artifact = self.db.artifact_create(&create_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::ArtifactCreated { artifact: artifact.clone() });
+        Ok(Response::new(artifact_to_proto(&artifact)))
+    }
+
+    async fn get_artifact(&self, request: Request<GetArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        let id = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
+        let artifact = self.db.artifact_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Artifact not found"))?;
+        Ok(Response::new(artifact_to_proto(&artifact)))
+    }
+
+    async fn list_artifacts(&self, request: Request<ListArtifactsRequest>) -> Result<Response<ListArtifactsResponse>, Status> {
+        let req = request.into_inner();
+        let scope_id = req.scope_id.ok_or_else(|| Status::invalid_argument("scope_id required"))?.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
+        let artifacts = self.db.artifact_list_by_scope(scope_id).await.map_err(ApiError::from)?;
+        Ok(Response::new(ListArtifactsResponse {
+            artifacts: artifacts.into_iter().map(|a| artifact_to_proto(&a)).collect(),
+            total: artifacts.len() as i32,
+        }))
+    }
+
+    async fn update_artifact(&self, _request: Request<UpdateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        Err(Status::unimplemented("Artifact update not yet implemented"))
+    }
+
+    async fn delete_artifact(&self, _request: Request<DeleteArtifactRequest>) -> Result<Response<Empty>, Status> {
+        Err(Status::unimplemented("Artifact deletion not yet implemented"))
+    }
+
+    async fn search_artifacts(&self, _request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        Ok(Response::new(SearchResponse { results: vec![], total: 0 }))
+    }
+}
+
+// Note Service - mirrors routes/note.rs
+pub struct NoteServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl NoteServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl note_service_server::NoteService for NoteServiceImpl {
+    async fn create_note(&self, request: Request<CreateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        let req = request.into_inner();
+        let create_req = crate::types::CreateNoteRequest {
+            note_type: req.note_type.parse().map_err(|_| Status::invalid_argument("Invalid note_type"))?,
+            title: req.title,
+            content: req.content,
+            source_trajectory_ids: req.source_trajectory_ids.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            source_artifact_ids: req.source_artifact_ids.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            ttl: serde_json::from_str(&req.ttl).map_err(|_| Status::invalid_argument("Invalid TTL"))?,
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        let note = self.db.note_create(&create_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
+        Ok(Response::new(note_to_proto(&note)))
+    }
+
+    async fn get_note(&self, request: Request<GetNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        let id = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
+        let note = self.db.note_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Note not found"))?;
+        Ok(Response::new(note_to_proto(&note)))
+    }
+
+    async fn list_notes(&self, _request: Request<ListNotesRequest>) -> Result<Response<ListNotesResponse>, Status> {
+        Ok(Response::new(ListNotesResponse { notes: vec![], total: 0 }))
+    }
+
+    async fn update_note(&self, _request: Request<UpdateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        Err(Status::unimplemented("Note update not yet implemented"))
+    }
+
+    async fn delete_note(&self, _request: Request<DeleteNoteRequest>) -> Result<Response<Empty>, Status> {
+        Err(Status::unimplemented("Note deletion not yet implemented"))
+    }
+
+    async fn search_notes(&self, _request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        Ok(Response::new(SearchResponse { results: vec![], total: 0 }))
+    }
+}
+
+// Turn Service - mirrors routes/turn.rs
+pub struct TurnServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl TurnServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl turn_service_server::TurnService for TurnServiceImpl {
+    async fn create_turn(&self, request: Request<CreateTurnRequest>) -> Result<Response<TurnResponse>, Status> {
+        let req = request.into_inner();
+        let create_req = crate::types::CreateTurnRequest {
+            scope_id: req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?,
+            sequence: req.sequence,
+            role: req.role.parse().map_err(|_| Status::invalid_argument("Invalid role"))?,
+            content: req.content,
+            token_count: req.token_count,
+            tool_calls: req.tool_calls.and_then(|s| serde_json::from_str(&s).ok()),
+            tool_results: req.tool_results.and_then(|s| serde_json::from_str(&s).ok()),
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        let turn = self.db.turn_create(&create_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::TurnCreated { turn: turn.clone() });
+        Ok(Response::new(turn_to_proto(&turn)))
+    }
+
+    async fn get_turn(&self, request: Request<GetTurnRequest>) -> Result<Response<TurnResponse>, Status> {
+        let id = request.into_inner().turn_id.parse().map_err(|_| Status::invalid_argument("Invalid turn_id"))?;
+        let turn = self.db.turn_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Turn not found"))?;
+        Ok(Response::new(turn_to_proto(&turn)))
+    }
+}
+
+// Agent Service - mirrors routes/agent.rs
+pub struct AgentServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl AgentServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl agent_service_server::AgentService for AgentServiceImpl {
+    async fn register_agent(&self, request: Request<RegisterAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        let req = request.into_inner();
+        let memory_access = req.memory_access.ok_or_else(|| Status::invalid_argument("memory_access required"))?;
+        let register_req = crate::types::RegisterAgentRequest {
+            agent_type: req.agent_type.parse().map_err(|_| Status::invalid_argument("Invalid agent_type"))?,
+            capabilities: req.capabilities,
+            memory_access: crate::types::MemoryAccessRequest {
+                read: memory_access.read.into_iter().map(|p| crate::types::MemoryPermissionRequest {
+                    memory_type: p.memory_type,
+                    scope: p.scope,
+                    filter: p.filter,
+                }).collect(),
+                write: memory_access.write.into_iter().map(|p| crate::types::MemoryPermissionRequest {
+                    memory_type: p.memory_type,
+                    scope: p.scope,
+                    filter: p.filter,
+                }).collect(),
+            },
+            can_delegate_to: req.can_delegate_to.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            reports_to: req.reports_to.and_then(|s| s.parse().ok()),
+        };
+        let agent = self.db.agent_register(&register_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::AgentRegistered { agent: agent.clone() });
+        Ok(Response::new(agent_to_proto(&agent)))
+    }
+
+    async fn get_agent(&self, request: Request<GetAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        let id = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
+        let agent = self.db.agent_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Agent not found"))?;
+        Ok(Response::new(agent_to_proto(&agent)))
+    }
+
+    async fn list_agents(&self, _request: Request<ListAgentsRequest>) -> Result<Response<ListAgentsResponse>, Status> {
+        Ok(Response::new(ListAgentsResponse { agents: vec![] }))
+    }
+
+    async fn update_agent(&self, _request: Request<UpdateAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        Err(Status::unimplemented("Agent update not yet implemented"))
+    }
+
+    async fn unregister_agent(&self, _request: Request<UnregisterAgentRequest>) -> Result<Response<Empty>, Status> {
+        Err(Status::unimplemented("Agent unregister not yet implemented"))
+    }
+
+    async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
+        let id = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
+        let timestamp = self.db.agent_heartbeat(id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::AgentHeartbeat { agent_id: id, timestamp });
+        Ok(Response::new(HeartbeatResponse { timestamp }))
+    }
+}
+
+// Lock Service - mirrors routes/lock.rs
+pub struct LockServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl LockServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl lock_service_server::LockService for LockServiceImpl {
+    async fn acquire_lock(&self, request: Request<AcquireLockRequest>) -> Result<Response<LockResponse>, Status> {
+        let req = request.into_inner();
+        let acquire_req = crate::types::AcquireLockRequest {
+            resource_type: req.resource_type.parse().map_err(|_| Status::invalid_argument("Invalid resource_type"))?,
+            resource_id: req.resource_id.parse().map_err(|_| Status::invalid_argument("Invalid resource_id"))?,
+            holder_agent_id: req.holder_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid holder_agent_id"))?,
+            timeout_ms: req.timeout_ms,
+            mode: req.mode.parse().map_err(|_| Status::invalid_argument("Invalid mode"))?,
+        };
+        let lock = self.db.lock_acquire(&acquire_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::LockAcquired { lock: lock.clone() });
+        Ok(Response::new(lock_to_proto(&lock)))
+    }
+
+    async fn release_lock(&self, request: Request<ReleaseLockRequest>) -> Result<Response<Empty>, Status> {
+        let id = request.into_inner().lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
+        self.db.lock_release(id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::LockReleased { lock_id: id });
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn extend_lock(&self, request: Request<ExtendLockRequest>) -> Result<Response<LockResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
+        let lock = self.db.lock_extend(id, req.additional_ms).await.map_err(ApiError::from)?;
+        Ok(Response::new(lock_to_proto(&lock)))
+    }
+
+    async fn list_locks(&self, _request: Request<ListLocksRequest>) -> Result<Response<ListLocksResponse>, Status> {
+        Ok(Response::new(ListLocksResponse { locks: vec![] }))
+    }
+}
+
+// Message Service - mirrors routes/message.rs
+pub struct MessageServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl MessageServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl message_service_server::MessageService for MessageServiceImpl {
+    async fn send_message(&self, request: Request<SendMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let req = request.into_inner();
+        let send_req = crate::types::SendMessageRequest {
+            from_agent_id: req.from_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid from_agent_id"))?,
+            to_agent_id: req.to_agent_id.and_then(|s| s.parse().ok()),
+            to_agent_type: req.to_agent_type,
+            message_type: req.message_type.parse().map_err(|_| Status::invalid_argument("Invalid message_type"))?,
+            payload: req.payload,
+            trajectory_id: req.trajectory_id.and_then(|s| s.parse().ok()),
+            scope_id: req.scope_id.and_then(|s| s.parse().ok()),
+            artifact_ids: req.artifact_ids.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            priority: req.priority.parse().map_err(|_| Status::invalid_argument("Invalid priority"))?,
+            expires_at: req.expires_at,
+        };
+        let message = self.db.message_send(&send_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::MessageSent { message: message.clone() });
+        Ok(Response::new(message_to_proto(&message)))
+    }
+
+    async fn get_message(&self, request: Request<GetMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
+        let message = self.db.message_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Message not found"))?;
+        Ok(Response::new(message_to_proto(&message)))
+    }
+
+    async fn list_messages(&self, _request: Request<ListMessagesRequest>) -> Result<Response<ListMessagesResponse>, Status> {
+        Ok(Response::new(ListMessagesResponse { messages: vec![] }))
+    }
+
+    async fn acknowledge_message(&self, request: Request<AcknowledgeMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
+        let message = self.db.message_acknowledge(id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::MessageAcknowledged { message_id: id });
+        Ok(Response::new(message_to_proto(&message)))
+    }
+}
+
+// Delegation Service - mirrors routes/delegation.rs
+pub struct DelegationServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl DelegationServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl delegation_service_server::DelegationService for DelegationServiceImpl {
+    async fn create_delegation(&self, request: Request<CreateDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let req = request.into_inner();
+        let create_req = crate::types::CreateDelegationRequest {
+            from_agent_id: req.from_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid from_agent_id"))?,
+            to_agent_id: req.to_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid to_agent_id"))?,
+            trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
+            scope_id: req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?,
+            task_description: req.task_description,
+            expected_completion: req.expected_completion,
+            context: req.context.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        let delegation = self.db.delegation_create(&create_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(delegation_to_proto(&delegation)))
+    }
+
+    async fn get_delegation(&self, request: Request<GetDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let id = request.into_inner().delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
+        let delegation = self.db.delegation_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Delegation not found"))?;
+        Ok(Response::new(delegation_to_proto(&delegation)))
+    }
+
+    async fn accept_delegation(&self, request: Request<AcceptDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let id = request.into_inner().delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
+        let delegation = self.db.delegation_accept(id).await.map_err(ApiError::from)?;
+        Ok(Response::new(delegation_to_proto(&delegation)))
+    }
+
+    async fn reject_delegation(&self, request: Request<RejectDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
+        let delegation = self.db.delegation_reject(id, req.reason).await.map_err(ApiError::from)?;
+        Ok(Response::new(delegation_to_proto(&delegation)))
+    }
+
+    async fn complete_delegation(&self, request: Request<CompleteDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let req = request.into_inner();
+        let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
+        let result = req.result.ok_or_else(|| Status::invalid_argument("result required"))?;
+        let result_req = crate::types::DelegationResultRequest {
+            status: result.status,
+            output: result.output,
+            artifacts: result.artifacts.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            error: result.error,
+        };
+        let delegation = self.db.delegation_complete(id, result_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(delegation_to_proto(&delegation)))
+    }
+}
+
+// Handoff Service - mirrors routes/handoff.rs
+pub struct HandoffServiceImpl {
+    db: DbClient,
+    ws: Arc<WsState>,
+}
+
+impl HandoffServiceImpl {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
+    }
+}
+
+#[tonic::async_trait]
+impl handoff_service_server::HandoffService for HandoffServiceImpl {
+    async fn create_handoff(&self, request: Request<CreateHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let req = request.into_inner();
+        let create_req = crate::types::CreateHandoffRequest {
+            from_agent_id: req.from_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid from_agent_id"))?,
+            to_agent_id: req.to_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid to_agent_id"))?,
+            trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
+            scope_id: req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?,
+            reason: req.reason,
+            context_snapshot: req.context_snapshot,
+        };
+        let handoff = self.db.handoff_create(&create_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(handoff_to_proto(&handoff)))
+    }
+
+    async fn get_handoff(&self, request: Request<GetHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
+        let handoff = self.db.handoff_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Handoff not found"))?;
+        Ok(Response::new(handoff_to_proto(&handoff)))
+    }
+
+    async fn accept_handoff(&self, request: Request<AcceptHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
+        let handoff = self.db.handoff_accept(id).await.map_err(ApiError::from)?;
+        Ok(Response::new(handoff_to_proto(&handoff)))
+    }
+
+    async fn complete_handoff(&self, request: Request<CompleteHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
+        let handoff = self.db.handoff_complete(id).await.map_err(ApiError::from)?;
+        Ok(Response::new(handoff_to_proto(&handoff)))
+    }
+}
+
+// DSL Service - mirrors routes/dsl.rs
+pub struct DslServiceImpl {
+    db: DbClient,
+}
+
+impl DslServiceImpl {
+    pub fn new(db: DbClient) -> Self {
+        Self { db }
+    }
+}
+
+#[tonic::async_trait]
+impl dsl_service_server::DslService for DslServiceImpl {
+    async fn validate_dsl(&self, request: Request<ValidateDslRequest>) -> Result<Response<ValidateDslResponse>, Status> {
+        let req = request.into_inner();
+        let validate_req = crate::types::ValidateDslRequest {
+            source: req.source,
+        };
+        let result = self.db.dsl_validate(&validate_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(ValidateDslResponse {
+            valid: result.valid,
+            errors: result.errors.into_iter().map(|e| ParseError {
+                line: e.line,
+                column: e.column,
+                message: e.message,
+            }).collect(),
+            ast: result.ast.map(|ast| serde_json::to_string(&ast).unwrap_or_default()),
+        }))
+    }
+
+    async fn parse_dsl(&self, request: Request<ParseDslRequest>) -> Result<Response<ParseDslResponse>, Status> {
+        let req = request.into_inner();
+        let parse_req = crate::types::ParseDslRequest {
+            source: req.source,
+        };
+        let result = self.db.dsl_parse(&parse_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(ParseDslResponse {
+            ast: serde_json::to_string(&result.ast).unwrap_or_default(),
+        }))
+    }
+}
+
+// Config Service - mirrors routes/config.rs
+pub struct ConfigServiceImpl {
+    db: DbClient,
+}
+
+impl ConfigServiceImpl {
+    pub fn new(db: DbClient) -> Self {
+        Self { db }
+    }
+}
+
+#[tonic::async_trait]
+impl config_service_server::ConfigService for ConfigServiceImpl {
+    async fn get_config(&self, _request: Request<GetConfigRequest>) -> Result<Response<ConfigResponse>, Status> {
+        let config = self.db.config_get().await.map_err(ApiError::from)?;
+        Ok(Response::new(ConfigResponse {
+            config: serde_json::to_string(&config.config).unwrap_or_default(),
+            valid: config.valid,
+            errors: config.errors,
+        }))
+    }
+
+    async fn update_config(&self, request: Request<UpdateConfigRequest>) -> Result<Response<ConfigResponse>, Status> {
+        let req = request.into_inner();
+        let update_req = crate::types::UpdateConfigRequest {
+            config: serde_json::from_str(&req.config).map_err(|_| Status::invalid_argument("Invalid config JSON"))?,
+        };
+        let config = self.db.config_update(&update_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(ConfigResponse {
+            config: serde_json::to_string(&config.config).unwrap_or_default(),
+            valid: config.valid,
+            errors: config.errors,
+        }))
+    }
+
+    async fn validate_config(&self, request: Request<ValidateConfigRequest>) -> Result<Response<ValidateConfigResponse>, Status> {
+        let req = request.into_inner();
+        let validate_req = crate::types::ValidateConfigRequest {
+            config: serde_json::from_str(&req.config).map_err(|_| Status::invalid_argument("Invalid config JSON"))?,
+        };
+        let result = self.db.config_validate(&validate_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(ValidateConfigResponse {
+            valid: result.valid,
+            errors: result.errors,
+        }))
+    }
+}
+
+// Tenant Service - mirrors routes/tenant.rs
+pub struct TenantServiceImpl {
+    db: DbClient,
+}
+
+impl TenantServiceImpl {
+    pub fn new(db: DbClient) -> Self {
+        Self { db }
+    }
+}
+
+#[tonic::async_trait]
+impl tenant_service_server::TenantService for TenantServiceImpl {
+    async fn list_tenants(&self, _request: Request<ListTenantsRequest>) -> Result<Response<ListTenantsResponse>, Status> {
+        let tenants = self.db.tenant_list().await.map_err(ApiError::from)?;
+        Ok(Response::new(ListTenantsResponse {
+            tenants: tenants.into_iter().map(|t| TenantInfo {
+                tenant_id: t.tenant_id.to_string(),
+                name: t.name,
+                status: t.status.to_string(),
+                created_at: t.created_at,
+            }).collect(),
+        }))
+    }
+
+    async fn get_tenant(&self, request: Request<GetTenantRequest>) -> Result<Response<TenantInfo>, Status> {
+        let id = request.into_inner().tenant_id.parse().map_err(|_| Status::invalid_argument("Invalid tenant_id"))?;
+        let tenant = self.db.tenant_get(id).await.map_err(ApiError::from)?.ok_or_else(|| Status::not_found("Tenant not found"))?;
+        Ok(Response::new(TenantInfo {
+            tenant_id: tenant.tenant_id.to_string(),
+            name: tenant.name,
+            status: tenant.status.to_string(),
+            created_at: tenant.created_at,
+        }))
+    }
+}
+
+// Search Service - mirrors search functionality
+pub struct SearchServiceImpl {
+    db: DbClient,
+}
+
+impl SearchServiceImpl {
+    pub fn new(db: DbClient) -> Self {
+        Self { db }
+    }
+}
+
+#[tonic::async_trait]
+impl search_service_server::SearchService for SearchServiceImpl {
+    async fn search(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        let req = request.into_inner();
+        let search_req = crate::types::SearchRequest {
+            query: req.query,
+            entity_types: req.entity_types.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            filters: req.filters.into_iter().map(|f| crate::types::FilterExpr {
+                field: f.field,
+                operator: f.operator,
+                value: serde_json::from_str(&f.value).unwrap_or(serde_json::Value::Null),
+            }).collect(),
+            limit: req.limit,
+        };
+        let result = self.db.search(&search_req).await.map_err(ApiError::from)?;
+        Ok(Response::new(SearchResponse {
+            results: result.results.into_iter().map(|r| SearchResult {
+                entity_type: r.entity_type.to_string(),
+                id: r.id.to_string(),
+                name: r.name,
+                snippet: r.snippet,
+                score: r.score,
+            }).collect(),
+            total: result.total,
+        }))
+    }
+}
+
+// ============================================================================
+// PUBLIC API - Service Constructors
+// ============================================================================
+
+/// Create all gRPC service implementations with shared state
+pub fn create_services(
+    db: DbClient,
+    ws: Arc<WsState>,
+) -> (
+    trajectory_service_server::TrajectoryServiceServer<TrajectoryServiceImpl>,
+    scope_service_server::ScopeServiceServer<ScopeServiceImpl>,
+    artifact_service_server::ArtifactServiceServer<ArtifactServiceImpl>,
+    note_service_server::NoteServiceServer<NoteServiceImpl>,
+    turn_service_server::TurnServiceServer<TurnServiceImpl>,
+    agent_service_server::AgentServiceServer<AgentServiceImpl>,
+    lock_service_server::LockServiceServer<LockServiceImpl>,
+    message_service_server::MessageServiceServer<MessageServiceImpl>,
+    delegation_service_server::DelegationServiceServer<DelegationServiceImpl>,
+    handoff_service_server::HandoffServiceServer<HandoffServiceImpl>,
+    dsl_service_server::DslServiceServer<DslServiceImpl>,
+    config_service_server::ConfigServiceServer<ConfigServiceImpl>,
+    tenant_service_server::TenantServiceServer<TenantServiceImpl>,
+    search_service_server::SearchServiceServer<SearchServiceImpl>,
+    event_service_server::EventServiceServer<EventServiceImpl>,
+) {
+    (
+        trajectory_service_server::TrajectoryServiceServer::new(TrajectoryServiceImpl::new(db.clone(), ws.clone())),
+        scope_service_server::ScopeServiceServer::new(ScopeServiceImpl::new(db.clone(), ws.clone())),
+        artifact_service_server::ArtifactServiceServer::new(ArtifactServiceImpl::new(db.clone(), ws.clone())),
+        note_service_server::NoteServiceServer::new(NoteServiceImpl::new(db.clone(), ws.clone())),
+        turn_service_server::TurnServiceServer::new(TurnServiceImpl::new(db.clone(), ws.clone())),
+        agent_service_server::AgentServiceServer::new(AgentServiceImpl::new(db.clone(), ws.clone())),
+        lock_service_server::LockServiceServer::new(LockServiceImpl::new(db.clone(), ws.clone())),
+        message_service_server::MessageServiceServer::new(MessageServiceImpl::new(db.clone(), ws.clone())),
+        delegation_service_server::DelegationServiceServer::new(DelegationServiceImpl::new(db.clone(), ws.clone())),
+        handoff_service_server::HandoffServiceServer::new(HandoffServiceImpl::new(db.clone(), ws.clone())),
+        dsl_service_server::DslServiceServer::new(DslServiceImpl::new(db.clone())),
+        config_service_server::ConfigServiceServer::new(ConfigServiceImpl::new(db.clone())),
+        tenant_service_server::TenantServiceServer::new(TenantServiceImpl::new(db.clone())),
+        search_service_server::SearchServiceServer::new(SearchServiceImpl::new(db.clone())),
+        event_service_server::EventServiceServer::new(EventServiceImpl::new(ws)),
+    )
+}

@@ -9,6 +9,7 @@ members = [
     "caliber-storage",
     "caliber-agents",
     "caliber-pg",
+    "caliber-api",
     "caliber-test-utils",
 ]
 
@@ -35,6 +36,11 @@ pgrx = "0.16"
 
 # Testing
 proptest = "1.5"
+
+# OpenAPI / SDK generation
+utoipa = { version = "5.3", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "8.1", features = ["axum"] }
+tokio-stream = "0.1"
 
 # Internal crates
 caliber-core = { path = "caliber-core" }

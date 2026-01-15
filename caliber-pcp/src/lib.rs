@@ -556,6 +556,7 @@ pub enum RecoveryFrequency {
 
 /// Strategy for resolving conflicts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ConflictResolution {
     /// Last write wins
     LastWriteWins,

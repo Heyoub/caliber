@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ebf96a7a016af27e068a8a7dd67d7b0461d3138177d8733744307f1bd0776ac8 # shrinks to (auth_header, tenant_header) = (ValidJwt { user_id: "aa0a0", tenant_id: 00000000-0000-0000-0000-000000000000 }, None)
+cc 77f3c15e33fb5c456df337dd227c70e75b506ea372602149986c57ca248fe1d7 # shrinks to (auth_header, tenant_header) = (ValidJwt { user_id: "aaa0a", tenant_id: 00000000-0000-0000-0000-000000000000 }, Invalid("aaaaaa00aa"))

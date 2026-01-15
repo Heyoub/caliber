@@ -1,0 +1,650 @@
+//! Authentication Module
+//!
+//! This module provides authentication and authorization for the CALIBER API.
+//! It supports two authentication methods:
+//! 1. API Key authentication (via X-API-Key header)
+//! 2. JWT token authentication (via Authorization: Bearer header)
+//!
+//! Additionally, it extracts tenant context from the X-Tenant-ID header for
+//! multi-tenant isolation.
+//!
+//! Requirements: 1.5, 1.6
+
+use crate::error::{ApiError, ApiResult};
+use caliber_core::EntityId;
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use uuid::Uuid;
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+/// Authentication configuration.
+#[derive(Debug, Clone)]
+pub struct AuthConfig {
+    /// Valid API keys (in production, load from secure storage)
+    pub api_keys: HashSet<String>,
+    
+    /// JWT secret key for signing and verification
+    pub jwt_secret: String,
+    
+    /// JWT algorithm (default: HS256)
+    pub jwt_algorithm: Algorithm,
+    
+    /// JWT token expiration in seconds (default: 1 hour)
+    pub jwt_expiration_secs: i64,
+    
+    /// Whether to require tenant header
+    pub require_tenant_header: bool,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            api_keys: HashSet::new(),
+            jwt_secret: std::env::var("CALIBER_JWT_SECRET")
+                .unwrap_or_else(|_| "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string()),
+            jwt_algorithm: Algorithm::HS256,
+            jwt_expiration_secs: 3600, // 1 hour
+            require_tenant_header: true,
+        }
+    }
+}
+
+impl AuthConfig {
+    /// Create authentication configuration from environment variables.
+    pub fn from_env() -> Self {
+        let mut api_keys = HashSet::new();
+        
+        // Load API keys from environment (comma-separated)
+        if let Ok(keys_str) = std::env::var("CALIBER_API_KEYS") {
+            for key in keys_str.split(',') {
+                let trimmed = key.trim();
+                if !trimmed.is_empty() {
+                    api_keys.insert(trimmed.to_string());
+                }
+            }
+        }
+        
+        Self {
+            api_keys,
+            jwt_secret: std::env::var("CALIBER_JWT_SECRET")
+                .unwrap_or_else(|_| "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string()),
+            jwt_algorithm: Algorithm::HS256,
+            jwt_expiration_secs: std::env::var("CALIBER_JWT_EXPIRATION_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3600),
+            require_tenant_header: std::env::var("CALIBER_REQUIRE_TENANT_HEADER")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(true),
+        }
+    }
+    
+    /// Add an API key to the valid set.
+    pub fn add_api_key(&mut self, key: String) {
+        self.api_keys.insert(key);
+    }
+    
+    /// Check if an API key is valid.
+    pub fn is_valid_api_key(&self, key: &str) -> bool {
+        self.api_keys.contains(key)
+    }
+}
+
+// ============================================================================
+// JWT CLAIMS
+// ============================================================================
+
+/// JWT claims structure.
+///
+/// This contains the standard JWT claims plus custom claims for CALIBER.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Claims {
+    /// Subject (user ID)
+    pub sub: String,
+    
+    /// Issued at (Unix timestamp)
+    pub iat: i64,
+    
+    /// Expiration time (Unix timestamp)
+    pub exp: i64,
+    
+    /// Tenant ID the user has access to
+    pub tenant_id: Option<String>,
+    
+    /// User roles/permissions
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+
+impl Claims {
+    /// Create new claims for a user.
+    pub fn new(user_id: String, tenant_id: Option<EntityId>, expiration_secs: i64) -> Self {
+        let now = chrono::Utc::now().timestamp();
+        
+        Self {
+            sub: user_id,
+            iat: now,
+            exp: now + expiration_secs,
+            tenant_id: tenant_id.map(|id| id.to_string()),
+            roles: Vec::new(),
+        }
+    }
+    
+    /// Add a role to the claims.
+    pub fn with_role(mut self, role: String) -> Self {
+        self.roles.push(role);
+        self
+    }
+    
+    /// Add multiple roles to the claims.
+    pub fn with_roles(mut self, roles: Vec<String>) -> Self {
+        self.roles.extend(roles);
+        self
+    }
+    
+    /// Check if the token has expired.
+    pub fn is_expired(&self) -> bool {
+        let now = chrono::Utc::now().timestamp();
+        self.exp < now
+    }
+    
+    /// Get the tenant ID as EntityId.
+    pub fn tenant_id(&self) -> Option<EntityId> {
+        self.tenant_id
+            .as_ref()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .map(|u| u.into())
+    }
+}
+
+// ============================================================================
+// AUTHENTICATION CONTEXT
+// ============================================================================
+
+/// Authentication context extracted from request.
+///
+/// This is injected into Axum request extensions after successful authentication.
+#[derive(Debug, Clone)]
+pub struct AuthContext {
+    /// User ID (from JWT sub claim or API key identifier)
+    pub user_id: String,
+    
+    /// Tenant ID (from X-Tenant-ID header or JWT claim)
+    pub tenant_id: EntityId,
+    
+    /// User roles/permissions
+    pub roles: Vec<String>,
+    
+    /// Authentication method used
+    pub auth_method: AuthMethod,
+}
+
+impl AuthContext {
+    /// Create a new authentication context.
+    pub fn new(
+        user_id: String,
+        tenant_id: EntityId,
+        roles: Vec<String>,
+        auth_method: AuthMethod,
+    ) -> Self {
+        Self {
+            user_id,
+            tenant_id,
+            roles,
+            auth_method,
+        }
+    }
+    
+    /// Check if the user has a specific role.
+    pub fn has_role(&self, role: &str) -> bool {
+        self.roles.iter().any(|r| r == role)
+    }
+    
+    /// Check if the user has any of the specified roles.
+    pub fn has_any_role(&self, roles: &[&str]) -> bool {
+        roles.iter().any(|role| self.has_role(role))
+    }
+    
+    /// Check if the user has all of the specified roles.
+    pub fn has_all_roles(&self, roles: &[&str]) -> bool {
+        roles.iter().all(|role| self.has_role(role))
+    }
+}
+
+/// Authentication method used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthMethod {
+    /// API key authentication
+    ApiKey,
+    
+    /// JWT token authentication
+    Jwt,
+}
+
+// ============================================================================
+// AUTHENTICATION FUNCTIONS
+// ============================================================================
+
+/// Validate an API key.
+///
+/// Returns Ok(()) if the key is valid, Err otherwise.
+pub fn validate_api_key(config: &AuthConfig, api_key: &str) -> ApiResult<()> {
+    if config.is_valid_api_key(api_key) {
+        Ok(())
+    } else {
+        Err(ApiError::unauthorized("Invalid API key"))
+    }
+}
+
+/// Validate a JWT token and extract claims.
+///
+/// Returns the claims if the token is valid, Err otherwise.
+pub fn validate_jwt_token(config: &AuthConfig, token: &str) -> ApiResult<Claims> {
+    let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
+    
+    let mut validation = Validation::new(config.jwt_algorithm);
+    validation.validate_exp = true;
+    
+    let token_data = decode::<Claims>(token, &decoding_key, &validation)
+        .map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => ApiError::token_expired(),
+            jsonwebtoken::errors::ErrorKind::InvalidToken => {
+                ApiError::invalid_token("Token is invalid")
+            }
+            jsonwebtoken::errors::ErrorKind::InvalidSignature => {
+                ApiError::invalid_token("Token signature is invalid")
+            }
+            _ => ApiError::invalid_token(format!("Token validation failed: {}", e)),
+        })?;
+    
+    let claims = token_data.claims;
+    
+    // Double-check expiration (validation should catch this, but be defensive)
+    if claims.is_expired() {
+        return Err(ApiError::token_expired());
+    }
+    
+    Ok(claims)
+}
+
+/// Generate a JWT token for a user.
+///
+/// Returns the encoded token string.
+pub fn generate_jwt_token(
+    config: &AuthConfig,
+    user_id: String,
+    tenant_id: Option<EntityId>,
+    roles: Vec<String>,
+) -> ApiResult<String> {
+    let claims = Claims::new(user_id, tenant_id, config.jwt_expiration_secs).with_roles(roles);
+    
+    let encoding_key = EncodingKey::from_secret(config.jwt_secret.as_bytes());
+    let header = Header::new(config.jwt_algorithm);
+    
+    encode(&header, &claims, &encoding_key)
+        .map_err(|e| ApiError::internal_error(format!("Failed to generate token: {}", e)))
+}
+
+/// Extract tenant ID from header value.
+///
+/// Parses the X-Tenant-ID header as a UUID.
+pub fn extract_tenant_id(header_value: &str) -> ApiResult<EntityId> {
+    Uuid::parse_str(header_value)
+        .map(|u| u.into())
+        .map_err(|_| ApiError::invalid_format("X-Tenant-ID", "valid UUID"))
+}
+
+/// Authenticate a request using API key.
+///
+/// Extracts the API key from the X-API-Key header and validates it.
+/// Also extracts the tenant ID from the X-Tenant-ID header.
+pub fn authenticate_api_key(
+    config: &AuthConfig,
+    api_key: &str,
+    tenant_id_header: Option<&str>,
+) -> ApiResult<AuthContext> {
+    // Validate API key
+    validate_api_key(config, api_key)?;
+    
+    // Extract tenant ID
+    let tenant_id = if let Some(tenant_header) = tenant_id_header {
+        extract_tenant_id(tenant_header)?
+    } else if config.require_tenant_header {
+        return Err(ApiError::missing_field("X-Tenant-ID"));
+    } else {
+        // Use a default tenant ID if not required (for single-tenant deployments)
+        Uuid::nil().into()
+    };
+    
+    // For API key auth, we use the key itself as a user identifier
+    // In production, you'd look up the user associated with the key
+    let user_id = format!("api_key_{}", &api_key[..8.min(api_key.len())]);
+    
+    Ok(AuthContext::new(
+        user_id,
+        tenant_id,
+        vec!["api_user".to_string()],
+        AuthMethod::ApiKey,
+    ))
+}
+
+/// Authenticate a request using JWT token.
+///
+/// Extracts the JWT token from the Authorization: Bearer header and validates it.
+/// The tenant ID can come from either the JWT claims or the X-Tenant-ID header.
+pub fn authenticate_jwt(
+    config: &AuthConfig,
+    token: &str,
+    tenant_id_header: Option<&str>,
+) -> ApiResult<AuthContext> {
+    // Validate JWT and extract claims
+    let claims = validate_jwt_token(config, token)?;
+    
+    // Determine tenant ID (header takes precedence over JWT claim)
+    let tenant_id = if let Some(tenant_header) = tenant_id_header {
+        extract_tenant_id(tenant_header)?
+    } else if let Some(jwt_tenant_id) = claims.tenant_id() {
+        jwt_tenant_id
+    } else if config.require_tenant_header {
+        return Err(ApiError::missing_field("X-Tenant-ID or JWT tenant_id claim"));
+    } else {
+        // Use a default tenant ID if not required
+        Uuid::nil().into()
+    };
+    
+    Ok(AuthContext::new(
+        claims.sub,
+        tenant_id,
+        claims.roles,
+        AuthMethod::Jwt,
+    ))
+}
+
+/// Authenticate a request using either API key or JWT token.
+///
+/// This is the main authentication function that tries both methods.
+/// It checks for:
+/// 1. X-API-Key header for API key authentication
+/// 2. Authorization: Bearer header for JWT authentication
+///
+/// Returns the authentication context if successful.
+pub fn authenticate(
+    config: &AuthConfig,
+    api_key_header: Option<&str>,
+    auth_header: Option<&str>,
+    tenant_id_header: Option<&str>,
+) -> ApiResult<AuthContext> {
+    // Try API key authentication first
+    if let Some(api_key) = api_key_header {
+        return authenticate_api_key(config, api_key, tenant_id_header);
+    }
+    
+    // Try JWT authentication
+    if let Some(auth_value) = auth_header {
+        // Extract Bearer token
+        if let Some(token) = auth_value.strip_prefix("Bearer ") {
+            return authenticate_jwt(config, token, tenant_id_header);
+        } else {
+            return Err(ApiError::invalid_token(
+                "Authorization header must use Bearer scheme",
+            ));
+        }
+    }
+    
+    // No authentication provided
+    Err(ApiError::unauthorized(
+        "Authentication required: provide X-API-Key or Authorization header",
+    ))
+}
+
+/// Check if a user has access to a specific tenant.
+///
+/// This validates that the authenticated user's tenant ID matches the requested tenant.
+pub fn check_tenant_access(auth_context: &AuthContext, requested_tenant_id: EntityId) -> ApiResult<()> {
+    if auth_context.tenant_id == requested_tenant_id {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden(format!(
+            "Access denied to tenant {}",
+            requested_tenant_id
+        )))
+    }
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    fn test_config() -> AuthConfig {
+        let mut config = AuthConfig::default();
+        config.add_api_key("test_key_123".to_string());
+        config.jwt_secret = "test_secret".to_string();
+        config.require_tenant_header = false;
+        config
+    }
+    
+    #[test]
+    fn test_api_key_validation() {
+        let config = test_config();
+        
+        // Valid key
+        assert!(validate_api_key(&config, "test_key_123").is_ok());
+        
+        // Invalid key
+        assert!(validate_api_key(&config, "invalid_key").is_err());
+    }
+    
+    #[test]
+    fn test_jwt_generation_and_validation() {
+        let config = test_config();
+        let user_id = "user123".to_string();
+        let tenant_id = Some(Uuid::now_v7().into());
+        let roles = vec!["admin".to_string()];
+        
+        // Generate token
+        let token = generate_jwt_token(&config, user_id.clone(), tenant_id, roles.clone())
+            .expect("Failed to generate token");
+        
+        // Validate token
+        let claims = validate_jwt_token(&config, &token).expect("Failed to validate token");
+        
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.roles, roles);
+        assert!(!claims.is_expired());
+    }
+    
+    #[test]
+    fn test_expired_token() {
+        let mut config = test_config();
+        config.jwt_expiration_secs = -1; // Already expired
+        
+        let token = generate_jwt_token(
+            &config,
+            "user123".to_string(),
+            None,
+            vec![],
+        )
+        .expect("Failed to generate token");
+        
+        // Reset expiration for validation
+        config.jwt_expiration_secs = 3600;
+        
+        let result = validate_jwt_token(&config, &token);
+        assert!(result.is_err());
+        
+        if let Err(e) = result {
+            assert_eq!(e.code, crate::error::ErrorCode::TokenExpired);
+        }
+    }
+    
+    #[test]
+    fn test_tenant_id_extraction() {
+        let tenant_id = Uuid::now_v7();
+        let tenant_id_str = tenant_id.to_string();
+        
+        let extracted = extract_tenant_id(&tenant_id_str).expect("Failed to extract tenant ID");
+        let expected: EntityId = tenant_id.into();
+        assert_eq!(extracted, expected);
+        
+        // Invalid UUID
+        assert!(extract_tenant_id("not-a-uuid").is_err());
+    }
+    
+    #[test]
+    fn test_authenticate_api_key() {
+        let config = test_config();
+        let tenant_id = Uuid::now_v7();
+        
+        let auth_context = authenticate_api_key(
+            &config,
+            "test_key_123",
+            Some(&tenant_id.to_string()),
+        )
+        .expect("Failed to authenticate");
+        
+        let expected_tenant: EntityId = tenant_id.into();
+        assert_eq!(auth_context.tenant_id, expected_tenant);
+        assert_eq!(auth_context.auth_method, AuthMethod::ApiKey);
+        assert!(auth_context.has_role("api_user"));
+    }
+    
+    #[test]
+    fn test_authenticate_jwt() {
+        let config = test_config();
+        let user_id = "user123".to_string();
+        let tenant_id = Uuid::now_v7();
+        let roles = vec!["admin".to_string()];
+        
+        let token = generate_jwt_token(
+            &config,
+            user_id.clone(),
+            Some(tenant_id.into()),
+            roles.clone(),
+        )
+        .expect("Failed to generate token");
+        
+        let auth_context = authenticate_jwt(&config, &token, None)
+            .expect("Failed to authenticate");
+        
+        let expected_tenant: EntityId = tenant_id.into();
+        assert_eq!(auth_context.user_id, user_id);
+        assert_eq!(auth_context.tenant_id, expected_tenant);
+        assert_eq!(auth_context.roles, roles);
+        assert_eq!(auth_context.auth_method, AuthMethod::Jwt);
+    }
+    
+    #[test]
+    fn test_authenticate_with_api_key() {
+        let config = test_config();
+        let tenant_id = Uuid::now_v7();
+        
+        let auth_context = authenticate(
+            &config,
+            Some("test_key_123"),
+            None,
+            Some(&tenant_id.to_string()),
+        )
+        .expect("Failed to authenticate");
+        
+        assert_eq!(auth_context.auth_method, AuthMethod::ApiKey);
+    }
+    
+    #[test]
+    fn test_authenticate_with_jwt() {
+        let config = test_config();
+        let user_id = "user123".to_string();
+        let tenant_id = Uuid::now_v7();
+        
+        let token = generate_jwt_token(&config, user_id.clone(), Some(tenant_id.into()), vec![])
+            .expect("Failed to generate token");
+        
+        let auth_header = format!("Bearer {}", token);
+        
+        let auth_context = authenticate(&config, None, Some(&auth_header), None)
+            .expect("Failed to authenticate");
+        
+        assert_eq!(auth_context.auth_method, AuthMethod::Jwt);
+        assert_eq!(auth_context.user_id, user_id);
+    }
+    
+    #[test]
+    fn test_authenticate_no_credentials() {
+        let config = test_config();
+        
+        let result = authenticate(&config, None, None, None);
+        assert!(result.is_err());
+        
+        if let Err(e) = result {
+            assert_eq!(e.code, crate::error::ErrorCode::Unauthorized);
+        }
+    }
+    
+    #[test]
+    fn test_check_tenant_access() {
+        let tenant_id = Uuid::now_v7();
+        let auth_context = AuthContext::new(
+            "user123".to_string(),
+            tenant_id.into(),
+            vec![],
+            AuthMethod::ApiKey,
+        );
+        
+        // Same tenant - should succeed
+        assert!(check_tenant_access(&auth_context, tenant_id.into()).is_ok());
+        
+        // Different tenant - should fail
+        let other_tenant_id = Uuid::now_v7();
+        let result = check_tenant_access(&auth_context, other_tenant_id.into());
+        assert!(result.is_err());
+        
+        if let Err(e) = result {
+            assert_eq!(e.code, crate::error::ErrorCode::Forbidden);
+        }
+    }
+    
+    #[test]
+    fn test_auth_context_role_checks() {
+        let auth_context = AuthContext::new(
+            "user123".to_string(),
+            Uuid::now_v7().into(),
+            vec!["admin".to_string(), "editor".to_string()],
+            AuthMethod::Jwt,
+        );
+        
+        assert!(auth_context.has_role("admin"));
+        assert!(auth_context.has_role("editor"));
+        assert!(!auth_context.has_role("viewer"));
+        
+        assert!(auth_context.has_any_role(&["admin", "viewer"]));
+        assert!(!auth_context.has_any_role(&["viewer", "guest"]));
+        
+        assert!(auth_context.has_all_roles(&["admin", "editor"]));
+        assert!(!auth_context.has_all_roles(&["admin", "viewer"]));
+    }
+    
+    #[test]
+    fn test_claims_creation() {
+        let user_id = "user123".to_string();
+        let tenant_id = Uuid::now_v7();
+        let expiration_secs = 3600;
+        
+        let claims = Claims::new(user_id.clone(), Some(tenant_id.into()), expiration_secs)
+            .with_role("admin".to_string())
+            .with_roles(vec!["editor".to_string(), "viewer".to_string()]);
+        
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.tenant_id(), Some(tenant_id.into()));
+        assert_eq!(claims.roles.len(), 3);
+        assert!(claims.roles.contains(&"admin".to_string()));
+        assert!(!claims.is_expired());
+    }
+}
