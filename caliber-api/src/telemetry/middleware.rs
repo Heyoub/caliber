@@ -5,15 +5,17 @@
 //! - Prometheus metrics collection
 //! - Trace context propagation (traceparent header)
 
-use axum::{extract::Request, http::HeaderMap, middleware::Next, response::Response};
+use axum::{body::Body, middleware::Next, response::Response};
+use axum::http::HeaderMap;
 use opentelemetry::{
     global,
-    trace::{SpanKind, Status, TraceContextExt, Tracer},
+    propagation::Extractor,
+    trace::{Status, TraceContextExt},
     Context, KeyValue,
 };
-use opentelemetry_http::HeaderExtractor;
 use std::time::Instant;
 use tracing::{info_span, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::metrics::METRICS;
 
@@ -21,7 +23,21 @@ use super::metrics::METRICS;
 ///
 /// Looks for W3C traceparent header for distributed tracing.
 fn extract_trace_context(headers: &HeaderMap) -> Context {
-    global::get_text_map_propagator(|propagator| propagator.extract(&HeaderExtractor(headers)))
+    global::get_text_map_propagator(|propagator| {
+        propagator.extract(&HeaderMapExtractor(headers))
+    })
+}
+
+struct HeaderMapExtractor<'a>(&'a HeaderMap);
+
+impl<'a> Extractor for HeaderMapExtractor<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|key| key.as_str()).collect()
+    }
 }
 
 /// Normalize path for metrics/spans (replace UUIDs and IDs with placeholders).
@@ -48,7 +64,10 @@ fn normalize_path(path: &str) -> String {
 /// 1. OpenTelemetry span (with trace context propagation)
 /// 2. Prometheus metrics recording
 /// 3. Request/response logging
-pub async fn observability_middleware(request: Request, next: Next) -> Response {
+pub async fn observability_middleware(
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
     let start = Instant::now();
 
     // Extract request metadata
@@ -60,21 +79,7 @@ pub async fn observability_middleware(request: Request, next: Next) -> Response 
     // Extract trace context from headers (if present)
     let parent_context = extract_trace_context(request.headers());
 
-    // Create OpenTelemetry span
-    let tracer = global::tracer("caliber-api");
-    let span = tracer
-        .span_builder(format!("{} {}", method, normalized_path))
-        .with_kind(SpanKind::Server)
-        .with_attributes(vec![
-            KeyValue::new("http.method", method.to_string()),
-            KeyValue::new("http.target", path.clone()),
-            KeyValue::new("http.route", normalized_path.clone()),
-        ])
-        .start_with_context(&tracer, &parent_context);
-
-    let cx = Context::current_with_span(span);
-
-    // Create tracing span for compatibility with existing tracing ecosystem
+    // Create tracing span and link extracted trace context
     let tracing_span = info_span!(
         "http_request",
         http.method = %method,
@@ -82,9 +87,10 @@ pub async fn observability_middleware(request: Request, next: Next) -> Response 
         http.route = %normalized_path,
         otel.kind = "server",
     );
+    tracing_span.set_parent(parent_context);
 
-    // Execute the request with context
-    let _guard = cx.clone().attach();
+    // Execute the request within the tracing span
+    let span = tracing_span.clone();
     let response = next.run(request).instrument(tracing_span).await;
 
     // Record metrics and complete span
@@ -96,6 +102,10 @@ pub async fn observability_middleware(request: Request, next: Next) -> Response 
     METRICS.record_http_request(method.as_str(), &normalized_path, status.as_u16(), duration_secs);
 
     // Update span with response status
+    let cx = span.context();
+    cx.span().set_attribute(KeyValue::new("http.method", method.to_string()));
+    cx.span().set_attribute(KeyValue::new("http.target", path.clone()));
+    cx.span().set_attribute(KeyValue::new("http.route", normalized_path.clone()));
     cx.span()
         .set_attribute(KeyValue::new("http.status_code", status.as_u16() as i64));
 

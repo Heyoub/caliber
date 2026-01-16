@@ -18,7 +18,7 @@ pub struct TenantContext {
     pub available_tenants: Vec<TenantInfo>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct App {
     pub config: TuiConfig,
     pub theme: SynthBruteTheme,
@@ -219,6 +219,13 @@ impl App {
             WsEvent::MessageAcknowledged { message_id } => {
                 self.message_view.mark_acknowledged(message_id);
             }
+            WsEvent::ConfigUpdated { config } => {
+                if let Ok(pretty) = serde_json::to_string_pretty(&config.config) {
+                    self.config_view.content = pretty;
+                }
+                self.config_view.validation_errors = config.errors;
+                self.config_view.modified = false;
+            }
             WsEvent::DelegationCreated { .. }
             | WsEvent::DelegationAccepted { .. }
             | WsEvent::DelegationRejected { .. }
@@ -238,6 +245,9 @@ impl App {
             WsEvent::Error { message } => {
                 self.notify(NotificationLevel::Error, message);
             }
+            WsEvent::SummarizationTriggered { .. }
+            | WsEvent::EdgeCreated { .. }
+            | WsEvent::EdgesBatchCreated { .. } => {}
         }
     }
 }

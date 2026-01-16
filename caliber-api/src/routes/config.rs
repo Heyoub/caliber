@@ -13,7 +13,9 @@ use std::sync::Arc;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
-    types::{ConfigResponse, UpdateConfigRequest},
+    events::WsEvent,
+    types::{ConfigResponse, UpdateConfigRequest, ValidateConfigRequest},
+    ws::WsState,
 };
 
 // ============================================================================
@@ -24,11 +26,12 @@ use crate::{
 #[derive(Clone)]
 pub struct ConfigState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl ConfigState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -53,43 +56,7 @@ impl ConfigState {
 pub async fn get_config(
     State(state): State<Arc<ConfigState>>,
 ) -> ApiResult<impl IntoResponse> {
-    // TODO: Implement caliber_config_get in caliber-pg
-    // This will:
-    // 1. Retrieve the current CaliberConfig from the database
-    // 2. Serialize it to JSON
-    // 3. Validate all sections
-    // 4. Return with validation status
-
-    // For now, return a placeholder config
-    let response = ConfigResponse {
-        config: serde_json::json!({
-            "context_assembly": {
-                "token_budget": 8000,
-                "relevance_threshold": 0.7
-            },
-            "pcp_settings": {
-                "checkpoint_interval": 100,
-                "contradiction_detection": true
-            },
-            "storage": {
-                "adapter": "postgres",
-                "connection": "postgresql://localhost/caliber"
-            },
-            "llm": {
-                "embedding_provider": "openai",
-                "embedding_model": "text-embedding-3-small",
-                "summarization_provider": "openai",
-                "summarization_model": "gpt-4"
-            },
-            "multi_agent": {
-                "lock_timeout_ms": 30000,
-                "message_ttl_ms": 3600000
-            }
-        }),
-        valid: false,
-        errors: vec!["Configuration retrieval not yet implemented in caliber-pg".to_string()],
-    };
-
+    let response = state.db.config_get().await?;
     Ok(Json(response))
 }
 
@@ -112,7 +79,7 @@ pub async fn get_config(
 pub async fn update_config(
     State(state): State<Arc<ConfigState>>,
     Json(req): Json<UpdateConfigRequest>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<Json<ConfigResponse>> {
     // Validate that config is not empty
     if req.config.is_null() {
         return Err(ApiError::missing_field("config"));
@@ -123,18 +90,11 @@ pub async fn update_config(
         return Err(ApiError::invalid_input("config must be a JSON object"));
     }
 
-    // TODO: Implement caliber_config_update in caliber-pg
-    // This will:
-    // 1. Validate the new configuration
-    // 2. Check for required fields
-    // 3. Validate value ranges and types
-    // 4. Apply the configuration if valid
-    // 5. Return the updated config with validation status
-
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Configuration update not yet implemented in caliber-pg",
-    ))
+    let response = state.db.config_update(&req).await?;
+    state.ws.broadcast(WsEvent::ConfigUpdated {
+        config: response.clone(),
+    });
+    Ok(Json(response))
 }
 
 /// POST /api/v1/config/validate - Validate configuration
@@ -142,7 +102,7 @@ pub async fn update_config(
     post,
     path = "/api/v1/config/validate",
     tag = "Config",
-    request_body = UpdateConfigRequest,
+    request_body = ValidateConfigRequest,
     responses(
         (status = 200, description = "Validation result", body = ConfigResponse),
         (status = 400, description = "Invalid request", body = ApiError),
@@ -155,7 +115,7 @@ pub async fn update_config(
 )]
 pub async fn validate_config(
     State(state): State<Arc<ConfigState>>,
-    Json(req): Json<UpdateConfigRequest>,
+    Json(req): Json<ValidateConfigRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that config is not empty
     if req.config.is_null() {
@@ -167,21 +127,7 @@ pub async fn validate_config(
         return Err(ApiError::invalid_input("config must be a JSON object"));
     }
 
-    // TODO: Implement caliber_config_validate in caliber-pg
-    // This will:
-    // 1. Parse the configuration
-    // 2. Validate all sections
-    // 3. Check for required fields
-    // 4. Validate value ranges and types
-    // 5. Return validation results without applying
-
-    // For now, return a basic validation response
-    let response = ConfigResponse {
-        config: req.config,
-        valid: false,
-        errors: vec!["Configuration validation not yet implemented in caliber-pg".to_string()],
-    };
-
+    let response = state.db.config_validate(&req).await?;
     Ok(Json(response))
 }
 
@@ -190,8 +136,8 @@ pub async fn validate_config(
 // ============================================================================
 
 /// Create the config routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(ConfigState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(ConfigState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::get(get_config))

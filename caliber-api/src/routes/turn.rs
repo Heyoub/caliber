@@ -198,17 +198,11 @@ pub async fn create_turn(
 pub async fn get_turn(
     State(state): State<Arc<TurnState>>,
     Path(id): Path<Uuid>,
-) -> ApiResult<impl IntoResponse> {
-    // Note: caliber-pg doesn't currently have a caliber_turn_get function
-    // that retrieves a single turn by ID. Turns are typically retrieved
-    // by scope using caliber_turn_get_by_scope.
-    //
-    // For now, we'll return an error indicating this is not yet implemented.
-    // When caliber_turn_get is added to caliber-pg, this can be updated.
+) -> ApiResult<Json<TurnResponse>> {
+    let turn = state.db.turn_get(id.into()).await?
+        .ok_or_else(|| ApiError::entity_not_found("Turn", id.to_string()))?;
 
-    Err(ApiError::internal_error(
-        "Turn retrieval by ID not yet implemented in caliber-pg - use scope endpoint to list turns",
-    ))
+    Ok(Json(turn))
 }
 
 // ============================================================================

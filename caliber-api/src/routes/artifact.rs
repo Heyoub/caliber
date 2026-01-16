@@ -166,19 +166,46 @@ pub async fn list_artifacts(
         };
 
         Ok(Json(response))
-    } else {
-        // If no scope filter, we need a trajectory filter at minimum
-        if let Some(trajectory_id) = params.trajectory_id {
-            // TODO: Implement caliber_artifact_list_by_trajectory in caliber-pg
-            // For now, return an error
-            Err(ApiError::invalid_input(
-                "Listing artifacts by trajectory not yet implemented - please provide scope_id",
-            ))
-        } else {
-            Err(ApiError::invalid_input(
-                "Either scope_id or trajectory_id filter is required",
-            ))
+    } else if let Some(trajectory_id) = params.trajectory_id {
+        // Filter by trajectory
+        let artifacts = state.db.artifact_list_by_trajectory(trajectory_id).await?;
+
+        // Apply additional filters if needed
+        let mut filtered = artifacts;
+
+        if let Some(artifact_type) = params.artifact_type {
+            filtered.retain(|a| a.artifact_type == artifact_type);
         }
+
+        if let Some(created_after) = params.created_after {
+            filtered.retain(|a| a.created_at >= created_after);
+        }
+
+        if let Some(created_before) = params.created_before {
+            filtered.retain(|a| a.created_at <= created_before);
+        }
+
+        // Apply pagination
+        let total = filtered.len() as i32;
+        let offset = params.offset.unwrap_or(0) as usize;
+        let limit = params.limit.unwrap_or(100) as usize;
+
+        let paginated: Vec<_> = filtered
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+
+        let response = ListArtifactsResponse {
+            artifacts: paginated,
+            total,
+        };
+
+        Ok(Json(response))
+    } else {
+        Err(ApiError::invalid_input(
+            "Either scope_id or trajectory_id filter is required",
+        ))
     }
 }
 
@@ -264,16 +291,9 @@ pub async fn update_artifact(
         }
     }
 
-    // TODO: Implement caliber_artifact_update in caliber-pg
-    // When implemented, broadcast ArtifactUpdated event:
-    // let artifact = state.db.artifact_update(id.into(), &req).await?;
-    // state.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
-    // Ok(Json(artifact))
-
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Artifact update not yet implemented in caliber-pg",
-    ))
+    let artifact = state.db.artifact_update(id.into(), &req).await?;
+    state.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
+    Ok(Json(artifact))
 }
 
 /// DELETE /api/v1/artifacts/{id} - Delete artifact
@@ -305,15 +325,9 @@ pub async fn delete_artifact(
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
-    // TODO: Implement caliber_artifact_delete in caliber-pg
-    // When implemented, broadcast ArtifactDeleted event:
-    // state.ws.broadcast(WsEvent::ArtifactDeleted { id: id.into() });
-    // Ok(StatusCode::NO_CONTENT)
-
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Artifact deletion not yet implemented in caliber-pg",
-    ))
+    state.db.artifact_delete(id.into()).await?;
+    state.ws.broadcast(WsEvent::ArtifactDeleted { id: id.into() });
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /api/v1/artifacts/search - Search artifacts by similarity
@@ -348,17 +362,8 @@ pub async fn search_artifacts(
         ));
     }
 
-    // TODO: Implement caliber_artifact_search_similarity in caliber-pg
-    // This will:
-    // 1. Generate embedding for the query text
-    // 2. Perform vector similarity search using pgvector
-    // 3. Return ranked results with similarity scores
-
-    // For now, return an empty result set
-    let response = SearchResponse {
-        results: Vec::new(),
-        total: 0,
-    };
+    // Perform the search using the database search function
+    let response = state.db.search(&req).await?;
 
     Ok(Json(response))
 }

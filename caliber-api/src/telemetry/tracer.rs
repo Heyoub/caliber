@@ -7,7 +7,7 @@
 //! - Any OTLP-compatible backend
 
 use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
-use opentelemetry_otlp::SpanExporter;
+use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
     trace::{RandomIdGenerator, Sampler, TracerProvider},
@@ -87,7 +87,7 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
     let tracer_provider = if let Some(endpoint) = &config.otlp_endpoint {
         // OTLP exporter configured
         let exporter = SpanExporter::builder()
-            .with_tonic()
+            .with_http()
             .with_endpoint(endpoint)
             .build()
             .map_err(|e| {
@@ -96,21 +96,16 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
 
         TracerProvider::builder()
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
-            .with_config(
-                opentelemetry_sdk::trace::Config::default()
-                    .with_sampler(sampler)
-                    .with_id_generator(RandomIdGenerator::default())
-                    .with_resource(resource),
-            )
+            .with_sampler(sampler)
+            .with_id_generator(RandomIdGenerator::default())
+            .with_resource(resource)
             .build()
     } else {
         // No OTLP endpoint - use simple tracer (still captures spans for local logging)
         TracerProvider::builder()
-            .with_config(
-                opentelemetry_sdk::trace::Config::default()
-                    .with_sampler(sampler)
-                    .with_resource(resource),
-            )
+            .with_sampler(sampler)
+            .with_id_generator(RandomIdGenerator::default())
+            .with_resource(resource)
             .build()
     };
 

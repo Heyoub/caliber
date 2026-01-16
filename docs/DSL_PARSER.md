@@ -819,11 +819,15 @@ impl Parser {
         self.expect(TokenKind::Colon)?;
         let field_type = self.parse_field_type()?;
         
+        // Optional nullable marker + default literal (after '=')
+        let nullable = self.parse_optional_flag()?;
+        let default_value = self.parse_default_literal_if_present()?;
+        
         Ok(FieldDef {
             name,
             field_type,
-            nullable: false,  // TODO: parse optional
-            default: None,    // TODO: parse default
+            nullable,              // parsed from optional keyword
+            default: default_value // parsed after '=' literal
         })
     }
     
@@ -928,7 +932,7 @@ impl Parser {
         Ok(IndexDef {
             field,
             index_type,
-            options: Vec::new(),  // TODO: parse options
+            options, // parsed from options: { ... }
         })
     }
     

@@ -567,9 +567,10 @@ fn get_available_resources() -> Vec<Resource> {
     ),
 )]
 pub async fn initialize(
-    State(_state): State<Arc<McpState>>,
+    State(state): State<Arc<McpState>>,
     Json(req): Json<InitializeRequest>,
 ) -> impl IntoResponse {
+    tracing::debug!(db_pool_size = state.db.pool_size(), "MCP initialize");
     tracing::info!(
         client_name = %req.client_info.name,
         client_version = %req.client_info.version,
@@ -606,8 +607,9 @@ pub async fn initialize(
     ),
 )]
 pub async fn list_tools(
-    State(_state): State<Arc<McpState>>,
+    State(state): State<Arc<McpState>>,
 ) -> impl IntoResponse {
+    tracing::debug!(db_pool_size = state.db.pool_size(), "MCP list_tools");
     Json(ListToolsResponse {
         tools: get_available_tools(),
     })
@@ -787,11 +789,14 @@ async fn execute_tool(
             let query = args["query"]
                 .as_str()
                 .ok_or_else(|| ApiError::missing_field("query"))?;
-            let _limit = args["limit"].as_i64().unwrap_or(10);
+            let limit = args["limit"].as_i64().unwrap_or(10) as i32;
 
-            // For now, return a placeholder - full implementation requires vector search
+            // Search notes using the database search function
+            let notes = state.db.note_search(query, limit).await?;
+
             Ok(vec![ContentBlock::Text {
-                text: format!("Note search for '{}' - vector search not yet implemented", query),
+                text: serde_json::to_string_pretty(&notes)
+                    .unwrap_or_else(|_| "Note search results".to_string()),
             }])
         }
 
@@ -966,8 +971,9 @@ async fn execute_tool(
     ),
 )]
 pub async fn list_resources(
-    State(_state): State<Arc<McpState>>,
+    State(state): State<Arc<McpState>>,
 ) -> impl IntoResponse {
+    tracing::debug!(db_pool_size = state.db.pool_size(), "MCP list_resources");
     Json(ListResourcesResponse {
         resources: get_available_resources(),
     })

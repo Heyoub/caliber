@@ -123,6 +123,12 @@ impl DbClient {
         Ok(Self::new(pool))
     }
 
+    /// Get the current pool size for observability.
+    pub fn pool_size(&self) -> usize {
+        let status = self.pool.status();
+        status.size
+    }
+
     /// Get a connection from the pool.
     async fn get_conn(&self) -> ApiResult<deadpool_postgres::Object> {
         self.pool.get().await.map_err(ApiError::from)
@@ -508,6 +514,29 @@ impl DbClient {
         Ok(artifacts)
     }
 
+    /// Query artifacts by trajectory by calling caliber_artifact_query_by_trajectory.
+    pub async fn artifact_list_by_trajectory(&self, trajectory_id: EntityId) -> ApiResult<Vec<ArtifactResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_artifact_query_by_trajectory($1)",
+                &[&trajectory_id],
+            )
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let artifacts_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from artifact list"))?;
+
+        let mut artifacts = Vec::new();
+        for artifact_json in artifacts_json {
+            artifacts.push(self.parse_artifact_json(artifact_json)?);
+        }
+
+        Ok(artifacts)
+    }
+
     /// Parse artifact JSON into ArtifactResponse.
     fn parse_artifact_json(&self, json: &JsonValue) -> ApiResult<ArtifactResponse> {
         Ok(ArtifactResponse {
@@ -594,6 +623,52 @@ impl DbClient {
         let json: JsonValue = row.get(0);
         let notes_json = json.as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from note list"))?;
+
+        let mut notes = Vec::new();
+        for note_json in notes_json {
+            notes.push(self.parse_note_json(note_json)?);
+        }
+
+        Ok(notes)
+    }
+
+    /// List all notes by calling caliber_note_list_all.
+    pub async fn note_list_all(&self, limit: i32, offset: i32) -> ApiResult<Vec<NoteResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_note_list_all($1, $2)",
+                &[&limit, &offset],
+            )
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let notes_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from note list"))?;
+
+        let mut notes = Vec::new();
+        for note_json in notes_json {
+            notes.push(self.parse_note_json(note_json)?);
+        }
+
+        Ok(notes)
+    }
+
+    /// Search notes by content similarity.
+    pub async fn note_search(&self, query: &str, limit: i32) -> ApiResult<Vec<NoteResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_note_search($1, $2)",
+                &[&query, &limit],
+            )
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let notes_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from note search"))?;
 
         let mut notes = Vec::new();
         for note_json in notes_json {
@@ -860,14 +935,20 @@ impl DbClient {
     pub async fn agent_list_all(&self) -> ApiResult<Vec<AgentResponse>> {
         let conn = self.get_conn().await?;
 
-        // For now, we'll get active agents and combine with other statuses
-        // TODO: Implement caliber_agent_list_all in caliber-pg
-        // As a workaround, we can query all statuses and combine
-        let active = self.agent_list_active().await?;
-        
-        // Return active agents for now
-        // Full implementation will require a caliber_agent_list_all function
-        Ok(active)
+        let row = conn
+            .query_one("SELECT caliber_agent_list_all()", &[])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let agents_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
+
+        let mut agents = Vec::new();
+        for agent_json in agents_json {
+            agents.push(self.parse_agent_json(agent_json)?);
+        }
+
+        Ok(agents)
     }
 
     /// Unregister an agent by calling caliber_agent_unregister.
@@ -969,6 +1050,43 @@ impl DbClient {
         }
     }
 
+    /// Extend a lock's expiration by additional duration.
+    pub async fn lock_extend(&self, id: EntityId, additional: Duration) -> ApiResult<LockResponse> {
+        let conn = self.get_conn().await?;
+        let additional_ms = i64::try_from(additional.as_millis())
+            .map_err(|_| ApiError::invalid_range("additional_ms", 1, i64::MAX))?;
+
+        let updated: bool = conn
+            .query_one("SELECT caliber_lock_extend($1, $2)", &[&id, &additional_ms])
+            .await?
+            .get(0);
+
+        if !updated {
+            return Err(ApiError::lock_not_found(id));
+        }
+
+        self.lock_get(id).await?
+            .ok_or_else(|| ApiError::lock_not_found(id))
+    }
+
+    /// List all active locks.
+    pub async fn lock_list_active(&self) -> ApiResult<Vec<LockResponse>> {
+        let conn = self.get_conn().await?;
+        let row = conn.query_one("SELECT caliber_lock_list_active()", &[]).await?;
+        let json: JsonValue = row.get(0);
+        let locks_json = json.as_array().ok_or_else(|| {
+            ApiError::internal_error("caliber_lock_list_active returned non-array")
+        })?;
+
+        let mut locks = Vec::with_capacity(locks_json.len());
+        for lock_json in locks_json {
+            let response = self.parse_lock_json(lock_json)?;
+            locks.push(response);
+        }
+
+        Ok(locks)
+    }
+
     /// Parse lock JSON into LockResponse.
     fn parse_lock_json(&self, json: &JsonValue) -> ApiResult<LockResponse> {
         Ok(LockResponse {
@@ -1049,6 +1167,67 @@ impl DbClient {
         Ok(())
     }
 
+    /// Mark a message as delivered by calling caliber_message_mark_delivered.
+    pub async fn message_deliver(&self, id: EntityId) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        let updated: bool = conn
+            .query_one("SELECT caliber_message_mark_delivered($1)", &[&id])
+            .await?
+            .get(0);
+
+        if !updated {
+            return Err(ApiError::message_not_found(id));
+        }
+
+        Ok(())
+    }
+
+    /// List messages with filters by calling caliber_message_list.
+    pub async fn message_list(
+        &self,
+        from_agent_id: Option<EntityId>,
+        to_agent_id: Option<EntityId>,
+        to_agent_type: Option<&str>,
+        trajectory_id: Option<EntityId>,
+        message_type: Option<&str>,
+        priority: Option<&str>,
+        undelivered_only: bool,
+        unacknowledged_only: bool,
+        limit: i32,
+        offset: i32,
+    ) -> ApiResult<Vec<MessageResponse>> {
+        let conn = self.get_conn().await?;
+
+        let filters = serde_json::json!({
+            "from_agent_id": from_agent_id,
+            "to_agent_id": to_agent_id,
+            "to_agent_type": to_agent_type,
+            "trajectory_id": trajectory_id,
+            "message_type": message_type,
+            "priority": priority,
+            "undelivered_only": undelivered_only,
+            "unacknowledged_only": unacknowledged_only,
+            "limit": limit,
+            "offset": offset,
+        });
+
+        let row = conn
+            .query_one("SELECT caliber_message_list($1)", &[&filters])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let messages_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from message list"))?;
+
+        let mut messages = Vec::new();
+        for msg_json in messages_json {
+            messages.push(self.parse_message_json(msg_json)?);
+        }
+
+        Ok(messages)
+    }
+
     /// Parse message JSON into MessageResponse.
     fn parse_message_json(&self, json: &JsonValue) -> ApiResult<MessageResponse> {
         Ok(MessageResponse {
@@ -1118,7 +1297,11 @@ impl DbClient {
     }
 
     /// Accept a delegation by calling caliber_delegation_accept.
-    pub async fn delegation_accept(&self, id: EntityId, accepting_agent_id: EntityId) -> ApiResult<()> {
+    pub async fn delegation_accept(
+        &self,
+        id: EntityId,
+        accepting_agent_id: EntityId,
+    ) -> ApiResult<DelegationResponse> {
         let conn = self.get_conn().await?;
 
         let updated: bool = conn
@@ -1133,11 +1316,16 @@ impl DbClient {
             return Err(ApiError::entity_not_found("Delegation", id));
         }
 
-        Ok(())
+        self.delegation_get(id).await?
+            .ok_or_else(|| ApiError::entity_not_found("Delegation", id))
     }
 
     /// Complete a delegation by calling caliber_delegation_complete.
-    pub async fn delegation_complete(&self, id: EntityId, result_json: JsonValue) -> ApiResult<()> {
+    pub async fn delegation_complete(
+        &self,
+        id: EntityId,
+        result_json: JsonValue,
+    ) -> ApiResult<DelegationResponse> {
         let conn = self.get_conn().await?;
 
         let updated: bool = conn
@@ -1152,7 +1340,8 @@ impl DbClient {
             return Err(ApiError::entity_not_found("Delegation", id));
         }
 
-        Ok(())
+        self.delegation_get(id).await?
+            .ok_or_else(|| ApiError::entity_not_found("Delegation", id))
     }
 
     /// Parse delegation JSON into DelegationResponse.
@@ -1228,7 +1417,11 @@ impl DbClient {
     }
 
     /// Accept a handoff by calling caliber_handoff_accept.
-    pub async fn handoff_accept(&self, id: EntityId, accepting_agent_id: EntityId) -> ApiResult<()> {
+    pub async fn handoff_accept(
+        &self,
+        id: EntityId,
+        accepting_agent_id: EntityId,
+    ) -> ApiResult<HandoffResponse> {
         let conn = self.get_conn().await?;
 
         let updated: bool = conn
@@ -1243,11 +1436,12 @@ impl DbClient {
             return Err(ApiError::entity_not_found("Handoff", id));
         }
 
-        Ok(())
+        self.handoff_get(id).await?
+            .ok_or_else(|| ApiError::entity_not_found("Handoff", id))
     }
 
     /// Complete a handoff by calling caliber_handoff_complete.
-    pub async fn handoff_complete(&self, id: EntityId) -> ApiResult<()> {
+    pub async fn handoff_complete(&self, id: EntityId) -> ApiResult<HandoffResponse> {
         let conn = self.get_conn().await?;
 
         let updated: bool = conn
@@ -1259,7 +1453,8 @@ impl DbClient {
             return Err(ApiError::entity_not_found("Handoff", id));
         }
 
-        Ok(())
+        self.handoff_get(id).await?
+            .ok_or_else(|| ApiError::entity_not_found("Handoff", id))
     }
 
     /// Parse handoff JSON into HandoffResponse.

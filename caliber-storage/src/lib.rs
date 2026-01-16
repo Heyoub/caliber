@@ -695,6 +695,8 @@ mod tests {
             access_count: 0,
             superseded_by: None,
             metadata: None,
+            abstraction_level: AbstractionLevel::Raw,
+            source_note_ids: vec![],
         }
     }
 

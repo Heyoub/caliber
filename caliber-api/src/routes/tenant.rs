@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
-    types::{ListTenantsResponse, TenantInfo, TenantStatus},
+    types::{ListTenantsResponse, TenantInfo},
 };
 
 // ============================================================================
@@ -54,25 +54,8 @@ impl TenantState {
 pub async fn list_tenants(
     State(state): State<Arc<TenantState>>,
 ) -> ApiResult<impl IntoResponse> {
-    // TODO: Implement caliber_tenant_list in caliber-pg
-    // This will:
-    // 1. Query all tenants the authenticated user has access to
-    // 2. Return tenant ID, name, status, and created_at
-    // 3. Filter based on user permissions
-
-    // For now, return a placeholder list
-    // In a real implementation, this would query the database
-    let tenants = vec![
-        TenantInfo {
-            tenant_id: Uuid::new_v4().into(),
-            name: "Default Tenant".to_string(),
-            status: TenantStatus::Active,
-            created_at: chrono::Utc::now(),
-        },
-    ];
-
+    let tenants = state.db.tenant_list().await?;
     let response = ListTenantsResponse { tenants };
-
     Ok(Json(response))
 }
 
@@ -98,21 +81,8 @@ pub async fn get_tenant(
     State(state): State<Arc<TenantState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // TODO: Implement caliber_tenant_get in caliber-pg
-    // This will:
-    // 1. Query the tenant by ID
-    // 2. Verify the user has access to this tenant
-    // 3. Return tenant details
-
-    // For now, return a placeholder tenant
-    // In a real implementation, this would query the database
-    let tenant = TenantInfo {
-        tenant_id: id.into(),
-        name: "Default Tenant".to_string(),
-        status: TenantStatus::Active,
-        created_at: chrono::Utc::now(),
-    };
-
+    let tenant = state.db.tenant_get(id.into()).await?
+        .ok_or_else(|| ApiError::entity_not_found("Tenant", id))?;
     Ok(Json(tenant))
 }
 
@@ -134,6 +104,7 @@ pub fn create_router(db: DbClient) -> axum::Router {
 mod tests {
     use super::*;
     use caliber_core::EntityId;
+    use crate::types::TenantStatus;
 
     #[test]
     fn test_tenant_info_structure() {

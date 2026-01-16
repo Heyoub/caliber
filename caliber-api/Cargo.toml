@@ -24,9 +24,10 @@ axum = { version = "0.8", features = ["ws", "macros"] }
 tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
-# gRPC framework - Tonic (using workspace 0.12 for stability)
-tonic = { workspace = true, features = ["transport", "tls"] }
-prost = { workspace = true }
+# gRPC framework - Tonic 0.14 (uses axum 0.8, no conflict)
+tonic = { version = "0.14", features = ["transport", "tls-ring"] }
+tonic-prost = "0.14"
+prost = "0.14"
 
 # Async runtime
 tokio = { version = "1.42", features = ["full"] }
@@ -55,7 +56,7 @@ chrono = { workspace = true }
 
 # Logging and tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # OpenAPI documentation
 utoipa = { workspace = true }
@@ -76,10 +77,10 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
-# OpenTelemetry
+# OpenTelemetry (http exporter to avoid tonic/axum conflict)
 opentelemetry = { version = "0.27", features = ["trace", "metrics"] }
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.27", features = ["trace", "metrics", "grpc-tonic"] }
+opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client"] }
 opentelemetry-prometheus = "0.27"
 tracing-opentelemetry = "0.28"
 opentelemetry-http = "0.27"
@@ -97,7 +98,7 @@ path = "src/bin/generate-openapi.rs"
 required-features = ["openapi"]
 
 [build-dependencies]
-tonic-build = { workspace = true }
+tonic-prost-build = "0.14"
 
 [dev-dependencies]
 proptest = { workspace = true }

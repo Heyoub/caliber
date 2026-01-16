@@ -39,19 +39,32 @@ impl From<ApiError> for Status {
         match err.code {
             crate::error::ErrorCode::Unauthorized => Status::unauthenticated(err.message),
             crate::error::ErrorCode::Forbidden => Status::permission_denied(err.message),
-            crate::error::ErrorCode::EntityNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::InvalidToken => Status::unauthenticated(err.message),
+            crate::error::ErrorCode::TokenExpired => Status::unauthenticated(err.message),
             crate::error::ErrorCode::ValidationFailed => Status::invalid_argument(err.message),
             crate::error::ErrorCode::InvalidInput => Status::invalid_argument(err.message),
             crate::error::ErrorCode::MissingField => Status::invalid_argument(err.message),
+            crate::error::ErrorCode::InvalidRange => Status::invalid_argument(err.message),
+            crate::error::ErrorCode::InvalidFormat => Status::invalid_argument(err.message),
+            crate::error::ErrorCode::EntityNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::TenantNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::TrajectoryNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::ScopeNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::ArtifactNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::NoteNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::AgentNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::LockNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::MessageNotFound => Status::not_found(err.message),
             crate::error::ErrorCode::EntityAlreadyExists => Status::already_exists(err.message),
             crate::error::ErrorCode::ConcurrentModification => Status::aborted(err.message),
             crate::error::ErrorCode::LockConflict => Status::resource_exhausted(err.message),
+            crate::error::ErrorCode::LockExpired => Status::failed_precondition(err.message),
+            crate::error::ErrorCode::StateConflict => Status::failed_precondition(err.message),
+            crate::error::ErrorCode::ConnectionPoolExhausted => Status::resource_exhausted(err.message),
+            crate::error::ErrorCode::Timeout => Status::deadline_exceeded(err.message),
             crate::error::ErrorCode::InternalError => Status::internal(err.message),
             crate::error::ErrorCode::DatabaseError => Status::internal(err.message),
             crate::error::ErrorCode::ServiceUnavailable => Status::unavailable(err.message),
-            crate::error::ErrorCode::TenantNotFound => Status::not_found(err.message),
-            crate::error::ErrorCode::InvalidToken => Status::unauthenticated(err.message),
-            crate::error::ErrorCode::TokenExpired => Status::unauthenticated(err.message),
         }
     }
 }
@@ -207,10 +220,10 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         request: Request<DeleteTrajectoryRequest>,
     ) -> Result<Response<Empty>, Status> {
         let req = request.into_inner();
-        let _id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
-        
-        // TODO: Implement when caliber_trajectory_delete is available
-        Err(Status::unimplemented("Trajectory deletion not yet implemented"))
+        let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+
+        self.db.trajectory_delete(id).await.map_err(ApiError::from)?;
+        Ok(Response::new(Empty {}))
     }
 
     async fn list_trajectory_scopes(
@@ -218,10 +231,12 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         request: Request<ListTrajectoryScopesRequest>,
     ) -> Result<Response<ListScopesResponse>, Status> {
         let req = request.into_inner();
-        let _id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
-        
-        // TODO: Implement when caliber_scope_list_by_trajectory is available
-        let response = ListScopesResponse { scopes: vec![] };
+        let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+
+        let scopes = self.db.scope_list_by_trajectory(id).await.map_err(ApiError::from)?;
+        let response = ListScopesResponse {
+            scopes: scopes.into_iter().map(|s| scope_to_proto(&s)).collect()
+        };
         Ok(Response::new(response))
     }
 
@@ -230,12 +245,12 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         request: Request<ListTrajectoryChildrenRequest>,
     ) -> Result<Response<ListTrajectoriesResponse>, Status> {
         let req = request.into_inner();
-        let _id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
-        
-        // TODO: Implement when caliber_trajectory_list_children is available
+        let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+
+        let children = self.db.trajectory_list_children(id).await.map_err(ApiError::from)?;
         let response = ListTrajectoriesResponse {
-            trajectories: vec![],
-            total: 0,
+            trajectories: children.iter().map(|t| trajectory_to_proto(t)).collect(),
+            total: children.len() as i32,
         };
         Ok(Response::new(response))
     }
@@ -384,10 +399,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
         let artifacts = self.db.artifact_list_by_scope(id).await.map_err(ApiError::from)?;
+        let total = artifacts.len() as i32;
         
         let response = ListArtifactsResponse {
             artifacts: artifacts.into_iter().map(|a| artifact_to_proto(&a)).collect(),
-            total: artifacts.len() as i32,
+            total,
         };
         
         Ok(Response::new(response))
@@ -423,33 +439,30 @@ impl event_service_server::EventService for EventServiceImpl {
         let rx = self.ws.subscribe();
         
         // Convert broadcast stream to gRPC stream
-        let stream = BroadcastStream::new(rx)
-            .filter_map(move |result| {
-                let event_types = event_types.clone();
-                async move {
-                    match result {
-                        Ok(ws_event) => {
-                            // Convert WsEvent to proto Event
-                            let event_type = ws_event_type(&ws_event);
-                            
-                            // Filter by event types if specified
-                            if !event_types.is_empty() && !event_types.contains(&event_type) {
-                                return None;
-                            }
-                            
-                            let payload = serde_json::to_string(&ws_event).ok()?;
-                            let timestamp = chrono::Utc::now().timestamp_millis();
-                            
-                            Some(Ok(Event {
-                                event_type,
-                                timestamp,
-                                payload,
-                            }))
-                        }
-                        Err(_) => None, // Lagged, skip
+        let stream = BroadcastStream::new(rx).filter_map(move |result| {
+            let event_types = event_types.clone();
+            match result {
+                Ok(ws_event) => {
+                    // Convert WsEvent to proto Event
+                    let event_type = ws_event_type(&ws_event);
+                    
+                    // Filter by event types if specified
+                    if !event_types.is_empty() && !event_types.contains(&event_type) {
+                        return None;
                     }
+                    
+                    let payload = serde_json::to_string(&ws_event).ok()?;
+                    let timestamp = chrono::Utc::now().timestamp_millis();
+                    
+                    Some(Ok(Event {
+                        event_type,
+                        timestamp,
+                        payload,
+                    }))
                 }
-            });
+                Err(_) => None, // Lagged, skip
+            }
+        });
         
         Ok(Response::new(Box::pin(stream)))
     }
@@ -457,33 +470,7 @@ impl event_service_server::EventService for EventServiceImpl {
 
 /// Extract event type string from WsEvent
 fn ws_event_type(event: &WsEvent) -> String {
-    match event {
-        WsEvent::TrajectoryCreated { .. } => "TrajectoryCreated".to_string(),
-        WsEvent::TrajectoryUpdated { .. } => "TrajectoryUpdated".to_string(),
-        WsEvent::TrajectoryDeleted { .. } => "TrajectoryDeleted".to_string(),
-        WsEvent::ScopeCreated { .. } => "ScopeCreated".to_string(),
-        WsEvent::ScopeUpdated { .. } => "ScopeUpdated".to_string(),
-        WsEvent::ScopeClosed { .. } => "ScopeClosed".to_string(),
-        WsEvent::ArtifactCreated { .. } => "ArtifactCreated".to_string(),
-        WsEvent::ArtifactUpdated { .. } => "ArtifactUpdated".to_string(),
-        WsEvent::ArtifactDeleted { .. } => "ArtifactDeleted".to_string(),
-        WsEvent::NoteCreated { .. } => "NoteCreated".to_string(),
-        WsEvent::NoteUpdated { .. } => "NoteUpdated".to_string(),
-        WsEvent::NoteDeleted { .. } => "NoteDeleted".to_string(),
-        WsEvent::TurnCreated { .. } => "TurnCreated".to_string(),
-        WsEvent::AgentRegistered { .. } => "AgentRegistered".to_string(),
-        WsEvent::AgentStatusChanged { .. } => "AgentStatusChanged".to_string(),
-        WsEvent::AgentHeartbeat { .. } => "AgentHeartbeat".to_string(),
-        WsEvent::LockAcquired { .. } => "LockAcquired".to_string(),
-        WsEvent::LockReleased { .. } => "LockReleased".to_string(),
-        WsEvent::LockExpired { .. } => "LockExpired".to_string(),
-        WsEvent::MessageSent { .. } => "MessageSent".to_string(),
-        WsEvent::MessageDelivered { .. } => "MessageDelivered".to_string(),
-        WsEvent::MessageAcknowledged { .. } => "MessageAcknowledged".to_string(),
-        WsEvent::Connected { .. } => "Connected".to_string(),
-        WsEvent::Disconnected { .. } => "Disconnected".to_string(),
-        WsEvent::Error { .. } => "Error".to_string(),
-    }
+    event.event_type().to_string()
 }
 
 // ============================================================================
@@ -746,18 +733,33 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
         let req = request.into_inner();
         let scope_id = req.scope_id.ok_or_else(|| Status::invalid_argument("scope_id required"))?.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         let artifacts = self.db.artifact_list_by_scope(scope_id).await.map_err(ApiError::from)?;
+        let total = artifacts.len() as i32;
         Ok(Response::new(ListArtifactsResponse {
             artifacts: artifacts.into_iter().map(|a| artifact_to_proto(&a)).collect(),
-            total: artifacts.len() as i32,
+            total,
         }))
     }
 
-    async fn update_artifact(&self, _request: Request<UpdateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
-        Err(Status::unimplemented("Artifact update not yet implemented"))
+    async fn update_artifact(&self, request: Request<UpdateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        let req = request.into_inner();
+        let id: caliber_core::EntityId = req.artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
+        let update_req = crate::types::UpdateArtifactRequest {
+            name: req.name,
+            content: req.content,
+            artifact_type: req.artifact_type.and_then(|s| s.parse().ok()),
+            ttl: req.ttl.and_then(|s| serde_json::from_str(&s).ok()),
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        let artifact = self.db.artifact_update(id, &update_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
+        Ok(Response::new(artifact_to_proto(&artifact)))
     }
 
-    async fn delete_artifact(&self, _request: Request<DeleteArtifactRequest>) -> Result<Response<Empty>, Status> {
-        Err(Status::unimplemented("Artifact deletion not yet implemented"))
+    async fn delete_artifact(&self, request: Request<DeleteArtifactRequest>) -> Result<Response<Empty>, Status> {
+        let id: caliber_core::EntityId = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
+        self.db.artifact_delete(id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::ArtifactDeleted { id });
+        Ok(Response::new(Empty {}))
     }
 
     async fn search_artifacts(&self, _request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
@@ -805,12 +807,26 @@ impl note_service_server::NoteService for NoteServiceImpl {
         Ok(Response::new(ListNotesResponse { notes: vec![], total: 0 }))
     }
 
-    async fn update_note(&self, _request: Request<UpdateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
-        Err(Status::unimplemented("Note update not yet implemented"))
+    async fn update_note(&self, request: Request<UpdateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        let req = request.into_inner();
+        let id: caliber_core::EntityId = req.note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
+        let update_req = crate::types::UpdateNoteRequest {
+            title: req.title,
+            content: req.content,
+            note_type: req.note_type.and_then(|s| s.parse().ok()),
+            ttl: req.ttl.and_then(|s| serde_json::from_str(&s).ok()),
+            metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
+        };
+        let note = self.db.note_update(id, &update_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
+        Ok(Response::new(note_to_proto(&note)))
     }
 
-    async fn delete_note(&self, _request: Request<DeleteNoteRequest>) -> Result<Response<Empty>, Status> {
-        Err(Status::unimplemented("Note deletion not yet implemented"))
+    async fn delete_note(&self, request: Request<DeleteNoteRequest>) -> Result<Response<Empty>, Status> {
+        let id: caliber_core::EntityId = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
+        self.db.note_delete(id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::NoteDeleted { id });
+        Ok(Response::new(Empty {}))
     }
 
     async fn search_notes(&self, _request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
@@ -906,12 +922,38 @@ impl agent_service_server::AgentService for AgentServiceImpl {
         Ok(Response::new(ListAgentsResponse { agents: vec![] }))
     }
 
-    async fn update_agent(&self, _request: Request<UpdateAgentRequest>) -> Result<Response<AgentResponse>, Status> {
-        Err(Status::unimplemented("Agent update not yet implemented"))
+    async fn update_agent(&self, request: Request<UpdateAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        let req = request.into_inner();
+        let id: caliber_core::EntityId = req.agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
+        let memory_access = req.memory_access.map(|access| crate::types::MemoryAccessRequest {
+            read: access.read.into_iter().map(|p| crate::types::MemoryPermissionRequest {
+                memory_type: p.memory_type,
+                scope: p.scope,
+                filter: p.filter,
+            }).collect(),
+            write: access.write.into_iter().map(|p| crate::types::MemoryPermissionRequest {
+                memory_type: p.memory_type,
+                scope: p.scope,
+                filter: p.filter,
+            }).collect(),
+        });
+        let update_req = crate::types::UpdateAgentRequest {
+            status: req.status.and_then(|s| s.parse().ok()),
+            capabilities: if req.capabilities.is_empty() { None } else { Some(req.capabilities) },
+            current_trajectory_id: req.current_trajectory_id.and_then(|s| s.parse().ok()),
+            current_scope_id: req.current_scope_id.and_then(|s| s.parse().ok()),
+            memory_access,
+        };
+        let agent = self.db.agent_update(id, &update_req).await.map_err(ApiError::from)?;
+        let status = agent.status.clone();
+        self.ws.broadcast(WsEvent::AgentStatusChanged { agent_id: id, status });
+        Ok(Response::new(agent_to_proto(&agent)))
     }
 
-    async fn unregister_agent(&self, _request: Request<UnregisterAgentRequest>) -> Result<Response<Empty>, Status> {
-        Err(Status::unimplemented("Agent unregister not yet implemented"))
+    async fn unregister_agent(&self, request: Request<UnregisterAgentRequest>) -> Result<Response<Empty>, Status> {
+        let id: caliber_core::EntityId = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
+        self.db.agent_unregister(id).await.map_err(ApiError::from)?;
+        Ok(Response::new(Empty {}))
     }
 
     async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
@@ -959,12 +1001,35 @@ impl lock_service_server::LockService for LockServiceImpl {
     }
 
     async fn extend_lock(&self, request: Request<ExtendLockRequest>) -> Result<Response<LockResponse>, Status> {
-        let _req = request.into_inner();
-        Err(Status::unimplemented("Lock extension not yet implemented"))
+        let req = request.into_inner();
+        let id: caliber_core::EntityId = req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
+        if req.additional_ms <= 0 {
+            return Err(Status::invalid_argument("additional_ms must be positive"));
+        }
+        let duration = std::time::Duration::from_millis(req.additional_ms as u64);
+        let lock = self.db.lock_extend(id, duration).await.map_err(ApiError::from)?;
+        Ok(Response::new(lock_to_proto(&lock)))
     }
 
-    async fn list_locks(&self, _request: Request<ListLocksRequest>) -> Result<Response<ListLocksResponse>, Status> {
-        Ok(Response::new(ListLocksResponse { locks: vec![] }))
+    async fn list_locks(&self, request: Request<ListLocksRequest>) -> Result<Response<ListLocksResponse>, Status> {
+        let req = request.into_inner();
+        let locks = self.db.lock_list_active().await.map_err(ApiError::from)?;
+        let filtered = locks.into_iter().filter(|lock| {
+            if let Some(ref resource_type) = req.resource_type {
+                if &lock.resource_type != resource_type {
+                    return false;
+                }
+            }
+            if let Some(ref holder_agent_id) = req.holder_agent_id {
+                if lock.holder_agent_id.to_string() != *holder_agent_id {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|lock| lock_to_proto(&lock))
+        .collect();
+        Ok(Response::new(ListLocksResponse { locks: filtered }))
     }
 }
 
@@ -1011,6 +1076,19 @@ impl message_service_server::MessageService for MessageServiceImpl {
         Ok(Response::new(ListMessagesResponse { messages: vec![] }))
     }
 
+    async fn deliver_message(&self, request: Request<DeliverMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
+        self.db.message_deliver(id).await.map_err(ApiError::from)?;
+        let message = self
+            .db
+            .message_get(id)
+            .await
+            .map_err(ApiError::from)?
+            .ok_or_else(|| Status::not_found("Message not found"))?;
+        self.ws.broadcast(WsEvent::MessageDelivered { message_id: id });
+        Ok(Response::new(message_to_proto(&message)))
+    }
+
     async fn acknowledge_message(&self, request: Request<AcknowledgeMessageRequest>) -> Result<Response<MessageResponse>, Status> {
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
         self.db.message_acknowledge(id).await.map_err(ApiError::from)?;
@@ -1051,6 +1129,9 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
             context: req.context.and_then(|s| serde_json::from_str(&s).ok()),
         };
         let delegation = self.db.delegation_create(&create_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::DelegationCreated {
+            delegation: delegation.clone(),
+        });
         Ok(Response::new(delegation_to_proto(&delegation)))
     }
 
@@ -1061,8 +1142,13 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
     }
 
     async fn accept_delegation(&self, request: Request<AcceptDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
-        let id = request.into_inner().delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
-        let delegation = self.db.delegation_accept(id).await.map_err(ApiError::from)?;
+        let req = request.into_inner();
+        let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
+        let accepting_agent_id = req.accepting_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid accepting_agent_id"))?;
+        let delegation = self.db.delegation_accept(id, accepting_agent_id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::DelegationAccepted {
+            delegation_id: id,
+        });
         Ok(Response::new(delegation_to_proto(&delegation)))
     }
 
@@ -1070,6 +1156,9 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
         let req = request.into_inner();
         let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
         let delegation = self.db.delegation_reject(id, req.reason).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::DelegationRejected {
+            delegation_id: id,
+        });
         Ok(Response::new(delegation_to_proto(&delegation)))
     }
 
@@ -1083,7 +1172,11 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
             artifacts: result.artifacts.into_iter().filter_map(|s| s.parse().ok()).collect(),
             error: result.error,
         };
-        let delegation = self.db.delegation_complete(id, result_req).await.map_err(ApiError::from)?;
+        let result_json = serde_json::to_value(&result_req).map_err(|_| Status::internal("Failed to serialize delegation result"))?;
+        let delegation = self.db.delegation_complete(id, result_json).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::DelegationCompleted {
+            delegation: delegation.clone(),
+        });
         Ok(Response::new(delegation_to_proto(&delegation)))
     }
 }
@@ -1113,6 +1206,9 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
             context_snapshot: req.context_snapshot,
         };
         let handoff = self.db.handoff_create(&create_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::HandoffCreated {
+            handoff: handoff.clone(),
+        });
         Ok(Response::new(handoff_to_proto(&handoff)))
     }
 
@@ -1123,14 +1219,20 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
     }
 
     async fn accept_handoff(&self, request: Request<AcceptHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
-        let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
-        let handoff = self.db.handoff_accept(id).await.map_err(ApiError::from)?;
+        let req = request.into_inner();
+        let id = req.handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
+        let accepting_agent_id = req.accepting_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid accepting_agent_id"))?;
+        let handoff = self.db.handoff_accept(id, accepting_agent_id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::HandoffAccepted { handoff_id: id });
         Ok(Response::new(handoff_to_proto(&handoff)))
     }
 
     async fn complete_handoff(&self, request: Request<CompleteHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
         let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
         let handoff = self.db.handoff_complete(id).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::HandoffCompleted {
+            handoff: handoff.clone(),
+        });
         Ok(Response::new(handoff_to_proto(&handoff)))
     }
 }
@@ -1157,8 +1259,8 @@ impl dsl_service_server::DslService for DslServiceImpl {
         Ok(Response::new(ValidateDslResponse {
             valid: result.valid,
             errors: result.errors.into_iter().map(|e| ParseError {
-                line: e.line,
-                column: e.column,
+                line: u32::try_from(e.line).unwrap_or(u32::MAX),
+                column: u32::try_from(e.column).unwrap_or(u32::MAX),
                 message: e.message,
             }).collect(),
             ast: result.ast.map(|ast| serde_json::to_string(&ast).unwrap_or_default()),
@@ -1180,11 +1282,12 @@ impl dsl_service_server::DslService for DslServiceImpl {
 // Config Service - mirrors routes/config.rs
 pub struct ConfigServiceImpl {
     db: DbClient,
+    ws: Arc<WsState>,
 }
 
 impl ConfigServiceImpl {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -1205,6 +1308,9 @@ impl config_service_server::ConfigService for ConfigServiceImpl {
             config: serde_json::from_str(&req.config).map_err(|_| Status::invalid_argument("Invalid config JSON"))?,
         };
         let config = self.db.config_update(&update_req).await.map_err(ApiError::from)?;
+        self.ws.broadcast(WsEvent::ConfigUpdated {
+            config: config.clone(),
+        });
         Ok(Response::new(ConfigResponse {
             config: serde_json::to_string(&config.config).unwrap_or_default(),
             valid: config.valid,
@@ -1338,7 +1444,7 @@ pub fn create_services(
         delegation_service_server::DelegationServiceServer::new(DelegationServiceImpl::new(db.clone(), ws.clone())),
         handoff_service_server::HandoffServiceServer::new(HandoffServiceImpl::new(db.clone(), ws.clone())),
         dsl_service_server::DslServiceServer::new(DslServiceImpl::new(db.clone())),
-        config_service_server::ConfigServiceServer::new(ConfigServiceImpl::new(db.clone())),
+        config_service_server::ConfigServiceServer::new(ConfigServiceImpl::new(db.clone(), ws.clone())),
         tenant_service_server::TenantServiceServer::new(TenantServiceImpl::new(db.clone())),
         search_service_server::SearchServiceServer::new(SearchServiceImpl::new(db.clone())),
         event_service_server::EventServiceServer::new(EventServiceImpl::new(ws)),

@@ -164,7 +164,7 @@ pub async fn accept_delegation(
     }
 
     // Accept delegation via database client
-    state
+    let _ = state
         .db
         .delegation_accept(id.into(), req.accepting_agent_id)
         .await?;
@@ -225,11 +225,11 @@ pub async fn reject_delegation(
         ));
     }
 
-    // TODO: Implement caliber_delegation_reject in caliber-pg
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Delegation rejection not yet implemented in caliber-pg",
-    ))
+    state.db.delegation_reject(id.into(), req.reason).await?;
+    state.ws.broadcast(WsEvent::DelegationRejected {
+        delegation_id: id.into(),
+    });
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /api/v1/delegations/{id}/complete - Complete a delegation
@@ -286,14 +286,10 @@ pub async fn complete_delegation(
     let result_json = serde_json::to_value(&req.result)?;
 
     // Complete delegation via database client
-    state.db.delegation_complete(id.into(), result_json).await?;
-
-    // Fetch updated delegation for event payload
     let updated = state
         .db
-        .delegation_get(id.into())
-        .await?
-        .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
+        .delegation_complete(id.into(), result_json)
+        .await?;
 
     // Broadcast DelegationCompleted event
     state.ws.broadcast(WsEvent::DelegationCompleted {

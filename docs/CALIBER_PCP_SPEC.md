@@ -2981,76 +2981,76 @@ For an AI agent implementing this system, execute in order:
 ### Phase 1: Rust/pgrx Foundation
 
 ```
-[ ] Set up Rust project with pgrx
-[ ] cargo pgrx init
-[ ] Define PostgresType structs for all core types
-[ ] Implement UUIDv7 generation
-[ ] Implement SHA-256 hashing
-[ ] Implement cosine similarity for embeddings
+[x] Set up Rust project with pgrx
+[x] cargo pgrx init
+[x] Define PostgresType structs for all core types
+[x] Implement UUIDv7 generation
+[x] Implement SHA-256 hashing
+[x] Implement cosine similarity for embeddings
 ```
 
 ### Phase 2: Direct Storage Functions
 
 ```
-[ ] caliber_trajectory_insert() - direct heap insert
-[ ] caliber_trajectory_get() - index scan
-[ ] caliber_scope_insert/get/close()
-[ ] caliber_artifact_insert/get()
-[ ] caliber_note_insert/get()
-[ ] caliber_vector_search() - direct HNSW access
+[x] caliber_trajectory_insert() - direct heap insert
+[x] caliber_trajectory_get() - index scan
+[x] caliber_scope_insert/get/close()
+[x] caliber_artifact_insert/get()
+[x] caliber_note_insert/get()
+[x] caliber_vector_search() - direct HNSW access
 ```
 
 ### Phase 3: Bootstrap SQL (one-time)
 
 ```
-[ ] CREATE TABLE statements for all relations
-[ ] CREATE INDEX statements (B-tree, hash, HNSW)
-[ ] Wrap in caliber_init() function
+[x] CREATE TABLE statements for all relations
+[x] CREATE INDEX statements (B-tree, hash, HNSW)
+[x] Wrap in caliber_init() function
 ```
 
 ### Phase 4: Core Runtime
 
 ```
-[ ] CaliberOrchestrator struct
-[ ] start_trajectory() / complete_trajectory()
-[ ] open_scope() / close_scope()
-[ ] create_artifact()
-[ ] consolidate_notes()
+[x] CaliberOrchestrator struct (handled by caliber-api orchestration layer)
+[x] start_trajectory() / complete_trajectory()
+[x] open_scope() / close_scope()
+[x] create_artifact()
+[x] consolidate_notes()
 ```
 
 ### Phase 5: Context Assembly
 
 ```
-[ ] assemble_context() - main entry
-[ ] assemble_section() - per injection rule
-[ ] Token counting
-[ ] Priority-based truncation
+[x] assemble_context() - main entry
+[x] assemble_section() - per injection rule
+[x] Token counting
+[x] Priority-based truncation
 ```
 
 ### Phase 6: PCP Layer
 
 ```
-[ ] PCPRuntime struct
-[ ] validate_context_integrity()
-[ ] create_checkpoint() / recover_from_checkpoint()
-[ ] apply_dosage_limits()
-[ ] lint_artifact()
+[x] PCPRuntime struct
+[x] validate_context_integrity()
+[x] create_checkpoint() / recover_from_checkpoint()
+[x] apply_dosage_limits()
+[x] lint_artifact()
 ```
 
 ### Phase 7: Observability
 
 ```
-[ ] Trace event collection
-[ ] Debug query functions
-[ ] Assembly explanation
+[x] Trace event collection
+[x] Debug query functions
+[x] Assembly explanation
 ```
 
 ### Phase 8: FFI for External Services
 
 ```
-[ ] Embedding service trait
-[ ] HTTP embedding client (libcurl FFI)
-[ ] Summarization service trait
+[x] Embedding service trait
+[x] HTTP embedding client (libcurl FFI)
+[x] Summarization service trait
 ```
 
 ---

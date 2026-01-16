@@ -508,6 +508,7 @@ service MessageService {
   rpc SendMessage(SendMessageRequest) returns (MessageResponse);
   rpc GetMessage(GetMessageRequest) returns (MessageResponse);
   rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc DeliverMessage(DeliverMessageRequest) returns (MessageResponse);
   rpc AcknowledgeMessage(AcknowledgeMessageRequest) returns (MessageResponse);
 }
 
@@ -536,6 +537,10 @@ message ListMessagesRequest {
 }
 
 message AcknowledgeMessageRequest {
+  string message_id = 1;
+}
+
+message DeliverMessageRequest {
   string message_id = 1;
 }
 
@@ -588,6 +593,7 @@ message GetDelegationRequest {
 
 message AcceptDelegationRequest {
   string delegation_id = 1;
+  string accepting_agent_id = 2;
 }
 
 message RejectDelegationRequest {
@@ -649,6 +655,7 @@ message GetHandoffRequest {
 
 message AcceptHandoffRequest {
   string handoff_id = 1;
+  string accepting_agent_id = 2;
 }
 
 message CompleteHandoffRequest {

@@ -20,8 +20,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .notes
         .iter()
         .map(|note| {
-            let title = note.title.clone().unwrap_or_else(|| "Untitled".to_string());
-            ListItem::new(format!("{} [{}]", title, note.note_type))
+            ListItem::new(format!("{} [{}]", note.title, note.note_type))
         })
         .collect();
 
@@ -52,9 +51,16 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             let mut fields = Vec::new();
             fields.push(("Note ID", note.note_id.to_string()));
             fields.push(("Type", note.note_type.to_string()));
-            fields.push(("Scope ID", note.scope_id.to_string()));
-            fields.push(("Trajectory ID", note.trajectory_id.to_string()));
             fields.push(("Created", note.created_at.to_rfc3339()));
+            if !note.source_trajectory_ids.is_empty() {
+                let ids = note
+                    .source_trajectory_ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                fields.push(("Trajectories", ids));
+            }
 
             let detail = DetailPanel {
                 title: "Details",

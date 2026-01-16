@@ -14,7 +14,7 @@ use caliber_agents::{DistributedLock, LockMode};
 use crate::column_maps::lock;
 use crate::heap_ops::{
     current_timestamp, delete_tuple, form_tuple, insert_tuple, open_relation,
-    LockMode as HeapLockMode, HeapRelation, get_active_snapshot,
+    LockMode as HeapLockMode, HeapRelation, HeapScanner, get_active_snapshot,
     timestamp_to_pgrx,
 };
 use crate::index_ops::{
@@ -26,6 +26,7 @@ use crate::tuple_extract::{
     extract_values_and_nulls, uuid_to_datum, string_to_datum,
     timestamp_to_chrono, chrono_to_timestamp,
 };
+use std::ptr;
 
 /// Acquire a lock by inserting a lock record using direct heap operations.
 pub fn lock_acquire_heap(
@@ -171,6 +172,25 @@ pub fn lock_list_by_resource_heap(
         results.push(lock);
     }
     
+    Ok(results)
+}
+
+/// List all active (non-expired) locks using a heap scan.
+pub fn lock_list_active_heap() -> CaliberResult<Vec<DistributedLock>> {
+    let rel = open_relation(lock::TABLE_NAME, HeapLockMode::AccessShare)?;
+    let snapshot = get_active_snapshot();
+    let mut scanner = HeapScanner::new(&rel, snapshot, 0, ptr::null_mut());
+    let tuple_desc = rel.tuple_desc();
+    let now = chrono::Utc::now();
+
+    let mut results = Vec::new();
+    while let Some(tuple) = scanner.next() {
+        let lock = tuple_to_lock(tuple, tuple_desc)?;
+        if lock.expires_at > now {
+            results.push(lock);
+        }
+    }
+
     Ok(results)
 }
 
