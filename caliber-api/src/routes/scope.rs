@@ -2,6 +2,9 @@
 //!
 //! This module implements Axum route handlers for scope operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
+//!
+//! Includes Battle Intel Feature 4: Auto-summarization trigger checking
+//! on scope close to enable L0→L1→L2 abstraction transitions.
 
 use axum::{
     extract::{Path, State},
@@ -9,6 +12,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -32,11 +36,12 @@ use crate::{
 pub struct ScopeState {
     pub db: DbClient,
     pub ws: Arc<WsState>,
+    pub pcp: Arc<PCPRuntime>,
 }
 
 impl ScopeState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
+    pub fn new(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> Self {
+        Self { db, ws, pcp }
     }
 }
 
@@ -241,6 +246,89 @@ pub async fn close_scope(
         scope: scope.clone(),
     });
 
+    // =========================================================================
+    // BATTLE INTEL: Check ScopeClose summarization triggers
+    // =========================================================================
+    let trajectory_id: caliber_core::EntityId = scope.trajectory_id.into();
+
+    // Fetch summarization policies for this trajectory
+    if let Ok(policies) = state.db.summarization_policies_for_trajectory(trajectory_id).await {
+        if !policies.is_empty() {
+            // Get turn count for this scope
+            let turn_count = state
+                .db
+                .turn_list_by_scope(id)
+                .await
+                .map(|turns| turns.len() as i32)
+                .unwrap_or(0);
+
+            // Get artifact count for this scope
+            let artifact_count = state
+                .db
+                .artifact_list_by_scope(id)
+                .await
+                .map(|artifacts| artifacts.len() as i32)
+                .unwrap_or(0);
+
+            // Convert policies to caliber_core format for PCPRuntime
+            let core_policies: Vec<caliber_core::SummarizationPolicy> = policies
+                .iter()
+                .map(|p| caliber_core::SummarizationPolicy {
+                    policy_id: p.policy_id.into(),
+                    name: p.name.clone(),
+                    triggers: p.triggers.clone(),
+                    target_level: p.target_level,
+                    source_level: p.source_level,
+                    max_sources: p.max_sources,
+                    create_edges: p.create_edges,
+                    trajectory_id: Some(trajectory_id),
+                })
+                .collect();
+
+            // Build a caliber_core::Scope from our ScopeResponse
+            // Note: is_active is false since we just closed it
+            let core_scope = caliber_core::Scope {
+                scope_id: scope.scope_id.into(),
+                trajectory_id: scope.trajectory_id.into(),
+                parent_scope_id: scope.parent_scope_id.map(Into::into),
+                name: scope.name.clone(),
+                purpose: scope.purpose.clone(),
+                is_active: false, // Scope is now closed
+                created_at: scope.created_at,
+                closed_at: scope.closed_at,
+                checkpoint: None,
+                token_budget: scope.token_budget,
+                tokens_used: scope.tokens_used,
+                metadata: scope.metadata.clone(),
+            };
+
+            // Check which triggers should fire (ScopeClose will fire since is_active=false)
+            if let Ok(triggered) = state.pcp.check_summarization_triggers(
+                &core_scope,
+                turn_count,
+                artifact_count,
+                &core_policies,
+            ) {
+                // Broadcast SummarizationTriggered event for each fired trigger
+                for (policy_id, trigger) in triggered {
+                    // Find the policy to get its details
+                    if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
+                        state.ws.broadcast(WsEvent::SummarizationTriggered {
+                            policy_id,
+                            trigger: trigger.clone(),
+                            scope_id: core_scope.scope_id,
+                            trajectory_id,
+                            source_level: policy.source_level,
+                            target_level: policy.target_level,
+                            max_sources: policy.max_sources,
+                            create_edges: policy.create_edges,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     Ok(Json(scope))
 }
 
@@ -319,8 +407,8 @@ pub async fn list_scope_artifacts(
 // ============================================================================
 
 /// Create the scope routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(ScopeState::new(db, ws));
+pub fn create_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> axum::Router {
+    let state = Arc::new(ScopeState::new(db, ws, pcp));
 
     axum::Router::new()
         .route("/", axum::routing::post(create_scope))

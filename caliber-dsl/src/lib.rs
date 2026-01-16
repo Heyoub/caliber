@@ -111,12 +111,17 @@ pub enum TokenKind {
     Candidates,
     Metrics,
 
-    // Battle Intel Feature 4: Summarization triggers
+    // Battle Intel Feature 4: Summarization triggers and policy
     DosageReached,
     CreateEdges,
     SourceLevel,
     TargetLevel,
     MaxSources,
+    TurnCount,             // turn_count(N) trigger
+    ArtifactCount,         // artifact_count(N) trigger
+    SummarizationPolicy,   // top-level definition keyword
+    Triggers,              // triggers: field
+    BenchmarkQueries,      // benchmark_queries: field
 
     // Index types
     Btree,
@@ -458,12 +463,17 @@ impl<'a> Lexer<'a> {
             "candidates" => TokenKind::Candidates,
             "metrics" => TokenKind::Metrics,
 
-            // Battle Intel Feature 4: Summarization triggers
+            // Battle Intel Feature 4: Summarization triggers and policy
             "dosage_reached" => TokenKind::DosageReached,
             "create_edges" => TokenKind::CreateEdges,
             "source_level" => TokenKind::SourceLevel,
             "target_level" => TokenKind::TargetLevel,
             "max_sources" => TokenKind::MaxSources,
+            "turn_count" => TokenKind::TurnCount,
+            "artifact_count" => TokenKind::ArtifactCount,
+            "summarization_policy" => TokenKind::SummarizationPolicy,
+            "triggers" => TokenKind::Triggers,
+            "benchmark_queries" => TokenKind::BenchmarkQueries,
 
             // Index types
             "btree" => TokenKind::Btree,
@@ -1054,7 +1064,15 @@ impl Parser {
             TokenKind::Memory => self.parse_memory().map(Definition::Memory),
             TokenKind::Policy => self.parse_policy().map(Definition::Policy),
             TokenKind::Inject => self.parse_injection().map(Definition::Injection),
-            _ => Err(self.error("Expected definition (adapter, memory, policy, inject)")),
+            // Battle Intel Feature 3: Evolution mode
+            TokenKind::Evolve => self.parse_evolution().map(Definition::Evolution),
+            // Battle Intel Feature 4: Summarization policy
+            TokenKind::SummarizationPolicy => {
+                self.parse_summarization_policy().map(Definition::SummarizationPolicy)
+            }
+            _ => Err(self.error(
+                "Expected definition (adapter, memory, policy, inject, evolve, summarization_policy)",
+            )),
         }
     }
 
@@ -1532,6 +1550,36 @@ impl Parser {
                 self.expect(TokenKind::RParen)?;
                 Ok(Action::Inject { target, mode })
             }
+            // Battle Intel Feature 4: Auto-summarize action
+            // Syntax: auto_summarize(raw, summary, create_edges: true)
+            TokenKind::AutoSummarize => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+
+                // Parse source_level
+                let source_level = self.parse_abstraction_level()?;
+                self.expect(TokenKind::Comma)?;
+
+                // Parse target_level
+                let target_level = self.parse_abstraction_level()?;
+                self.expect(TokenKind::Comma)?;
+
+                // Parse create_edges: bool (named parameter)
+                let field = self.expect_field_name()?;
+                if field != "create_edges" {
+                    return Err(self.error("Expected 'create_edges:' parameter"));
+                }
+                self.expect(TokenKind::Colon)?;
+                let create_edges = self.parse_bool()?;
+
+                self.expect(TokenKind::RParen)?;
+
+                Ok(Action::AutoSummarize {
+                    source_level,
+                    target_level,
+                    create_edges,
+                })
+            }
             _ => Err(self.error("Expected action")),
         }
     }
@@ -1604,6 +1652,267 @@ impl Parser {
                 Ok(InjectionMode::Relevant(threshold))
             }
             _ => Err(self.error("Expected injection mode")),
+        }
+    }
+
+    // ========================================================================
+    // BATTLE INTEL FEATURE 3: Evolution Mode Parser
+    // ========================================================================
+
+    /// Parse an evolution definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// evolve "config_name" {
+    ///     baseline: "snapshot_name"
+    ///     candidates: ["config1", "config2"]
+    ///     benchmark_queries: 1000
+    ///     metrics: ["latency", "throughput"]
+    /// }
+    /// ```
+    fn parse_evolution(&mut self) -> Result<EvolutionDef, ParseError> {
+        self.expect(TokenKind::Evolve)?;
+
+        // Parse the evolution name (string literal)
+        let name = self.expect_string()?;
+
+        self.expect(TokenKind::LBrace)?;
+
+        let mut baseline: Option<String> = None;
+        let mut candidates: Vec<String> = Vec::new();
+        let mut benchmark_queries: Option<i32> = None;
+        let mut metrics: Vec<String> = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) {
+            let field = self.expect_field_name()?;
+            self.expect(TokenKind::Colon)?;
+
+            match field.as_str() {
+                "baseline" => {
+                    baseline = Some(self.expect_string()?);
+                }
+                "candidates" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(&TokenKind::RBracket) {
+                        candidates.push(self.expect_string()?);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                }
+                "benchmark_queries" => {
+                    benchmark_queries = Some(self.expect_number()? as i32);
+                }
+                "metrics" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(&TokenKind::RBracket) {
+                        metrics.push(self.expect_string()?);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                }
+                _ => return Err(self.error(&format!("unknown evolution field: {}", field))),
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields (no defaults per REQ-5)
+        let baseline = baseline.ok_or_else(|| self.error("missing required field: baseline"))?;
+        let benchmark_queries = benchmark_queries
+            .ok_or_else(|| self.error("missing required field: benchmark_queries"))?;
+
+        if candidates.is_empty() {
+            return Err(self.error("candidates must contain at least one config name"));
+        }
+
+        Ok(EvolutionDef {
+            name,
+            baseline,
+            candidates,
+            benchmark_queries,
+            metrics,
+        })
+    }
+
+    // ========================================================================
+    // BATTLE INTEL FEATURE 4: Summarization Policy Parser
+    // ========================================================================
+
+    /// Parse a summarization policy definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// summarization_policy "policy_name" {
+    ///     triggers: [dosage_reached(80), scope_close, turn_count(5)]
+    ///     source_level: raw
+    ///     target_level: summary
+    ///     max_sources: 20
+    ///     create_edges: true
+    /// }
+    /// ```
+    fn parse_summarization_policy(&mut self) -> Result<SummarizationPolicyDef, ParseError> {
+        self.expect(TokenKind::SummarizationPolicy)?;
+
+        // Parse the policy name (string literal)
+        let name = self.expect_string()?;
+
+        self.expect(TokenKind::LBrace)?;
+
+        let mut triggers: Vec<SummarizationTriggerDsl> = Vec::new();
+        let mut source_level: Option<AbstractionLevelDsl> = None;
+        let mut target_level: Option<AbstractionLevelDsl> = None;
+        let mut max_sources: Option<i32> = None;
+        let mut create_edges: Option<bool> = None;
+
+        while !self.check(&TokenKind::RBrace) {
+            let field = self.expect_field_name()?;
+            self.expect(TokenKind::Colon)?;
+
+            match field.as_str() {
+                "triggers" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(&TokenKind::RBracket) {
+                        triggers.push(self.parse_summarization_trigger()?);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                }
+                "source_level" => {
+                    source_level = Some(self.parse_abstraction_level()?);
+                }
+                "target_level" => {
+                    target_level = Some(self.parse_abstraction_level()?);
+                }
+                "max_sources" => {
+                    max_sources = Some(self.expect_number()? as i32);
+                }
+                "create_edges" => {
+                    create_edges = Some(self.parse_bool()?);
+                }
+                _ => {
+                    return Err(
+                        self.error(&format!("unknown summarization_policy field: {}", field))
+                    )
+                }
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields (no defaults per REQ-5)
+        let source_level =
+            source_level.ok_or_else(|| self.error("missing required field: source_level"))?;
+        let target_level =
+            target_level.ok_or_else(|| self.error("missing required field: target_level"))?;
+        let max_sources =
+            max_sources.ok_or_else(|| self.error("missing required field: max_sources"))?;
+        let create_edges =
+            create_edges.ok_or_else(|| self.error("missing required field: create_edges"))?;
+
+        if triggers.is_empty() {
+            return Err(self.error("triggers must contain at least one trigger"));
+        }
+
+        Ok(SummarizationPolicyDef {
+            name,
+            triggers,
+            source_level,
+            target_level,
+            max_sources,
+            create_edges,
+        })
+    }
+
+    /// Parse a summarization trigger.
+    ///
+    /// Triggers:
+    /// - dosage_reached(80)  -> DosageThreshold { percent: 80 }
+    /// - scope_close         -> ScopeClose
+    /// - turn_count(5)       -> TurnCount { count: 5 }
+    /// - artifact_count(10)  -> ArtifactCount { count: 10 }
+    /// - manual              -> Manual
+    fn parse_summarization_trigger(&mut self) -> Result<SummarizationTriggerDsl, ParseError> {
+        match &self.current().kind {
+            TokenKind::DosageReached => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let percent = self.expect_number()? as u8;
+                if percent > 100 {
+                    return Err(self.error("dosage_reached percent must be 0-100"));
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(SummarizationTriggerDsl::DosageThreshold { percent })
+            }
+            TokenKind::ScopeClose => {
+                self.advance();
+                Ok(SummarizationTriggerDsl::ScopeClose)
+            }
+            TokenKind::TurnCount => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let count = self.expect_number()? as i32;
+                if count <= 0 {
+                    return Err(self.error("turn_count must be positive"));
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(SummarizationTriggerDsl::TurnCount { count })
+            }
+            TokenKind::ArtifactCount => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let count = self.expect_number()? as i32;
+                if count <= 0 {
+                    return Err(self.error("artifact_count must be positive"));
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(SummarizationTriggerDsl::ArtifactCount { count })
+            }
+            TokenKind::Manual => {
+                self.advance();
+                Ok(SummarizationTriggerDsl::Manual)
+            }
+            _ => Err(self.error(
+                "Expected summarization trigger (dosage_reached, scope_close, turn_count, artifact_count, manual)",
+            )),
+        }
+    }
+
+    /// Parse an abstraction level.
+    ///
+    /// Levels:
+    /// - raw       -> AbstractionLevelDsl::Raw
+    /// - summary   -> AbstractionLevelDsl::Summary
+    /// - principle -> AbstractionLevelDsl::Principle
+    fn parse_abstraction_level(&mut self) -> Result<AbstractionLevelDsl, ParseError> {
+        match &self.current().kind {
+            TokenKind::Raw => {
+                self.advance();
+                Ok(AbstractionLevelDsl::Raw)
+            }
+            TokenKind::Summary => {
+                self.advance();
+                Ok(AbstractionLevelDsl::Summary)
+            }
+            TokenKind::Principle => {
+                self.advance();
+                Ok(AbstractionLevelDsl::Principle)
+            }
+            _ => Err(self.error("Expected abstraction level (raw, summary, principle)")),
+        }
+    }
+
+    /// Parse a boolean value (true or false).
+    fn parse_bool(&mut self) -> Result<bool, ParseError> {
+        match &self.current().kind {
+            TokenKind::Identifier(s) if s == "true" => {
+                self.advance();
+                Ok(true)
+            }
+            TokenKind::Identifier(s) if s == "false" => {
+                self.advance();
+                Ok(false)
+            }
+            _ => Err(self.error("Expected boolean (true or false)")),
         }
     }
 
@@ -1872,6 +2181,29 @@ impl Parser {
             TokenKind::Summary => "summary".to_string(),
             TokenKind::TopK => "top_k".to_string(),
             TokenKind::Relevant => "relevant".to_string(),
+            // Battle Intel Feature 3 & 4: Evolution and summarization fields
+            TokenKind::Evolve => "evolve".to_string(),
+            TokenKind::Baseline => "baseline".to_string(),
+            TokenKind::Candidates => "candidates".to_string(),
+            TokenKind::Metrics => "metrics".to_string(),
+            TokenKind::BenchmarkQueries => "benchmark_queries".to_string(),
+            TokenKind::Triggers => "triggers".to_string(),
+            TokenKind::SourceLevel => "source_level".to_string(),
+            TokenKind::TargetLevel => "target_level".to_string(),
+            TokenKind::MaxSources => "max_sources".to_string(),
+            TokenKind::CreateEdges => "create_edges".to_string(),
+            TokenKind::Raw => "raw".to_string(),
+            TokenKind::Principle => "principle".to_string(),
+            TokenKind::AutoSummarize => "auto_summarize".to_string(),
+            TokenKind::DosageReached => "dosage_reached".to_string(),
+            TokenKind::TurnCount => "turn_count".to_string(),
+            TokenKind::ArtifactCount => "artifact_count".to_string(),
+            TokenKind::SummarizationPolicy => "summarization_policy".to_string(),
+            TokenKind::Freeze => "freeze".to_string(),
+            TokenKind::Snapshot => "snapshot".to_string(),
+            TokenKind::Benchmark => "benchmark".to_string(),
+            TokenKind::Compare => "compare".to_string(),
+            TokenKind::AbstractionLevel => "abstraction_level".to_string(),
             _ => return Err(self.error("Expected identifier")),
         };
         self.advance();

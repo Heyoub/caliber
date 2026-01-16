@@ -4,8 +4,8 @@
 //! These types are used by both REST and gRPC endpoints.
 
 use caliber_core::{
-    ArtifactType, EntityId, EntityType, ExtractionMethod, NoteType, OutcomeStatus, Timestamp,
-    TrajectoryStatus, TurnRole, TTL,
+    AbstractionLevel, ArtifactType, EdgeType, EntityId, EntityType, ExtractionMethod, NoteType,
+    OutcomeStatus, SummarizationTrigger, Timestamp, TrajectoryStatus, TurnRole, TTL,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -1171,4 +1171,160 @@ impl FromStr for TenantStatus {
 pub struct ListTenantsResponse {
     /// List of tenants
     pub tenants: Vec<TenantInfo>,
+}
+
+// ============================================================================
+// BATTLE INTEL: EDGE TYPES
+// ============================================================================
+
+/// Request to create a new edge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CreateEdgeRequest {
+    /// Type of edge
+    pub edge_type: EdgeType,
+    /// Edge participants (entities involved)
+    pub participants: Vec<EdgeParticipantRequest>,
+    /// Optional weight/strength of relationship [0.0, 1.0]
+    pub weight: Option<f32>,
+    /// Optional trajectory ID for context
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// Provenance information
+    pub provenance: ProvenanceRequest,
+    /// Optional metadata
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Edge participant in a request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EdgeParticipantRequest {
+    /// Type of the entity
+    pub entity_type: EntityType,
+    /// ID of the entity
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub entity_id: EntityId,
+    /// Role in the relationship (e.g., "source", "target", "input", "output")
+    pub role: Option<String>,
+}
+
+/// Provenance information for a request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProvenanceRequest {
+    /// Source turn sequence number
+    pub source_turn: i32,
+    /// How this was extracted
+    pub extraction_method: ExtractionMethod,
+    /// Confidence score [0.0, 1.0]
+    pub confidence: Option<f32>,
+}
+
+/// Response for an edge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EdgeResponse {
+    /// Edge ID
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub edge_id: EntityId,
+    /// Type of edge
+    pub edge_type: EdgeType,
+    /// Edge participants
+    pub participants: Vec<EdgeParticipantResponse>,
+    /// Weight/strength of relationship
+    pub weight: Option<f32>,
+    /// Trajectory ID for context
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// Provenance information
+    pub provenance: ProvenanceResponse,
+    /// When the edge was created
+    pub created_at: Timestamp,
+    /// Optional metadata
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Edge participant in a response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EdgeParticipantResponse {
+    /// Type of the entity
+    pub entity_type: EntityType,
+    /// ID of the entity
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub entity_id: EntityId,
+    /// Role in the relationship
+    pub role: Option<String>,
+}
+
+/// Response containing a list of edges.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListEdgesResponse {
+    /// List of edges
+    pub edges: Vec<EdgeResponse>,
+}
+
+// ============================================================================
+// BATTLE INTEL: SUMMARIZATION POLICY TYPES
+// ============================================================================
+
+/// Request to create a summarization policy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CreateSummarizationPolicyRequest {
+    /// Policy name
+    pub name: String,
+    /// Triggers that fire this policy
+    pub triggers: Vec<SummarizationTrigger>,
+    /// Source abstraction level (e.g., Raw/L0)
+    pub source_level: AbstractionLevel,
+    /// Target abstraction level (e.g., Summary/L1)
+    pub target_level: AbstractionLevel,
+    /// Maximum sources to summarize at once
+    pub max_sources: i32,
+    /// Whether to create SynthesizedFrom edges
+    pub create_edges: bool,
+    /// Optional trajectory ID to scope this policy
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// Optional metadata
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Response for a summarization policy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SummarizationPolicyResponse {
+    /// Policy ID
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub policy_id: EntityId,
+    /// Policy name
+    pub name: String,
+    /// Triggers that fire this policy
+    pub triggers: Vec<SummarizationTrigger>,
+    /// Source abstraction level
+    pub source_level: AbstractionLevel,
+    /// Target abstraction level
+    pub target_level: AbstractionLevel,
+    /// Maximum sources to summarize at once
+    pub max_sources: i32,
+    /// Whether to create SynthesizedFrom edges
+    pub create_edges: bool,
+    /// Trajectory ID if scoped
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// When the policy was created
+    pub created_at: Timestamp,
+    /// Optional metadata
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Response containing a list of summarization policies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListSummarizationPoliciesResponse {
+    /// List of policies
+    pub policies: Vec<SummarizationPolicyResponse>,
 }

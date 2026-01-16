@@ -2,6 +2,9 @@
 //!
 //! This module implements Axum route handlers for turn operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
+//!
+//! Includes Battle Intel Feature 4: Auto-summarization trigger checking
+//! after turn creation to enable L0→L1→L2 abstraction transitions.
 
 use axum::{
     extract::{Path, State},
@@ -9,6 +12,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -29,11 +33,12 @@ use crate::{
 pub struct TurnState {
     pub db: DbClient,
     pub ws: Arc<WsState>,
+    pub pcp: Arc<PCPRuntime>,
 }
 
 impl TurnState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
+    pub fn new(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> Self {
+        Self { db, ws, pcp }
     }
 }
 
@@ -82,6 +87,92 @@ pub async fn create_turn(
         turn: turn.clone(),
     });
 
+    // =========================================================================
+    // BATTLE INTEL: Check summarization triggers after turn creation
+    // =========================================================================
+    // Get the scope to check trigger conditions
+    if let Ok(Some(scope)) = state.db.scope_get(req.scope_id.into()).await {
+        // Get the trajectory ID from the scope for fetching policies
+        let trajectory_id: caliber_core::EntityId = scope.trajectory_id.into();
+
+        // Fetch summarization policies for this trajectory
+        if let Ok(policies) = state.db.summarization_policies_for_trajectory(trajectory_id).await {
+            if !policies.is_empty() {
+                // Get turn count for this scope
+                let turn_count = state
+                    .db
+                    .turn_list_by_scope(req.scope_id.into())
+                    .await
+                    .map(|turns| turns.len() as i32)
+                    .unwrap_or(0);
+
+                // Get artifact count for this scope
+                let artifact_count = state
+                    .db
+                    .artifact_list_by_scope(req.scope_id.into())
+                    .await
+                    .map(|artifacts| artifacts.len() as i32)
+                    .unwrap_or(0);
+
+                // Convert policies to caliber_core format for PCPRuntime
+                let core_policies: Vec<caliber_core::SummarizationPolicy> = policies
+                    .iter()
+                    .map(|p| caliber_core::SummarizationPolicy {
+                        policy_id: p.policy_id.into(),
+                        name: p.name.clone(),
+                        triggers: p.triggers.clone(),
+                        target_level: p.target_level,
+                        source_level: p.source_level,
+                        max_sources: p.max_sources,
+                        create_edges: p.create_edges,
+                        trajectory_id: Some(trajectory_id),
+                    })
+                    .collect();
+
+                // Build a caliber_core::Scope from our ScopeResponse
+                let core_scope = caliber_core::Scope {
+                    scope_id: scope.scope_id.into(),
+                    trajectory_id: scope.trajectory_id.into(),
+                    parent_scope_id: scope.parent_scope_id.map(Into::into),
+                    name: scope.name.clone(),
+                    purpose: scope.purpose.clone(),
+                    is_active: scope.is_active,
+                    created_at: scope.created_at,
+                    closed_at: scope.closed_at,
+                    checkpoint: None,
+                    token_budget: scope.token_budget,
+                    tokens_used: scope.tokens_used,
+                    metadata: scope.metadata.clone(),
+                };
+
+                // Check which triggers should fire
+                if let Ok(triggered) = state.pcp.check_summarization_triggers(
+                    &core_scope,
+                    turn_count,
+                    artifact_count,
+                    &core_policies,
+                ) {
+                    // Broadcast SummarizationTriggered event for each fired trigger
+                    for (policy_id, trigger) in triggered {
+                        // Find the policy to get its details
+                        if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
+                            state.ws.broadcast(WsEvent::SummarizationTriggered {
+                                policy_id,
+                                trigger: trigger.clone(),
+                                scope_id: core_scope.scope_id,
+                                trajectory_id,
+                                source_level: policy.source_level,
+                                target_level: policy.target_level,
+                                max_sources: policy.max_sources,
+                                create_edges: policy.create_edges,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok((StatusCode::CREATED, Json(turn)))
 }
 
@@ -124,8 +215,8 @@ pub async fn get_turn(
 // ============================================================================
 
 /// Create the turn routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(TurnState::new(db, ws));
+pub fn create_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> axum::Router {
+    let state = Arc::new(TurnState::new(db, ws, pcp));
 
     axum::Router::new()
         .route("/", axum::routing::post(create_turn))

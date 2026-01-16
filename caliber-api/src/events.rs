@@ -248,6 +248,43 @@ pub enum WsEvent {
         /// Error message
         message: String,
     },
+
+    // ========================================================================
+    // BATTLE INTEL EVENTS
+    // ========================================================================
+    /// A summarization policy trigger was fired.
+    SummarizationTriggered {
+        /// ID of the policy that triggered
+        policy_id: EntityId,
+        /// The trigger that fired
+        trigger: caliber_core::SummarizationTrigger,
+        /// Scope ID where trigger fired
+        scope_id: EntityId,
+        /// Trajectory ID for context
+        trajectory_id: EntityId,
+        /// Source abstraction level for summarization
+        source_level: caliber_core::AbstractionLevel,
+        /// Target abstraction level for summarization
+        target_level: caliber_core::AbstractionLevel,
+        /// Maximum sources to summarize
+        max_sources: i32,
+        /// Whether to create SynthesizedFrom edges
+        create_edges: bool,
+    },
+
+    /// An edge was created.
+    EdgeCreated {
+        /// ID of the created edge
+        edge_id: EntityId,
+        /// Type of the edge
+        edge_type: caliber_core::EdgeType,
+    },
+
+    /// Multiple edges were created in a batch.
+    EdgesBatchCreated {
+        /// Number of edges created
+        count: usize,
+    },
 }
 
 impl WsEvent {
@@ -287,6 +324,10 @@ impl WsEvent {
             WsEvent::Connected { .. } => "Connected",
             WsEvent::Disconnected { .. } => "Disconnected",
             WsEvent::Error { .. } => "Error",
+            // Battle Intel events
+            WsEvent::SummarizationTriggered { .. } => "SummarizationTriggered",
+            WsEvent::EdgeCreated { .. } => "EdgeCreated",
+            WsEvent::EdgesBatchCreated { .. } => "EdgesBatchCreated",
         }
     }
 
