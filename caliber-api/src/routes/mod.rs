@@ -16,6 +16,7 @@ pub mod batch;
 pub mod config;
 pub mod delegation;
 pub mod dsl;
+pub mod edge;
 pub mod graphql;
 pub mod handoff;
 pub mod health;
@@ -24,6 +25,7 @@ pub mod mcp;
 pub mod message;
 pub mod note;
 pub mod scope;
+pub mod summarization_policy;
 pub mod tenant;
 pub mod trajectory;
 pub mod turn;
@@ -32,6 +34,7 @@ pub mod webhooks;
 use std::sync::Arc;
 
 use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
+use caliber_pcp::PCPRuntime;
 use utoipa::OpenApi;
 
 use crate::db::DbClient;
@@ -57,6 +60,9 @@ pub use tenant::create_router as tenant_router;
 pub use trajectory::create_router as trajectory_router;
 pub use turn::create_router as turn_router;
 pub use webhooks::create_router as webhooks_router;
+// Battle Intel routes
+pub use edge::create_router as edge_router;
+pub use summarization_policy::create_router as summarization_policy_router;
 
 // ============================================================================
 // OPENAPI ENDPOINTS
@@ -102,17 +108,21 @@ async fn openapi_yaml() -> impl IntoResponse {
 /// - Metrics at /metrics
 /// - OpenAPI spec at /openapi.json
 /// - Swagger UI at /swagger-ui (when swagger-ui feature is enabled)
-pub fn create_api_router(db: DbClient, ws: Arc<WsState>) -> Router {
+///
+/// # Battle Intel Integration
+/// The `pcp` parameter enables auto-summarization trigger checking on turn
+/// creation and scope close events, supporting L0→L1→L2 abstraction transitions.
+pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> Router {
     use crate::telemetry::{middleware::observability_middleware, metrics_handler};
     use axum::middleware::from_fn;
 
     // Entity CRUD routes
     let api_routes = Router::new()
         .nest("/trajectories", trajectory::create_router(db.clone(), ws.clone()))
-        .nest("/scopes", scope::create_router(db.clone(), ws.clone()))
+        .nest("/scopes", scope::create_router(db.clone(), ws.clone(), pcp.clone()))
         .nest("/artifacts", artifact::create_router(db.clone(), ws.clone()))
         .nest("/notes", note::create_router(db.clone(), ws.clone()))
-        .nest("/turns", turn::create_router(db.clone(), ws.clone()))
+        .nest("/turns", turn::create_router(db.clone(), ws.clone(), pcp.clone()))
         .nest("/agents", agent::create_router(db.clone(), ws.clone()))
         .nest("/locks", lock::create_router(db.clone(), ws.clone()))
         .nest("/messages", message::create_router(db.clone(), ws.clone()))
@@ -124,7 +134,10 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>) -> Router {
         // New routes
         .nest("/batch", batch::create_router(db.clone(), ws.clone()))
         .nest("/webhooks", webhooks::create_router(db.clone(), ws.clone()))
-        .nest("/graphql", graphql::create_router(db.clone(), ws.clone()));
+        .nest("/graphql", graphql::create_router(db.clone(), ws.clone()))
+        // Battle Intel routes
+        .nest("/edges", edge::create_router(db.clone(), ws.clone()))
+        .nest("/summarization-policies", summarization_policy::create_router(db.clone(), ws.clone()));
 
     // Build the main router
     let mut router = Router::new()
@@ -191,5 +204,8 @@ mod tests {
         let _ = dsl::DslState::new;
         let _ = config::ConfigState::new;
         let _ = tenant::TenantState::new;
+        // Battle Intel modules
+        let _ = edge::EdgeState::new;
+        let _ = summarization_policy::SummarizationPolicyState::new;
     }
 }

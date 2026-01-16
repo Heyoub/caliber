@@ -16,8 +16,8 @@ use caliber_core::{
     AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
     CaliberResult, Checkpoint, Edge, EdgeType, EmbeddingVector, EntityId, EntityType,
     ExtractionMethod, MemoryCategory, Note, NoteType, Provenance, RawContent, Scope,
-    StorageError, TTL, Timestamp, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn,
-    TurnRole, ValidationError, compute_content_hash, new_entity_id,
+    StorageError, SummarizationTrigger, TTL, Timestamp, Trajectory, TrajectoryOutcome,
+    TrajectoryStatus, Turn, TurnRole, ValidationError, compute_content_hash, new_entity_id,
 };
 
 // pgrx datum types
@@ -48,7 +48,15 @@ use uuid::Uuid;
 #[inline]
 fn uuid_datum(id: uuid::Uuid) -> DatumWithOid<'static> {
     let pg_uuid = pgrx::Uuid::from_bytes(*id.as_bytes());
+    // SAFETY: pgrx::Uuid is a valid datum type for UUIDOID
     unsafe { DatumWithOid::new(pg_uuid, pgrx::pg_sys::UUIDOID) }
+}
+
+/// Convert a pgrx::Uuid to DatumWithOid for SPI calls.
+#[inline]
+fn pgrx_uuid_datum(id: pgrx::Uuid) -> DatumWithOid<'static> {
+    // SAFETY: pgrx::Uuid is a valid datum type for UUIDOID
+    unsafe { DatumWithOid::new(id, pgrx::pg_sys::UUIDOID) }
 }
 
 /// Convert an optional uuid::Uuid to DatumWithOid for SPI calls.
@@ -3747,6 +3755,479 @@ fn caliber_region_remove_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> 
         Ok(len) => len > 0,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to remove writer: {}", e);
+            false
+        }
+    }
+}
+
+
+// ============================================================================
+// EDGE OPERATIONS (Battle Intel Feature 1)
+// ============================================================================
+
+/// Create a new edge (graph relationship).
+///
+/// Edges can be binary (2 participants) or hyperedges (N participants).
+/// Inspired by Mem0's graph-based memory for +2% retrieval improvement.
+///
+/// # Arguments
+/// * `edge_type` - Type of relationship: supports, contradicts, supersedes,
+///   derivedfrom, relatesto, temporal, causal, synthesizedfrom, grouped, compared
+/// * `participants` - JSON array of participants with entity_type, id, and role
+/// * `weight` - Optional relationship strength 0.0-1.0
+/// * `trajectory_id` - Optional trajectory context
+/// * `source_turn` - Turn where this edge was extracted
+/// * `extraction_method` - How edge was created: explicit, inferred, userprovided
+/// * `confidence` - Optional confidence score 0.0-1.0
+#[pg_extern]
+fn caliber_edge_create(
+    edge_type: &str,
+    participants: pgrx::JsonB,
+    weight: Option<f32>,
+    trajectory_id: Option<pgrx::Uuid>,
+    source_turn: i32,
+    extraction_method: &str,
+    confidence: Option<f32>,
+) -> Option<pgrx::Uuid> {
+    // Record operation for metrics
+    storage_write().record_op("edge_create");
+
+    let edge_id = new_entity_id();
+
+    // Validate edge_type - reject unknown values (REQ-12)
+    let edge_type_enum = match edge_type {
+        "supports" => EdgeType::Supports,
+        "contradicts" => EdgeType::Contradicts,
+        "supersedes" => EdgeType::Supersedes,
+        "derivedfrom" => EdgeType::DerivedFrom,
+        "relatesto" => EdgeType::RelatesTo,
+        "temporal" => EdgeType::Temporal,
+        "causal" => EdgeType::Causal,
+        "synthesizedfrom" => EdgeType::SynthesizedFrom,
+        "grouped" => EdgeType::Grouped,
+        "compared" => EdgeType::Compared,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown edge_type '{}'. Valid values: supports, contradicts, supersedes, derivedfrom, relatesto, temporal, causal, synthesizedfrom, grouped, compared", edge_type);
+            return None;
+        }
+    };
+
+    // Validate extraction_method
+    let extraction_method_enum = match extraction_method {
+        "explicit" => ExtractionMethod::Explicit,
+        "inferred" => ExtractionMethod::Inferred,
+        "userprovided" => ExtractionMethod::UserProvided,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown extraction_method '{}'. Valid values: explicit, inferred, userprovided", extraction_method);
+            return None;
+        }
+    };
+
+    // Parse participants from JSON
+    let participants_vec: Vec<caliber_core::EdgeParticipant> =
+        match serde_json::from_value(participants.0) {
+            Ok(p) => p,
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to parse participants JSON: {}", e);
+                return None;
+            }
+        };
+
+    // Validate at least 2 participants
+    if participants_vec.len() < 2 {
+        pgrx::warning!("CALIBER: Edge must have at least 2 participants");
+        return None;
+    }
+
+    // Build Edge struct
+    let edge = caliber_core::Edge {
+        edge_id,
+        edge_type: edge_type_enum,
+        participants: participants_vec,
+        weight,
+        trajectory_id: trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes())),
+        provenance: Provenance {
+            source_turn,
+            extraction_method: extraction_method_enum,
+            confidence,
+        },
+        created_at: Utc::now(),
+        metadata: None,
+    };
+
+    // Insert via direct heap operations (NO SQL)
+    match edge_heap::edge_create_heap(&edge) {
+        Ok(_) => Some(pgrx::Uuid::from_bytes(*edge_id.as_bytes())),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to insert edge: {}", e);
+            None
+        }
+    }
+}
+
+/// Get an edge by ID.
+#[pg_extern]
+fn caliber_edge_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+    let entity_id = Uuid::from_bytes(*id.as_bytes());
+
+    match edge_heap::edge_get_heap(entity_id) {
+        Ok(Some(edge)) => {
+            let json = serde_json::json!({
+                "edge_id": edge.edge_id.to_string(),
+                "edge_type": match edge.edge_type {
+                    EdgeType::Supports => "supports",
+                    EdgeType::Contradicts => "contradicts",
+                    EdgeType::Supersedes => "supersedes",
+                    EdgeType::DerivedFrom => "derivedfrom",
+                    EdgeType::RelatesTo => "relatesto",
+                    EdgeType::Temporal => "temporal",
+                    EdgeType::Causal => "causal",
+                    EdgeType::SynthesizedFrom => "synthesizedfrom",
+                    EdgeType::Grouped => "grouped",
+                    EdgeType::Compared => "compared",
+                },
+                "participants": edge.participants,
+                "weight": edge.weight,
+                "trajectory_id": edge.trajectory_id.map(|id| id.to_string()),
+                "provenance": {
+                    "source_turn": edge.provenance.source_turn,
+                    "extraction_method": match edge.provenance.extraction_method {
+                        ExtractionMethod::Explicit => "explicit",
+                        ExtractionMethod::Inferred => "inferred",
+                        ExtractionMethod::UserProvided => "userprovided",
+                    },
+                    "confidence": edge.provenance.confidence,
+                },
+                "created_at": edge.created_at.to_rfc3339(),
+                "metadata": edge.metadata,
+            });
+            Some(pgrx::JsonB(json))
+        }
+        Ok(None) => None,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to get edge: {}", e);
+            None
+        }
+    }
+}
+
+/// List edges by participant entity.
+/// Returns all edges that include the given entity as a participant.
+///
+/// NOTE: This uses a sequential scan with JSONB containment check.
+/// For high-frequency queries, consider adding a GIN index on participants.
+/// This is NOT hot path - edge queries are analytical, not per-turn.
+#[pg_extern]
+fn caliber_edges_by_participant(entity_id: pgrx::Uuid) -> pgrx::JsonB {
+    let id = Uuid::from_bytes(*entity_id.as_bytes());
+
+    // Use SPI for JSONB containment query - this is analytical, not hot path
+    let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let search_json = serde_json::json!([{"entity_ref": {"id": id.to_string()}}]);
+
+        let table = client.select(
+            "SELECT edge_id, edge_type, participants, weight, trajectory_id,
+                    source_turn, extraction_method, confidence, created_at, metadata
+             FROM caliber_edge
+             WHERE participants @> $1::jsonb",
+            None,
+            &[jsonb_datum(&search_json)],
+        )?;
+
+        let mut edges = Vec::new();
+        for row in table {
+            let edge_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+            let edge_type: Option<String> = row.get(2).ok().flatten();
+            let participants: Option<pgrx::JsonB> = row.get(3).ok().flatten();
+            let weight: Option<f32> = row.get(4).ok().flatten();
+            let trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+            let source_turn: Option<i32> = row.get(6).ok().flatten();
+            let extraction_method: Option<String> = row.get(7).ok().flatten();
+            let confidence: Option<f32> = row.get(8).ok().flatten();
+            let created_at: Option<TimestampWithTimeZone> = row.get(9).ok().flatten();
+            let metadata: Option<pgrx::JsonB> = row.get(10).ok().flatten();
+
+            let edge_json = serde_json::json!({
+                "edge_id": edge_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "edge_type": edge_type,
+                "participants": participants.map(|j| j.0),
+                "weight": weight,
+                "trajectory_id": trajectory_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "provenance": {
+                    "source_turn": source_turn,
+                    "extraction_method": extraction_method,
+                    "confidence": confidence,
+                },
+                "created_at": created_at.map(|t: TimestampWithTimeZone| t.to_string()),
+                "metadata": metadata.map(|j| j.0),
+            });
+            edges.push(edge_json);
+        }
+        Ok(edges)
+    });
+
+    match result {
+        Ok(edges) => pgrx::JsonB(serde_json::json!(edges)),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to list edges by participant: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+
+// ============================================================================
+// SUMMARIZATION POLICY OPERATIONS (Battle Intel Feature 4)
+// ============================================================================
+
+/// Create a summarization policy.
+///
+/// Policies define when and how L0→L1→L2 abstraction transitions occur.
+/// Inspired by EVOLVE-MEM's self-improvement engine.
+///
+/// # Arguments
+/// * `name` - Policy name
+/// * `triggers` - JSON array of trigger definitions
+/// * `source_level` - Source abstraction level: raw, summary, principle
+/// * `target_level` - Target abstraction level: raw, summary, principle
+/// * `max_sources` - Maximum items to summarize at once
+/// * `create_edges` - Whether to auto-create SynthesizedFrom edges
+/// * `trajectory_id` - Optional trajectory this policy applies to
+#[pg_extern]
+fn caliber_summarization_policy_create(
+    name: &str,
+    triggers: pgrx::JsonB,
+    source_level: &str,
+    target_level: &str,
+    max_sources: i32,
+    create_edges: bool,
+    trajectory_id: Option<pgrx::Uuid>,
+) -> Option<pgrx::Uuid> {
+    // Record operation for metrics
+    storage_write().record_op("summarization_policy_create");
+
+    let policy_id = new_entity_id();
+
+    // Validate abstraction levels
+    let source_level_enum = match source_level {
+        "raw" => AbstractionLevel::Raw,
+        "summary" => AbstractionLevel::Summary,
+        "principle" => AbstractionLevel::Principle,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown source_level '{}'. Valid values: raw, summary, principle", source_level);
+            return None;
+        }
+    };
+
+    let target_level_enum = match target_level {
+        "raw" => AbstractionLevel::Raw,
+        "summary" => AbstractionLevel::Summary,
+        "principle" => AbstractionLevel::Principle,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown target_level '{}'. Valid values: raw, summary, principle", target_level);
+            return None;
+        }
+    };
+
+    // Validate level transition (must go upward)
+    let valid_transition = match (source_level_enum, target_level_enum) {
+        (AbstractionLevel::Raw, AbstractionLevel::Summary) => true,
+        (AbstractionLevel::Raw, AbstractionLevel::Principle) => true,
+        (AbstractionLevel::Summary, AbstractionLevel::Principle) => true,
+        _ => false,
+    };
+
+    if !valid_transition {
+        pgrx::warning!("CALIBER: Invalid abstraction level transition. Must go from lower to higher level.");
+        return None;
+    }
+
+    // Parse triggers from JSON
+    let triggers_vec: Vec<SummarizationTrigger> = match serde_json::from_value(triggers.0) {
+        Ok(t) => t,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to parse triggers JSON: {}", e);
+            return None;
+        }
+    };
+
+    if triggers_vec.is_empty() {
+        pgrx::warning!("CALIBER: At least one trigger is required");
+        return None;
+    }
+
+    if max_sources <= 0 {
+        pgrx::warning!("CALIBER: max_sources must be positive");
+        return None;
+    }
+
+    // Insert via SPI (no heap operations for policies yet)
+    let traj_id = trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
+    let triggers_json = serde_json::to_value(&triggers_vec).unwrap_or(serde_json::Value::Null);
+
+    let result: Result<(), pgrx::spi::SpiError> = Spi::connect_mut(|client| {
+        use pgrx::datum::DatumWithOid;
+        use tuple_extract::chrono_to_timestamp;
+
+        let now = chrono_to_timestamp(Utc::now());
+        let pg_id = pgrx::Uuid::from_bytes(*policy_id.as_bytes());
+        let pg_traj_id = traj_id.map(|id| pgrx::Uuid::from_bytes(*id.as_bytes()));
+
+        // Build params with proper OIDs
+        let params: Vec<DatumWithOid<'_>> = vec![
+            unsafe { DatumWithOid::new(pg_id, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(name, pgrx::pg_sys::TEXTOID) },
+            unsafe { DatumWithOid::new(pgrx::JsonB(triggers_json.clone()), pgrx::pg_sys::JSONBOID) },
+            unsafe { DatumWithOid::new(source_level, pgrx::pg_sys::TEXTOID) },
+            unsafe { DatumWithOid::new(target_level, pgrx::pg_sys::TEXTOID) },
+            unsafe { DatumWithOid::new(max_sources, pgrx::pg_sys::INT4OID) },
+            unsafe { DatumWithOid::new(create_edges, pgrx::pg_sys::BOOLOID) },
+            match pg_traj_id {
+                Some(id) => unsafe { DatumWithOid::new(id, pgrx::pg_sys::UUIDOID) },
+                None => unsafe { DatumWithOid::new((), pgrx::pg_sys::UUIDOID) },
+            },
+            unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
+        ];
+
+        client.update(
+            "INSERT INTO caliber_summarization_policy
+             (policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            None,
+            &params,
+        )?;
+
+        Ok(())
+    });
+
+    match result {
+        Ok(()) => Some(pgrx::Uuid::from_bytes(*policy_id.as_bytes())),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to insert summarization policy: {}", e);
+            None
+        }
+    }
+}
+
+/// Get a summarization policy by ID.
+/// NOTE: Policy reads are config/admin operations, not hot path.
+#[pg_extern]
+fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+    let result: Result<Option<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let table = client.select(
+            "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at
+             FROM caliber_summarization_policy
+             WHERE policy_id = $1",
+            None,
+            &[pgrx_uuid_datum(id)],
+        )?;
+
+        // Iterate and take first row
+        for row in table {
+            let policy_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+            let name: Option<String> = row.get(2).ok().flatten();
+            let triggers: Option<pgrx::JsonB> = row.get(3).ok().flatten();
+            let source_level: Option<String> = row.get(4).ok().flatten();
+            let target_level: Option<String> = row.get(5).ok().flatten();
+            let max_sources: Option<i32> = row.get(6).ok().flatten();
+            let create_edges: Option<bool> = row.get(7).ok().flatten();
+            let trajectory_id: Option<pgrx::Uuid> = row.get(8).ok().flatten();
+            let created_at: Option<TimestampWithTimeZone> = row.get(9).ok().flatten();
+
+            let json = serde_json::json!({
+                "policy_id": policy_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "name": name,
+                "triggers": triggers.map(|j| j.0),
+                "source_level": source_level,
+                "target_level": target_level,
+                "max_sources": max_sources,
+                "create_edges": create_edges,
+                "trajectory_id": trajectory_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "created_at": created_at.map(|t: TimestampWithTimeZone| t.to_string()),
+            });
+            return Ok(Some(json));
+        }
+        Ok(None)
+    });
+
+    match result {
+        Ok(Some(json)) => Some(pgrx::JsonB(json)),
+        Ok(None) => None,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to get summarization policy: {}", e);
+            None
+        }
+    }
+}
+
+/// List summarization policies for a trajectory.
+/// NOTE: Policy listing is config/admin operation, not hot path.
+#[pg_extern]
+fn caliber_summarization_policies_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
+    let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let table = client.select(
+            "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at
+             FROM caliber_summarization_policy
+             WHERE trajectory_id = $1
+             ORDER BY created_at DESC",
+            None,
+            &[pgrx_uuid_datum(trajectory_id)],
+        )?;
+
+        let mut policies = Vec::new();
+        for row in table {
+            let policy_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+            let name: Option<String> = row.get(2).ok().flatten();
+            let triggers: Option<pgrx::JsonB> = row.get(3).ok().flatten();
+            let source_level: Option<String> = row.get(4).ok().flatten();
+            let target_level: Option<String> = row.get(5).ok().flatten();
+            let max_sources: Option<i32> = row.get(6).ok().flatten();
+            let create_edges: Option<bool> = row.get(7).ok().flatten();
+            let traj_id: Option<pgrx::Uuid> = row.get(8).ok().flatten();
+            let created_at: Option<TimestampWithTimeZone> = row.get(9).ok().flatten();
+
+            let json = serde_json::json!({
+                "policy_id": policy_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "name": name,
+                "triggers": triggers.map(|j| j.0),
+                "source_level": source_level,
+                "target_level": target_level,
+                "max_sources": max_sources,
+                "create_edges": create_edges,
+                "trajectory_id": traj_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "created_at": created_at.map(|t: TimestampWithTimeZone| t.to_string()),
+            });
+            policies.push(json);
+        }
+        Ok(policies)
+    });
+
+    match result {
+        Ok(policies) => pgrx::JsonB(serde_json::json!(policies)),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to list summarization policies: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// Delete a summarization policy.
+/// NOTE: Policy deletion is config/admin operation, not hot path.
+#[pg_extern]
+fn caliber_summarization_policy_delete(id: pgrx::Uuid) -> bool {
+    let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
+        let table = client.update(
+            "DELETE FROM caliber_summarization_policy WHERE policy_id = $1",
+            None,
+            &[pgrx_uuid_datum(id)],
+        )?;
+        Ok(table.len())
+    });
+
+    match result {
+        Ok(count) => count > 0,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to delete summarization policy: {}", e);
             false
         }
     }

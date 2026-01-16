@@ -1793,5 +1793,171 @@ impl DbClient {
 
         Ok(())
     }
+
+    // ========================================================================
+    // BATTLE INTEL: EDGE OPERATIONS
+    // ========================================================================
+
+    /// Create an edge by calling caliber_edge_create.
+    pub async fn edge_create(&self, req: &CreateEdgeRequest) -> ApiResult<EdgeResponse> {
+        let conn = self.get_conn().await?;
+
+        let participants_json = serde_json::to_value(&req.participants)?;
+        let edge_type_str = format!("{:?}", req.edge_type);
+        let extraction_method_str = format!("{:?}", req.provenance.extraction_method);
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_edge_create($1, $2, $3, $4, $5, $6, $7, $8)",
+                &[
+                    &edge_type_str,
+                    &participants_json,
+                    &req.weight,
+                    &req.trajectory_id,
+                    &req.provenance.source_turn,
+                    &extraction_method_str,
+                    &req.provenance.confidence,
+                    &req.metadata,
+                ],
+            )
+            .await?;
+
+        let edge_id: Option<Uuid> = row.get(0);
+        let edge_id = edge_id.ok_or_else(|| ApiError::internal("Failed to create edge"))?;
+
+        self.edge_get(edge_id.into())
+            .await?
+            .ok_or_else(|| ApiError::internal("Edge created but not found"))
+    }
+
+    /// Get an edge by ID by calling caliber_edge_get.
+    pub async fn edge_get(&self, id: EntityId) -> ApiResult<Option<EdgeResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_edge_get($1)", &[&id])
+            .await?;
+
+        let json_value: Option<JsonValue> = row.get(0);
+
+        match json_value {
+            Some(json) => {
+                let edge: EdgeResponse = serde_json::from_value(json)?;
+                Ok(Some(edge))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// List edges by participant entity ID.
+    pub async fn edge_list_by_participant(&self, entity_id: EntityId) -> ApiResult<Vec<EdgeResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_edges_by_participant($1)", &[&entity_id])
+            .await?;
+
+        let json_value: JsonValue = row.get(0);
+        let edges: Vec<EdgeResponse> = serde_json::from_value(json_value)?;
+
+        Ok(edges)
+    }
+
+    // ========================================================================
+    // BATTLE INTEL: SUMMARIZATION POLICY OPERATIONS
+    // ========================================================================
+
+    /// Create a summarization policy by calling caliber_summarization_policy_create.
+    pub async fn summarization_policy_create(
+        &self,
+        req: &CreateSummarizationPolicyRequest,
+    ) -> ApiResult<SummarizationPolicyResponse> {
+        let conn = self.get_conn().await?;
+
+        let triggers_json = serde_json::to_value(&req.triggers)?;
+        let source_level_str = format!("{:?}", req.source_level);
+        let target_level_str = format!("{:?}", req.target_level);
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_summarization_policy_create($1, $2, $3, $4, $5, $6, $7, $8)",
+                &[
+                    &req.name,
+                    &triggers_json,
+                    &source_level_str,
+                    &target_level_str,
+                    &req.max_sources,
+                    &req.create_edges,
+                    &req.trajectory_id,
+                    &req.metadata,
+                ],
+            )
+            .await?;
+
+        let policy_id: Option<Uuid> = row.get(0);
+        let policy_id = policy_id.ok_or_else(|| ApiError::internal("Failed to create policy"))?;
+
+        self.summarization_policy_get(policy_id.into())
+            .await?
+            .ok_or_else(|| ApiError::internal("Policy created but not found"))
+    }
+
+    /// Get a summarization policy by ID.
+    pub async fn summarization_policy_get(
+        &self,
+        id: EntityId,
+    ) -> ApiResult<Option<SummarizationPolicyResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_summarization_policy_get($1)", &[&id])
+            .await?;
+
+        let json_value: Option<JsonValue> = row.get(0);
+
+        match json_value {
+            Some(json) => {
+                let policy: SummarizationPolicyResponse = serde_json::from_value(json)?;
+                Ok(Some(policy))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// List summarization policies for a trajectory.
+    pub async fn summarization_policies_for_trajectory(
+        &self,
+        trajectory_id: EntityId,
+    ) -> ApiResult<Vec<SummarizationPolicyResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_summarization_policies_by_trajectory($1)",
+                &[&trajectory_id],
+            )
+            .await?;
+
+        let json_value: JsonValue = row.get(0);
+        let policies: Vec<SummarizationPolicyResponse> = serde_json::from_value(json_value)?;
+
+        Ok(policies)
+    }
+
+    /// Delete a summarization policy by ID.
+    pub async fn summarization_policy_delete(&self, id: EntityId) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        let deleted: bool = conn
+            .query_one("SELECT caliber_summarization_policy_delete($1)", &[&id])
+            .await?
+            .get(0);
+
+        if !deleted {
+            return Err(ApiError::not_found("SummarizationPolicy", id.into()));
+        }
+
+        Ok(())
+    }
 }
 
