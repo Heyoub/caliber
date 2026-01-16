@@ -258,7 +258,7 @@ proptest! {
             prop_assert_eq!(retrieved.agent_id, registered.agent_id);
             prop_assert_eq!(&retrieved.agent_type, &registered.agent_type);
             prop_assert_eq!(&retrieved.capabilities, &registered.capabilities);
-            prop_assert_eq!(retrieved.status, registered.status);
+            prop_assert_eq!(retrieved.status.as_str(), registered.status.as_str());
             prop_assert_eq!(&retrieved.can_delegate_to, &registered.can_delegate_to);
             prop_assert_eq!(&retrieved.reports_to, &registered.reports_to);
             prop_assert_eq!(retrieved.created_at, registered.created_at);
@@ -276,7 +276,7 @@ proptest! {
             if let Some(ref new_status) = update_req.status {
                 prop_assert_eq!(&updated.status, new_status);
             } else {
-                prop_assert_eq!(updated.status, registered.status);
+                prop_assert_eq!(updated.status.as_str(), registered.status.as_str());
             }
 
             if let Some(new_trajectory_id) = update_req.current_trajectory_id {
@@ -313,7 +313,7 @@ proptest! {
             prop_assert_eq!(retrieved_after_update.agent_id, updated.agent_id);
             prop_assert_eq!(&retrieved_after_update.agent_type, &updated.agent_type);
             prop_assert_eq!(&retrieved_after_update.capabilities, &updated.capabilities);
-            prop_assert_eq!(retrieved_after_update.status, updated.status);
+            prop_assert_eq!(retrieved_after_update.status.as_str(), updated.status.as_str());
             prop_assert_eq!(retrieved_after_update.current_trajectory_id, updated.current_trajectory_id);
             prop_assert_eq!(retrieved_after_update.current_scope_id, updated.current_scope_id);
 
@@ -321,7 +321,7 @@ proptest! {
             // STEP 5: UNREGISTER - Unregister the agent
             // ================================================================
             // First, set agent to idle status if it's active (required for unregister)
-            if updated.status.to_lowercase() == "active" {
+            if updated.status.eq_ignore_ascii_case("active") {
                 let idle_update = UpdateAgentRequest {
                     status: Some("idle".to_string()),
                     current_trajectory_id: None,
@@ -461,12 +461,12 @@ proptest! {
             let updated = db.agent_update(registered.agent_id, &update_req).await?;
 
             // Property: Status should change to the requested status
-            prop_assert_eq!(updated.status, new_status);
+            prop_assert_eq!(updated.status.as_str(), new_status.as_str());
 
             // Verify persistence by retrieving again
             let retrieved = db.agent_get(registered.agent_id).await?
                 .expect("Agent should exist");
-            prop_assert_eq!(retrieved.status, new_status);
+            prop_assert_eq!(retrieved.status.as_str(), new_status.as_str());
 
             Ok(())
         })?;

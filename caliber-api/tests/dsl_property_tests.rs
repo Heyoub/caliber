@@ -141,6 +141,8 @@ proptest! {
         })?;
     }
 }
+
+mod dsl_round_trip_api {
 //! Property-Based Tests for DSL Round-Trip via API
 //!
 //! **Property 12: DSL Validation Round-Trip**
@@ -167,6 +169,7 @@ use std::sync::Arc;
 fn test_db_client() -> DbClient {
     let config = DbConfig::from_env();
     DbClient::from_config(&config).expect("Failed to create database client")
+}
 }
 
 async fn call_parse_endpoint(

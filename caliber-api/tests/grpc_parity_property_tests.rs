@@ -17,7 +17,13 @@ use caliber_api::{
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse},
     ws::WsState,
 };
-use caliber_core::EntityId;
+use caliber_api::proto::scope_service_server::ScopeService;
+use caliber_api::proto::trajectory_service_server::TrajectoryService;
+use caliber_pcp::{
+    AntiSprawlConfig, ConflictResolution, ContextDagConfig, DosageConfig, GroundingConfig,
+    LintingConfig, PCPConfig, PCPRuntime, PruneStrategy, RecoveryConfig, RecoveryFrequency,
+    StalenessConfig,
+};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
@@ -33,6 +39,43 @@ use uuid::Uuid;
 fn test_db_client() -> DbClient {
     let config = DbConfig::from_env();
     DbClient::from_config(&config).expect("Failed to create database client")
+}
+
+fn make_test_pcp_config() -> PCPConfig {
+    PCPConfig {
+        context_dag: ContextDagConfig {
+            max_depth: 10,
+            prune_strategy: PruneStrategy::OldestFirst,
+        },
+        recovery: RecoveryConfig {
+            enabled: true,
+            frequency: RecoveryFrequency::OnScopeClose,
+            max_checkpoints: 5,
+        },
+        dosage: DosageConfig {
+            max_tokens_per_scope: 8000,
+            max_artifacts_per_scope: 100,
+            max_notes_per_trajectory: 500,
+        },
+        anti_sprawl: AntiSprawlConfig {
+            max_trajectory_depth: 5,
+            max_concurrent_scopes: 10,
+        },
+        grounding: GroundingConfig {
+            require_artifact_backing: false,
+            contradiction_threshold: 0.85,
+            conflict_resolution: ConflictResolution::LastWriteWins,
+        },
+        linting: LintingConfig {
+            max_artifact_size: 1024 * 1024,
+            min_confidence_threshold: 0.3,
+        },
+        staleness: StalenessConfig { stale_hours: 24 * 30 },
+    }
+}
+
+fn test_pcp_runtime() -> Arc<PCPRuntime> {
+    Arc::new(PCPRuntime::new(make_test_pcp_config()).expect("Failed to create PCP runtime"))
 }
 
 /// Create a WebSocket state for gRPC services (broadcasts are ignored here).
@@ -52,13 +95,19 @@ fn assert_trajectory_parity(
     rest: &TrajectoryResponse,
     grpc: &proto::TrajectoryResponse,
 ) -> Result<(), TestCaseError> {
-    prop_assert_eq!(grpc.trajectory_id, rest.trajectory_id.to_string());
-    prop_assert_eq!(grpc.name, rest.name);
-    prop_assert_eq!(grpc.description, rest.description);
-    prop_assert_eq!(grpc.status, rest.status.to_string());
-    prop_assert_eq!(grpc.parent_trajectory_id, rest.parent_trajectory_id.map(|id| id.to_string()));
-    prop_assert_eq!(grpc.root_trajectory_id, rest.root_trajectory_id.map(|id| id.to_string()));
-    prop_assert_eq!(grpc.agent_id, rest.agent_id.map(|id| id.to_string()));
+    let rest_trajectory_id = rest.trajectory_id.to_string();
+    let rest_status = rest.status.to_string();
+    let rest_parent = rest.parent_trajectory_id.as_ref().map(|id| id.to_string());
+    let rest_root = rest.root_trajectory_id.as_ref().map(|id| id.to_string());
+    let rest_agent = rest.agent_id.as_ref().map(|id| id.to_string());
+
+    prop_assert_eq!(grpc.trajectory_id.as_str(), rest_trajectory_id.as_str());
+    prop_assert_eq!(grpc.name.as_str(), rest.name.as_str());
+    prop_assert_eq!(grpc.description.as_deref(), rest.description.as_deref());
+    prop_assert_eq!(grpc.status.as_str(), rest_status.as_str());
+    prop_assert_eq!(grpc.parent_trajectory_id.as_deref(), rest_parent.as_deref());
+    prop_assert_eq!(grpc.root_trajectory_id.as_deref(), rest_root.as_deref());
+    prop_assert_eq!(grpc.agent_id.as_deref(), rest_agent.as_deref());
     prop_assert_eq!(grpc.created_at, rest.created_at.timestamp_millis());
     prop_assert_eq!(grpc.updated_at, rest.updated_at.timestamp_millis());
     prop_assert_eq!(grpc.completed_at, rest.completed_at.map(|t| t.timestamp_millis()));
@@ -69,11 +118,15 @@ fn assert_scope_parity(
     rest: &ScopeResponse,
     grpc: &proto::ScopeResponse,
 ) -> Result<(), TestCaseError> {
-    prop_assert_eq!(grpc.scope_id, rest.scope_id.to_string());
-    prop_assert_eq!(grpc.trajectory_id, rest.trajectory_id.to_string());
-    prop_assert_eq!(grpc.parent_scope_id, rest.parent_scope_id.map(|id| id.to_string()));
-    prop_assert_eq!(grpc.name, rest.name);
-    prop_assert_eq!(grpc.purpose, rest.purpose);
+    let rest_scope_id = rest.scope_id.to_string();
+    let rest_trajectory_id = rest.trajectory_id.to_string();
+    let rest_parent = rest.parent_scope_id.as_ref().map(|id| id.to_string());
+
+    prop_assert_eq!(grpc.scope_id.as_str(), rest_scope_id.as_str());
+    prop_assert_eq!(grpc.trajectory_id.as_str(), rest_trajectory_id.as_str());
+    prop_assert_eq!(grpc.parent_scope_id.as_deref(), rest_parent.as_deref());
+    prop_assert_eq!(grpc.name.as_str(), rest.name.as_str());
+    prop_assert_eq!(grpc.purpose.as_deref(), rest.purpose.as_deref());
     prop_assert_eq!(grpc.is_active, rest.is_active);
     prop_assert_eq!(grpc.created_at, rest.created_at.timestamp_millis());
     prop_assert_eq!(grpc.closed_at, rest.closed_at.map(|t| t.timestamp_millis()));
@@ -181,7 +234,8 @@ proptest! {
             let db = test_db_client();
             let ws = test_ws_state();
             let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
-            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone()));
+            let pcp = test_pcp_runtime();
+            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone(), pcp));
             let grpc_service = grpc::ScopeServiceImpl::new(db.clone(), ws.clone());
 
             // Create a trajectory to attach scopes to
@@ -248,6 +302,8 @@ proptest! {
         })?;
     }
 }
+
+mod grpc_ws_parity_tests {
 //! Property-Based Tests for REST ↔ gRPC Parity
 //!
 //! **Property 2: REST-gRPC Parity**
@@ -266,6 +322,7 @@ use caliber_api::{
     types::CreateTrajectoryRequest,
     WsState,
 };
+use caliber_api::proto::trajectory_service_server::TrajectoryService;
 use proptest::prelude::*;
 use std::sync::Arc;
 use tonic::Request;
@@ -280,6 +337,7 @@ async fn recv_trajectory_event(
         Ok(Err(err)) => panic!("Broadcast recv error: {:?}", err),
         Err(_) => panic!("Timed out waiting for TrajectoryCreated event"),
     }
+}
 }
 
 // ============================================================================
@@ -358,8 +416,8 @@ proptest! {
                 .into_inner();
 
             // Parity checks: core fields align across REST and gRPC
-            prop_assert_eq!(grpc_resp.name, rest_trajectory.name);
-            prop_assert_eq!(grpc_resp.description, rest_trajectory.description);
+            prop_assert_eq!(grpc_resp.name.as_str(), rest_trajectory.name.as_str());
+            prop_assert_eq!(grpc_resp.description.as_deref(), rest_trajectory.description.as_deref());
             prop_assert!(!grpc_resp.status.is_empty(), "gRPC status should be set");
             prop_assert!(!grpc_resp.trajectory_id.is_empty(), "gRPC id should be set");
 
