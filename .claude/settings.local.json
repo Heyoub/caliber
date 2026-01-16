@@ -15,7 +15,8 @@
       "Bash(sort:*)",
       "Bash(cat:*)",
       "Bash(done)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(cargo search:*)"
     ]
   }
 }

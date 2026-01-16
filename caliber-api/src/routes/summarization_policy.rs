@@ -126,7 +126,7 @@ pub async fn get_policy(
 
     match policy {
         Some(p) => Ok(Json(p)),
-        None => Err(ApiError::not_found("SummarizationPolicy", id)),
+        None => Err(ApiError::entity_not_found("SummarizationPolicy", id)),
     }
 }
 

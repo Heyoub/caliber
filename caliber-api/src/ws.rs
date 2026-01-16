@@ -109,11 +109,7 @@ pub async fn ws_handler(
     auth: AuthContext,
 ) -> ApiResult<Response> {
     // Extract tenant ID from auth context
-    let tenant_id = auth.tenant_id.ok_or_else(|| ApiError {
-        code: ErrorCode::Forbidden,
-        message: "Tenant context required for WebSocket connection".to_string(),
-        details: None,
-    })?;
+    let tenant_id = auth.tenant_id;
 
     info!(
         tenant_id = %tenant_id,
@@ -255,7 +251,7 @@ async fn send_event(
         axum::Error::new(e)
     })?;
 
-    sender.send(Message::Text(json)).await
+    sender.send(Message::Text(json.into())).await
 }
 
 /// Determine if an event should be sent to a client based on tenant filtering.

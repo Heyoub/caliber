@@ -67,7 +67,7 @@ pub async fn list_tenants(
             tenant_id: Uuid::new_v4().into(),
             name: "Default Tenant".to_string(),
             status: TenantStatus::Active,
-            created_at: caliber_core::Timestamp::now(),
+            created_at: chrono::Utc::now(),
         },
     ];
 
@@ -110,7 +110,7 @@ pub async fn get_tenant(
         tenant_id: id.into(),
         name: "Default Tenant".to_string(),
         status: TenantStatus::Active,
-        created_at: caliber_core::Timestamp::now(),
+        created_at: chrono::Utc::now(),
     };
 
     Ok(Json(tenant))
@@ -141,7 +141,7 @@ mod tests {
             tenant_id: Uuid::new_v4().into(),
             name: "Test Tenant".to_string(),
             status: TenantStatus::Active,
-            created_at: caliber_core::Timestamp::now(),
+            created_at: chrono::Utc::now(),
         };
 
         assert_eq!(tenant.name, "Test Tenant");
@@ -167,13 +167,13 @@ mod tests {
                     tenant_id: Uuid::new_v4().into(),
                     name: "Tenant 1".to_string(),
                     status: TenantStatus::Active,
-                    created_at: caliber_core::Timestamp::now(),
+                    created_at: chrono::Utc::now(),
                 },
                 TenantInfo {
                     tenant_id: Uuid::new_v4().into(),
                     name: "Tenant 2".to_string(),
                     status: TenantStatus::Suspended,
-                    created_at: caliber_core::Timestamp::now(),
+                    created_at: chrono::Utc::now(),
                 },
             ],
         };

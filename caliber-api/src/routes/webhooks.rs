@@ -333,7 +333,7 @@ pub async fn create_webhook(
     }
 
     // Parse URL to validate format
-    let url = url::Url::parse(&req.url)
+    let url = reqwest::Url::parse(&req.url)
         .map_err(|_| ApiError::invalid_input("Invalid URL format"))?;
 
     // Validate events
@@ -418,7 +418,7 @@ pub async fn get_webhook(
         .store
         .get(id)
         .await
-        .ok_or_else(|| ApiError::entity_not_found("Webhook", id.into()))?;
+        .ok_or_else(|| ApiError::entity_not_found("Webhook", id))?;
 
     Ok(Json(WebhookResponse { webhook }))
 }
@@ -448,7 +448,7 @@ pub async fn delete_webhook(
     let removed = state.store.remove(id).await;
 
     if removed.is_none() {
-        return Err(ApiError::entity_not_found("Webhook", id.into()));
+        return Err(ApiError::entity_not_found("Webhook", id));
     }
 
     tracing::info!(webhook_id = %id, "Webhook removed");

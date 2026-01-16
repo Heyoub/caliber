@@ -24,7 +24,6 @@ use uuid::Uuid;
 
 use crate::{
     db::DbClient,
-    error::ApiError,
     events::WsEvent,
     types::*,
     ws::WsState,

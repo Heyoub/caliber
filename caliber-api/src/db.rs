@@ -1823,11 +1823,11 @@ impl DbClient {
             .await?;
 
         let edge_id: Option<Uuid> = row.get(0);
-        let edge_id = edge_id.ok_or_else(|| ApiError::internal("Failed to create edge"))?;
+        let edge_id = edge_id.ok_or_else(|| ApiError::internal_error("Failed to create edge"))?;
 
         self.edge_get(edge_id.into())
             .await?
-            .ok_or_else(|| ApiError::internal("Edge created but not found"))
+            .ok_or_else(|| ApiError::internal_error("Edge created but not found"))
     }
 
     /// Get an edge by ID by calling caliber_edge_get.
@@ -1895,11 +1895,11 @@ impl DbClient {
             .await?;
 
         let policy_id: Option<Uuid> = row.get(0);
-        let policy_id = policy_id.ok_or_else(|| ApiError::internal("Failed to create policy"))?;
+        let policy_id = policy_id.ok_or_else(|| ApiError::internal_error("Failed to create policy"))?;
 
         self.summarization_policy_get(policy_id.into())
             .await?
-            .ok_or_else(|| ApiError::internal("Policy created but not found"))
+            .ok_or_else(|| ApiError::internal_error("Policy created but not found"))
     }
 
     /// Get a summarization policy by ID.
@@ -1954,10 +1954,202 @@ impl DbClient {
             .get(0);
 
         if !deleted {
-            return Err(ApiError::not_found("SummarizationPolicy", id.into()));
+            return Err(ApiError::entity_not_found("SummarizationPolicy", id));
         }
 
         Ok(())
+    }
+
+    // ========================================================================
+    // TURN OPERATIONS (additional)
+    // ========================================================================
+
+    /// Get a turn by ID.
+    pub async fn turn_get(&self, id: EntityId) -> ApiResult<Option<TurnResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_turn_get($1)", &[&id])
+            .await?;
+
+        let json_opt: Option<JsonValue> = row.get(0);
+
+        match json_opt {
+            Some(json) => {
+                let response = self.parse_turn_json(&json)?;
+                Ok(Some(response))
+            }
+            None => Ok(None),
+        }
+    }
+
+    // ========================================================================
+    // DELEGATION OPERATIONS (additional)
+    // ========================================================================
+
+    /// Reject a delegation.
+    pub async fn delegation_reject(&self, id: EntityId, reason: String) -> ApiResult<DelegationResponse> {
+        let conn = self.get_conn().await?;
+
+        let updated: bool = conn
+            .query_one("SELECT caliber_delegation_reject($1, $2)", &[&id, &reason])
+            .await?
+            .get(0);
+
+        if !updated {
+            return Err(ApiError::entity_not_found("Delegation", id));
+        }
+
+        self.delegation_get(id).await?
+            .ok_or_else(|| ApiError::entity_not_found("Delegation", id))
+    }
+
+    // ========================================================================
+    // DSL OPERATIONS
+    // ========================================================================
+
+    /// Validate DSL source.
+    pub async fn dsl_validate(&self, req: &ValidateDslRequest) -> ApiResult<ValidateDslResponse> {
+        // Use caliber_dsl to validate the source
+        let parse_result = caliber_dsl::parse(&req.source);
+
+        match parse_result {
+            Ok(ast) => {
+                let ast_json = serde_json::to_value(&ast)?;
+                Ok(ValidateDslResponse {
+                    valid: true,
+                    errors: vec![],
+                    ast: Some(ast_json),
+                })
+            }
+            Err(e) => {
+                Ok(ValidateDslResponse {
+                    valid: false,
+                    errors: vec![ParseErrorResponse {
+                        line: 0,
+                        column: 0,
+                        message: e.to_string(),
+                    }],
+                    ast: None,
+                })
+            }
+        }
+    }
+
+    /// Parse DSL source and return AST.
+    pub async fn dsl_parse(&self, req: &ParseDslRequest) -> ApiResult<ValidateDslResponse> {
+        // Same as validate but focused on parsing
+        let validate_req = ValidateDslRequest {
+            source: req.source.clone(),
+        };
+        self.dsl_validate(&validate_req).await
+    }
+
+    // ========================================================================
+    // CONFIG OPERATIONS
+    // ========================================================================
+
+    /// Get current configuration.
+    pub async fn config_get(&self) -> ApiResult<ConfigResponse> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_config_get()", &[])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+
+        Ok(ConfigResponse {
+            config: json,
+            valid: true,
+            errors: vec![],
+        })
+    }
+
+    /// Update configuration.
+    pub async fn config_update(&self, req: &UpdateConfigRequest) -> ApiResult<ConfigResponse> {
+        let conn = self.get_conn().await?;
+
+        let config_str = serde_json::to_string(&req.config)?;
+
+        let updated: bool = conn
+            .query_one("SELECT caliber_config_update($1::jsonb)", &[&config_str])
+            .await?
+            .get(0);
+
+        if !updated {
+            return Err(ApiError::internal_error("Failed to update config"));
+        }
+
+        self.config_get().await
+    }
+
+    /// Validate configuration without applying.
+    pub async fn config_validate(&self, req: &ValidateConfigRequest) -> ApiResult<ConfigResponse> {
+        // Validate the config structure
+        // For now, just check if it's valid JSON (which it is if we got here)
+        Ok(ConfigResponse {
+            config: req.config.clone(),
+            valid: true,
+            errors: vec![],
+        })
+    }
+
+    // ========================================================================
+    // TENANT OPERATIONS
+    // ========================================================================
+
+    /// List all tenants.
+    pub async fn tenant_list(&self) -> ApiResult<Vec<TenantInfo>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_tenant_list()", &[])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let tenants: Vec<TenantInfo> = serde_json::from_value(json)?;
+
+        Ok(tenants)
+    }
+
+    /// Get a tenant by ID.
+    pub async fn tenant_get(&self, id: EntityId) -> ApiResult<Option<TenantInfo>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_tenant_get($1)", &[&id])
+            .await?;
+
+        let json_opt: Option<JsonValue> = row.get(0);
+
+        match json_opt {
+            Some(json) => {
+                let tenant: TenantInfo = serde_json::from_value(json)?;
+                Ok(Some(tenant))
+            }
+            None => Ok(None),
+        }
+    }
+
+    // ========================================================================
+    // SEARCH OPERATIONS
+    // ========================================================================
+
+    /// Search across entities.
+    pub async fn search(&self, req: &SearchRequest) -> ApiResult<SearchResponse> {
+        let conn = self.get_conn().await?;
+
+        let query_json = serde_json::to_string(&req)?;
+
+        let row = conn
+            .query_one("SELECT caliber_search($1::jsonb)", &[&query_json])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let response: SearchResponse = serde_json::from_value(json)?;
+
+        Ok(response)
     }
 }
 
