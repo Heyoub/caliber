@@ -13,11 +13,11 @@ use pgrx::spi::Spi;
 
 // Re-export core types for use in SQL functions
 use caliber_core::{
-    AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError, CaliberResult, Checkpoint,
-    EmbeddingVector, EntityId, EntityType, ExtractionMethod, MemoryCategory, Note,
-    NoteType, Provenance, RawContent, Scope, StorageError, TTL, Timestamp, Trajectory,
-    TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole, ValidationError,
-    compute_content_hash, new_entity_id,
+    AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
+    CaliberResult, Checkpoint, Edge, EdgeType, EmbeddingVector, EntityId, EntityType,
+    ExtractionMethod, MemoryCategory, Note, NoteType, Provenance, RawContent, Scope,
+    StorageError, TTL, Timestamp, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn,
+    TurnRole, ValidationError, compute_content_hash, new_entity_id,
 };
 
 // pgrx datum types
@@ -178,6 +178,9 @@ pub mod handoff_heap;
 
 /// Direct heap operations for Conflict entities.
 pub mod conflict_heap;
+
+/// Direct heap operations for Edge entities (Battle Intel Feature 1: Graph relationships).
+pub mod edge_heap;
 
 
 // ============================================================================
@@ -1471,6 +1474,8 @@ fn caliber_note_create(
         &source_traj_ids,
         &[], // source_artifact_ids
         TTL::Permanent, // default to permanent
+        AbstractionLevel::Raw, // new notes start at L0
+        &[], // source_note_ids - none for newly created notes
     );
 
     match result {
@@ -4133,6 +4138,8 @@ impl StorageTrait for PgStorage {
             &n.source_trajectory_ids,
             &n.source_artifact_ids,
             n.ttl.clone(),
+            n.abstraction_level.clone(),
+            &n.source_note_ids,
         )?;
         Ok(())
     }
@@ -4243,6 +4250,104 @@ impl StorageTrait for PgStorage {
             results.truncate(limit as usize);
 
             Ok(results)
+        })
+    }
+
+    // === Edge Operations (Battle Intel Feature 1) ===
+
+    fn edge_insert(&self, e: &Edge) -> CaliberResult<()> {
+        edge_heap::edge_create_heap(e)?;
+        Ok(())
+    }
+
+    fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>> {
+        edge_heap::edge_get_heap(id)
+    }
+
+    fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>> {
+        edge_heap::edge_query_by_type_heap(edge_type)
+    }
+
+    fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>> {
+        edge_heap::edge_query_by_trajectory_heap(trajectory_id)
+    }
+
+    fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>> {
+        // Query edges and filter by participant - uses SPI since we need JSON filtering
+        Spi::connect(|client| {
+            let result = client.select(
+                "SELECT edge_id, edge_type, participants, weight, trajectory_id,
+                        source_turn, extraction_method, confidence, created_at, metadata
+                 FROM caliber_edge
+                 WHERE participants @> $1::jsonb",
+                None,
+                &[text_datum(&format!(r#"[{{"id":"{}"}}]"#, entity_id))],
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+
+            let mut edges = Vec::new();
+            for row in result {
+                // Parse each row into Edge struct
+                if let Ok(Some(edge_id_pg)) = row.get::<pgrx::Uuid>(1) {
+                    let edge_id = Uuid::from_bytes(*edge_id_pg.as_bytes());
+                    if let Some(edge) = edge_heap::edge_get_heap(edge_id)? {
+                        edges.push(edge);
+                    }
+                }
+            }
+            Ok(edges)
+        })
+    }
+
+    // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
+
+    fn note_query_by_abstraction_level(
+        &self,
+        level: AbstractionLevel,
+    ) -> CaliberResult<Vec<Note>> {
+        let level_str = match level {
+            AbstractionLevel::Raw => "raw",
+            AbstractionLevel::Summary => "summary",
+            AbstractionLevel::Principle => "principle",
+        };
+
+        Spi::connect(|client| {
+            let result = client.select(
+                "SELECT note_id FROM caliber_note WHERE abstraction_level = $1",
+                None,
+                &[text_datum(level_str)],
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+
+            let mut notes = Vec::new();
+            for row in result {
+                if let Ok(Some(note_id_pg)) = row.get::<pgrx::Uuid>(1) {
+                    let note_id = Uuid::from_bytes(*note_id_pg.as_bytes());
+                    if let Some(note) = note_heap::note_get_heap(note_id)? {
+                        notes.push(note);
+                    }
+                }
+            }
+            Ok(notes)
+        })
+    }
+
+    fn note_query_by_source_note(&self, source_note_id: EntityId) -> CaliberResult<Vec<Note>> {
+        Spi::connect(|client| {
+            let result = client.select(
+                "SELECT note_id FROM caliber_note WHERE $1 = ANY(source_note_ids)",
+                None,
+                &[uuid_datum(source_note_id)],
+            ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
+
+            let mut notes = Vec::new();
+            for row in result {
+                if let Ok(Some(note_id_pg)) = row.get::<pgrx::Uuid>(1) {
+                    let note_id = Uuid::from_bytes(*note_id_pg.as_bytes());
+                    if let Some(note) = note_heap::note_get_heap(note_id)? {
+                        notes.push(note);
+                    }
+                }
+            }
+            Ok(notes)
         })
     }
 }

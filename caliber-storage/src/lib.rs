@@ -4,8 +4,9 @@
 //! The actual pgrx implementation lives in caliber-pg.
 
 use caliber_core::{
-    Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, EmbeddingVector, EntityId,
-    EntityType, Note, Scope, StorageError, Trajectory, TrajectoryStatus, Turn,
+    AbstractionLevel, Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, Edge,
+    EdgeType, EmbeddingVector, EntityId, EntityType, Note, Scope, StorageError, Trajectory,
+    TrajectoryStatus, Turn,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -149,6 +150,34 @@ pub trait StorageTrait: Send + Sync {
         query: &EmbeddingVector,
         limit: i32,
     ) -> CaliberResult<Vec<(EntityId, f32)>>;
+
+    // === Edge Operations (Battle Intel Feature 1) ===
+
+    /// Insert a new graph edge (binary or hyperedge).
+    fn edge_insert(&self, e: &Edge) -> CaliberResult<()>;
+
+    /// Get an edge by ID.
+    fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>>;
+
+    /// Query edges by type.
+    fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>>;
+
+    /// Query edges by trajectory.
+    fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>>;
+
+    /// Query edges involving a specific entity (as any participant).
+    fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>>;
+
+    // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
+
+    /// Query notes by abstraction level.
+    fn note_query_by_abstraction_level(
+        &self,
+        level: AbstractionLevel,
+    ) -> CaliberResult<Vec<Note>>;
+
+    /// Query notes derived from a source note (derivation chain).
+    fn note_query_by_source_note(&self, source_note_id: EntityId) -> CaliberResult<Vec<Note>>;
 }
 
 
@@ -164,6 +193,8 @@ pub struct MockStorage {
     artifacts: Arc<RwLock<HashMap<EntityId, Artifact>>>,
     notes: Arc<RwLock<HashMap<EntityId, Note>>>,
     turns: Arc<RwLock<HashMap<EntityId, Turn>>>,
+    // Battle Intel Feature 1: Graph edges
+    edges: Arc<RwLock<HashMap<EntityId, Edge>>>,
 }
 
 impl MockStorage {
@@ -179,6 +210,7 @@ impl MockStorage {
         self.artifacts.write().unwrap().clear();
         self.notes.write().unwrap().clear();
         self.turns.write().unwrap().clear();
+        self.edges.write().unwrap().clear();
     }
 
     /// Get count of stored trajectories.
@@ -199,6 +231,11 @@ impl MockStorage {
     /// Get count of stored notes.
     pub fn note_count(&self) -> usize {
         self.notes.read().unwrap().len()
+    }
+
+    /// Get count of stored edges (Battle Intel Feature 1).
+    pub fn edge_count(&self) -> usize {
+        self.edges.read().unwrap().len()
     }
 }
 
@@ -492,6 +529,79 @@ impl StorageTrait for MockStorage {
         results.truncate(limit as usize);
 
         Ok(results)
+    }
+
+    // === Edge Operations (Battle Intel Feature 1) ===
+
+    fn edge_insert(&self, e: &Edge) -> CaliberResult<()> {
+        let mut edges = self.edges.write().unwrap();
+        if edges.contains_key(&e.edge_id) {
+            return Err(CaliberError::Storage(StorageError::InsertFailed {
+                entity_type: EntityType::Edge,
+                reason: format!("Duplicate edge_id: {}", e.edge_id),
+            }));
+        }
+        edges.insert(e.edge_id, e.clone());
+        Ok(())
+    }
+
+    fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>> {
+        let edges = self.edges.read().unwrap();
+        Ok(edges.get(&id).cloned())
+    }
+
+    fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>> {
+        let edges = self.edges.read().unwrap();
+        Ok(edges
+            .values()
+            .filter(|e| e.edge_type == edge_type)
+            .cloned()
+            .collect())
+    }
+
+    fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>> {
+        let edges = self.edges.read().unwrap();
+        Ok(edges
+            .values()
+            .filter(|e| e.trajectory_id == Some(trajectory_id))
+            .cloned()
+            .collect())
+    }
+
+    fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>> {
+        let edges = self.edges.read().unwrap();
+        Ok(edges
+            .values()
+            .filter(|e| {
+                e.participants
+                    .iter()
+                    .any(|p| p.entity_ref.id == entity_id)
+            })
+            .cloned()
+            .collect())
+    }
+
+    // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
+
+    fn note_query_by_abstraction_level(
+        &self,
+        level: AbstractionLevel,
+    ) -> CaliberResult<Vec<Note>> {
+        let notes = self.notes.read().unwrap();
+        Ok(notes
+            .values()
+            .filter(|n| n.abstraction_level == level)
+            .cloned()
+            .collect())
+    }
+
+    fn note_query_by_source_note(&self, source_note_id: EntityId) -> CaliberResult<Vec<Note>> {
+        let notes = self.notes.read().unwrap();
+        Ok(notes
+            .values()
+            .filter(|n| n.source_note_ids.contains(&source_note_id))
+            .cloned()
+            .collect())
     }
 }
 

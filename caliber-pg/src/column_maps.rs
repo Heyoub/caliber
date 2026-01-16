@@ -236,7 +236,9 @@ pub mod artifact {
 ///     accessed_at TIMESTAMPTZ NOT NULL,         -- 12
 ///     access_count INTEGER NOT NULL,            -- 13
 ///     superseded_by UUID,                       -- 14
-///     metadata JSONB                            -- 15
+///     metadata JSONB,                           -- 15
+///     abstraction_level TEXT NOT NULL,          -- 16 (Battle Intel Feature 2)
+///     source_note_ids UUID[]                    -- 17 (Battle Intel Feature 2)
 /// );
 /// ```
 pub mod note {
@@ -270,9 +272,13 @@ pub mod note {
     pub const SUPERSEDED_BY: i16 = 14;
     /// metadata JSONB
     pub const METADATA: i16 = 15;
+    /// abstraction_level TEXT NOT NULL (Battle Intel Feature 2: L0/L1/L2)
+    pub const ABSTRACTION_LEVEL: i16 = 16;
+    /// source_note_ids UUID[] (Battle Intel Feature 2: derivation chain)
+    pub const SOURCE_NOTE_IDS: i16 = 17;
 
     /// Total number of columns in the note table
-    pub const NUM_COLS: usize = 15;
+    pub const NUM_COLS: usize = 17;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_note";
@@ -282,6 +288,10 @@ pub mod note {
     pub const TYPE_INDEX: &str = "idx_note_type";
     /// Source trajectories index name
     pub const SOURCE_TRAJECTORIES_INDEX: &str = "idx_note_source_trajectories";
+    /// Abstraction level index name (Battle Intel Feature 2)
+    pub const ABSTRACTION_INDEX: &str = "idx_note_abstraction";
+    /// Source notes index name (Battle Intel Feature 2)
+    pub const SOURCE_NOTES_INDEX: &str = "idx_note_source_notes";
 }
 
 // ============================================================================
@@ -797,6 +807,180 @@ pub mod region {
 }
 
 // ============================================================================
+// EDGE TABLE COLUMNS (Battle Intel Feature 1)
+// ============================================================================
+
+/// Column mappings for `caliber_edge` table.
+///
+/// Schema:
+/// ```sql
+/// CREATE TABLE caliber_edge (
+///     edge_id UUID PRIMARY KEY,                 -- 1
+///     edge_type TEXT NOT NULL,                  -- 2
+///     participants JSONB NOT NULL,              -- 3
+///     weight REAL,                              -- 4
+///     trajectory_id UUID,                       -- 5
+///     source_turn INTEGER NOT NULL,             -- 6
+///     extraction_method TEXT NOT NULL,          -- 7
+///     confidence REAL,                          -- 8
+///     created_at TIMESTAMPTZ NOT NULL,          -- 9
+///     metadata JSONB                            -- 10
+/// );
+/// ```
+pub mod edge {
+    /// edge_id UUID PRIMARY KEY
+    pub const EDGE_ID: i16 = 1;
+    /// edge_type TEXT NOT NULL
+    pub const EDGE_TYPE: i16 = 2;
+    /// participants JSONB NOT NULL (array of {entity_type, id, role})
+    pub const PARTICIPANTS: i16 = 3;
+    /// weight REAL (relationship strength [0.0, 1.0])
+    pub const WEIGHT: i16 = 4;
+    /// trajectory_id UUID (FK, optional)
+    pub const TRAJECTORY_ID: i16 = 5;
+    /// source_turn INTEGER NOT NULL (provenance)
+    pub const SOURCE_TURN: i16 = 6;
+    /// extraction_method TEXT NOT NULL (provenance)
+    pub const EXTRACTION_METHOD: i16 = 7;
+    /// confidence REAL (provenance)
+    pub const CONFIDENCE: i16 = 8;
+    /// created_at TIMESTAMPTZ NOT NULL
+    pub const CREATED_AT: i16 = 9;
+    /// metadata JSONB
+    pub const METADATA: i16 = 10;
+
+    /// Total number of columns in the edge table
+    pub const NUM_COLS: usize = 10;
+
+    /// Table name
+    pub const TABLE_NAME: &str = "caliber_edge";
+    /// Primary key index name
+    pub const PK_INDEX: &str = "caliber_edge_pkey";
+    /// Type index name
+    pub const TYPE_INDEX: &str = "idx_edge_type";
+    /// Participants index name (GIN)
+    pub const PARTICIPANTS_INDEX: &str = "idx_edge_participants";
+    /// Trajectory index name
+    pub const TRAJECTORY_INDEX: &str = "idx_edge_trajectory";
+}
+
+// ============================================================================
+// EVOLUTION SNAPSHOT TABLE COLUMNS (Battle Intel Feature 3)
+// ============================================================================
+
+/// Column mappings for `caliber_evolution_snapshot` table.
+///
+/// Schema:
+/// ```sql
+/// CREATE TABLE caliber_evolution_snapshot (
+///     snapshot_id UUID PRIMARY KEY,             -- 1
+///     name TEXT NOT NULL UNIQUE,                -- 2
+///     config_hash BYTEA NOT NULL,               -- 3
+///     config_source TEXT NOT NULL,              -- 4
+///     phase TEXT NOT NULL,                      -- 5
+///     created_at TIMESTAMPTZ NOT NULL,          -- 6
+///     retrieval_accuracy REAL,                  -- 7
+///     token_efficiency REAL,                    -- 8
+///     latency_p50_ms BIGINT,                    -- 9
+///     latency_p99_ms BIGINT,                    -- 10
+///     cost_estimate REAL,                       -- 11
+///     benchmark_queries INTEGER,                -- 12
+///     metadata JSONB                            -- 13
+/// );
+/// ```
+pub mod evolution_snapshot {
+    /// snapshot_id UUID PRIMARY KEY
+    pub const SNAPSHOT_ID: i16 = 1;
+    /// name TEXT NOT NULL UNIQUE
+    pub const NAME: i16 = 2;
+    /// config_hash BYTEA NOT NULL
+    pub const CONFIG_HASH: i16 = 3;
+    /// config_source TEXT NOT NULL
+    pub const CONFIG_SOURCE: i16 = 4;
+    /// phase TEXT NOT NULL ('online', 'frozen', 'evolving')
+    pub const PHASE: i16 = 5;
+    /// created_at TIMESTAMPTZ NOT NULL
+    pub const CREATED_AT: i16 = 6;
+    /// retrieval_accuracy REAL (metrics)
+    pub const RETRIEVAL_ACCURACY: i16 = 7;
+    /// token_efficiency REAL (metrics)
+    pub const TOKEN_EFFICIENCY: i16 = 8;
+    /// latency_p50_ms BIGINT (metrics)
+    pub const LATENCY_P50_MS: i16 = 9;
+    /// latency_p99_ms BIGINT (metrics)
+    pub const LATENCY_P99_MS: i16 = 10;
+    /// cost_estimate REAL (metrics)
+    pub const COST_ESTIMATE: i16 = 11;
+    /// benchmark_queries INTEGER (metrics)
+    pub const BENCHMARK_QUERIES: i16 = 12;
+    /// metadata JSONB
+    pub const METADATA: i16 = 13;
+
+    /// Total number of columns in the evolution_snapshot table
+    pub const NUM_COLS: usize = 13;
+
+    /// Table name
+    pub const TABLE_NAME: &str = "caliber_evolution_snapshot";
+    /// Primary key index name
+    pub const PK_INDEX: &str = "caliber_evolution_snapshot_pkey";
+    /// Phase index name
+    pub const PHASE_INDEX: &str = "idx_evolution_phase";
+}
+
+// ============================================================================
+// SUMMARIZATION POLICY TABLE COLUMNS (Battle Intel Feature 4)
+// ============================================================================
+
+/// Column mappings for `caliber_summarization_policy` table.
+///
+/// Schema:
+/// ```sql
+/// CREATE TABLE caliber_summarization_policy (
+///     policy_id UUID PRIMARY KEY,               -- 1
+///     name TEXT NOT NULL UNIQUE,                -- 2
+///     triggers JSONB NOT NULL,                  -- 3
+///     target_level TEXT NOT NULL,               -- 4
+///     source_level TEXT NOT NULL,               -- 5
+///     max_sources INTEGER NOT NULL,             -- 6
+///     create_edges BOOLEAN NOT NULL,            -- 7
+///     created_at TIMESTAMPTZ NOT NULL,          -- 8
+///     metadata JSONB                            -- 9
+/// );
+/// ```
+pub mod summarization_policy {
+    /// policy_id UUID PRIMARY KEY
+    pub const POLICY_ID: i16 = 1;
+    /// name TEXT NOT NULL UNIQUE
+    pub const NAME: i16 = 2;
+    /// triggers JSONB NOT NULL (array of trigger definitions)
+    pub const TRIGGERS: i16 = 3;
+    /// target_level TEXT NOT NULL ('raw', 'summary', 'principle')
+    pub const TARGET_LEVEL: i16 = 4;
+    /// source_level TEXT NOT NULL ('raw', 'summary', 'principle')
+    pub const SOURCE_LEVEL: i16 = 5;
+    /// max_sources INTEGER NOT NULL
+    pub const MAX_SOURCES: i16 = 6;
+    /// create_edges BOOLEAN NOT NULL
+    pub const CREATE_EDGES: i16 = 7;
+    /// created_at TIMESTAMPTZ NOT NULL
+    pub const CREATED_AT: i16 = 8;
+    /// metadata JSONB
+    pub const METADATA: i16 = 9;
+
+    /// Total number of columns in the summarization_policy table
+    pub const NUM_COLS: usize = 9;
+
+    /// Table name
+    pub const TABLE_NAME: &str = "caliber_summarization_policy";
+    /// Primary key index name
+    pub const PK_INDEX: &str = "caliber_summarization_policy_pkey";
+    /// Target level index name
+    pub const TARGET_INDEX: &str = "idx_summarization_target";
+    /// Source level index name
+    pub const SOURCE_INDEX: &str = "idx_summarization_source";
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -821,7 +1005,7 @@ mod tests {
 
     #[test]
     fn test_note_column_count() {
-        assert_eq!(note::NUM_COLS, 15);
+        assert_eq!(note::NUM_COLS, 17); // Updated for Battle Intel Feature 2
     }
 
     #[test]
@@ -862,5 +1046,23 @@ mod tests {
     #[test]
     fn test_region_column_count() {
         assert_eq!(region::NUM_COLS, 11);
+    }
+
+    // Battle Intel Feature 1: Graph Edges
+    #[test]
+    fn test_edge_column_count() {
+        assert_eq!(edge::NUM_COLS, 10);
+    }
+
+    // Battle Intel Feature 3: Evolution Snapshots
+    #[test]
+    fn test_evolution_snapshot_column_count() {
+        assert_eq!(evolution_snapshot::NUM_COLS, 13);
+    }
+
+    // Battle Intel Feature 4: Summarization Policies
+    #[test]
+    fn test_summarization_policy_column_count() {
+        assert_eq!(summarization_policy::NUM_COLS, 9);
     }
 }

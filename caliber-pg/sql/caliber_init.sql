@@ -72,7 +72,10 @@ CREATE TABLE IF NOT EXISTS caliber_note (
     accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     access_count INTEGER NOT NULL DEFAULT 0,
     superseded_by UUID REFERENCES caliber_note(note_id),
-    metadata JSONB
+    metadata JSONB,
+    -- Battle Intel Feature 2: Abstraction levels (EVOLVE-MEM L0/L1/L2)
+    abstraction_level TEXT NOT NULL DEFAULT 'raw' CHECK (abstraction_level IN ('raw', 'summary', 'principle')),
+    source_note_ids UUID[] NOT NULL DEFAULT '{}'  -- Derivation chain for L1/L2
 );
 
 -- Turn: Ephemeral conversation buffer entry
@@ -215,6 +218,61 @@ CREATE TABLE IF NOT EXISTS caliber_region (
 
 
 -- ============================================================================
+-- BATTLE INTEL FEATURE TABLES
+-- ============================================================================
+
+-- Edge: Graph relationships between entities (Battle Intel Feature 1)
+-- Supports both binary edges (2 participants) and hyperedges (N participants)
+CREATE TABLE IF NOT EXISTS caliber_edge (
+    edge_id UUID PRIMARY KEY,
+    edge_type TEXT NOT NULL CHECK (edge_type IN (
+        'supports', 'contradicts', 'supersedes', 'derivedfrom', 'relatesto',
+        'temporal', 'causal', 'synthesizedfrom', 'grouped', 'compared'
+    )),
+    participants JSONB NOT NULL,  -- Array of {entity_type, id, role}
+    weight REAL,  -- Relationship strength [0.0, 1.0]
+    trajectory_id UUID REFERENCES caliber_trajectory(trajectory_id),
+    -- Provenance (reusing pattern from artifacts)
+    source_turn INTEGER NOT NULL DEFAULT 0,
+    extraction_method TEXT NOT NULL DEFAULT 'explicit' CHECK (extraction_method IN ('explicit', 'inferred', 'userprovided')),
+    confidence REAL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata JSONB
+);
+
+-- Evolution Snapshot: DSL config benchmarking (Battle Intel Feature 3)
+CREATE TABLE IF NOT EXISTS caliber_evolution_snapshot (
+    snapshot_id UUID PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    config_hash BYTEA NOT NULL,
+    config_source TEXT NOT NULL,
+    phase TEXT NOT NULL DEFAULT 'online' CHECK (phase IN ('online', 'frozen', 'evolving')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Metrics (populated after benchmark)
+    retrieval_accuracy REAL,
+    token_efficiency REAL,
+    latency_p50_ms BIGINT,
+    latency_p99_ms BIGINT,
+    cost_estimate REAL,
+    benchmark_queries INTEGER,
+    metadata JSONB
+);
+
+-- Summarization Policy: Auto-abstraction rules (Battle Intel Feature 4)
+CREATE TABLE IF NOT EXISTS caliber_summarization_policy (
+    policy_id UUID PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    triggers JSONB NOT NULL,  -- Array of trigger definitions
+    target_level TEXT NOT NULL CHECK (target_level IN ('raw', 'summary', 'principle')),
+    source_level TEXT NOT NULL CHECK (source_level IN ('raw', 'summary', 'principle')),
+    max_sources INTEGER NOT NULL DEFAULT 10,
+    create_edges BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata JSONB
+);
+
+
+-- ============================================================================
 -- INDEXES
 -- ============================================================================
 
@@ -243,6 +301,9 @@ CREATE INDEX IF NOT EXISTS idx_note_type ON caliber_note(note_type);
 CREATE INDEX IF NOT EXISTS idx_note_hash ON caliber_note USING hash(content_hash);
 CREATE INDEX IF NOT EXISTS idx_note_accessed ON caliber_note(accessed_at);
 CREATE INDEX IF NOT EXISTS idx_note_source_trajectories ON caliber_note USING gin(source_trajectory_ids);
+-- Battle Intel Feature 2: Abstraction level indexes
+CREATE INDEX IF NOT EXISTS idx_note_abstraction ON caliber_note(abstraction_level);
+CREATE INDEX IF NOT EXISTS idx_note_source_notes ON caliber_note USING gin(source_note_ids);
 -- HNSW index for vector similarity search (requires pgvector)
 -- CREATE INDEX IF NOT EXISTS idx_note_embedding ON caliber_note USING hnsw(embedding vector_cosine_ops);
 
@@ -287,6 +348,20 @@ CREATE INDEX IF NOT EXISTS idx_region_type ON caliber_region(region_type);
 CREATE INDEX IF NOT EXISTS idx_region_team ON caliber_region(team_id) WHERE team_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_region_readers ON caliber_region USING gin(readers);
 CREATE INDEX IF NOT EXISTS idx_region_writers ON caliber_region USING gin(writers);
+
+-- Edge indexes (Battle Intel Feature 1)
+CREATE INDEX IF NOT EXISTS idx_edge_type ON caliber_edge(edge_type);
+CREATE INDEX IF NOT EXISTS idx_edge_participants ON caliber_edge USING gin(participants);
+CREATE INDEX IF NOT EXISTS idx_edge_trajectory ON caliber_edge(trajectory_id) WHERE trajectory_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edge_created ON caliber_edge(created_at);
+
+-- Evolution Snapshot indexes (Battle Intel Feature 3)
+CREATE INDEX IF NOT EXISTS idx_evolution_phase ON caliber_evolution_snapshot(phase);
+CREATE INDEX IF NOT EXISTS idx_evolution_created ON caliber_evolution_snapshot(created_at);
+
+-- Summarization Policy indexes (Battle Intel Feature 4)
+CREATE INDEX IF NOT EXISTS idx_summarization_target ON caliber_summarization_policy(target_level);
+CREATE INDEX IF NOT EXISTS idx_summarization_source ON caliber_summarization_policy(source_level);
 
 
 -- ============================================================================

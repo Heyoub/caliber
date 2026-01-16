@@ -357,6 +357,36 @@ pub fn extract_bool(
     Ok(Some(value))
 }
 
+/// Extract a float4 (f32) value from a heap tuple (Battle Intel Feature 1).
+///
+/// # Arguments
+/// * `tuple` - The heap tuple to extract from
+/// * `tuple_desc` - The tuple descriptor for the relation
+/// * `attnum` - The attribute number (1-based column index)
+///
+/// # Returns
+/// * `Ok(Some(f32))` - The float value if not null
+/// * `Ok(None)` - If the value is null
+/// * `Err(CaliberError)` - If extraction fails
+pub fn extract_float4(
+    tuple: *mut pg_sys::HeapTupleData,
+    tuple_desc: pg_sys::TupleDesc,
+    attnum: i16,
+) -> CaliberResult<Option<f32>> {
+    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+
+    if is_null {
+        return Ok(None);
+    }
+
+    let value: f32 = unsafe { f32::from_datum(datum, false) }
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!("Failed to convert datum to float4 at column {}", attnum),
+        }))?;
+
+    Ok(Some(value))
+}
+
 /// Extract a timestamp with timezone value from a heap tuple.
 ///
 /// # Arguments
@@ -708,6 +738,17 @@ pub fn i64_to_datum(n: i64) -> pg_sys::Datum {
 /// The datum representation
 pub fn bool_to_datum(b: bool) -> pg_sys::Datum {
     b.into_datum().unwrap_or(pg_sys::Datum::from(0))
+}
+
+/// Convert a float4 (f32) to a pgrx Datum (Battle Intel Feature 1).
+///
+/// # Arguments
+/// * `f` - The float to convert
+///
+/// # Returns
+/// The datum representation
+pub fn float4_to_datum(f: f32) -> pg_sys::Datum {
+    f.into_datum().unwrap_or(pg_sys::Datum::from(0))
 }
 
 /// Convert a serde_json::Value to a pgrx JSONB Datum.
