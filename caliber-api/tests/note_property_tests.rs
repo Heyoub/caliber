@@ -194,7 +194,7 @@ proptest! {
                 content: content.clone(),
                 source_trajectory_ids: vec![trajectory_id],
                 source_artifact_ids: vec![],
-                ttl,
+                ttl: ttl.clone(),
                 metadata: metadata.clone(),
             };
 
@@ -211,7 +211,7 @@ proptest! {
             prop_assert_eq!(&created.title, &title);
             prop_assert_eq!(&created.content, &content);
             prop_assert_eq!(created.note_type, note_type);
-            prop_assert_eq!(created.ttl, ttl);
+            prop_assert_eq!(&created.ttl, &ttl);
             prop_assert_eq!(&created.source_trajectory_ids, &vec![trajectory_id]);
             prop_assert_eq!(&created.source_artifact_ids, &Vec::<EntityId>::new());
 
@@ -239,7 +239,7 @@ proptest! {
             prop_assert_eq!(&retrieved.title, &created.title);
             prop_assert_eq!(&retrieved.content, &created.content);
             prop_assert_eq!(retrieved.note_type, created.note_type);
-            prop_assert_eq!(retrieved.ttl, created.ttl);
+            prop_assert_eq!(&retrieved.ttl, &created.ttl);
             prop_assert_eq!(retrieved.source_trajectory_ids, created.source_trajectory_ids);
             prop_assert_eq!(retrieved.source_artifact_ids, created.source_artifact_ids);
             prop_assert_eq!(retrieved.created_at, created.created_at);
@@ -492,19 +492,19 @@ proptest! {
                 content: "Test content".to_string(),
                 source_trajectory_ids: vec![trajectory_id],
                 source_artifact_ids: vec![],
-                ttl,
+                ttl: ttl.clone(),
                 metadata: None,
             };
 
             let created = db.note_create(&create_req).await?;
 
             // Property: TTL should be preserved
-            prop_assert_eq!(created.ttl, ttl);
+            prop_assert_eq!(&created.ttl, &ttl);
 
             // Verify persistence
             let retrieved = db.note_get(created.note_id).await?
                 .expect("Note should exist");
-            prop_assert_eq!(retrieved.ttl, ttl);
+            prop_assert_eq!(&retrieved.ttl, &ttl);
 
             Ok(())
         })?;
@@ -892,21 +892,21 @@ mod edge_cases {
                 content: "Test content".to_string(),
                 source_trajectory_ids: vec![trajectory_id],
                 source_artifact_ids: vec![],
-                ttl,
+                ttl: ttl.clone(),
                 metadata: None,
             };
 
             let created = db.note_create(&create_req).await
                 .expect(&format!("Should create note with TTL {:?}", ttl));
 
-            assert_eq!(created.ttl, ttl);
+            assert_eq!(&created.ttl, &ttl);
 
             // Verify persistence
             let retrieved = db.note_get(created.note_id).await
                 .expect("Should retrieve note")
                 .expect("Note should exist");
 
-            assert_eq!(retrieved.ttl, ttl);
+            assert_eq!(&retrieved.ttl, &ttl);
         }
     }
 

@@ -22,6 +22,7 @@ use caliber_api::{
     middleware::{auth_middleware, extract_auth_context, AuthMiddlewareState},
     types::{CreateTrajectoryRequest, ListTrajectoriesResponse, TrajectoryResponse},
 };
+use chrono::Utc;
 use caliber_core::{EntityId, TrajectoryStatus};
 use proptest::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -55,7 +56,7 @@ impl TestStorage {
         req: &CreateTrajectoryRequest,
     ) -> TrajectoryResponse {
         let trajectory_id = EntityId::from(Uuid::now_v7());
-        let now = caliber_core::Timestamp::now();
+        let now = Utc::now();
 
         let trajectory = TrajectoryResponse {
             trajectory_id,
@@ -562,7 +563,7 @@ mod edge_cases {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
-        let tenant_id = Uuid::now_v7().into();
+        let tenant_id: EntityId = Uuid::now_v7();
 
         let token = generate_jwt_token(
             &auth_config,
@@ -597,8 +598,8 @@ mod edge_cases {
         let storage = TestStorage::new();
         let auth_config = test_auth_config();
 
-        let tenant_a = Uuid::now_v7().into();
-        let tenant_b = Uuid::now_v7().into();
+        let tenant_a: EntityId = Uuid::now_v7();
+        let tenant_b: EntityId = Uuid::now_v7();
 
         // Create trajectories with the same name for different tenants
         let req = CreateTrajectoryRequest {
@@ -623,8 +624,8 @@ mod edge_cases {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
-        let tenant_id = Uuid::now_v7().into();
-        let nonexistent_id = Uuid::now_v7().into();
+        let tenant_id: EntityId = Uuid::now_v7();
+        let nonexistent_id: EntityId = Uuid::now_v7();
 
         let token = generate_jwt_token(
             &auth_config,

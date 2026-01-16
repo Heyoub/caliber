@@ -321,7 +321,7 @@ mod tests {
     fn test_broadcast_no_receivers() {
         let state = WsState::new(100);
         let event = WsEvent::Connected {
-            tenant_id: EntityId::new(),
+            tenant_id: caliber_core::new_entity_id(),
         };
         // Should not panic when no receivers
         state.broadcast(event);
@@ -333,7 +333,7 @@ mod tests {
         let mut rx = state.subscribe();
 
         let event = WsEvent::Connected {
-            tenant_id: EntityId::new(),
+            tenant_id: caliber_core::new_entity_id(),
         };
         state.broadcast(event.clone());
 
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_event_filtering() {
-        let tenant_id = EntityId::new();
+        let tenant_id = caliber_core::new_entity_id();
 
         // Connection events should always be sent
         let connected = WsEvent::Connected { tenant_id };
@@ -359,15 +359,15 @@ mod tests {
         // (Currently sends to all, but test the logic)
         let trajectory_created = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: EntityId::new(),
+                trajectory_id: caliber_core::new_entity_id(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
                 parent_trajectory_id: None,
                 root_trajectory_id: None,
                 agent_id: None,
-                created_at: caliber_core::Timestamp::now(),
-                updated_at: caliber_core::Timestamp::now(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
                 completed_at: None,
                 outcome: None,
                 metadata: Some(json!({ "tenant_id": tenant_id.to_string() })),
@@ -375,18 +375,18 @@ mod tests {
         };
         assert!(should_send_event(&trajectory_created, tenant_id));
 
-        let other_tenant = EntityId::new();
+        let other_tenant = caliber_core::new_entity_id();
         let other_tenant_event = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: EntityId::new(),
+                trajectory_id: caliber_core::new_entity_id(),
                 name: "other".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
                 parent_trajectory_id: None,
                 root_trajectory_id: None,
                 agent_id: None,
-                created_at: caliber_core::Timestamp::now(),
-                updated_at: caliber_core::Timestamp::now(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
                 completed_at: None,
                 outcome: None,
                 metadata: Some(json!({ "tenant_id": other_tenant.to_string() })),

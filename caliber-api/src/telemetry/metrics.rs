@@ -230,6 +230,7 @@ pub async fn metrics_handler() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prometheus::core::Collector;
 
     #[test]
     fn test_metrics_creation() {

@@ -4,7 +4,9 @@ use caliber_tui::theme::{
     agent_status_color, message_priority_color, trajectory_status_color, turn_role_color,
     utilization_color, SynthBruteTheme,
 };
-use caliber_api::types::{TrajectoryResponse, ScopeResponse, ArtifactResponse, NoteResponse};
+use caliber_api::types::{
+    ArtifactResponse, NoteResponse, ProvenanceResponse, ScopeResponse, TrajectoryResponse,
+};
 use caliber_core::{ArtifactType, EntityId, NoteType, TrajectoryStatus, TurnRole, Timestamp};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use proptest::prelude::*;
@@ -261,7 +263,7 @@ proptest! {
         
         // Create parents
         for _ in 0..parent_count {
-            let id = EntityId::new_v7();
+            let id = caliber_core::new_entity_id();
             parent_ids.push(id);
             trajectories.push(create_test_trajectory(id, None));
         }
@@ -269,7 +271,7 @@ proptest! {
         // Create children
         for parent_id in &parent_ids {
             for _ in 0..children_per_parent {
-                let child_id = EntityId::new_v7();
+                let child_id = caliber_core::new_entity_id();
                 trajectories.push(create_test_trajectory(child_id, Some(*parent_id)));
             }
         }
@@ -304,7 +306,7 @@ proptest! {
         let mut trajectories = Vec::new();
         
         for i in 0..total_count {
-            let id = EntityId::new_v7();
+            let id = caliber_core::new_entity_id();
             let status = if i < active_count {
                 TrajectoryStatus::Active
             } else {
@@ -380,11 +382,11 @@ proptest! {
         active_ratio in 0.3f32..0.7f32,
         has_agent_ratio in 0.3f32..0.7f32
     ) {
-        let agent_id = EntityId::new_v7();
+        let agent_id = caliber_core::new_entity_id();
         let mut trajectories = Vec::new();
         
         for i in 0..total_count {
-            let id = EntityId::new_v7();
+            let id = caliber_core::new_entity_id();
             let status = if (i as f32 / total_count as f32) < active_ratio {
                 TrajectoryStatus::Active
             } else {
@@ -422,9 +424,9 @@ proptest! {
     #[test]
     fn detail_panel_shows_all_non_null_fields() {
         let trajectory = create_test_trajectory_full(
-            EntityId::new_v7(),
+            caliber_core::new_entity_id(),
             TrajectoryStatus::Active,
-            Some(EntityId::new_v7())
+            Some(caliber_core::new_entity_id())
         );
         
         // Count non-null fields
@@ -614,15 +616,15 @@ fn create_test_trajectory_full(
 
 fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
     ArtifactResponse {
-        artifact_id: EntityId::new_v7(),
-        trajectory_id: EntityId::new_v7(),
-        scope_id: EntityId::new_v7(),
+        artifact_id: caliber_core::new_entity_id(),
+        trajectory_id: caliber_core::new_entity_id(),
+        scope_id: caliber_core::new_entity_id(),
         artifact_type,
         name: "Test Artifact".to_string(),
         content: "Test content".to_string(),
-        content_hash: vec![0u8; 32],
+        content_hash: caliber_core::compute_content_hash("Test content".as_bytes()),
         embedding: None,
-        provenance: caliber_api::types::Provenance {
+        provenance: ProvenanceResponse {
             source_turn: 1,
             extraction_method: caliber_core::ExtractionMethod::Explicit,
             confidence: Some(0.95),
@@ -637,11 +639,11 @@ fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
 
 fn create_test_note(note_type: NoteType) -> NoteResponse {
     NoteResponse {
-        note_id: EntityId::new_v7(),
+        note_id: caliber_core::new_entity_id(),
         note_type,
         title: "Test Note".to_string(),
         content: "Test content".to_string(),
-        content_hash: vec![0u8; 32],
+        content_hash: caliber_core::compute_content_hash("Test content".as_bytes()),
         embedding: None,
         source_trajectory_ids: vec![],
         source_artifact_ids: vec![],
