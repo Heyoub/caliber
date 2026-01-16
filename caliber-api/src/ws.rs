@@ -75,7 +75,7 @@ impl WsState {
     ///
     /// Returns a receiver that will receive all future events.
     /// The receiver must be polled to avoid lagging.
-    fn subscribe(&self) -> broadcast::Receiver<WsEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<WsEvent> {
         self.tx.subscribe()
     }
 }

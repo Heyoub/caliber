@@ -76,15 +76,15 @@ pub type ContentHash = [u8; 32];    // SHA-256
 pub type RawContent = Vec<u8>;      // BYTEA
 
 // === Enums ===
-pub enum TTL { Persistent, Session, Scope, Duration(DurationMs) }
-pub enum EntityType { Trajectory, Scope, Artifact, Note, Agent }
+pub enum TTL { Persistent, Session, Scope, Duration(DurationMs), Ephemeral, ShortTerm, MediumTerm, LongTerm, Permanent }
+pub enum EntityType { Trajectory, Scope, Artifact, Note, Turn, Lock, Message, Agent, Delegation, Handoff, Conflict }
 pub enum MemoryCategory { Ephemeral, Working, Episodic, Semantic, Procedural, Meta }
 pub enum TrajectoryStatus { Active, Completed, Failed, Suspended }
 pub enum OutcomeStatus { Success, Partial, Failure }
 pub enum TurnRole { User, Assistant, System, Tool }
-pub enum ArtifactType { ErrorLog, CodePatch, DesignDecision, UserPreference, Fact, Constraint, ToolResult, IntermediateOutput, Custom }
+pub enum ArtifactType { ErrorLog, CodePatch, DesignDecision, UserPreference, Fact, Constraint, ToolResult, IntermediateOutput, Custom, Code, Document, Data, Config, Log, Summary, Decision, Plan }
 pub enum ExtractionMethod { Explicit, Inferred, UserProvided }
-pub enum NoteType { Convention, Strategy, Gotcha, Fact, Preference, Relationship, Procedure, Meta }
+pub enum NoteType { Convention, Strategy, Gotcha, Fact, Preference, Relationship, Procedure, Meta, Insight, Correction, Summary }
 
 // === Core Structs ===
 pub struct EntityRef { entity_type: EntityType, id: EntityId }
@@ -158,24 +158,64 @@ pub struct ParseError { message: String, line: usize, column: usize }
 
 ```rust
 // === Traits ===
+#[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
-    fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector>;
-    fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>>;
+    async fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector>;
+    async fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>>;
     fn dimensions(&self) -> i32;
     fn model_id(&self) -> &str;
 }
 
+#[async_trait]
 pub trait SummarizationProvider: Send + Sync {
-    fn summarize(&self, content: &str, config: &SummarizeConfig) -> CaliberResult<String>;
-    fn extract_artifacts(&self, content: &str, types: &[ArtifactType]) -> CaliberResult<Vec<ExtractedArtifact>>;
-    fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool>;
+    async fn summarize(&self, content: &str, config: &SummarizeConfig) -> CaliberResult<String>;
+    async fn extract_artifacts(&self, content: &str, types: &[ArtifactType]) -> CaliberResult<Vec<ExtractedArtifact>>;
+    async fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool>;
 }
 
+pub enum ProviderCapability { Embedding, Summarization, ArtifactExtraction, ContradictionDetection }
+pub enum HealthStatus { Healthy, Degraded, Unhealthy, Unknown }
+
 // === Structs ===
-pub struct ProviderRegistry { embedding: Option<Box<dyn EmbeddingProvider>>, summarization: Option<Box<dyn SummarizationProvider>> }
 pub struct SummarizeConfig { max_tokens: i32, style: SummarizeStyle }
 pub enum SummarizeStyle { Brief, Detailed, Structured }
 pub struct ExtractedArtifact { artifact_type: ArtifactType, content: String, confidence: f32 }
+pub struct EchoRequest { capabilities: Vec<ProviderCapability>, request_id: Uuid, timestamp: Timestamp }
+pub struct PingResponse { provider_id: String, capabilities: Vec<ProviderCapability>, latency_ms: u64, health: HealthStatus, metadata: HashMap<String, String> }
+pub struct EmbedRequest { text: String, request_id: Uuid }
+pub struct EmbedResponse { embedding: EmbeddingVector, request_id: Uuid, latency_ms: u64 }
+pub struct SummarizeRequest { content: String, config: SummarizeConfig, request_id: Uuid }
+pub struct SummarizeResponse { summary: String, request_id: Uuid, latency_ms: u64 }
+pub struct RequestEvent { request_id: Uuid, provider_id: String, operation: String, timestamp: Timestamp }
+pub struct ResponseEvent { request_id: Uuid, provider_id: String, operation: String, latency_ms: u64, success: bool, timestamp: Timestamp }
+pub struct ErrorEvent { request_id: Uuid, provider_id: String, operation: String, error_message: String, timestamp: Timestamp }
+
+#[async_trait]
+pub trait ProviderAdapter: Send + Sync {
+    fn provider_id(&self) -> &str;
+    fn capabilities(&self) -> &[ProviderCapability];
+    async fn ping(&self) -> CaliberResult<PingResponse>;
+    async fn embed(&self, request: EmbedRequest) -> CaliberResult<EmbedResponse>;
+    async fn summarize(&self, request: SummarizeRequest) -> CaliberResult<SummarizeResponse>;
+}
+
+pub enum CircuitState { Closed, Open, HalfOpen }
+pub struct CircuitBreakerConfig { failure_threshold: u32, success_threshold: u32, timeout: Duration }
+pub struct CircuitBreaker { state: AtomicU8, failure_count: AtomicU32, success_count: AtomicU32, last_failure: RwLock<Option<Instant>>, config: CircuitBreakerConfig }
+
+pub enum RoutingStrategy { RoundRobin, LeastLatency, Random, Capability(ProviderCapability), First }
+
+pub struct ListenerChain { listeners: Vec<Arc<dyn EventListener>> }
+
+#[async_trait]
+pub trait EventListener: Send + Sync {
+    async fn on_request(&self, event: RequestEvent) -> CaliberResult<()>;
+    async fn on_response(&self, event: ResponseEvent) -> CaliberResult<()>;
+    async fn on_error(&self, event: ErrorEvent) -> CaliberResult<()>;
+}
+
+pub struct ProviderRegistry { adapters: TokioRwLock<HashMap<String, Arc<dyn ProviderAdapter>>>, routing_strategy: RoutingStrategy, health_cache: TokioRwLock<HashMap<String, (PingResponse, Instant)>>, health_cache_ttl: Duration, round_robin_index: AtomicU64, listeners: TokioRwLock<ListenerChain>, circuit_breakers: TokioRwLock<HashMap<String, Arc<CircuitBreaker>>> }
+
 pub struct EmbeddingCache { cache: RwLock<HashMap<[u8; 32], EmbeddingVector>>, max_size: usize }
 pub struct CostTracker { embedding_tokens: AtomicI64, completion_input: AtomicI64, completion_output: AtomicI64 }
 ```
@@ -339,7 +379,7 @@ pub enum TraceEventType { ScopeOpen, ScopeClose, ArtifactCreate, NoteCreate, Con
 
 | Crate | Version | Features | Used By | Notes |
 |-------|---------|----------|---------|-------|
-| `pgrx` | `0.12.9` | default | caliber-pg | Stable release for Postgres 13-17, pgrx 0.13+ requires newer Rust |
+| `pgrx` | `0.16` | default | caliber-pg | Pinned workspace version; check pgrx release notes for Postgres support |
 | `uuid` | `1.11` | `v7`, `serde` | ALL | UUIDv7 for timestamp-sortable IDs |
 | `chrono` | `0.4.39` | `serde` | ALL | DateTime handling |
 | `serde` | `1.0` | `derive` | ALL | Serialization framework |
@@ -357,16 +397,15 @@ pub enum TraceEventType { ScopeOpen, ScopeClose, ArtifactCreate, NoteCreate, Con
 
 ### pgrx Compatibility Notes
 
-- **pgrx 0.12.9** is the latest stable in the 0.12.x line
-- Supports PostgreSQL 13, 14, 15, 16, 17
-- pgvector compatibility: Use `pgvector` crate `0.4.x` with pgrx 0.12.x
-- **DO NOT** use pgrx 0.13+ without verifying Rust version requirements
+- pgrx version is pinned in workspace `Cargo.toml` (currently `0.16`)
+- Supported Postgres versions follow pgrx release notes; `caliber-pg/Cargo.toml` exposes `pg13`–`pg18`
+- Keep pgvector version aligned with the pinned pgrx version
 
 ### Version Constraints
 
 ```toml
 # Workspace Cargo.toml [workspace.dependencies]
-pgrx = "0.12.9"
+pgrx = "0.16"
 uuid = { version = "1.11", features = ["v7", "serde"] }
 chrono = { version = "0.4.39", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -382,7 +421,7 @@ proptest = "1.5"
 
 ### Known Constraints
 
-1. **pgrx + pgvector**: pgvector 0.4.x works with pgrx 0.12.x
+1. **pgrx + pgvector**: Pin pgvector to a version compatible with the pinned pgrx release
 2. **chrono + serde**: Always enable `serde` feature for DateTime serialization
 3. **uuid v7**: Requires `v7` feature flag explicitly
 4. **thiserror 2.0**: Breaking change from 1.x - uses `#[error(...)]` syntax
@@ -472,7 +511,7 @@ regex = "1.11"
 once_cell = "1.20"
 
 # pgrx (only for caliber-pg)
-pgrx = "0.12.9"
+pgrx = "0.16"
 
 # Internal crates
 caliber-core = { path = "caliber-core" }
@@ -656,12 +695,13 @@ license.workspace = true
 crate-type = ["cdylib"]
 
 [features]
-default = ["pg17"]
+default = ["pg18"]
 pg13 = ["pgrx/pg13"]
 pg14 = ["pgrx/pg14"]
 pg15 = ["pgrx/pg15"]
 pg16 = ["pgrx/pg16"]
 pg17 = ["pgrx/pg17"]
+pg18 = ["pgrx/pg18"]
 pg_test = []
 
 [dependencies]
@@ -680,7 +720,7 @@ serde_json = { workspace = true }
 once_cell = { workspace = true }
 
 [dev-dependencies]
-pgrx-tests = "0.12.9"
+pgrx-tests = "0.16"
 proptest = { workspace = true }
 ```
 
@@ -690,8 +730,8 @@ proptest = { workspace = true }
 
 ### pgrx Constraints
 
-1. **Rust Edition**: pgrx 0.12.x requires Rust 2021 edition
-2. **Postgres Versions**: Supports PG 13-17, feature flags select version
+1. **Rust Edition**: pgrx 0.16 targets Rust 2021 edition
+2. **Postgres Versions**: Feature flags select version (pg13–pg18)
 3. **cdylib**: caliber-pg must be `crate-type = ["cdylib"]`
 4. **pg_test feature**: Required for pgrx integration tests
 

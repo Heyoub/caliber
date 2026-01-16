@@ -1,0 +1,41 @@
+# CALIBER Prometheus Configuration
+# Scrapes metrics from caliber-api
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: caliber-dev
+    env: development
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: prometheus
+
+  # CALIBER API metrics
+  - job_name: caliber-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['caliber-api:3000']
+        labels:
+          service: caliber-api
+          component: api
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+        replacement: '${1}'
+
+  # Redis metrics (if using redis_exporter)
+  # - job_name: redis
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # PostgreSQL metrics (if using postgres_exporter)
+  # - job_name: postgres
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']

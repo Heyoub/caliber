@@ -15,7 +15,9 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{AcquireLockRequest, ExtendLockRequest, LockResponse},
+    ws::WsState,
 };
 
 // ============================================================================
@@ -26,11 +28,12 @@ use crate::{
 #[derive(Clone)]
 pub struct LockState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl LockState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -80,6 +83,9 @@ pub async fn acquire_lock(
     // Acquire lock via database client
     let lock = state.db.lock_acquire(&req).await?;
 
+    // Broadcast LockAcquired event
+    state.ws.broadcast(WsEvent::LockAcquired { lock: lock.clone() });
+
     Ok((StatusCode::CREATED, Json(lock)))
 }
 
@@ -107,6 +113,9 @@ pub async fn release_lock(
 ) -> ApiResult<StatusCode> {
     // Release lock via database client
     state.db.lock_release(id.into()).await?;
+
+    // Broadcast LockReleased event
+    state.ws.broadcast(WsEvent::LockReleased { lock_id: id.into() });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -235,8 +244,8 @@ pub struct ListLocksResponse {
 // ============================================================================
 
 /// Create the lock routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(LockState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(LockState::new(db, ws));
 
     axum::Router::new()
         .route("/acquire", axum::routing::post(acquire_lock))

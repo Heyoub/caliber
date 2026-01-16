@@ -16,6 +16,7 @@
 
 use std::iter::Peekable;
 use std::str::CharIndices;
+use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // LEXER TYPES (Task 3.1, 3.2)
@@ -619,14 +620,14 @@ impl<'a> Lexer<'a> {
 // ============================================================================
 
 /// The root AST node for a CALIBER configuration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CaliberAst {
     pub version: String,
     pub definitions: Vec<Definition>,
 }
 
 /// A top-level definition in the DSL.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Definition {
     Adapter(AdapterDef),
     Memory(MemoryDef),
@@ -635,7 +636,7 @@ pub enum Definition {
 }
 
 /// Adapter definition for storage backends.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AdapterDef {
     pub name: String,
     pub adapter_type: AdapterType,
@@ -644,7 +645,7 @@ pub struct AdapterDef {
 }
 
 /// Supported adapter types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdapterType {
     Postgres,
     Redis,
@@ -652,7 +653,7 @@ pub enum AdapterType {
 }
 
 /// Memory definition for memory types.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemoryDef {
     pub name: String,
     pub memory_type: MemoryType,
@@ -666,7 +667,7 @@ pub struct MemoryDef {
 }
 
 /// Memory type categories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MemoryType {
     Ephemeral,
     Working,
@@ -677,7 +678,7 @@ pub enum MemoryType {
 }
 
 /// Field definition in a schema.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldDef {
     pub name: String,
     pub field_type: FieldType,
@@ -686,7 +687,7 @@ pub struct FieldDef {
 }
 
 /// Field types supported in schemas.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FieldType {
     Uuid,
     Text,
@@ -701,7 +702,7 @@ pub enum FieldType {
 }
 
 /// Retention policy for memory entries.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Retention {
     Persistent,
     Session,
@@ -711,14 +712,14 @@ pub enum Retention {
 }
 
 /// Lifecycle management for memory entries.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Lifecycle {
     Explicit,
     AutoClose(Trigger),
 }
 
 /// Trigger events for policies and lifecycle.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Trigger {
     TaskStart,
     TaskEnd,
@@ -729,7 +730,7 @@ pub enum Trigger {
 }
 
 /// Index definition for memory fields.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IndexDef {
     pub field: String,
     pub index_type: IndexType,
@@ -737,7 +738,7 @@ pub struct IndexDef {
 }
 
 /// Supported index types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexType {
     Btree,
     Hash,
@@ -747,21 +748,21 @@ pub enum IndexType {
 }
 
 /// Policy definition with trigger-action rules.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyDef {
     pub name: String,
     pub rules: Vec<PolicyRule>,
 }
 
 /// A single policy rule.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyRule {
     pub trigger: Trigger,
     pub actions: Vec<Action>,
 }
 
 /// Actions that can be triggered by policies.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     Summarize(String),
     ExtractArtifacts(String),
@@ -778,7 +779,7 @@ pub enum Action {
 }
 
 /// Injection definition for context assembly.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InjectionDef {
     pub source: String,
     pub target: String,
@@ -789,7 +790,7 @@ pub struct InjectionDef {
 }
 
 /// Injection modes for context assembly.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum InjectionMode {
     Full,
     Summary,
@@ -798,7 +799,7 @@ pub enum InjectionMode {
 }
 
 /// Filter expression for queries.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FilterExpr {
     Comparison {
         field: String,
@@ -811,7 +812,7 @@ pub enum FilterExpr {
 }
 
 /// Comparison operators for filters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CompareOp {
     Eq,
     Ne,
@@ -825,7 +826,7 @@ pub enum CompareOp {
 }
 
 /// Values that can be used in filter expressions.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FilterValue {
     String(String),
     Number(f64),
@@ -843,7 +844,7 @@ pub enum FilterValue {
 // ============================================================================
 
 /// Parse error with line/column information.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParseError {
     pub message: String,
     pub line: usize,

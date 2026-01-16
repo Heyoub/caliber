@@ -1,0 +1,392 @@
+# CALIBER Release Pipeline
+# Triggered on version tags (v*.*.*)
+#
+# Jobs:
+#   - build-api: Multi-arch Docker images
+#   - build-pg: PostgreSQL extension image
+#   - sdk-typescript: Publish to npm
+#   - sdk-python: Publish to PyPI
+#   - sdk-go: Tag Go module
+#   - sdk-elixir: Publish to Hex.pm
+#   - helm: Package and publish Helm chart
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/${{ github.repository }}/caliber-api
+  PG_IMAGE: ghcr.io/${{ github.repository }}/caliber-pg
+
+jobs:
+  # Build and push caliber-api Docker image
+  build-api:
+    name: Build API Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.API_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            FEATURES=openapi,swagger-ui
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build and push caliber-pg Docker image
+  build-pg:
+    name: Build PostgreSQL Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.PG_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.pg
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Generate and upload OpenAPI spec
+  openapi:
+    name: Generate OpenAPI Spec
+    runs-on: ubuntu-latest
+    needs: build-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build API
+        run: cargo build --release -p caliber-api --features openapi
+
+      - name: Generate OpenAPI spec
+        run: |
+          ./target/release/caliber-api --generate-openapi > openapi.json
+          ./target/release/caliber-api --generate-openapi --format yaml > openapi.yaml
+
+      - name: Upload OpenAPI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: |
+            openapi.json
+            openapi.yaml
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            openapi.json
+            openapi.yaml
+
+  # TypeScript SDK
+  sdk-typescript:
+    name: Publish TypeScript SDK
+    runs-on: ubuntu-latest
+    needs: openapi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download OpenAPI spec
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+
+      - name: Generate SDK
+        run: |
+          npm install -g @openapitools/openapi-generator-cli
+          openapi-generator-cli generate \
+            -i openapi.json \
+            -g typescript-fetch \
+            -o sdk/typescript \
+            --additional-properties=npmName=@caliber/sdk,npmVersion=${{ github.ref_name }},supportsES6=true,typescriptThreePlus=true
+
+      - name: Build SDK
+        working-directory: sdk/typescript
+        run: |
+          npm install
+          npm run build
+
+      - name: Publish to npm
+        working-directory: sdk/typescript
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Python SDK
+  sdk-python:
+    name: Publish Python SDK
+    runs-on: ubuntu-latest
+    needs: openapi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download OpenAPI spec
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+
+      - name: Generate SDK
+        run: |
+          pip install openapi-python-client
+          openapi-python-client generate \
+            --path openapi.json \
+            --output-path sdk/python \
+            --config sdk-python-config.yaml \
+            --meta setup
+
+      - name: Build SDK
+        working-directory: sdk/python
+        run: |
+          pip install build twine
+          python -m build
+
+      - name: Publish to PyPI
+        working-directory: sdk/python
+        run: twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+  # Go SDK
+  sdk-go:
+    name: Publish Go SDK
+    runs-on: ubuntu-latest
+    needs: openapi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Download OpenAPI spec
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+
+      - name: Generate SDK
+        run: |
+          go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
+          mkdir -p sdk/go
+          oapi-codegen -package caliber -generate types,client openapi.json > sdk/go/client.go
+
+      - name: Initialize Go module
+        working-directory: sdk/go
+        run: |
+          go mod init github.com/${{ github.repository }}/sdk/go
+          go mod tidy
+
+      - name: Create SDK release tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add sdk/go
+          git commit -m "chore: update Go SDK for ${{ github.ref_name }}"
+          git tag "sdk/go/${{ github.ref_name }}"
+          git push origin "sdk/go/${{ github.ref_name }}"
+
+  # Elixir SDK
+  sdk-elixir:
+    name: Publish Elixir SDK
+    runs-on: ubuntu-latest
+    needs: openapi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26'
+          elixir-version: '1.16'
+
+      - name: Download OpenAPI spec
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+
+      - name: Generate SDK
+        run: |
+          mix local.hex --force
+          mix archive.install hex openapi_generator --force
+          mix openapi.gen.client \
+            --spec openapi.json \
+            --output sdk/elixir
+
+      - name: Build and publish
+        working-directory: sdk/elixir
+        run: |
+          mix deps.get
+          mix hex.publish --yes
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_PM_TOKEN }}
+
+  # Helm chart
+  helm:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: [build-api, build-pg]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Update chart version
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION#v}
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/caliber/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" charts/caliber/Chart.yaml
+
+      - name: Package chart
+        run: |
+          helm package charts/caliber -d .helm-packages
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: .helm-packages/*.tgz
+
+      - name: Update Helm repo index
+        run: |
+          helm repo index .helm-packages --url https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+
+  # Create GitHub Release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-api, build-pg, openapi, helm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## Docker Images
+
+            ```bash
+            docker pull ${{ env.API_IMAGE }}:${{ github.ref_name }}
+            docker pull ${{ env.PG_IMAGE }}:${{ github.ref_name }}
+            ```
+
+            ## SDKs
+
+            - **TypeScript**: `npm install @caliber/sdk@${{ github.ref_name }}`
+            - **Python**: `pip install caliber-sdk==${{ github.ref_name }}`
+            - **Go**: `go get github.com/${{ github.repository }}/sdk/go@${{ github.ref_name }}`
+            - **Elixir**: `{:caliber, "~> ${{ github.ref_name }}"}`
+
+            ## Helm Chart
+
+            ```bash
+            helm repo add caliber https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+            helm install caliber caliber/caliber
+            ```
+
+            ## Changelog
+
+            ${{ steps.changelog.outputs.content }}
+          files: |
+            openapi-spec/*
+            .helm-packages/*.tgz
+          generate_release_notes: true

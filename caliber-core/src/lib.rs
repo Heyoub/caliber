@@ -6,6 +6,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::fmt;
+use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
@@ -201,6 +203,251 @@ pub enum NoteType {
     Correction,
     /// Summary notes
     Summary,
+}
+
+// ============================================================================
+// STRING CONVERSIONS
+// ============================================================================
+
+fn normalize_token(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '_' && *c != '-')
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+
+impl fmt::Display for EntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            EntityType::Trajectory => "Trajectory",
+            EntityType::Scope => "Scope",
+            EntityType::Artifact => "Artifact",
+            EntityType::Note => "Note",
+            EntityType::Turn => "Turn",
+            EntityType::Lock => "Lock",
+            EntityType::Message => "Message",
+            EntityType::Agent => "Agent",
+            EntityType::Delegation => "Delegation",
+            EntityType::Handoff => "Handoff",
+            EntityType::Conflict => "Conflict",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for EntityType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let normalized = normalize_token(s);
+        match normalized.as_str() {
+            "trajectory" => Ok(EntityType::Trajectory),
+            "scope" => Ok(EntityType::Scope),
+            "artifact" => Ok(EntityType::Artifact),
+            "note" => Ok(EntityType::Note),
+            "turn" => Ok(EntityType::Turn),
+            "lock" => Ok(EntityType::Lock),
+            "message" => Ok(EntityType::Message),
+            "agent" => Ok(EntityType::Agent),
+            "delegation" => Ok(EntityType::Delegation),
+            "handoff" => Ok(EntityType::Handoff),
+            "conflict" => Ok(EntityType::Conflict),
+            _ => Err(format!("Invalid EntityType: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for TrajectoryStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            TrajectoryStatus::Active => "Active",
+            TrajectoryStatus::Completed => "Completed",
+            TrajectoryStatus::Failed => "Failed",
+            TrajectoryStatus::Suspended => "Suspended",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for TrajectoryStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "active" => Ok(TrajectoryStatus::Active),
+            "completed" | "complete" => Ok(TrajectoryStatus::Completed),
+            "failed" | "failure" => Ok(TrajectoryStatus::Failed),
+            "suspended" => Ok(TrajectoryStatus::Suspended),
+            _ => Err(format!("Invalid TrajectoryStatus: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for OutcomeStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            OutcomeStatus::Success => "Success",
+            OutcomeStatus::Partial => "Partial",
+            OutcomeStatus::Failure => "Failure",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for OutcomeStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "success" => Ok(OutcomeStatus::Success),
+            "partial" => Ok(OutcomeStatus::Partial),
+            "failure" | "failed" => Ok(OutcomeStatus::Failure),
+            _ => Err(format!("Invalid OutcomeStatus: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for TurnRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            TurnRole::User => "User",
+            TurnRole::Assistant => "Assistant",
+            TurnRole::System => "System",
+            TurnRole::Tool => "Tool",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for TurnRole {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "user" => Ok(TurnRole::User),
+            "assistant" => Ok(TurnRole::Assistant),
+            "system" => Ok(TurnRole::System),
+            "tool" => Ok(TurnRole::Tool),
+            _ => Err(format!("Invalid TurnRole: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for ArtifactType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            ArtifactType::ErrorLog => "ErrorLog",
+            ArtifactType::CodePatch => "CodePatch",
+            ArtifactType::DesignDecision => "DesignDecision",
+            ArtifactType::UserPreference => "UserPreference",
+            ArtifactType::Fact => "Fact",
+            ArtifactType::Constraint => "Constraint",
+            ArtifactType::ToolResult => "ToolResult",
+            ArtifactType::IntermediateOutput => "IntermediateOutput",
+            ArtifactType::Custom => "Custom",
+            ArtifactType::Code => "Code",
+            ArtifactType::Document => "Document",
+            ArtifactType::Data => "Data",
+            ArtifactType::Config => "Config",
+            ArtifactType::Log => "Log",
+            ArtifactType::Summary => "Summary",
+            ArtifactType::Decision => "Decision",
+            ArtifactType::Plan => "Plan",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for ArtifactType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "errorlog" => Ok(ArtifactType::ErrorLog),
+            "codepatch" => Ok(ArtifactType::CodePatch),
+            "designdecision" => Ok(ArtifactType::DesignDecision),
+            "userpreference" => Ok(ArtifactType::UserPreference),
+            "fact" => Ok(ArtifactType::Fact),
+            "constraint" => Ok(ArtifactType::Constraint),
+            "toolresult" => Ok(ArtifactType::ToolResult),
+            "intermediateoutput" => Ok(ArtifactType::IntermediateOutput),
+            "custom" => Ok(ArtifactType::Custom),
+            "code" => Ok(ArtifactType::Code),
+            "document" => Ok(ArtifactType::Document),
+            "data" => Ok(ArtifactType::Data),
+            "config" => Ok(ArtifactType::Config),
+            "log" => Ok(ArtifactType::Log),
+            "summary" => Ok(ArtifactType::Summary),
+            "decision" => Ok(ArtifactType::Decision),
+            "plan" => Ok(ArtifactType::Plan),
+            _ => Err(format!("Invalid ArtifactType: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for ExtractionMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            ExtractionMethod::Explicit => "Explicit",
+            ExtractionMethod::Inferred => "Inferred",
+            ExtractionMethod::UserProvided => "UserProvided",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for ExtractionMethod {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "explicit" => Ok(ExtractionMethod::Explicit),
+            "inferred" => Ok(ExtractionMethod::Inferred),
+            "userprovided" => Ok(ExtractionMethod::UserProvided),
+            _ => Err(format!("Invalid ExtractionMethod: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for NoteType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            NoteType::Convention => "Convention",
+            NoteType::Strategy => "Strategy",
+            NoteType::Gotcha => "Gotcha",
+            NoteType::Fact => "Fact",
+            NoteType::Preference => "Preference",
+            NoteType::Relationship => "Relationship",
+            NoteType::Procedure => "Procedure",
+            NoteType::Meta => "Meta",
+            NoteType::Insight => "Insight",
+            NoteType::Correction => "Correction",
+            NoteType::Summary => "Summary",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for NoteType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "convention" => Ok(NoteType::Convention),
+            "strategy" => Ok(NoteType::Strategy),
+            "gotcha" => Ok(NoteType::Gotcha),
+            "fact" => Ok(NoteType::Fact),
+            "preference" => Ok(NoteType::Preference),
+            "relationship" => Ok(NoteType::Relationship),
+            "procedure" => Ok(NoteType::Procedure),
+            "meta" => Ok(NoteType::Meta),
+            "insight" => Ok(NoteType::Insight),
+            "correction" => Ok(NoteType::Correction),
+            "summary" => Ok(NoteType::Summary),
+            _ => Err(format!("Invalid NoteType: {}", s)),
+        }
+    }
 }
 
 // ============================================================================

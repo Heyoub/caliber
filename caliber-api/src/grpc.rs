@@ -9,6 +9,8 @@
 
 use std::pin::Pin;
 use std::sync::Arc;
+
+use chrono::{TimeZone, Utc};
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tonic::{Request, Response, Status};
@@ -53,6 +55,27 @@ impl From<ApiError> for Status {
             crate::error::ErrorCode::TokenExpired => Status::unauthenticated(err.message),
         }
     }
+}
+
+fn timestamp_to_millis(ts: &caliber_core::Timestamp) -> i64 {
+    ts.timestamp_millis()
+}
+
+fn opt_timestamp_to_millis(ts: Option<caliber_core::Timestamp>) -> Option<i64> {
+    ts.map(|t| t.timestamp_millis())
+}
+
+fn parse_timestamp_millis(value: i64, field: &'static str) -> Result<caliber_core::Timestamp, Status> {
+    Utc.timestamp_millis_opt(value)
+        .single()
+        .ok_or_else(|| Status::invalid_argument(format!("Invalid {}", field)))
+}
+
+fn parse_optional_timestamp_millis(
+    value: Option<i64>,
+    field: &'static str,
+) -> Result<Option<caliber_core::Timestamp>, Status> {
+    value.map(|v| parse_timestamp_millis(v, field)).transpose()
 }
 
 // ============================================================================
@@ -477,9 +500,9 @@ fn trajectory_to_proto(t: &crate::types::TrajectoryResponse) -> TrajectoryRespon
         parent_trajectory_id: t.parent_trajectory_id.map(|id| id.to_string()),
         root_trajectory_id: t.root_trajectory_id.map(|id| id.to_string()),
         agent_id: t.agent_id.map(|id| id.to_string()),
-        created_at: t.created_at,
-        updated_at: t.updated_at,
-        completed_at: t.completed_at,
+        created_at: timestamp_to_millis(&t.created_at),
+        updated_at: timestamp_to_millis(&t.updated_at),
+        completed_at: opt_timestamp_to_millis(t.completed_at),
         outcome: t.outcome.as_ref().map(|o| TrajectoryOutcome {
             status: o.status.to_string(),
             summary: o.summary.clone(),
@@ -499,8 +522,8 @@ fn scope_to_proto(s: &crate::types::ScopeResponse) -> ScopeResponse {
         name: s.name.clone(),
         purpose: s.purpose.clone(),
         is_active: s.is_active,
-        created_at: s.created_at,
-        closed_at: s.closed_at,
+        created_at: timestamp_to_millis(&s.created_at),
+        closed_at: opt_timestamp_to_millis(s.closed_at),
         checkpoint: s.checkpoint.as_ref().map(|c| CheckpointResponse {
             context_state: c.context_state.clone(),
             recoverable: c.recoverable,
@@ -531,8 +554,8 @@ fn artifact_to_proto(a: &crate::types::ArtifactResponse) -> ArtifactResponse {
             confidence: a.provenance.confidence,
         }),
         ttl: serde_json::to_string(&a.ttl).unwrap_or_default(),
-        created_at: a.created_at,
-        updated_at: a.updated_at,
+        created_at: timestamp_to_millis(&a.created_at),
+        updated_at: timestamp_to_millis(&a.updated_at),
         superseded_by: a.superseded_by.map(|id| id.to_string()),
         metadata: a.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
     }
@@ -553,9 +576,9 @@ fn note_to_proto(n: &crate::types::NoteResponse) -> NoteResponse {
         source_trajectory_ids: n.source_trajectory_ids.iter().map(|id| id.to_string()).collect(),
         source_artifact_ids: n.source_artifact_ids.iter().map(|id| id.to_string()).collect(),
         ttl: serde_json::to_string(&n.ttl).unwrap_or_default(),
-        created_at: n.created_at,
-        updated_at: n.updated_at,
-        accessed_at: n.accessed_at,
+        created_at: timestamp_to_millis(&n.created_at),
+        updated_at: timestamp_to_millis(&n.updated_at),
+        accessed_at: timestamp_to_millis(&n.accessed_at),
         access_count: n.access_count,
         superseded_by: n.superseded_by.map(|id| id.to_string()),
         metadata: n.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
@@ -570,7 +593,7 @@ fn turn_to_proto(t: &crate::types::TurnResponse) -> TurnResponse {
         role: t.role.to_string(),
         content: t.content.clone(),
         token_count: t.token_count,
-        created_at: t.created_at,
+        created_at: timestamp_to_millis(&t.created_at),
         tool_calls: t.tool_calls.as_ref().map(|tc| serde_json::to_string(tc).unwrap_or_default()),
         tool_results: t.tool_results.as_ref().map(|tr| serde_json::to_string(tr).unwrap_or_default()),
         metadata: t.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
@@ -599,8 +622,8 @@ fn agent_to_proto(a: &crate::types::AgentResponse) -> AgentResponse {
         current_scope_id: a.current_scope_id.map(|id| id.to_string()),
         can_delegate_to: a.can_delegate_to.iter().map(|id| id.to_string()).collect(),
         reports_to: a.reports_to.map(|id| id.to_string()),
-        created_at: a.created_at,
-        last_heartbeat: a.last_heartbeat,
+        created_at: timestamp_to_millis(&a.created_at),
+        last_heartbeat: timestamp_to_millis(&a.last_heartbeat),
     }
 }
 
@@ -610,8 +633,8 @@ fn lock_to_proto(l: &crate::types::LockResponse) -> LockResponse {
         resource_type: l.resource_type.to_string(),
         resource_id: l.resource_id.to_string(),
         holder_agent_id: l.holder_agent_id.to_string(),
-        acquired_at: l.acquired_at,
-        expires_at: l.expires_at,
+        acquired_at: timestamp_to_millis(&l.acquired_at),
+        expires_at: timestamp_to_millis(&l.expires_at),
         mode: l.mode.to_string(),
     }
 }
@@ -627,11 +650,11 @@ fn message_to_proto(m: &crate::types::MessageResponse) -> MessageResponse {
         trajectory_id: m.trajectory_id.map(|id| id.to_string()),
         scope_id: m.scope_id.map(|id| id.to_string()),
         artifact_ids: m.artifact_ids.iter().map(|id| id.to_string()).collect(),
-        created_at: m.created_at,
-        delivered_at: m.delivered_at,
-        acknowledged_at: m.acknowledged_at,
+        created_at: timestamp_to_millis(&m.created_at),
+        delivered_at: opt_timestamp_to_millis(m.delivered_at),
+        acknowledged_at: opt_timestamp_to_millis(m.acknowledged_at),
         priority: m.priority.to_string(),
-        expires_at: m.expires_at,
+        expires_at: opt_timestamp_to_millis(m.expires_at),
     }
 }
 
@@ -644,10 +667,10 @@ fn delegation_to_proto(d: &crate::types::DelegationResponse) -> DelegationRespon
         scope_id: d.scope_id.to_string(),
         task_description: d.task_description.clone(),
         status: d.status.to_string(),
-        created_at: d.created_at,
-        accepted_at: d.accepted_at,
-        completed_at: d.completed_at,
-        expected_completion: d.expected_completion,
+        created_at: timestamp_to_millis(&d.created_at),
+        accepted_at: opt_timestamp_to_millis(d.accepted_at),
+        completed_at: opt_timestamp_to_millis(d.completed_at),
+        expected_completion: opt_timestamp_to_millis(d.expected_completion),
         result: d.result.as_ref().map(|r| DelegationResult {
             status: r.status.to_string(),
             output: r.output.clone(),
@@ -667,9 +690,9 @@ fn handoff_to_proto(h: &crate::types::HandoffResponse) -> HandoffResponse {
         scope_id: h.scope_id.to_string(),
         reason: h.reason.clone(),
         status: h.status.to_string(),
-        created_at: h.created_at,
-        accepted_at: h.accepted_at,
-        completed_at: h.completed_at,
+        created_at: timestamp_to_millis(&h.created_at),
+        accepted_at: opt_timestamp_to_millis(h.accepted_at),
+        completed_at: opt_timestamp_to_millis(h.completed_at),
         context_snapshot: h.context_snapshot.clone(),
     }
 }
@@ -894,9 +917,10 @@ impl agent_service_server::AgentService for AgentServiceImpl {
 
     async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
         let id = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
-        let timestamp = self.db.agent_heartbeat(id).await.map_err(ApiError::from)?;
-        self.ws.broadcast(WsEvent::AgentHeartbeat { agent_id: id, timestamp });
-        Ok(Response::new(HeartbeatResponse { timestamp }))
+        self.db.agent_heartbeat(id).await.map_err(ApiError::from)?;
+        let now = Utc::now();
+        self.ws.broadcast(WsEvent::AgentHeartbeat { agent_id: id, timestamp: now });
+        Ok(Response::new(HeartbeatResponse { timestamp: timestamp_to_millis(&now) }))
     }
 }
 
@@ -936,10 +960,8 @@ impl lock_service_server::LockService for LockServiceImpl {
     }
 
     async fn extend_lock(&self, request: Request<ExtendLockRequest>) -> Result<Response<LockResponse>, Status> {
-        let req = request.into_inner();
-        let id = req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
-        let lock = self.db.lock_extend(id, req.additional_ms).await.map_err(ApiError::from)?;
-        Ok(Response::new(lock_to_proto(&lock)))
+        let _req = request.into_inner();
+        Err(Status::unimplemented("Lock extension not yet implemented"))
     }
 
     async fn list_locks(&self, _request: Request<ListLocksRequest>) -> Result<Response<ListLocksResponse>, Status> {
@@ -973,7 +995,7 @@ impl message_service_server::MessageService for MessageServiceImpl {
             scope_id: req.scope_id.and_then(|s| s.parse().ok()),
             artifact_ids: req.artifact_ids.into_iter().filter_map(|s| s.parse().ok()).collect(),
             priority: req.priority.parse().map_err(|_| Status::invalid_argument("Invalid priority"))?,
-            expires_at: req.expires_at,
+            expires_at: parse_optional_timestamp_millis(req.expires_at, "expires_at")?,
         };
         let message = self.db.message_send(&send_req).await.map_err(ApiError::from)?;
         self.ws.broadcast(WsEvent::MessageSent { message: message.clone() });
@@ -992,7 +1014,13 @@ impl message_service_server::MessageService for MessageServiceImpl {
 
     async fn acknowledge_message(&self, request: Request<AcknowledgeMessageRequest>) -> Result<Response<MessageResponse>, Status> {
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
-        let message = self.db.message_acknowledge(id).await.map_err(ApiError::from)?;
+        self.db.message_acknowledge(id).await.map_err(ApiError::from)?;
+        let message = self
+            .db
+            .message_get(id)
+            .await
+            .map_err(ApiError::from)?
+            .ok_or_else(|| Status::not_found("Message not found"))?;
         self.ws.broadcast(WsEvent::MessageAcknowledged { message_id: id });
         Ok(Response::new(message_to_proto(&message)))
     }
@@ -1020,7 +1048,7 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
             trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
             scope_id: req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?,
             task_description: req.task_description,
-            expected_completion: req.expected_completion,
+            expected_completion: parse_optional_timestamp_millis(req.expected_completion, "expected_completion")?,
             context: req.context.and_then(|s| serde_json::from_str(&s).ok()),
         };
         let delegation = self.db.delegation_create(&create_req).await.map_err(ApiError::from)?;
@@ -1218,7 +1246,7 @@ impl tenant_service_server::TenantService for TenantServiceImpl {
                 tenant_id: t.tenant_id.to_string(),
                 name: t.name,
                 status: t.status.to_string(),
-                created_at: t.created_at,
+                created_at: timestamp_to_millis(&t.created_at),
             }).collect(),
         }))
     }
@@ -1230,7 +1258,7 @@ impl tenant_service_server::TenantService for TenantServiceImpl {
             tenant_id: tenant.tenant_id.to_string(),
             name: tenant.name,
             status: tenant.status.to_string(),
-            created_at: tenant.created_at,
+            created_at: timestamp_to_millis(&tenant.created_at),
         }))
     }
 }

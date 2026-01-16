@@ -15,7 +15,9 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{CreateDelegationRequest, DelegationResponse, DelegationResultResponse},
+    ws::WsState,
 };
 
 // ============================================================================
@@ -26,11 +28,12 @@ use crate::{
 #[derive(Clone)]
 pub struct DelegationState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl DelegationState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -72,6 +75,11 @@ pub async fn create_delegation(
 
     // Create delegation via database client
     let delegation = state.db.delegation_create(&req).await?;
+
+    // Broadcast DelegationCreated event
+    state.ws.broadcast(WsEvent::DelegationCreated {
+        delegation: delegation.clone(),
+    });
 
     Ok((StatusCode::CREATED, Json(delegation)))
 }
@@ -160,6 +168,11 @@ pub async fn accept_delegation(
         .db
         .delegation_accept(id.into(), req.accepting_agent_id)
         .await?;
+
+    // Broadcast DelegationAccepted event
+    state.ws.broadcast(WsEvent::DelegationAccepted {
+        delegation_id: id.into(),
+    });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -275,6 +288,18 @@ pub async fn complete_delegation(
     // Complete delegation via database client
     state.db.delegation_complete(id.into(), result_json).await?;
 
+    // Fetch updated delegation for event payload
+    let updated = state
+        .db
+        .delegation_get(id.into())
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
+
+    // Broadcast DelegationCompleted event
+    state.ws.broadcast(WsEvent::DelegationCompleted {
+        delegation: updated,
+    });
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -315,8 +340,8 @@ pub struct CompleteDelegationRequest {
 // ============================================================================
 
 /// Create the delegation routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(DelegationState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(DelegationState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::post(create_delegation))

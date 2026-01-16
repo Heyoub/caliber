@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "caliber.fullname" . }}
+  labels:
+    {{- include "caliber.labels" . | nindent 4 }}
+data:
+  # CALIBER configuration
+  log-level: {{ .Values.caliber.logLevel | quote }}
+  db-pool-size: {{ .Values.caliber.dbPoolSize | quote }}
+  metrics-enabled: {{ .Values.caliber.metrics.enabled | quote }}
+  telemetry-enabled: {{ .Values.caliber.telemetry.enabled | quote }}
+  {{- if .Values.caliber.telemetry.enabled }}
+  otlp-endpoint: {{ .Values.caliber.telemetry.otlpEndpoint | quote }}
+  trace-sample-rate: {{ .Values.caliber.telemetry.sampleRate | quote }}
+  {{- end }}

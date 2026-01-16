@@ -1,20 +1,33 @@
 //! REST API Routes Module
 //!
 //! This module contains all REST API route handlers organized by entity type.
+//!
+//! Includes:
+//! - Entity CRUD routes (trajectories, scopes, artifacts, notes, etc.)
+//! - Batch operations for bulk CRUD
+//! - Health check endpoints (Kubernetes-compatible)
+//! - Webhook registration and delivery
+//! - MCP (Model Context Protocol) server
+//! - GraphQL endpoint
 
 pub mod agent;
 pub mod artifact;
+pub mod batch;
 pub mod config;
 pub mod delegation;
 pub mod dsl;
+pub mod graphql;
 pub mod handoff;
+pub mod health;
 pub mod lock;
+pub mod mcp;
 pub mod message;
 pub mod note;
 pub mod scope;
 pub mod tenant;
 pub mod trajectory;
 pub mod turn;
+pub mod webhooks;
 
 use std::sync::Arc;
 
@@ -28,17 +41,22 @@ use crate::ws::WsState;
 // Re-export route creation functions for convenience
 pub use agent::create_router as agent_router;
 pub use artifact::create_router as artifact_router;
+pub use batch::create_router as batch_router;
 pub use config::create_router as config_router;
 pub use delegation::create_router as delegation_router;
 pub use dsl::create_router as dsl_router;
+pub use graphql::create_router as graphql_router;
 pub use handoff::create_router as handoff_router;
+pub use health::create_router as health_router;
 pub use lock::create_router as lock_router;
+pub use mcp::create_router as mcp_router;
 pub use message::create_router as message_router;
 pub use note::create_router as note_router;
 pub use scope::create_router as scope_router;
 pub use tenant::create_router as tenant_router;
 pub use trajectory::create_router as trajectory_router;
 pub use turn::create_router as turn_router;
+pub use webhooks::create_router as webhooks_router;
 
 // ============================================================================
 // OPENAPI ENDPOINTS
@@ -76,27 +94,48 @@ async fn openapi_yaml() -> impl IntoResponse {
 ///
 /// This function creates a fully configured Axum router with:
 /// - All REST API routes under /api/v1/*
+/// - Batch operations under /api/v1/batch/*
+/// - Webhook management under /api/v1/webhooks
+/// - GraphQL endpoint at /api/v1/graphql
+/// - MCP server at /mcp/*
+/// - Health checks at /health/*
+/// - Metrics at /metrics
 /// - OpenAPI spec at /openapi.json
 /// - Swagger UI at /swagger-ui (when swagger-ui feature is enabled)
 pub fn create_api_router(db: DbClient, ws: Arc<WsState>) -> Router {
+    use crate::telemetry::{middleware::observability_middleware, metrics_handler};
+    use axum::middleware::from_fn;
+
+    // Entity CRUD routes
     let api_routes = Router::new()
         .nest("/trajectories", trajectory::create_router(db.clone(), ws.clone()))
         .nest("/scopes", scope::create_router(db.clone(), ws.clone()))
         .nest("/artifacts", artifact::create_router(db.clone(), ws.clone()))
-        .nest("/notes", note::create_router(db.clone()))
-        .nest("/turns", turn::create_router(db.clone()))
-        .nest("/agents", agent::create_router(db.clone()))
-        .nest("/locks", lock::create_router(db.clone()))
-        .nest("/messages", message::create_router(db.clone()))
-        .nest("/delegations", delegation::create_router(db.clone()))
-        .nest("/handoffs", handoff::create_router(db.clone()))
+        .nest("/notes", note::create_router(db.clone(), ws.clone()))
+        .nest("/turns", turn::create_router(db.clone(), ws.clone()))
+        .nest("/agents", agent::create_router(db.clone(), ws.clone()))
+        .nest("/locks", lock::create_router(db.clone(), ws.clone()))
+        .nest("/messages", message::create_router(db.clone(), ws.clone()))
+        .nest("/delegations", delegation::create_router(db.clone(), ws.clone()))
+        .nest("/handoffs", handoff::create_router(db.clone(), ws.clone()))
         .nest("/dsl", dsl::create_router(db.clone()))
         .nest("/config", config::create_router(db.clone()))
-        .nest("/tenants", tenant::create_router(db.clone()));
+        .nest("/tenants", tenant::create_router(db.clone()))
+        // New routes
+        .nest("/batch", batch::create_router(db.clone(), ws.clone()))
+        .nest("/webhooks", webhooks::create_router(db.clone(), ws.clone()))
+        .nest("/graphql", graphql::create_router(db.clone(), ws.clone()));
 
     // Build the main router
     let mut router = Router::new()
         .nest("/api/v1", api_routes)
+        // MCP server (not under /api/v1 - uses its own protocol)
+        .nest("/mcp", mcp::create_router(db.clone(), ws.clone()))
+        // Health checks (no auth required)
+        .nest("/health", health::create_router(db.clone()))
+        // Metrics endpoint
+        .route("/metrics", get(metrics_handler))
+        // OpenAPI spec
         .route("/openapi.json", get(openapi_json));
 
     // Add YAML endpoint if openapi feature is enabled
@@ -115,7 +154,8 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>) -> Router {
         );
     }
 
-    router
+    // Add observability middleware
+    router.layer(from_fn(observability_middleware))
 }
 
 /// Create a minimal router for testing without WebSocket support.

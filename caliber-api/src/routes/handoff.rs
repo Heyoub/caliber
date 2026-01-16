@@ -15,7 +15,9 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{CreateHandoffRequest, HandoffResponse},
+    ws::WsState,
 };
 
 // ============================================================================
@@ -26,11 +28,12 @@ use crate::{
 #[derive(Clone)]
 pub struct HandoffState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl HandoffState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -96,6 +99,11 @@ pub async fn create_handoff(
 
     // Create handoff via database client
     let handoff = state.db.handoff_create(&req).await?;
+
+    // Broadcast HandoffCreated event
+    state.ws.broadcast(WsEvent::HandoffCreated {
+        handoff: handoff.clone(),
+    });
 
     Ok((StatusCode::CREATED, Json(handoff)))
 }
@@ -185,6 +193,11 @@ pub async fn accept_handoff(
         .handoff_accept(id.into(), req.accepting_agent_id)
         .await?;
 
+    // Broadcast HandoffAccepted event
+    state.ws.broadcast(WsEvent::HandoffAccepted {
+        handoff_id: id.into(),
+    });
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -228,6 +241,16 @@ pub async fn complete_handoff(
     // Complete handoff via database client
     state.db.handoff_complete(id.into()).await?;
 
+    // Fetch updated handoff for event payload
+    let updated = state
+        .db
+        .handoff_get(id.into())
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
+
+    // Broadcast HandoffCompleted event
+    state.ws.broadcast(WsEvent::HandoffCompleted { handoff: updated });
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -249,8 +272,8 @@ pub struct AcceptHandoffRequest {
 // ============================================================================
 
 /// Create the handoff routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(HandoffState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(HandoffState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::post(create_handoff))

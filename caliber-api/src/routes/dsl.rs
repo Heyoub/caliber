@@ -53,7 +53,7 @@ impl DslState {
     )
 )]
 pub async fn validate_dsl(
-    State(state): State<Arc<DslState>>,
+    State(_state): State<Arc<DslState>>,
     Json(req): Json<ValidateDslRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that source is not empty
@@ -61,26 +61,33 @@ pub async fn validate_dsl(
         return Err(ApiError::missing_field("source"));
     }
 
-    // TODO: Implement caliber_dsl_validate in caliber-pg
-    // This will:
-    // 1. Tokenize the DSL source using the lexer
-    // 2. Parse tokens into an AST
-    // 3. Validate semantic correctness
-    // 4. Return errors with line/column information
+    match caliber_dsl::parse(&req.source) {
+        Ok(ast) => {
+            let ast_json = serde_json::to_value(&ast)
+                .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
 
-    // For now, return a basic validation response
-    // In a real implementation, this would call the DSL parser
-    let response = ValidateDslResponse {
-        valid: false,
-        errors: vec![ParseErrorResponse {
-            line: 1,
-            column: 1,
-            message: "DSL validation not yet implemented in caliber-pg".to_string(),
-        }],
-        ast: None,
-    };
+            let response = ValidateDslResponse {
+                valid: true,
+                errors: Vec::new(),
+                ast: Some(ast_json),
+            };
 
-    Ok(Json(response))
+            Ok(Json(response))
+        }
+        Err(err) => {
+            let response = ValidateDslResponse {
+                valid: false,
+                errors: vec![ParseErrorResponse {
+                    line: err.line,
+                    column: err.column,
+                    message: err.message,
+                }],
+                ast: None,
+            };
+
+            Ok(Json(response))
+        }
+    }
 }
 
 /// POST /api/v1/dsl/parse - Parse DSL source
@@ -100,7 +107,7 @@ pub async fn validate_dsl(
     )
 )]
 pub async fn parse_dsl(
-    State(state): State<Arc<DslState>>,
+    State(_state): State<Arc<DslState>>,
     Json(req): Json<ValidateDslRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that source is not empty
@@ -108,25 +115,33 @@ pub async fn parse_dsl(
         return Err(ApiError::missing_field("source"));
     }
 
-    // TODO: Implement caliber_dsl_parse in caliber-pg
-    // This will:
-    // 1. Tokenize the DSL source
-    // 2. Parse tokens into an AST
-    // 3. Return the AST as JSON (even if there are warnings)
-    // 4. Return errors separately
+    match caliber_dsl::parse(&req.source) {
+        Ok(ast) => {
+            let ast_json = serde_json::to_value(&ast)
+                .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
 
-    // For now, return a basic parse response
-    let response = ValidateDslResponse {
-        valid: false,
-        errors: vec![ParseErrorResponse {
-            line: 1,
-            column: 1,
-            message: "DSL parsing not yet implemented in caliber-pg".to_string(),
-        }],
-        ast: None,
-    };
+            let response = ValidateDslResponse {
+                valid: true,
+                errors: Vec::new(),
+                ast: Some(ast_json),
+            };
 
-    Ok(Json(response))
+            Ok(Json(response))
+        }
+        Err(err) => {
+            let response = ValidateDslResponse {
+                valid: false,
+                errors: vec![ParseErrorResponse {
+                    line: err.line,
+                    column: err.column,
+                    message: err.message,
+                }],
+                ast: None,
+            };
+
+            Ok(Json(response))
+        }
+    }
 }
 
 // ============================================================================

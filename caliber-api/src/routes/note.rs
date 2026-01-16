@@ -15,10 +15,12 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{
         CreateNoteRequest, ListNotesRequest, ListNotesResponse, NoteResponse, SearchRequest,
         SearchResponse, UpdateNoteRequest,
     },
+    ws::WsState,
 };
 
 // ============================================================================
@@ -29,11 +31,12 @@ use crate::{
 #[derive(Clone)]
 pub struct NoteState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl NoteState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -72,6 +75,11 @@ pub async fn create_note(
 
     // Create note via database client
     let note = state.db.note_create(&req).await?;
+
+    // Broadcast NoteCreated event
+    state.ws.broadcast(WsEvent::NoteCreated {
+        note: note.clone(),
+    });
 
     Ok((StatusCode::CREATED, Json(note)))
 }
@@ -328,8 +336,8 @@ pub async fn search_notes(
 // ============================================================================
 
 /// Create the note routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(NoteState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(NoteState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::post(create_note))

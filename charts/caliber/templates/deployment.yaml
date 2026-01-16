@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "caliber.fullname" . }}
+  labels:
+    {{- include "caliber.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "caliber.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "caliber.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "caliber.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: "caliber_api={{ .Values.caliber.logLevel }}"
+            - name: CALIBER_DB_HOST
+              value: {{ include "caliber.postgresql.host" . | quote }}
+            - name: CALIBER_DB_PORT
+              value: {{ include "caliber.postgresql.port" . | quote }}
+            - name: CALIBER_DB_NAME
+              value: {{ include "caliber.postgresql.database" . | quote }}
+            - name: CALIBER_DB_USER
+              value: {{ include "caliber.postgresql.username" . | quote }}
+            - name: CALIBER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caliber.postgresql.secretName" . }}
+                  key: {{ include "caliber.postgresql.secretKey" . }}
+            - name: CALIBER_DB_POOL_SIZE
+              value: {{ .Values.caliber.dbPoolSize | quote }}
+            - name: CALIBER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caliber.fullname" . }}
+                  key: jwt-secret
+            {{- if .Values.caliber.apiKeys }}
+            - name: CALIBER_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caliber.fullname" . }}
+                  key: api-keys
+            {{- end }}
+            {{- if .Values.caliber.telemetry.enabled }}
+            - name: CALIBER_OTLP_ENDPOINT
+              value: {{ .Values.caliber.telemetry.otlpEndpoint | quote }}
+            - name: CALIBER_TRACE_SAMPLE_RATE
+              value: {{ .Values.caliber.telemetry.sampleRate | quote }}
+            {{- end }}
+            - name: CALIBER_METRICS_ENABLED
+              value: {{ .Values.caliber.metrics.enabled | quote }}
+            - name: CALIBER_REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@{{ include "caliber.redis.host" . }}:{{ include "caliber.redis.port" . }}"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "caliber.redis.secretName" . }}
+                  key: {{ include "caliber.redis.secretKey" . }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

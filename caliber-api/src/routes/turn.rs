@@ -15,7 +15,9 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{CreateTurnRequest, TurnResponse},
+    ws::WsState,
 };
 
 // ============================================================================
@@ -26,11 +28,12 @@ use crate::{
 #[derive(Clone)]
 pub struct TurnState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl TurnState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -74,6 +77,11 @@ pub async fn create_turn(
     // Create turn via database client
     let turn = state.db.turn_create(&req).await?;
 
+    // Broadcast TurnCreated event
+    state.ws.broadcast(WsEvent::TurnCreated {
+        turn: turn.clone(),
+    });
+
     Ok((StatusCode::CREATED, Json(turn)))
 }
 
@@ -116,8 +124,8 @@ pub async fn get_turn(
 // ============================================================================
 
 /// Create the turn routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(TurnState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(TurnState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::post(create_turn))

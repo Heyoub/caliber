@@ -1611,5 +1611,187 @@ impl DbClient {
             caliber_core::TTL::Duration(ms) => format!("duration_{}", ms),
         }
     }
+
+    // ========================================================================
+    // ADDITIONAL CRUD OPERATIONS (for batch endpoints)
+    // ========================================================================
+
+    /// Delete a trajectory by calling caliber_trajectory_delete.
+    pub async fn trajectory_delete(&self, id: EntityId) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        let deleted: bool = conn
+            .query_one("SELECT caliber_trajectory_delete($1)", &[&id])
+            .await?
+            .get(0);
+
+        if !deleted {
+            return Err(ApiError::trajectory_not_found(id));
+        }
+
+        Ok(())
+    }
+
+    /// List child trajectories by calling caliber_trajectory_list_children.
+    pub async fn trajectory_list_children(&self, id: EntityId) -> ApiResult<Vec<TrajectoryResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_trajectory_list_children($1)", &[&id])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let trajectories_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from trajectory children list"))?;
+
+        let mut trajectories = Vec::new();
+        for traj_json in trajectories_json {
+            trajectories.push(self.parse_trajectory_json(traj_json)?);
+        }
+
+        Ok(trajectories)
+    }
+
+    /// List scopes by trajectory by calling caliber_scope_list_by_trajectory.
+    pub async fn scope_list_by_trajectory(&self, id: EntityId) -> ApiResult<Vec<ScopeResponse>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one("SELECT caliber_scope_list_by_trajectory($1)", &[&id])
+            .await?;
+
+        let json: JsonValue = row.get(0);
+        let scopes_json = json.as_array()
+            .ok_or_else(|| ApiError::internal_error("Expected array from scope list"))?;
+
+        let mut scopes = Vec::new();
+        for scope_json in scopes_json {
+            scopes.push(self.parse_scope_json(scope_json)?);
+        }
+
+        Ok(scopes)
+    }
+
+    /// Update an artifact by calling caliber_artifact_update.
+    pub async fn artifact_update(
+        &self,
+        id: EntityId,
+        req: &UpdateArtifactRequest,
+    ) -> ApiResult<ArtifactResponse> {
+        let conn = self.get_conn().await?;
+
+        let mut updates = serde_json::Map::new();
+        if let Some(name) = &req.name {
+            updates.insert("name".to_string(), JsonValue::String(name.clone()));
+        }
+        if let Some(content) = &req.content {
+            updates.insert("content".to_string(), JsonValue::String(content.clone()));
+        }
+        if let Some(artifact_type) = &req.artifact_type {
+            updates.insert("artifact_type".to_string(), JsonValue::String(format!("{:?}", artifact_type)));
+        }
+        if let Some(ttl) = &req.ttl {
+            updates.insert("ttl".to_string(), JsonValue::String(self.ttl_to_string(ttl)));
+        }
+        if let Some(metadata) = &req.metadata {
+            updates.insert("metadata".to_string(), metadata.clone());
+        }
+
+        let updates_json = JsonValue::Object(updates);
+
+        let updated: bool = conn
+            .query_one("SELECT caliber_artifact_update($1, $2)", &[&id, &updates_json])
+            .await?
+            .get(0);
+
+        if !updated {
+            return Err(ApiError::artifact_not_found(id));
+        }
+
+        self.artifact_get(id).await?
+            .ok_or_else(|| ApiError::artifact_not_found(id))
+    }
+
+    /// Delete an artifact by calling caliber_artifact_delete.
+    pub async fn artifact_delete(&self, id: EntityId) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        let deleted: bool = conn
+            .query_one("SELECT caliber_artifact_delete($1)", &[&id])
+            .await?
+            .get(0);
+
+        if !deleted {
+            return Err(ApiError::artifact_not_found(id));
+        }
+
+        Ok(())
+    }
+
+    /// Update a note by calling caliber_note_update.
+    pub async fn note_update(
+        &self,
+        id: EntityId,
+        req: &UpdateNoteRequest,
+    ) -> ApiResult<NoteResponse> {
+        let conn = self.get_conn().await?;
+
+        let mut updates = serde_json::Map::new();
+        if let Some(title) = &req.title {
+            updates.insert("title".to_string(), JsonValue::String(title.clone()));
+        }
+        if let Some(content) = &req.content {
+            updates.insert("content".to_string(), JsonValue::String(content.clone()));
+        }
+        if let Some(note_type) = &req.note_type {
+            updates.insert("note_type".to_string(), JsonValue::String(format!("{:?}", note_type)));
+        }
+        if let Some(ttl) = &req.ttl {
+            updates.insert("ttl".to_string(), JsonValue::String(self.ttl_to_string(ttl)));
+        }
+        if let Some(metadata) = &req.metadata {
+            updates.insert("metadata".to_string(), metadata.clone());
+        }
+
+        let updates_json = JsonValue::Object(updates);
+
+        let updated: bool = conn
+            .query_one("SELECT caliber_note_update($1, $2)", &[&id, &updates_json])
+            .await?
+            .get(0);
+
+        if !updated {
+            return Err(ApiError::note_not_found(id));
+        }
+
+        self.note_get(id).await?
+            .ok_or_else(|| ApiError::note_not_found(id))
+    }
+
+    /// Delete a note by calling caliber_note_delete.
+    pub async fn note_delete(&self, id: EntityId) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        let deleted: bool = conn
+            .query_one("SELECT caliber_note_delete($1)", &[&id])
+            .await?
+            .get(0);
+
+        if !deleted {
+            return Err(ApiError::note_not_found(id));
+        }
+
+        Ok(())
+    }
+
+    /// Health check - verifies database connectivity.
+    pub async fn health_check(&self) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        // Simple query to verify connectivity
+        conn.query_one("SELECT 1", &[]).await?;
+
+        Ok(())
+    }
 }
 
