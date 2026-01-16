@@ -215,6 +215,9 @@ pub unsafe fn extract_values_and_nulls(
 /// * `Ok(Some(Uuid))` - The UUID value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_uuid(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -248,6 +251,9 @@ pub unsafe fn extract_uuid(
 /// * `Ok(Some(String))` - The text value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_text(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -280,6 +286,9 @@ pub unsafe fn extract_text(
 /// * `Ok(Some(i32))` - The integer value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_i32(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -311,6 +320,9 @@ pub unsafe fn extract_i32(
 /// * `Ok(Some(i64))` - The integer value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_i64(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -341,6 +353,9 @@ pub unsafe fn extract_i64(
 /// * `Ok(Some(bool))` - The boolean value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_bool(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -371,6 +386,9 @@ pub unsafe fn extract_bool(
 /// * `Ok(Some(f32))` - The float value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_float4(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -401,6 +419,9 @@ pub unsafe fn extract_float4(
 /// * `Ok(Some(TimestampWithTimeZone))` - The timestamp value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_timestamp(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -433,6 +454,9 @@ pub unsafe fn extract_timestamp(
 /// * `Ok(Some(serde_json::Value))` - The JSON value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_jsonb(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -463,6 +487,9 @@ pub unsafe fn extract_jsonb(
 /// * `Ok(Some(Vec<u8>))` - The binary data if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_bytea(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -494,6 +521,9 @@ pub unsafe fn extract_bytea(
 /// * `Ok(Some(Vec<f32>))` - The float array if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_float4_array(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -525,6 +555,9 @@ pub unsafe fn extract_float4_array(
 /// * `Ok(Some(Vec<uuid::Uuid>))` - The UUID array if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_uuid_array(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -566,6 +599,9 @@ pub unsafe fn extract_uuid_array(
 /// * `Ok(Some([u8; 32]))` - The content hash if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails or hash is wrong size
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_content_hash(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
@@ -875,6 +911,9 @@ pub fn text_array_to_datum(texts: &[String]) -> pg_sys::Datum {
 /// * `Ok(Some(Vec<String>))` - The string array if not null
 /// * `Ok(None)` - If the value is NULL
 /// * `Err(CaliberError)` - On extraction failure
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
 pub unsafe fn extract_text_array(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,

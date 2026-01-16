@@ -1,2 +1,4 @@
 # Rust stuff
 target/*
+target/debug/*
+target/release/* 

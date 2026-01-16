@@ -452,7 +452,7 @@ pub unsafe fn index_scan_collect(
     let mut scanner = unsafe { IndexScanner::new(heap_rel, index_rel, snapshot, nkeys, keys) };
     let mut results = Vec::new();
 
-    for tuple in &mut scanner {
+    while let Some(tuple) = scanner.next() {
         if let Some(tid) = scanner.current_tid() {
             results.push((tuple, tid));
         }
