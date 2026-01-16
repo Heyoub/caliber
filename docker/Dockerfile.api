@@ -1,0 +1,68 @@
+# CALIBER API Multi-stage Build
+# Produces a minimal runtime image (~50MB)
+#
+# Build args:
+#   FEATURES - Cargo features to enable (default: openapi,swagger-ui)
+#
+# Usage:
+#   docker build -f docker/Dockerfile.api -t caliber-api .
+#   docker build -f docker/Dockerfile.api --build-arg FEATURES=openapi -t caliber-api .
+
+# Stage 1: Build
+FROM rust:1.83-bookworm AS builder
+
+ARG FEATURES=openapi,swagger-ui
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY caliber-core ./caliber-core
+COPY caliber-dsl ./caliber-dsl
+COPY caliber-llm ./caliber-llm
+COPY caliber-storage ./caliber-storage
+COPY caliber-context ./caliber-context
+COPY caliber-agents ./caliber-agents
+COPY caliber-pcp ./caliber-pcp
+COPY caliber-test-utils ./caliber-test-utils
+COPY caliber-api ./caliber-api
+
+# Build release binary with specified features
+RUN cargo build --release -p caliber-api --features "${FEATURES}"
+
+# Stage 2: Runtime
+FROM debian:bookworm-slim AS runtime
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -s /bin/false caliber
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/caliber-api /app/caliber-api
+
+# Set ownership
+RUN chown -R caliber:caliber /app
+
+USER caliber
+
+# Expose API port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/health/live || exit 1
+
+# Run the API server
+ENTRYPOINT ["/app/caliber-api"]

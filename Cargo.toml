@@ -11,6 +11,7 @@ members = [
     "caliber-pg",
     "caliber-api",
     "caliber-test-utils",
+    "caliber-tui",
 ]
 
 [workspace.package]
@@ -41,6 +42,19 @@ proptest = "1.5"
 utoipa = { version = "5.3", features = ["axum_extras", "uuid", "chrono"] }
 utoipa-swagger-ui = { version = "8.1", features = ["axum"] }
 tokio-stream = "0.1"
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
+
+# TUI dependencies
+ratatui = "0.26"
+crossterm = "0.27"
+tokio = "1.42"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+tui-textarea = "0.5"
+toml = "0.8"
 
 # Internal crates
 caliber-core = { path = "caliber-core" }
@@ -51,6 +65,7 @@ caliber-llm = { path = "caliber-llm" }
 caliber-agents = { path = "caliber-agents" }
 caliber-dsl = { path = "caliber-dsl" }
 caliber-test-utils = { path = "caliber-test-utils" }
+caliber-api = { path = "caliber-api" }
 
 # === PROFILE OPTIMIZATIONS ===
 

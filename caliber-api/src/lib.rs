@@ -15,6 +15,7 @@ pub mod grpc;
 pub mod middleware;
 pub mod openapi;
 pub mod routes;
+pub mod telemetry;
 pub mod types;
 pub mod ws;
 
@@ -34,5 +35,6 @@ pub use middleware::{
 };
 pub use openapi::ApiDoc;
 pub use routes::create_api_router;
+pub use telemetry::{init_tracer, metrics_handler, shutdown_tracer, CaliberMetrics, TelemetryConfig, METRICS};
 pub use types::*;
 pub use ws::WsState;

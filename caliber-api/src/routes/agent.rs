@@ -9,13 +9,16 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{AgentResponse, RegisterAgentRequest, UpdateAgentRequest},
+    ws::WsState,
 };
 
 // ============================================================================
@@ -26,11 +29,12 @@ use crate::{
 #[derive(Clone)]
 pub struct AgentState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl AgentState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -78,6 +82,11 @@ pub async fn register_agent(
 
     // Register agent via database client
     let agent = state.db.agent_register(&req).await?;
+
+    // Broadcast AgentRegistered event
+    state.ws.broadcast(WsEvent::AgentRegistered {
+        agent: agent.clone(),
+    });
 
     Ok((StatusCode::CREATED, Json(agent)))
 }
@@ -229,6 +238,14 @@ pub async fn update_agent(
     // Update agent via database client
     let agent = state.db.agent_update(id.into(), &req).await?;
 
+    // Broadcast AgentStatusChanged when status updates are included
+    if let Some(status) = &req.status {
+        state.ws.broadcast(WsEvent::AgentStatusChanged {
+            agent_id: agent.agent_id,
+            status: status.clone(),
+        });
+    }
+
     Ok(Json(agent))
 }
 
@@ -272,6 +289,9 @@ pub async fn unregister_agent(
     // Unregister agent via database client
     state.db.agent_unregister(id.into()).await?;
 
+    // Broadcast AgentUnregistered event
+    state.ws.broadcast(WsEvent::AgentUnregistered { id: id.into() });
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -299,6 +319,12 @@ pub async fn agent_heartbeat(
 ) -> ApiResult<impl IntoResponse> {
     // Update heartbeat via database client
     state.db.agent_heartbeat(id.into()).await?;
+
+    // Broadcast AgentHeartbeat event
+    state.ws.broadcast(WsEvent::AgentHeartbeat {
+        agent_id: id.into(),
+        timestamp: Utc::now(),
+    });
 
     // Return the updated agent
     let agent = state
@@ -344,8 +370,8 @@ pub struct ListAgentsResponse {
 // ============================================================================
 
 /// Create the agent routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(AgentState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(AgentState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::post(register_agent))

@@ -1,0 +1,155 @@
+# CALIBER Docker Compose Stack
+# Full development environment with observability
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose logs -f api    # Follow API logs
+#   docker compose down -v        # Stop and remove volumes
+#
+# Services:
+#   - caliber-pg:   PostgreSQL 16 + caliber-pg extension (port 5432)
+#   - caliber-api:  REST/GraphQL/MCP API (port 3000)
+#   - redis:        Cache + pub/sub (port 6379)
+#   - jaeger:       Distributed tracing (ports 16686, 4317)
+#   - prometheus:   Metrics collection (port 9090)
+#   - grafana:      Dashboards (port 3001)
+
+services:
+  # PostgreSQL with caliber-pg extension
+  caliber-pg:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.pg
+    container_name: caliber-pg
+    environment:
+      POSTGRES_USER: caliber
+      POSTGRES_PASSWORD: caliber_dev_password
+      POSTGRES_DB: caliber
+    ports:
+      - "5432:5432"
+    volumes:
+      - caliber-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caliber -d caliber"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - caliber-net
+
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    container_name: caliber-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - caliber-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - caliber-net
+
+  # Jaeger for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: caliber-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    networks:
+      - caliber-net
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: caliber-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - caliber-prometheus-data:/prometheus
+    networks:
+      - caliber-net
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: caliber-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - caliber-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - jaeger
+    networks:
+      - caliber-net
+
+  # CALIBER API
+  caliber-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+      args:
+        FEATURES: openapi,swagger-ui
+    container_name: caliber-api
+    environment:
+      RUST_LOG: caliber_api=debug,tower_http=debug
+      CALIBER_DB_HOST: caliber-pg
+      CALIBER_DB_PORT: "5432"
+      CALIBER_DB_NAME: caliber
+      CALIBER_DB_USER: caliber
+      CALIBER_DB_PASSWORD: caliber_dev_password
+      CALIBER_DB_POOL_SIZE: "16"
+      CALIBER_JWT_SECRET: dev_jwt_secret_change_in_production
+      CALIBER_OTLP_ENDPOINT: http://jaeger:4317
+      CALIBER_TRACE_SAMPLE_RATE: "1.0"
+      CALIBER_METRICS_ENABLED: "true"
+      CALIBER_REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      caliber-pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - caliber-net
+
+volumes:
+  caliber-pg-data:
+  caliber-redis-data:
+  caliber-prometheus-data:
+  caliber-grafana-data:
+
+networks:
+  caliber-net:
+    driver: bridge

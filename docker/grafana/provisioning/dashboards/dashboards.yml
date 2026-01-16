@@ -1,0 +1,17 @@
+# CALIBER Grafana Dashboard Provisioning
+# Auto-loads dashboards from /etc/grafana/provisioning/dashboards
+
+apiVersion: 1
+
+providers:
+  - name: CALIBER
+    orgId: 1
+    folder: CALIBER
+    folderUid: caliber
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

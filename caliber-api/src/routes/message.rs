@@ -15,7 +15,9 @@ use uuid::Uuid;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    events::WsEvent,
     types::{MessageResponse, SendMessageRequest},
+    ws::WsState,
 };
 use caliber_core::EntityId;
 
@@ -27,11 +29,12 @@ use caliber_core::EntityId;
 #[derive(Clone)]
 pub struct MessageState {
     pub db: DbClient,
+    pub ws: Arc<WsState>,
 }
 
 impl MessageState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+        Self { db, ws }
     }
 }
 
@@ -102,6 +105,11 @@ pub async fn send_message(
 
     // Send message via database client
     let message = state.db.message_send(&req).await?;
+
+    // Broadcast MessageSent event
+    state.ws.broadcast(WsEvent::MessageSent {
+        message: message.clone(),
+    });
 
     Ok((StatusCode::CREATED, Json(message)))
 }
@@ -203,6 +211,11 @@ pub async fn acknowledge_message(
     // Acknowledge message via database client
     state.db.message_acknowledge(id.into()).await?;
 
+    // Broadcast MessageAcknowledged event
+    state.ws.broadcast(WsEvent::MessageAcknowledged {
+        message_id: id.into(),
+    });
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -254,8 +267,8 @@ pub struct ListMessagesResponse {
 // ============================================================================
 
 /// Create the message routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(MessageState::new(db));
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
+    let state = Arc::new(MessageState::new(db, ws));
 
     axum::Router::new()
         .route("/", axum::routing::post(send_message))
