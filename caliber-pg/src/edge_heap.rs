@@ -18,7 +18,7 @@ use pgrx::pg_sys;
 
 use caliber_core::{
     CaliberError, CaliberResult, Edge, EdgeParticipant, EdgeType, EntityId,
-    EntityRef, EntityType, ExtractionMethod, Provenance, StorageError, Timestamp,
+    EntityType, ExtractionMethod, Provenance, StorageError,
 };
 
 use crate::column_maps::edge;
@@ -420,6 +420,7 @@ fn tuple_to_edge(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityRef;
     use proptest::prelude::*;
 
     // ========================================================================

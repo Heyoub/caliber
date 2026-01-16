@@ -281,7 +281,8 @@ pub async fn close_scope(
                     source_level: p.source_level,
                     max_sources: p.max_sources,
                     create_edges: p.create_edges,
-                    trajectory_id: Some(trajectory_id),
+                    created_at: p.created_at,
+                    metadata: p.metadata.clone(),
                 })
                 .collect();
 

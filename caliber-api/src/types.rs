@@ -772,6 +772,21 @@ pub struct DelegationResultResponse {
     pub error: Option<String>,
 }
 
+/// Request to complete a delegation with results.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DelegationResultRequest {
+    /// Result status
+    pub status: String,
+    /// Output from the delegated task
+    pub output: Option<String>,
+    /// Artifacts produced during delegation
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
+    pub artifacts: Vec<EntityId>,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
 // ============================================================================
 // HANDOFF TYPES
 // ============================================================================
@@ -892,6 +907,14 @@ pub struct SearchResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ValidateDslRequest {
     /// DSL source code
+    pub source: String,
+}
+
+/// Request to parse DSL source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ParseDslRequest {
+    /// DSL source code to parse
     pub source: String,
 }
 
@@ -1096,6 +1119,15 @@ pub struct UpdateConfigRequest {
     pub config: serde_json::Value,
 }
 
+/// Request to validate configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ValidateConfigRequest {
+    /// Configuration as JSON to validate
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub config: serde_json::Value,
+}
+
 /// Configuration response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1240,8 +1272,10 @@ pub struct EdgeResponse {
     /// Provenance information
     pub provenance: ProvenanceResponse,
     /// When the edge was created
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     /// Optional metadata
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1316,8 +1350,10 @@ pub struct SummarizationPolicyResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub trajectory_id: Option<EntityId>,
     /// When the policy was created
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     /// Optional metadata
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
 

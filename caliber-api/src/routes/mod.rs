@@ -33,7 +33,7 @@ pub mod webhooks;
 
 use std::sync::Arc;
 
-use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
+use axum::{response::IntoResponse, routing::get, Json, Router};
 use caliber_pcp::PCPRuntime;
 use utoipa::OpenApi;
 

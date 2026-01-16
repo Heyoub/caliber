@@ -153,7 +153,7 @@ pub async fn get_edge(
 
     match edge {
         Some(e) => Ok(Json(e)),
-        None => Err(ApiError::not_found("Edge", id)),
+        None => Err(ApiError::entity_not_found("Edge", id)),
     }
 }
 

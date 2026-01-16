@@ -19,13 +19,14 @@ caliber-storage = { workspace = true }
 caliber-dsl = { workspace = true }
 
 # Web framework - Axum for REST API
-axum = { version = "0.7", features = ["ws", "macros"] }
+# Both 0.7 (tonic) and 0.8 (async-graphql) are in the tree - we use 0.8 directly
+axum = { version = "0.8", features = ["ws", "macros"] }
 tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
-# gRPC framework - Tonic
-tonic = { version = "0.12", features = ["transport", "tls"] }
-prost = "0.13"
+# gRPC framework - Tonic (using workspace 0.12 for stability)
+tonic = { workspace = true, features = ["transport", "tls"] }
+prost = { workspace = true }
 
 # Async runtime
 tokio = { version = "1.42", features = ["full"] }
@@ -61,9 +62,9 @@ utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true, optional = true }
 
 # Streaming support
-tokio-stream = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
 
-# GraphQL
+# GraphQL (7.0 for axum 0.7 compatibility)
 async-graphql = { version = "7.0", features = ["uuid", "chrono"] }
 async-graphql-axum = "7.0"
 async-stream = "0.3"
@@ -96,7 +97,7 @@ path = "src/bin/generate-openapi.rs"
 required-features = ["openapi"]
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-build = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

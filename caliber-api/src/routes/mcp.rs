@@ -13,7 +13,6 @@
 
 use axum::{
     extract::State,
-    http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -953,7 +952,7 @@ async fn execute_tool(
             }])
         }
 
-        _ => Err(ApiError::entity_not_found("Tool", Uuid::nil().into())),
+        _ => Err(ApiError::entity_not_found("Tool", Uuid::nil())),
     }
 }
 
@@ -1059,7 +1058,7 @@ async fn read_resource_content(state: &McpState, uri: &str) -> ApiResult<Resourc
             })
         }
 
-        _ => Err(ApiError::entity_not_found("Resource", Uuid::nil().into())),
+        _ => Err(ApiError::entity_not_found("Resource", Uuid::nil())),
     }
 }
 

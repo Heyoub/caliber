@@ -174,7 +174,7 @@ pub async fn get_agent(
         .db
         .agent_get(id.into())
         .await?
-        .ok_or_else(|| ApiError::agent_not_found(id.into()))?;
+        .ok_or_else(|| ApiError::agent_not_found(id))?;
 
     Ok(Json(agent))
 }
@@ -277,7 +277,7 @@ pub async fn unregister_agent(
         .db
         .agent_get(id.into())
         .await?
-        .ok_or_else(|| ApiError::agent_not_found(id.into()))?;
+        .ok_or_else(|| ApiError::agent_not_found(id))?;
 
     // Check if agent is currently active
     if agent.status.to_lowercase() == "active" {
@@ -331,7 +331,7 @@ pub async fn agent_heartbeat(
         .db
         .agent_get(id.into())
         .await?
-        .ok_or_else(|| ApiError::agent_not_found(id.into()))?;
+        .ok_or_else(|| ApiError::agent_not_found(id))?;
 
     Ok(Json(agent))
 }

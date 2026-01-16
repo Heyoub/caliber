@@ -11,7 +11,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
-use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tonic::{Request, Response, Status};
 
@@ -19,7 +18,6 @@ use crate::{
     db::DbClient,
     error::ApiError,
     events::WsEvent,
-    types::*,
     ws::WsState,
 };
 
@@ -28,6 +26,7 @@ pub mod proto {
     tonic::include_proto!("caliber");
 }
 
+// Use proto types - crate::types are referenced explicitly throughout
 use proto::*;
 
 // ============================================================================
