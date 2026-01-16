@@ -18,6 +18,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 SDK_DIR="$ROOT_DIR/sdks"
 SPEC_FILE="$ROOT_DIR/openapi.json"
 PROTO_DIR="$ROOT_DIR/caliber-api/proto"
+SDK_VERSION="${SDK_VERSION:-0.1.0}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -70,7 +71,7 @@ generate_typescript() {
         -g typescript-axios \
         -o "$out_dir" \
         --additional-properties=npmName=@caliber/sdk \
-        --additional-properties=npmVersion=0.1.0 \
+        --additional-properties=npmVersion="$SDK_VERSION" \
         --additional-properties=supportsES6=true \
         --additional-properties=withSeparateModelsAndApi=true \
         --additional-properties=modelPackage=models \
@@ -117,7 +118,7 @@ generate_python() {
         -o "$out_dir" \
         --additional-properties=packageName=caliber_sdk \
         --additional-properties=projectName=caliber-sdk \
-        --additional-properties=packageVersion=0.1.0 \
+        --additional-properties=packageVersion="$SDK_VERSION" \
         --additional-properties=generateSourceCodeOnly=false \
         --global-property=skipFormModel=true
 
@@ -141,7 +142,7 @@ generate_go() {
         -g go \
         -o "$out_dir" \
         --additional-properties=packageName=caliber \
-        --additional-properties=packageVersion=0.1.0 \
+        --additional-properties=packageVersion="$SDK_VERSION" \
         --additional-properties=isGoSubmodule=true \
         --additional-properties=generateInterfaces=true \
         --global-property=skipFormModel=true
@@ -179,11 +180,11 @@ generate_elixir() {
         --global-property=skipFormModel=true
 
     # Create proper mix.exs with dependencies
-    cat > "$out_dir/mix.exs" << 'EOF'
+    cat > "$out_dir/mix.exs" << EOF
 defmodule Caliber.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "${SDK_VERSION}"
   @source_url "https://github.com/caliber-run/caliber"
 
   def project do
