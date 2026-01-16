@@ -361,15 +361,15 @@ mod tests {
     fn test_event_type_names() {
         let event = WsEvent::TrajectoryCreated {
             trajectory: TrajectoryResponse {
-                trajectory_id: EntityId::new(),
+                trajectory_id: caliber_core::new_entity_id(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
                 parent_trajectory_id: None,
                 root_trajectory_id: None,
                 agent_id: None,
-                created_at: caliber_core::Timestamp::now(),
-                updated_at: caliber_core::Timestamp::now(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
                 completed_at: None,
                 outcome: None,
                 metadata: None,
@@ -382,15 +382,15 @@ mod tests {
     fn test_tenant_specific_events() {
         let trajectory_event = WsEvent::TrajectoryCreated {
             trajectory: TrajectoryResponse {
-                trajectory_id: EntityId::new(),
+                trajectory_id: caliber_core::new_entity_id(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
                 parent_trajectory_id: None,
                 root_trajectory_id: None,
                 agent_id: None,
-                created_at: caliber_core::Timestamp::now(),
-                updated_at: caliber_core::Timestamp::now(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
                 completed_at: None,
                 outcome: None,
                 metadata: None,
@@ -399,7 +399,7 @@ mod tests {
         assert!(trajectory_event.is_tenant_specific());
 
         let connected_event = WsEvent::Connected {
-            tenant_id: EntityId::new(),
+            tenant_id: caliber_core::new_entity_id(),
         };
         assert!(!connected_event.is_tenant_specific());
     }
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn test_event_serialization() {
         let event = WsEvent::AgentStatusChanged {
-            agent_id: EntityId::new(),
+            agent_id: caliber_core::new_entity_id(),
             status: "Active".to_string(),
         };
 
