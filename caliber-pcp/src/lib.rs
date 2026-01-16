@@ -5,8 +5,8 @@
 //! and recovery mechanisms.
 
 use caliber_core::{
-    Artifact, CaliberConfig, CaliberError, CaliberResult, EntityId,
-    RawContent, Scope, Timestamp, ValidationError,
+    AbstractionLevel, Artifact, CaliberConfig, CaliberError, CaliberResult, EntityId,
+    RawContent, Scope, SummarizationPolicy, SummarizationTrigger, Timestamp, ValidationError,
 };
 use chrono::Utc;
 use regex::Regex;
@@ -1601,6 +1601,137 @@ impl PCPRuntime {
         let initial_len = self.checkpoints.len();
         self.checkpoints.retain(|c| c.scope_id != scope_id);
         initial_len - self.checkpoints.len()
+    }
+}
+
+
+// ============================================================================
+// BATTLE INTEL FEATURE 4: SUMMARIZATION TRIGGER CHECKING
+// ============================================================================
+
+impl PCPRuntime {
+    /// Check which summarization triggers should fire based on current scope state.
+    ///
+    /// This method evaluates all provided summarization policies against the
+    /// current state of a scope and returns which triggers should activate.
+    /// Inspired by EVOLVE-MEM's self-improvement engine.
+    ///
+    /// # Arguments
+    /// * `scope` - The scope to evaluate triggers for
+    /// * `turn_count` - Number of turns in the scope
+    /// * `artifact_count` - Number of artifacts in the scope
+    /// * `policies` - Summarization policies to check
+    ///
+    /// # Returns
+    /// Vector of (policy_id, triggered_trigger) pairs for policies that should fire
+    ///
+    /// # Example
+    /// ```ignore
+    /// let triggered = runtime.check_summarization_triggers(
+    ///     &scope,
+    ///     turns.len() as i32,
+    ///     artifacts.len() as i32,
+    ///     &policies,
+    /// )?;
+    ///
+    /// for (policy_id, trigger) in triggered {
+    ///     // Execute summarization for this policy
+    /// }
+    /// ```
+    pub fn check_summarization_triggers(
+        &self,
+        scope: &Scope,
+        turn_count: i32,
+        artifact_count: i32,
+        policies: &[SummarizationPolicy],
+    ) -> CaliberResult<Vec<(EntityId, SummarizationTrigger)>> {
+        let mut triggered = Vec::new();
+
+        // Calculate current token usage percentage
+        let token_usage_percent = if scope.token_budget > 0 {
+            ((scope.tokens_used as f32 / scope.token_budget as f32) * 100.0) as u8
+        } else {
+            0
+        };
+
+        for policy in policies {
+            for trigger in &policy.triggers {
+                let should_fire = match trigger {
+                    SummarizationTrigger::DosageThreshold { percent } => {
+                        token_usage_percent >= *percent
+                    }
+                    SummarizationTrigger::ScopeClose => {
+                        // Fires when scope is no longer active
+                        !scope.is_active
+                    }
+                    SummarizationTrigger::TurnCount { count } => {
+                        // Fires when turn count reaches threshold
+                        turn_count >= *count && turn_count % *count == 0
+                    }
+                    SummarizationTrigger::ArtifactCount { count } => {
+                        // Fires when artifact count reaches threshold
+                        artifact_count >= *count && artifact_count % *count == 0
+                    }
+                    SummarizationTrigger::Manual => {
+                        // Manual triggers never auto-fire
+                        false
+                    }
+                };
+
+                if should_fire {
+                    triggered.push((policy.policy_id, trigger.clone()));
+                }
+            }
+        }
+
+        Ok(triggered)
+    }
+
+    /// Calculate what abstraction level transition should occur for a policy.
+    ///
+    /// # Arguments
+    /// * `policy` - The policy defining source→target transition
+    ///
+    /// # Returns
+    /// Tuple of (source_level, target_level) for the summarization operation
+    pub fn get_abstraction_transition(
+        &self,
+        policy: &SummarizationPolicy,
+    ) -> (AbstractionLevel, AbstractionLevel) {
+        (policy.source_level, policy.target_level)
+    }
+
+    /// Validate an abstraction level transition.
+    ///
+    /// Valid transitions are:
+    /// - Raw → Summary (L0 → L1)
+    /// - Summary → Principle (L1 → L2)
+    /// - Raw → Principle (L0 → L2, skipping L1)
+    ///
+    /// Invalid transitions:
+    /// - Summary → Raw (downgrade)
+    /// - Principle → Summary/Raw (downgrade)
+    /// - Same level to same level
+    ///
+    /// # Arguments
+    /// * `source` - Source abstraction level
+    /// * `target` - Target abstraction level
+    ///
+    /// # Returns
+    /// true if the transition is valid
+    pub fn validate_abstraction_transition(
+        &self,
+        source: AbstractionLevel,
+        target: AbstractionLevel,
+    ) -> bool {
+        match (source, target) {
+            // Valid upward transitions
+            (AbstractionLevel::Raw, AbstractionLevel::Summary) => true,
+            (AbstractionLevel::Raw, AbstractionLevel::Principle) => true,
+            (AbstractionLevel::Summary, AbstractionLevel::Principle) => true,
+            // Invalid: same level or downgrade
+            _ => false,
+        }
     }
 }
 

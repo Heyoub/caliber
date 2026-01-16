@@ -92,6 +92,12 @@ pub enum EntityType {
     Delegation,
     Handoff,
     Conflict,
+    /// Graph edge connecting entities (binary or hyperedge)
+    Edge,
+    /// Evolution snapshot for DSL config benchmarking
+    EvolutionSnapshot,
+    /// Summarization policy for auto-abstraction
+    SummarizationPolicy,
 }
 
 /// Memory category for hierarchical memory organization.
@@ -206,6 +212,94 @@ pub enum NoteType {
 }
 
 // ============================================================================
+// GRAPH EDGES (Battle Intel Feature 1: Mem0-inspired graph relationships)
+// ============================================================================
+
+/// Type of edge relationship between entities.
+/// Supports both binary relationships (A→B) and hyperedge semantics (N-ary).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum EdgeType {
+    // Binary relationships
+    /// A supports B (evidence, backing)
+    Supports,
+    /// A contradicts B (conflicting information)
+    Contradicts,
+    /// A supersedes B (replacement, update)
+    Supersedes,
+    /// A is derived from B (provenance chain)
+    DerivedFrom,
+    /// Generic relation between entities
+    RelatesTo,
+    /// Temporal ordering (A before/after B)
+    Temporal,
+    /// Causal relationship (A caused B)
+    Causal,
+    // Hyperedge types (n-ary relationships)
+    /// Output synthesized from multiple inputs
+    SynthesizedFrom,
+    /// Entities form a concept cluster
+    Grouped,
+    /// Entities were compared together
+    Compared,
+}
+
+// ============================================================================
+// ABSTRACTION LEVELS (Battle Intel Feature 2: EVOLVE-MEM-inspired L0/L1/L2)
+// ============================================================================
+
+/// Semantic abstraction level for notes (L0 → L1 → L2 hierarchy).
+/// Inspired by EVOLVE-MEM's three-tier memory architecture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum AbstractionLevel {
+    /// L0: Direct observation from single turn/artifact
+    #[default]
+    Raw,
+    /// L1: Synthesized from multiple L0s within trajectory
+    Summary,
+    /// L2: High-level abstraction across trajectories
+    Principle,
+}
+
+// ============================================================================
+// EVOLUTION MODE (Battle Intel Feature 3: MemEvolve-inspired config evolution)
+// ============================================================================
+
+/// Phase of DSL config evolution cycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum EvolutionPhase {
+    /// Normal operation mode
+    #[default]
+    Online,
+    /// Snapshot taken, running benchmarks
+    Frozen,
+    /// Generating new config candidates
+    Evolving,
+}
+
+// ============================================================================
+// AUTO-SUMMARIZATION (Battle Intel Feature 4: EVOLVE-MEM self-improvement)
+// ============================================================================
+
+/// Trigger condition for auto-summarization policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum SummarizationTrigger {
+    /// Token usage exceeds threshold percentage of budget
+    DosageThreshold { percent: u8 },
+    /// Scope is closing
+    ScopeClose,
+    /// Turn count threshold reached
+    TurnCount { count: i32 },
+    /// Artifact count threshold reached
+    ArtifactCount { count: i32 },
+    /// Manual trigger via API
+    Manual,
+}
+
+// ============================================================================
 // STRING CONVERSIONS
 // ============================================================================
 
@@ -231,6 +325,9 @@ impl fmt::Display for EntityType {
             EntityType::Delegation => "Delegation",
             EntityType::Handoff => "Handoff",
             EntityType::Conflict => "Conflict",
+            EntityType::Edge => "Edge",
+            EntityType::EvolutionSnapshot => "EvolutionSnapshot",
+            EntityType::SummarizationPolicy => "SummarizationPolicy",
         };
         write!(f, "{}", value)
     }
@@ -253,6 +350,9 @@ impl FromStr for EntityType {
             "delegation" => Ok(EntityType::Delegation),
             "handoff" => Ok(EntityType::Handoff),
             "conflict" => Ok(EntityType::Conflict),
+            "edge" => Ok(EntityType::Edge),
+            "evolutionsnapshot" => Ok(EntityType::EvolutionSnapshot),
+            "summarizationpolicy" => Ok(EntityType::SummarizationPolicy),
             _ => Err(format!("Invalid EntityType: {}", s)),
         }
     }
@@ -446,6 +546,106 @@ impl FromStr for NoteType {
             "correction" => Ok(NoteType::Correction),
             "summary" => Ok(NoteType::Summary),
             _ => Err(format!("Invalid NoteType: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for EdgeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            EdgeType::Supports => "Supports",
+            EdgeType::Contradicts => "Contradicts",
+            EdgeType::Supersedes => "Supersedes",
+            EdgeType::DerivedFrom => "DerivedFrom",
+            EdgeType::RelatesTo => "RelatesTo",
+            EdgeType::Temporal => "Temporal",
+            EdgeType::Causal => "Causal",
+            EdgeType::SynthesizedFrom => "SynthesizedFrom",
+            EdgeType::Grouped => "Grouped",
+            EdgeType::Compared => "Compared",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for EdgeType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "supports" => Ok(EdgeType::Supports),
+            "contradicts" => Ok(EdgeType::Contradicts),
+            "supersedes" => Ok(EdgeType::Supersedes),
+            "derivedfrom" => Ok(EdgeType::DerivedFrom),
+            "relatesto" => Ok(EdgeType::RelatesTo),
+            "temporal" => Ok(EdgeType::Temporal),
+            "causal" => Ok(EdgeType::Causal),
+            "synthesizedfrom" => Ok(EdgeType::SynthesizedFrom),
+            "grouped" => Ok(EdgeType::Grouped),
+            "compared" => Ok(EdgeType::Compared),
+            _ => Err(format!("Invalid EdgeType: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for AbstractionLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            AbstractionLevel::Raw => "Raw",
+            AbstractionLevel::Summary => "Summary",
+            AbstractionLevel::Principle => "Principle",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for AbstractionLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "raw" | "l0" => Ok(AbstractionLevel::Raw),
+            "summary" | "l1" => Ok(AbstractionLevel::Summary),
+            "principle" | "l2" => Ok(AbstractionLevel::Principle),
+            _ => Err(format!("Invalid AbstractionLevel: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for EvolutionPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            EvolutionPhase::Online => "Online",
+            EvolutionPhase::Frozen => "Frozen",
+            EvolutionPhase::Evolving => "Evolving",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for EvolutionPhase {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match normalize_token(s).as_str() {
+            "online" => Ok(EvolutionPhase::Online),
+            "frozen" | "freeze" => Ok(EvolutionPhase::Frozen),
+            "evolving" | "evolve" => Ok(EvolutionPhase::Evolving),
+            _ => Err(format!("Invalid EvolutionPhase: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for SummarizationTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SummarizationTrigger::DosageThreshold { percent } => {
+                write!(f, "DosageThreshold({}%)", percent)
+            }
+            SummarizationTrigger::ScopeClose => write!(f, "ScopeClose"),
+            SummarizationTrigger::TurnCount { count } => write!(f, "TurnCount({})", count),
+            SummarizationTrigger::ArtifactCount { count } => write!(f, "ArtifactCount({})", count),
+            SummarizationTrigger::Manual => write!(f, "Manual"),
         }
     }
 }
@@ -682,6 +882,14 @@ pub struct Note {
     pub superseded_by: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
+    // ══════════════════════════════════════════════════════════════════════════
+    // Battle Intel Feature 2: Abstraction levels (EVOLVE-MEM L0/L1/L2 hierarchy)
+    // ══════════════════════════════════════════════════════════════════════════
+    /// Semantic abstraction tier (Raw=L0, Summary=L1, Principle=L2)
+    pub abstraction_level: AbstractionLevel,
+    /// Notes this was derived from (for L1/L2 derivation chains)
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
+    pub source_note_ids: Vec<EntityId>,
 }
 
 /// Turn - ephemeral conversation buffer entry.
@@ -703,6 +911,139 @@ pub struct Turn {
     pub tool_calls: Option<serde_json::Value>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub tool_results: Option<serde_json::Value>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub metadata: Option<serde_json::Value>,
+}
+
+// ============================================================================
+// GRAPH EDGE ENTITIES (Battle Intel Feature 1)
+// ============================================================================
+
+/// Participant in an edge with optional role.
+/// Enables both binary edges (2 participants) and hyperedges (N participants).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EdgeParticipant {
+    /// Reference to the entity participating in this edge
+    pub entity_ref: EntityRef,
+    /// Optional role label (e.g., "source", "target", "input", "output")
+    pub role: Option<String>,
+}
+
+/// Edge - graph relationship between entities.
+/// Supports both binary edges (A→B) and hyperedges (N-ary relationships).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Edge {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub edge_id: EntityId,
+    pub edge_type: EdgeType,
+    /// Participants in this edge (len=2 for binary, len>2 for hyperedge)
+    pub participants: Vec<EdgeParticipant>,
+    /// Optional relationship strength [0.0, 1.0]
+    pub weight: Option<f32>,
+    /// Optional trajectory context
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// How this edge was created
+    pub provenance: Provenance,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
+    pub created_at: Timestamp,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub metadata: Option<serde_json::Value>,
+}
+
+impl Edge {
+    /// Check if this is a binary edge (exactly 2 participants)
+    pub fn is_binary(&self) -> bool {
+        self.participants.len() == 2
+    }
+
+    /// Check if this is a hyperedge (more than 2 participants)
+    pub fn is_hyperedge(&self) -> bool {
+        self.participants.len() > 2
+    }
+
+    /// Get participants with a specific role
+    pub fn participants_with_role(&self, role: &str) -> Vec<&EdgeParticipant> {
+        self.participants
+            .iter()
+            .filter(|p| p.role.as_deref() == Some(role))
+            .collect()
+    }
+}
+
+// ============================================================================
+// EVOLUTION ENTITIES (Battle Intel Feature 3)
+// ============================================================================
+
+/// Benchmark metrics from an evolution run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EvolutionMetrics {
+    /// How relevant were the retrievals? [0.0, 1.0]
+    pub retrieval_accuracy: f32,
+    /// Tokens used vs budget ratio [0.0, 1.0]
+    pub token_efficiency: f32,
+    /// 50th percentile latency in milliseconds
+    pub latency_p50_ms: i64,
+    /// 99th percentile latency in milliseconds
+    pub latency_p99_ms: i64,
+    /// Estimated cost for the benchmark run
+    pub cost_estimate: f32,
+    /// Number of queries used in benchmark
+    pub benchmark_queries: i32,
+}
+
+/// Evolution snapshot for DSL config benchmarking.
+/// Captures a frozen state of configuration for A/B testing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EvolutionSnapshot {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub snapshot_id: EntityId,
+    /// Human-readable snapshot name
+    pub name: String,
+    /// SHA-256 hash of the DSL config source
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "byte"))]
+    pub config_hash: ContentHash,
+    /// The actual DSL configuration text
+    pub config_source: String,
+    /// Current phase of this snapshot
+    pub phase: EvolutionPhase,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
+    pub created_at: Timestamp,
+    /// Metrics populated after benchmark completes
+    pub metrics: Option<EvolutionMetrics>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub metadata: Option<serde_json::Value>,
+}
+
+// ============================================================================
+// SUMMARIZATION POLICY (Battle Intel Feature 4)
+// ============================================================================
+
+/// Policy for automatic summarization/abstraction.
+/// Defines when and how to generate L1/L2 notes from lower levels.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SummarizationPolicy {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub policy_id: EntityId,
+    /// Human-readable policy name
+    pub name: String,
+    /// Conditions that trigger summarization
+    pub triggers: Vec<SummarizationTrigger>,
+    /// Target abstraction level to generate (L1 or L2)
+    pub target_level: AbstractionLevel,
+    /// Source abstraction level to summarize FROM
+    pub source_level: AbstractionLevel,
+    /// Maximum number of source items to summarize at once
+    pub max_sources: i32,
+    /// Whether to auto-create SynthesizedFrom edges
+    pub create_edges: bool,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
+    pub created_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }

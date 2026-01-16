@@ -12,9 +12,9 @@ pub use caliber_storage::MockStorage;
 
 // Re-export core types for convenience
 pub use caliber_core::{
-    Artifact, ArtifactType, CaliberConfig, CaliberError, CaliberResult, Checkpoint,
-    ContentHash, ContextPersistence, EmbeddingVector, EntityId, EntityRef, EntityType,
-    ExtractionMethod, MemoryCategory, Note, NoteType, OutcomeStatus, Provenance,
+    AbstractionLevel, Artifact, ArtifactType, CaliberConfig, CaliberError, CaliberResult,
+    Checkpoint, ContentHash, ContextPersistence, EmbeddingVector, EntityId, EntityRef,
+    EntityType, ExtractionMethod, MemoryCategory, Note, NoteType, OutcomeStatus, Provenance,
     ProviderConfig, RawContent, RetryConfig, Scope, SectionPriorities, StorageError,
     TTL, Timestamp, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
     ValidationMode, VectorError, compute_content_hash, new_entity_id,
@@ -400,6 +400,8 @@ pub mod generators {
                         access_count,
                         superseded_by: None,
                         metadata: None,
+                        abstraction_level: AbstractionLevel::Raw,
+                        source_note_ids: vec![],
                     }
                 },
             )
@@ -670,6 +672,8 @@ pub mod fixtures {
             access_count: 0,
             superseded_by: None,
             metadata: None,
+            abstraction_level: AbstractionLevel::Raw,
+            source_note_ids: vec![],
         }
     }
 

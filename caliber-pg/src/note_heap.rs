@@ -14,7 +14,7 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, ContentHash, EmbeddingVector, EntityId,
+    AbstractionLevel, CaliberError, CaliberResult, ContentHash, EmbeddingVector, EntityId,
     EntityType, Note, NoteType, StorageError, TTL,
 };
 
@@ -49,6 +49,8 @@ use crate::tuple_extract::{
 /// * `source_trajectory_ids` - Source trajectory IDs
 /// * `source_artifact_ids` - Source artifact IDs
 /// * `ttl` - Time-to-live setting
+/// * `abstraction_level` - Semantic tier (Raw/Summary/Principle) - Battle Intel Feature 2
+/// * `source_note_ids` - Notes this was derived from (for L1/L2) - Battle Intel Feature 2
 ///
 /// # Returns
 /// * `Ok(EntityId)` - The note ID on success
@@ -67,6 +69,8 @@ pub fn note_create_heap(
     source_trajectory_ids: &[EntityId],
     source_artifact_ids: &[EntityId],
     ttl: TTL,
+    abstraction_level: AbstractionLevel,
+    source_note_ids: &[EntityId],
 ) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(note::TABLE_NAME, LockMode::RowExclusive)?;
@@ -137,10 +141,20 @@ pub fn note_create_heap(
     
     // Column 14: superseded_by (UUID, nullable)
     nulls[note::SUPERSEDED_BY as usize - 1] = true;
-    
+
     // Column 15: metadata (JSONB, nullable)
     nulls[note::METADATA as usize - 1] = true;
-    
+
+    // Column 16: abstraction_level (TEXT, NOT NULL) - Battle Intel Feature 2
+    values[note::ABSTRACTION_LEVEL as usize - 1] = string_to_datum(abstraction_level_to_str(abstraction_level));
+
+    // Column 17: source_note_ids (UUID[], nullable) - Battle Intel Feature 2
+    if !source_note_ids.is_empty() {
+        values[note::SOURCE_NOTE_IDS as usize - 1] = uuid_array_to_datum(source_note_ids);
+    } else {
+        nulls[note::SOURCE_NOTE_IDS as usize - 1] = true;
+    }
+
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
@@ -493,6 +507,29 @@ fn str_to_ttl(s: &str) -> TTL {
     }
 }
 
+// ============================================================================
+// ABSTRACTION LEVEL HELPERS (Battle Intel Feature 2)
+// ============================================================================
+
+/// Convert an AbstractionLevel enum to its string representation.
+fn abstraction_level_to_str(level: AbstractionLevel) -> &'static str {
+    match level {
+        AbstractionLevel::Raw => "raw",
+        AbstractionLevel::Summary => "summary",
+        AbstractionLevel::Principle => "principle",
+    }
+}
+
+/// Parse an abstraction level string to AbstractionLevel enum.
+fn str_to_abstraction_level(s: &str) -> AbstractionLevel {
+    match s {
+        "raw" => AbstractionLevel::Raw,
+        "summary" => AbstractionLevel::Summary,
+        "principle" => AbstractionLevel::Principle,
+        _ => AbstractionLevel::Raw, // Default fallback
+    }
+}
+
 /// Check if a note has expired based on its TTL and creation time.
 ///
 /// Returns true if the note should be considered expired.
@@ -612,9 +649,20 @@ fn tuple_to_note(
         }))?;
     
     let superseded_by = extract_uuid(tuple, tuple_desc, note::SUPERSEDED_BY)?;
-    
+
     let metadata = extract_jsonb(tuple, tuple_desc, note::METADATA)?;
-    
+
+    // Battle Intel Feature 2: Abstraction level
+    let abstraction_level_str = extract_text(tuple, tuple_desc, note::ABSTRACTION_LEVEL)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "abstraction_level is NULL".to_string(),
+        }))?;
+    let abstraction_level = str_to_abstraction_level(&abstraction_level_str);
+
+    // Battle Intel Feature 2: Source note IDs (derivation chain)
+    let source_note_ids = extract_uuid_array(tuple, tuple_desc, note::SOURCE_NOTE_IDS)?
+        .unwrap_or_default();
+
     Ok(Note {
         note_id,
         note_type,
@@ -631,6 +679,8 @@ fn tuple_to_note(
         access_count,
         superseded_by,
         metadata,
+        abstraction_level,
+        source_note_ids,
     })
 }
 
@@ -719,6 +769,8 @@ mod tests {
                     &[],
                     &[],
                     ttl,
+                    AbstractionLevel::Raw,  // Battle Intel Feature 2
+                    &[],                    // Battle Intel Feature 2
                 );
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), note_id);
@@ -745,6 +797,9 @@ mod tests {
                 prop_assert!(n.source_artifact_ids.is_empty());
                 prop_assert!(n.superseded_by.is_none());
                 prop_assert!(n.metadata.is_none());
+                // Battle Intel Feature 2 assertions
+                prop_assert_eq!(n.abstraction_level, AbstractionLevel::Raw);
+                prop_assert!(n.source_note_ids.is_empty());
 
                 Ok(())
             }).unwrap();
@@ -804,6 +859,8 @@ mod tests {
                     &[],
                     &[],
                     TTL::MediumTerm,
+                    AbstractionLevel::Raw,
+                    &[],
                 );
 
                 // Update content
@@ -902,6 +959,8 @@ mod tests {
                         &[trajectory_id],
                         &[],
                         TTL::MediumTerm,
+                        AbstractionLevel::Raw,
+                        &[],
                     );
                     note_ids.push(note_id);
                 }

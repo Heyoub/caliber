@@ -94,6 +94,29 @@ pub enum TokenKind {
     Checkpoint,
     Prune,
     Notify,
+    AutoSummarize,  // Battle Intel Feature 4
+
+    // Battle Intel Feature 2: Abstraction levels
+    AbstractionLevel,
+    Raw,
+    Principle,  // Note: Summary already exists above
+
+    // Battle Intel Feature 3: Evolution mode keywords
+    Freeze,
+    Snapshot,
+    Benchmark,
+    Evolve,
+    Compare,
+    Baseline,
+    Candidates,
+    Metrics,
+
+    // Battle Intel Feature 4: Summarization triggers
+    DosageReached,
+    CreateEdges,
+    SourceLevel,
+    TargetLevel,
+    MaxSources,
 
     // Index types
     Btree,
@@ -418,6 +441,29 @@ impl<'a> Lexer<'a> {
             "checkpoint" => TokenKind::Checkpoint,
             "prune" => TokenKind::Prune,
             "notify" => TokenKind::Notify,
+            "auto_summarize" => TokenKind::AutoSummarize,
+
+            // Battle Intel Feature 2: Abstraction levels
+            "abstraction_level" => TokenKind::AbstractionLevel,
+            "raw" => TokenKind::Raw,
+            "principle" => TokenKind::Principle,
+
+            // Battle Intel Feature 3: Evolution mode
+            "freeze" => TokenKind::Freeze,
+            "snapshot" => TokenKind::Snapshot,
+            "benchmark" => TokenKind::Benchmark,
+            "evolve" => TokenKind::Evolve,
+            "compare" => TokenKind::Compare,
+            "baseline" => TokenKind::Baseline,
+            "candidates" => TokenKind::Candidates,
+            "metrics" => TokenKind::Metrics,
+
+            // Battle Intel Feature 4: Summarization triggers
+            "dosage_reached" => TokenKind::DosageReached,
+            "create_edges" => TokenKind::CreateEdges,
+            "source_level" => TokenKind::SourceLevel,
+            "target_level" => TokenKind::TargetLevel,
+            "max_sources" => TokenKind::MaxSources,
 
             // Index types
             "btree" => TokenKind::Btree,
@@ -633,6 +679,10 @@ pub enum Definition {
     Memory(MemoryDef),
     Policy(PolicyDef),
     Injection(InjectionDef),
+    // Battle Intel Feature 3: Evolution mode
+    Evolution(EvolutionDef),
+    // Battle Intel Feature 4: Summarization policies
+    SummarizationPolicy(SummarizationPolicyDef),
 }
 
 /// Adapter definition for storage backends.
@@ -776,6 +826,12 @@ pub enum Action {
         target: String,
         mode: InjectionMode,
     },
+    // Battle Intel Feature 4: Auto-summarization action
+    AutoSummarize {
+        source_level: AbstractionLevelDsl,
+        target_level: AbstractionLevelDsl,
+        create_edges: bool,
+    },
 }
 
 /// Injection definition for context assembly.
@@ -836,6 +892,90 @@ pub enum FilterValue {
     CurrentScope,
     Now,
     Array(Vec<FilterValue>),
+}
+
+
+// ============================================================================
+// BATTLE INTEL FEATURE 2: ABSTRACTION LEVELS
+// ============================================================================
+
+/// Abstraction level for DSL (mirrors caliber_core::AbstractionLevel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AbstractionLevelDsl {
+    Raw,       // L0: Direct observation
+    Summary,   // L1: Synthesized from L0s
+    Principle, // L2: High-level abstraction
+}
+
+
+// ============================================================================
+// BATTLE INTEL FEATURE 3: EVOLUTION MODE (MemEvolve-inspired)
+// ============================================================================
+
+/// Evolution definition for DSL config benchmarking.
+///
+/// DSL syntax:
+/// ```text
+/// evolution "memory_optimization" {
+///     baseline: "current_prod"
+///     candidates: ["hybrid_search", "aggressive_summarize"]
+///     benchmark_queries: 100
+///     metrics: ["retrieval_accuracy", "token_efficiency"]
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvolutionDef {
+    pub name: String,
+    /// Snapshot name to compare against
+    pub baseline: String,
+    /// Candidate config names to test
+    pub candidates: Vec<String>,
+    /// Number of queries to benchmark
+    pub benchmark_queries: i32,
+    /// Metrics to track
+    pub metrics: Vec<String>,
+}
+
+
+// ============================================================================
+// BATTLE INTEL FEATURE 4: SUMMARIZATION POLICIES
+// ============================================================================
+
+/// Summarization trigger types (mirrors caliber_core::SummarizationTrigger).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SummarizationTriggerDsl {
+    /// Trigger when token usage reaches threshold percent
+    DosageThreshold { percent: u8 },
+    /// Trigger when scope closes
+    ScopeClose,
+    /// Trigger every N turns
+    TurnCount { count: i32 },
+    /// Trigger every N artifacts
+    ArtifactCount { count: i32 },
+    /// Manual trigger only
+    Manual,
+}
+
+/// Summarization policy definition.
+///
+/// DSL syntax:
+/// ```text
+/// summarization_policy "auto_abstract" {
+///     triggers: [dosage_reached(80), scope_close]
+///     source_level: raw
+///     target_level: summary
+///     max_sources: 10
+///     create_edges: true
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SummarizationPolicyDef {
+    pub name: String,
+    pub triggers: Vec<SummarizationTriggerDsl>,
+    pub source_level: AbstractionLevelDsl,
+    pub target_level: AbstractionLevelDsl,
+    pub max_sources: i32,
+    pub create_edges: bool,
 }
 
 
@@ -1815,6 +1955,58 @@ fn pretty_print_definition(def: &Definition, indent: usize) -> String {
         Definition::Memory(m) => pretty_print_memory(m, indent),
         Definition::Policy(p) => pretty_print_policy(p, indent),
         Definition::Injection(i) => pretty_print_injection(i, indent),
+        // Battle Intel Feature 3: Evolution definitions
+        Definition::Evolution(e) => pretty_print_evolution(e, indent),
+        // Battle Intel Feature 4: Summarization policy definitions
+        Definition::SummarizationPolicy(s) => pretty_print_summarization_policy(s, indent),
+    }
+}
+
+/// Pretty print an evolution definition (Battle Intel Feature 3).
+fn pretty_print_evolution(e: &EvolutionDef, indent: usize) -> String {
+    let ind = indent_str(indent);
+    let inner_ind = indent_str(indent + 1);
+    let mut result = format!("{}evolution \"{}\" {{\n", ind, e.name);
+    result.push_str(&format!("{}baseline: \"{}\"\n", inner_ind, e.baseline));
+    result.push_str(&format!("{}candidates: [{}]\n", inner_ind,
+        e.candidates.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ")));
+    result.push_str(&format!("{}benchmark_queries: {}\n", inner_ind, e.benchmark_queries));
+    result.push_str(&format!("{}metrics: [{}]\n", inner_ind,
+        e.metrics.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ")));
+    result.push_str(&format!("{}}}\n", ind));
+    result
+}
+
+/// Pretty print a summarization policy definition (Battle Intel Feature 4).
+fn pretty_print_summarization_policy(s: &SummarizationPolicyDef, indent: usize) -> String {
+    let ind = indent_str(indent);
+    let inner_ind = indent_str(indent + 1);
+    let mut result = format!("{}summarization_policy \"{}\" {{\n", ind, s.name);
+    result.push_str(&format!("{}triggers: [{}]\n", inner_ind,
+        s.triggers.iter().map(|t| pretty_print_summarization_trigger(t)).collect::<Vec<_>>().join(", ")));
+    result.push_str(&format!("{}source_level: {}\n", inner_ind, pretty_print_abstraction_level(s.source_level)));
+    result.push_str(&format!("{}target_level: {}\n", inner_ind, pretty_print_abstraction_level(s.target_level)));
+    result.push_str(&format!("{}max_sources: {}\n", inner_ind, s.max_sources));
+    result.push_str(&format!("{}create_edges: {}\n", inner_ind, s.create_edges));
+    result.push_str(&format!("{}}}\n", ind));
+    result
+}
+
+fn pretty_print_summarization_trigger(t: &SummarizationTriggerDsl) -> String {
+    match t {
+        SummarizationTriggerDsl::DosageThreshold { percent } => format!("dosage_reached({})", percent),
+        SummarizationTriggerDsl::ScopeClose => "scope_close".to_string(),
+        SummarizationTriggerDsl::TurnCount { count } => format!("turn_count({})", count),
+        SummarizationTriggerDsl::ArtifactCount { count } => format!("artifact_count({})", count),
+        SummarizationTriggerDsl::Manual => "manual".to_string(),
+    }
+}
+
+fn pretty_print_abstraction_level(level: AbstractionLevelDsl) -> &'static str {
+    match level {
+        AbstractionLevelDsl::Raw => "raw",
+        AbstractionLevelDsl::Summary => "summary",
+        AbstractionLevelDsl::Principle => "principle",
     }
 }
 
@@ -1992,6 +2184,13 @@ fn pretty_print_action(action: &Action) -> String {
         Action::Prune { target, criteria } => format!("prune({}, {})", target, pretty_print_filter_expr(criteria)),
         Action::Notify(channel) => format!("notify(\"{}\")", escape_string(channel)),
         Action::Inject { target, mode } => format!("inject({}, {})", target, pretty_print_injection_mode(mode)),
+        // Battle Intel Feature 4: Auto-summarization action
+        Action::AutoSummarize { source_level, target_level, create_edges } => {
+            format!("auto_summarize({}, {}, create_edges: {})",
+                pretty_print_abstraction_level(*source_level),
+                pretty_print_abstraction_level(*target_level),
+                create_edges)
+        }
     }
 }
 
