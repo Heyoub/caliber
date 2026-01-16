@@ -5,11 +5,10 @@
 //! and message types that mirror the REST API.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
-        .compile_well_known_types(true)
-        .compile(
+        .compile_protos(
             &["proto/caliber.proto"],
             &["proto"],
         )?;

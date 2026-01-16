@@ -75,9 +75,9 @@ caliber/
 **Next Steps:**
 
 - [x] Implement caliber-core with full entity types
-- [ ] Implement caliber-dsl lexer
-- [ ] Implement caliber-dsl parser
-- [ ] First cargo check after core types complete
+- [x] Implement caliber-dsl lexer
+- [x] Implement caliber-dsl parser
+- [x] First cargo check after core types complete
 
 ---
 
@@ -136,8 +136,8 @@ All property tests configured with 100 iterations per proptest convention.
 **Next Steps:**
 
 - [x] Implement caliber-dsl lexer (Task 3)
-- [ ] Implement caliber-dsl parser (Task 4)
-- [ ] First cargo check (Task 5)
+- [x] Implement caliber-dsl parser (Task 4)
+- [x] First cargo check (Task 5)
 
 **Time Spent:** ~45 minutes
 
@@ -225,7 +225,7 @@ All property tests configured with 100 iterations per proptest convention.
 **Next Steps:**
 
 - [x] Implement caliber-dsl parser (Task 4)
-- [ ] First cargo check (Task 5)
+- [x] First cargo check (Task 5)
 
 **Time Spent:** ~30 minutes
 
@@ -339,9 +339,9 @@ CaliberAst
 
 **Next Steps:**
 
-- [ ] First cargo check (Task 5)
-- [ ] Implement caliber-llm (Task 6)
-- [ ] Implement caliber-context (Task 7)
+- [x] First cargo check (Task 5)
+- [x] Implement caliber-llm (Task 6)
+- [x] Implement caliber-context (Task 7)
 
 **Time Spent:** ~45 minutes
 
@@ -477,9 +477,9 @@ test prop_tests::prop_mock_embedding_correct_dimensions ... ok
 
 **Next Steps:**
 
-- [ ] Implement caliber-context (Task 7)
-- [ ] Implement caliber-pcp (Task 8)
-- [ ] Checkpoint - Component Crates Complete (Task 9)
+- [x] Implement caliber-context (Task 7)
+- [x] Implement caliber-pcp (Task 8)
+- [x] Checkpoint - Component Crates Complete (Task 9)
 
 **Time Spent:** ~20 minutes
 
@@ -572,11 +572,11 @@ cargo check --workspace
 
 **Next Steps:**
 
-- [ ] Implement caliber-agents (Task 10) — DONE
-- [ ] Implement caliber-storage (Task 11) — DONE
-- [ ] Implement caliber-pg (Task 12)
-- [ ] Test infrastructure (Task 13)
-- [ ] Final checkpoint (Task 14)
+- [x] Implement caliber-agents (Task 10) — DONE
+- [x] Implement caliber-storage (Task 11) — DONE
+- [x] Implement caliber-pg (Task 12)
+- [x] Test infrastructure (Task 13)
+- [x] Final checkpoint (Task 14)
 
 **Time Spent:** ~15 minutes
 
@@ -705,9 +705,9 @@ cargo test --workspace --exclude caliber-pg
 
 **Next Steps:**
 
-- [ ] Task 13: Implement Test Infrastructure
-- [ ] Task 14: Final Checkpoint - All Tests Pass
-- [ ] Task 15: Documentation & Submission Prep
+- [x] Task 13: Implement Test Infrastructure
+- [x] Task 14: Final Checkpoint - All Tests Pass
+- [ ] Task 15: Documentation & Submission Prep (demo/judge pending)
 
 **Time Spent:** ~45 minutes
 
@@ -847,8 +847,8 @@ test result: ok. 15 passed; 0 failed; 0 ignored
 
 **Next Steps:**
 
-- [ ] Task 14: Final Checkpoint - All Tests Pass
-- [ ] Task 15: Documentation & Submission Prep
+- [x] Task 14: Final Checkpoint - All Tests Pass
+- [ ] Task 15: Documentation & Submission Prep (demo/judge pending)
 
 **Time Spent:** ~15 minutes
 
@@ -887,7 +887,7 @@ test result: ok. 15 passed; 0 failed; 0 ignored
 
 **Next Steps:**
 
-- [ ] Task 15: Documentation & Submission Prep
+- [ ] Task 15: Documentation & Submission Prep (demo/judge pending)
 
 
 
@@ -1212,10 +1212,10 @@ caliber-api (Axum + Tonic)
 
 **Next Steps:**
 
-- [ ] Landing page deployment (caliber.run)
-- [ ] TUI implementation (caliber-tui)
-- [ ] Integration testing with live Postgres
-- [ ] Performance benchmarking
+- [x] Landing page deployment (caliber.run)
+- [x] TUI implementation (caliber-tui)
+- [x] Integration testing with live Postgres
+- [x] Performance benchmarking
 
 **Time Spent:** ~3 hours
 

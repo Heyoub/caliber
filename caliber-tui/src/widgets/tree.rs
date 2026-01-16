@@ -4,7 +4,7 @@ use caliber_core::EntityId;
 use ratatui::{
     layout::Rect,
     style::{Style},
-    widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget},
+    widgets::{Block, Borders, List, ListItem, ListState},
     Frame,
 };
 

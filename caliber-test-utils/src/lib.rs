@@ -1046,7 +1046,15 @@ mod tests {
         fn prop_generated_ttl_variants(ttl in generators::arb_ttl()) {
             // Just verify we can generate all TTL variants
             match ttl {
-                TTL::Persistent | TTL::Session | TTL::Scope | TTL::Duration(_) => {}
+                TTL::Persistent
+                | TTL::Session
+                | TTL::Scope
+                | TTL::Duration(_)
+                | TTL::Ephemeral
+                | TTL::ShortTerm
+                | TTL::MediumTerm
+                | TTL::LongTerm
+                | TTL::Permanent => {}
             }
         }
 
@@ -1054,9 +1062,20 @@ mod tests {
         fn prop_generated_entity_types(et in generators::arb_entity_type()) {
             // Verify all entity types can be generated
             match et {
-                EntityType::Trajectory | EntityType::Scope | EntityType::Artifact |
-                EntityType::Note | EntityType::Agent | EntityType::Turn |
-                EntityType::Lock | EntityType::Message => {}
+                EntityType::Trajectory
+                | EntityType::Scope
+                | EntityType::Artifact
+                | EntityType::Note
+                | EntityType::Agent
+                | EntityType::Turn
+                | EntityType::Lock
+                | EntityType::Message
+                | EntityType::Delegation
+                | EntityType::Handoff
+                | EntityType::Conflict
+                | EntityType::Edge
+                | EntityType::EvolutionSnapshot
+                | EntityType::SummarizationPolicy => {}
             }
         }
     }

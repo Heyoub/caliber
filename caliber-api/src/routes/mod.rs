@@ -129,7 +129,7 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -
         .nest("/delegations", delegation::create_router(db.clone(), ws.clone()))
         .nest("/handoffs", handoff::create_router(db.clone(), ws.clone()))
         .nest("/dsl", dsl::create_router(db.clone()))
-        .nest("/config", config::create_router(db.clone()))
+        .nest("/config", config::create_router(db.clone(), ws.clone()))
         .nest("/tenants", tenant::create_router(db.clone()))
         // New routes
         .nest("/batch", batch::create_router(db.clone(), ws.clone()))

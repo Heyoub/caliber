@@ -145,13 +145,27 @@ pub async fn list_messages(
     State(state): State<Arc<MessageState>>,
     Query(params): Query<ListMessagesRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // TODO: Implement caliber_message_list with filters in caliber-pg
-    // For now, return an empty list
-    let messages: Vec<MessageResponse> = Vec::new();
+    let limit = params.limit.unwrap_or(100);
+    let offset = params.offset.unwrap_or(0);
+
+    let messages = state.db.message_list(
+        params.from_agent_id,
+        params.to_agent_id,
+        params.to_agent_type.as_deref(),
+        params.trajectory_id,
+        params.message_type.as_deref(),
+        params.priority.as_deref(),
+        params.undelivered_only.unwrap_or(false),
+        params.unacknowledged_only.unwrap_or(false),
+        limit,
+        offset,
+    ).await?;
+
+    let total = messages.len() as i32;
 
     Ok(Json(ListMessagesResponse {
         messages,
-        total: 0,
+        total,
     }))
 }
 
@@ -219,6 +233,37 @@ pub async fn acknowledge_message(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// POST /api/v1/messages/{id}/deliver - Mark a message as delivered
+#[utoipa::path(
+    post,
+    path = "/api/v1/messages/{id}/deliver",
+    tag = "Messages",
+    params(
+        ("id" = Uuid, Path, description = "Message ID")
+    ),
+    responses(
+        (status = 204, description = "Message delivered successfully"),
+        (status = 404, description = "Message not found", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+    ),
+    security(
+        ("api_key" = []),
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn deliver_message(
+    State(state): State<Arc<MessageState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    state.db.message_deliver(id.into()).await?;
+
+    state.ws.broadcast(WsEvent::MessageDelivered {
+        message_id: id.into(),
+    });
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ============================================================================
 // REQUEST/RESPONSE TYPES
 // ============================================================================
@@ -275,6 +320,7 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
         .route("/", axum::routing::get(list_messages))
         .route("/:id", axum::routing::get(get_message))
         .route("/:id/acknowledge", axum::routing::post(acknowledge_message))
+        .route("/:id/deliver", axum::routing::post(deliver_message))
         .with_state(state)
 }
 

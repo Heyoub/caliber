@@ -188,7 +188,7 @@ pub async fn accept_handoff(
     }
 
     // Accept handoff via database client
-    state
+    let _ = state
         .db
         .handoff_accept(id.into(), req.accepting_agent_id)
         .await?;
@@ -239,14 +239,7 @@ pub async fn complete_handoff(
     }
 
     // Complete handoff via database client
-    state.db.handoff_complete(id.into()).await?;
-
-    // Fetch updated handoff for event payload
-    let updated = state
-        .db
-        .handoff_get(id.into())
-        .await?
-        .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
+    let updated = state.db.handoff_complete(id.into()).await?;
 
     // Broadcast HandoffCompleted event
     state.ws.broadcast(WsEvent::HandoffCompleted { handoff: updated });

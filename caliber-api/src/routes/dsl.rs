@@ -53,9 +53,11 @@ impl DslState {
     )
 )]
 pub async fn validate_dsl(
-    State(_state): State<Arc<DslState>>,
+    State(state): State<Arc<DslState>>,
     Json(req): Json<ValidateDslRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    tracing::debug!(db_pool_size = state.db.pool_size(), "DSL validation request");
+
     // Validate that source is not empty
     if req.source.trim().is_empty() {
         return Err(ApiError::missing_field("source"));
@@ -107,9 +109,11 @@ pub async fn validate_dsl(
     )
 )]
 pub async fn parse_dsl(
-    State(_state): State<Arc<DslState>>,
+    State(state): State<Arc<DslState>>,
     Json(req): Json<ValidateDslRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    tracing::debug!(db_pool_size = state.db.pool_size(), "DSL parse request");
+
     // Validate that source is not empty
     if req.source.trim().is_empty() {
         return Err(ApiError::missing_field("source"));

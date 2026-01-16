@@ -1249,12 +1249,41 @@ impl Parser {
             false
         };
 
+        // Check for default value (literal)
+        let default = if self.check(&TokenKind::Eq) {
+            self.advance();
+            Some(self.parse_default_literal()?)
+        } else {
+            None
+        };
+
         Ok(FieldDef {
             name,
             field_type,
             nullable,
-            default: None,
+            default,
         })
+    }
+
+    fn parse_default_literal(&mut self) -> Result<String, ParseError> {
+        match &self.current().kind {
+            TokenKind::String(s) => {
+                let value = format!("\"{}\"", escape_string(s));
+                self.advance();
+                Ok(value)
+            }
+            TokenKind::Number(n) => {
+                let value = n.to_string();
+                self.advance();
+                Ok(value)
+            }
+            TokenKind::Identifier(s) if s == "true" || s == "false" => {
+                let value = s.clone();
+                self.advance();
+                Ok(value)
+            }
+            _ => Err(self.error("Expected default literal (string, number, or boolean)")),
+        }
     }
 
     /// Parse a field type.
@@ -1433,11 +1462,26 @@ impl Parser {
         let field = self.expect_identifier()?;
         self.expect(TokenKind::Colon)?;
         let index_type = self.parse_index_type()?;
+        let mut options = Vec::new();
+
+        if self.check(&TokenKind::Options) {
+            self.advance();
+            self.expect(TokenKind::Colon)?;
+            self.expect(TokenKind::LBrace)?;
+            while !self.check(&TokenKind::RBrace) {
+                let key = self.expect_string()?;
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_string_or_number()?;
+                options.push((key, value));
+                self.optional_comma();
+            }
+            self.expect(TokenKind::RBrace)?;
+        }
 
         Ok(IndexDef {
             field,
             index_type,
-            options: Vec::new(),
+            options,
         })
     }
 
@@ -2384,7 +2428,20 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
     if !memory.schema.is_empty() {
         output.push_str(&format!("{}schema: {{\n", indent_str(indent + 1)));
         for field in &memory.schema {
-            output.push_str(&format!("{}{}: {}\n", indent_str(indent + 2), field.name, pretty_print_field_type(&field.field_type)));
+            let mut line = format!(
+                "{}{}: {}",
+                indent_str(indent + 2),
+                field.name,
+                pretty_print_field_type(&field.field_type)
+            );
+            if field.nullable {
+                line.push_str(" optional");
+            }
+            if let Some(default) = &field.default {
+                line.push_str(&format!(" = {}", default));
+            }
+            line.push('\n');
+            output.push_str(&line);
         }
         output.push_str(&format!("{}}}\n", indent_str(indent + 1)));
     }
@@ -2399,7 +2456,30 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
     if !memory.indexes.is_empty() {
         output.push_str(&format!("{}index: {{\n", indent_str(indent + 1)));
         for idx in &memory.indexes {
-            output.push_str(&format!("{}{}: {}\n", indent_str(indent + 2), idx.field, pretty_print_index_type(&idx.index_type)));
+            if idx.options.is_empty() {
+                output.push_str(&format!(
+                    "{}{}: {}\n",
+                    indent_str(indent + 2),
+                    idx.field,
+                    pretty_print_index_type(&idx.index_type)
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{}{}: {} options: {{\n",
+                    indent_str(indent + 2),
+                    idx.field,
+                    pretty_print_index_type(&idx.index_type)
+                ));
+                for (key, value) in &idx.options {
+                    output.push_str(&format!(
+                        "{}\"{}\": \"{}\"\n",
+                        indent_str(indent + 3),
+                        escape_string(key),
+                        escape_string(value)
+                    ));
+                }
+                output.push_str(&format!("{}}}\n", indent_str(indent + 2)));
+            }
         }
         output.push_str(&format!("{}}}\n", indent_str(indent + 1)));
     }
@@ -3091,6 +3171,57 @@ mod tests {
         let ast2 = parse(&printed).unwrap();
 
         assert_eq!(ast1, ast2);
+    }
+
+    #[test]
+    fn test_parse_defaults_and_index_options() {
+        let source = r#"
+            caliber: "1.0" {
+                memory notes {
+                    type: semantic
+                    schema: {
+                        id: uuid
+                        title: text optional = "untitled"
+                        score: float = 0.75
+                        active: bool = true
+                    }
+                    retention: persistent
+                    lifecycle: explicit
+                    index: {
+                        embedding: hnsw options: {
+                            "m": 16,
+                            "ef_construction": 64
+                        }
+                    }
+                }
+            }
+        "#;
+
+        let ast = parse(source).unwrap();
+        let memory = match &ast.definitions[0] {
+            Definition::Memory(def) => def,
+            _ => panic!("Expected memory definition"),
+        };
+
+        let title = &memory.schema[1];
+        assert!(title.nullable);
+        assert_eq!(title.default.as_deref(), Some("\"untitled\""));
+
+        let score = &memory.schema[2];
+        assert_eq!(score.default.as_deref(), Some("0.75"));
+
+        let active = &memory.schema[3];
+        assert_eq!(active.default.as_deref(), Some("true"));
+
+        let index = &memory.indexes[0];
+        assert_eq!(index.options.len(), 2);
+        assert!(index.options.iter().any(|(k, v)| k == "m" && v == "16"));
+        assert!(index.options.iter().any(|(k, v)| k == "ef_construction" && v == "64"));
+
+        let printed = pretty_print(&ast);
+        assert!(printed.contains("optional"));
+        assert!(printed.contains("= \"untitled\""));
+        assert!(printed.contains("options: {"));
     }
 
     #[test]

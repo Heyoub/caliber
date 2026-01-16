@@ -144,27 +144,15 @@ pub async fn extend_lock(
     State(state): State<Arc<LockState>>,
     Path(id): Path<Uuid>,
     Json(req): Json<ExtendLockRequest>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<Json<LockResponse>> {
     // Validate additional time
     if req.additional_ms <= 0 {
         return Err(ApiError::invalid_range("additional_ms", 1, i64::MAX));
     }
 
-    // Get the current lock
-    let lock = state
-        .db
-        .lock_get(id.into())
-        .await?
-        .ok_or_else(|| ApiError::lock_not_found(id))?;
-
-    // Calculate new expiration time
-    let new_expires_at = lock.expires_at + chrono::Duration::milliseconds(req.additional_ms);
-
-    // TODO: Implement caliber_lock_extend in caliber-pg
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Lock extension not yet implemented in caliber-pg",
-    ))
+    let duration = std::time::Duration::from_millis(req.additional_ms as u64);
+    let lock = state.db.lock_extend(id.into(), duration).await?;
+    Ok(Json(lock))
 }
 
 /// GET /api/v1/locks - List all active locks
@@ -184,13 +172,12 @@ pub async fn extend_lock(
 pub async fn list_locks(
     State(state): State<Arc<LockState>>,
 ) -> ApiResult<impl IntoResponse> {
-    // TODO: Implement caliber_lock_list_all in caliber-pg
-    // For now, return an empty list
-    let locks: Vec<LockResponse> = Vec::new();
+    let locks = state.db.lock_list_active().await?;
+    let total = locks.len() as i32;
 
     Ok(Json(ListLocksResponse {
         locks,
-        total: 0,
+        total,
     }))
 }
 

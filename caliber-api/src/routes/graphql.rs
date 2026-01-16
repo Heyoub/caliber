@@ -75,6 +75,9 @@ pub enum GqlNoteType {
     Relationship,
     Procedure,
     Meta,
+    Insight,
+    Correction,
+    Summary,
 }
 
 impl From<caliber_core::NoteType> for GqlNoteType {
@@ -88,6 +91,9 @@ impl From<caliber_core::NoteType> for GqlNoteType {
             caliber_core::NoteType::Relationship => GqlNoteType::Relationship,
             caliber_core::NoteType::Procedure => GqlNoteType::Procedure,
             caliber_core::NoteType::Meta => GqlNoteType::Meta,
+            caliber_core::NoteType::Insight => GqlNoteType::Insight,
+            caliber_core::NoteType::Correction => GqlNoteType::Correction,
+            caliber_core::NoteType::Summary => GqlNoteType::Summary,
         }
     }
 }
@@ -103,6 +109,9 @@ impl From<GqlNoteType> for caliber_core::NoteType {
             GqlNoteType::Relationship => caliber_core::NoteType::Relationship,
             GqlNoteType::Procedure => caliber_core::NoteType::Procedure,
             GqlNoteType::Meta => caliber_core::NoteType::Meta,
+            GqlNoteType::Insight => caliber_core::NoteType::Insight,
+            GqlNoteType::Correction => caliber_core::NoteType::Correction,
+            GqlNoteType::Summary => caliber_core::NoteType::Summary,
         }
     }
 }

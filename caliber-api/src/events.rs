@@ -229,6 +229,15 @@ pub enum WsEvent {
     },
 
     // ========================================================================
+    // CONFIG EVENTS
+    // ========================================================================
+    /// Configuration was updated.
+    ConfigUpdated {
+        /// The updated configuration
+        config: ConfigResponse,
+    },
+
+    // ========================================================================
     // CONNECTION EVENTS
     // ========================================================================
     /// Client successfully connected.
@@ -321,6 +330,7 @@ impl WsEvent {
             WsEvent::HandoffCreated { .. } => "HandoffCreated",
             WsEvent::HandoffAccepted { .. } => "HandoffAccepted",
             WsEvent::HandoffCompleted { .. } => "HandoffCompleted",
+            WsEvent::ConfigUpdated { .. } => "ConfigUpdated",
             WsEvent::Connected { .. } => "Connected",
             WsEvent::Disconnected { .. } => "Disconnected",
             WsEvent::Error { .. } => "Error",
@@ -335,7 +345,10 @@ impl WsEvent {
     pub fn is_tenant_specific(&self) -> bool {
         !matches!(
             self,
-            WsEvent::Connected { .. } | WsEvent::Disconnected { .. } | WsEvent::Error { .. }
+            WsEvent::Connected { .. }
+                | WsEvent::Disconnected { .. }
+                | WsEvent::Error { .. }
+                | WsEvent::ConfigUpdated { .. }
         )
     }
 }

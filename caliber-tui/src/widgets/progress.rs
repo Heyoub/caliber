@@ -33,7 +33,7 @@ impl ProgressBar {
         let gauge = Gauge::default()
             .block(Block::default().title(self.title.as_str()).borders(Borders::ALL))
             .gauge_style(style)
-            .ratio(ratio);
+            .ratio(ratio as f64);
         f.render_widget(gauge, area);
     }
 }

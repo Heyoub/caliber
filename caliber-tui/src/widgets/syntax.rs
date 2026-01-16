@@ -3,7 +3,7 @@
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
-    text::{Span, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
@@ -87,7 +87,7 @@ impl SyntaxHighlighter {
             chars.next();
         }
 
-        Text::from(spans)
+        Text::from(Line::from(spans))
     }
 }
 

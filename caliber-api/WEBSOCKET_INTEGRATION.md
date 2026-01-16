@@ -53,16 +53,18 @@ For each route module with mutation operations (create, update, delete):
 - [x] caliber-api/src/routes/artifact.rs - Full integration
 
 ### 🔄 Remaining (Pattern to Apply)
-- [ ] caliber-api/src/routes/note.rs - Create, Update, Delete
-- [ ] caliber-api/src/routes/turn.rs - Create only
-- [ ] caliber-api/src/routes/agent.rs - Register, Update, Unregister, Heartbeat
 - [ ] caliber-api/src/routes/lock.rs - Acquire, Release, Expire
-- [ ] caliber-api/src/routes/message.rs - Send, Deliver, Acknowledge
-- [ ] caliber-api/src/routes/delegation.rs - Create, Accept, Reject, Complete
-- [ ] caliber-api/src/routes/handoff.rs - Create, Accept, Complete
 - [ ] caliber-api/src/routes/dsl.rs - No mutations (read-only)
-- [ ] caliber-api/src/routes/config.rs - Update only
 - [ ] caliber-api/src/routes/tenant.rs - No mutations (read-only)
+
+### ✅ Complete
+- [x] caliber-api/src/routes/note.rs - Create, Update, Delete
+- [x] caliber-api/src/routes/turn.rs - Create only
+- [x] caliber-api/src/routes/agent.rs - Register, Update, Unregister, Heartbeat
+- [x] caliber-api/src/routes/message.rs - Send, Deliver, Acknowledge
+- [x] caliber-api/src/routes/delegation.rs - Create, Accept, Reject, Complete
+- [x] caliber-api/src/routes/handoff.rs - Create, Accept, Complete
+- [x] caliber-api/src/routes/config.rs - Update only
 
 ## Event Mapping
 
@@ -75,10 +77,10 @@ For each route module with mutation operations (create, update, delete):
 | turn | create | TurnCreated |
 | agent | register, update, unregister, heartbeat | AgentRegistered, AgentStatusChanged, AgentHeartbeat, AgentUnregistered |
 | lock | acquire, release | LockAcquired, LockReleased, LockExpired |
-| message | send, acknowledge | MessageSent, MessageDelivered, MessageAcknowledged |
+| message | send, deliver, acknowledge | MessageSent, MessageDelivered, MessageAcknowledged |
 | delegation | create, accept, reject, complete | DelegationCreated, DelegationAccepted, DelegationRejected, DelegationCompleted |
 | handoff | create, accept, complete | HandoffCreated, HandoffAccepted, HandoffCompleted |
-| config | update | (No specific event - could add ConfigUpdated if needed) |
+| config | update | ConfigUpdated |
 
 ## Requirements Validated
 

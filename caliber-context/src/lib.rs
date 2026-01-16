@@ -4,8 +4,7 @@
 //! Combines all inputs into a single coherent prompt following the Context Conveyor pattern.
 
 use caliber_core::{
-    Artifact, CaliberConfig, CaliberResult, EntityId, EntityType, Note,
-    Timestamp,
+    Artifact, CaliberConfig, CaliberResult, EntityId, EntityType, Note, Timestamp,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -738,6 +737,8 @@ mod tests {
             access_count: 0,
             superseded_by: None,
             metadata: None,
+            abstraction_level: caliber_core::AbstractionLevel::Raw,
+            source_note_ids: vec![],
         }
     }
 
@@ -906,6 +907,8 @@ mod prop_tests {
             access_count: 0,
             superseded_by: None,
             metadata: None,
+            abstraction_level: caliber_core::AbstractionLevel::Raw,
+            source_note_ids: vec![],
         })
     }
 

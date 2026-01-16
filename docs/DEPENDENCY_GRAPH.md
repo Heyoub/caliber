@@ -760,9 +760,9 @@ proptest = { workspace = true }
 **Step 0 Status:**
 - [x] 0.1 Build Full Crate Dependency Graph
 - [x] 0.2 Lock External Dependencies with Exact Versions
-- [ ] 0.3 Design Complete Type System (ALL types, ALL crates)
-- [ ] 0.4 Identify Free Batteries (Don't Reinvent)
-- [ ] 0.5 Create Optimized Cargo.toml Template
-- [ ] 0.6 Output: Create `docs/DEPENDENCY_GRAPH.md`
+- [x] 0.3 Design Complete Type System (ALL types, ALL crates)
+- [x] 0.4 Identify Free Batteries (Don't Reinvent)
+- [x] 0.5 Create Optimized Cargo.toml Template
+- [x] 0.6 Output: Create `docs/DEPENDENCY_GRAPH.md`
 
 **Note:** Sections 0.3-0.5 are now complete within this document. The type system is documented in Section 2, free batteries in Section 5, and Cargo.toml template in Section 6.

@@ -1965,6 +1965,60 @@ fn caliber_lock_get(lock_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     }
 }
 
+/// Extend a lock's expiration time by the given milliseconds.
+#[pg_extern]
+fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64) -> bool {
+    let lid = Uuid::from_bytes(*lock_id.as_bytes());
+    let lock = match lock_heap::lock_get_heap(lid) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => return false,
+        Err(e) => {
+            pgrx::warning!("CALIBER: {:?}", e);
+            return false;
+        }
+    };
+
+    let new_expires_at = lock.expires_at + chrono::Duration::milliseconds(additional_ms);
+    match lock_heap::lock_extend_heap(lid, new_expires_at) {
+        Ok(updated) => updated,
+        Err(e) => {
+            pgrx::warning!("CALIBER: {:?}", e);
+            false
+        }
+    }
+}
+
+/// List all active (non-expired) locks.
+#[pg_extern]
+fn caliber_lock_list_active() -> pgrx::JsonB {
+    match lock_heap::lock_list_active_heap() {
+        Ok(locks) => {
+            let json_locks: Vec<serde_json::Value> = locks
+                .into_iter()
+                .map(|lock| {
+                    serde_json::json!({
+                        "lock_id": lock.lock_id.to_string(),
+                        "resource_type": lock.resource_type,
+                        "resource_id": lock.resource_id.to_string(),
+                        "holder_agent_id": lock.holder_agent_id.to_string(),
+                        "acquired_at": lock.acquired_at.to_rfc3339(),
+                        "expires_at": lock.expires_at.to_rfc3339(),
+                        "mode": match lock.mode {
+                            LockMode::Exclusive => "exclusive",
+                            LockMode::Shared => "shared",
+                        },
+                    })
+                })
+                .collect();
+            pgrx::JsonB(serde_json::json!(json_locks))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: {:?}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
 
 // ============================================================================
 // NOTIFY-BASED MESSAGE PASSING (Task 12.5)

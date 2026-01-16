@@ -12,7 +12,7 @@
 //! - JSON-serialized events using the WsEvent enum
 
 use crate::auth::AuthContext;
-use crate::error::{ApiError, ApiResult, ErrorCode};
+use crate::error::ApiResult;
 use crate::events::WsEvent;
 use axum::{
     extract::{
@@ -23,6 +23,7 @@ use axum::{
 };
 use caliber_core::EntityId;
 use futures_util::{SinkExt, StreamExt};
+use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
@@ -265,31 +266,49 @@ fn should_send_event(event: &WsEvent, client_tenant_id: EntityId) -> bool {
         return true;
     }
 
-    // For tenant-specific events, we need to extract the tenant ID
-    // from the event payload and compare it to the client's tenant ID.
-    //
-    // Since events contain full entity responses, we can extract the
-    // tenant ID from the trajectory_id or other tenant-scoped fields.
-    //
-    // For now, we implement a simple approach: all tenant-specific events
-    // are sent to all clients. In a production system, you would:
-    // 1. Add tenant_id field to all entity responses
-    // 2. Extract tenant_id from the event
-    // 3. Compare with client_tenant_id
-    //
-    // This is a framework - tenant isolation is the user's responsibility
-    // to configure properly in their database schema and access controls.
+    match tenant_id_from_event(event) {
+        Some(event_tenant_id) => event_tenant_id == client_tenant_id,
+        None => {
+            // Tenant-aware metadata is optional; fall back to allow when missing.
+            debug!(
+                event_type = event.event_type(),
+                "Tenant metadata missing for event; allowing broadcast"
+            );
+            true
+        }
+    }
+}
 
-    // TODO: Implement proper tenant filtering based on event content
-    // For now, send all tenant-specific events to all clients
-    // This is safe because authentication already verified tenant access
-    let _ = client_tenant_id; // Suppress unused warning
-    true
+fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
+    match event {
+        WsEvent::TrajectoryCreated { trajectory } => tenant_id_from_metadata(&trajectory.metadata),
+        WsEvent::TrajectoryUpdated { trajectory } => tenant_id_from_metadata(&trajectory.metadata),
+        WsEvent::ScopeCreated { scope } => tenant_id_from_metadata(&scope.metadata),
+        WsEvent::ScopeUpdated { scope } => tenant_id_from_metadata(&scope.metadata),
+        WsEvent::ScopeClosed { scope } => tenant_id_from_metadata(&scope.metadata),
+        WsEvent::ArtifactCreated { artifact } => tenant_id_from_metadata(&artifact.metadata),
+        WsEvent::ArtifactUpdated { artifact } => tenant_id_from_metadata(&artifact.metadata),
+        WsEvent::NoteCreated { note } => tenant_id_from_metadata(&note.metadata),
+        WsEvent::NoteUpdated { note } => tenant_id_from_metadata(&note.metadata),
+        WsEvent::TurnCreated { turn } => tenant_id_from_metadata(&turn.metadata),
+        WsEvent::DelegationCreated { delegation } => tenant_id_from_metadata(&delegation.context),
+        WsEvent::DelegationCompleted { delegation } => tenant_id_from_metadata(&delegation.context),
+        _ => None,
+    }
+}
+
+fn tenant_id_from_metadata(metadata: &Option<JsonValue>) -> Option<EntityId> {
+    let metadata = metadata.as_ref()?;
+    let tenant_value = metadata.get("tenant_id")?;
+    tenant_value
+        .as_str()
+        .and_then(|value| value.parse::<EntityId>().ok())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_ws_state_creation() {
@@ -351,9 +370,28 @@ mod tests {
                 updated_at: caliber_core::Timestamp::now(),
                 completed_at: None,
                 outcome: None,
-                metadata: None,
+                metadata: Some(json!({ "tenant_id": tenant_id.to_string() })),
             },
         };
         assert!(should_send_event(&trajectory_created, tenant_id));
+
+        let other_tenant = EntityId::new();
+        let other_tenant_event = WsEvent::TrajectoryCreated {
+            trajectory: crate::types::TrajectoryResponse {
+                trajectory_id: EntityId::new(),
+                name: "other".to_string(),
+                description: None,
+                status: caliber_core::TrajectoryStatus::Active,
+                parent_trajectory_id: None,
+                root_trajectory_id: None,
+                agent_id: None,
+                created_at: caliber_core::Timestamp::now(),
+                updated_at: caliber_core::Timestamp::now(),
+                completed_at: None,
+                outcome: None,
+                metadata: Some(json!({ "tenant_id": other_tenant.to_string() })),
+            },
+        };
+        assert!(!should_send_event(&other_tenant_event, tenant_id));
     }
 }

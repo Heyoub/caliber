@@ -147,12 +147,35 @@ pub async fn list_notes(
 
         Ok(Json(response))
     } else {
-        // If no trajectory filter, return all notes (with pagination)
-        // TODO: Implement caliber_note_list_all in caliber-pg
-        // For now, return an error
-        Err(ApiError::invalid_input(
-            "Listing all notes not yet implemented - please provide source_trajectory_id filter",
-        ))
+        // No trajectory filter - return all notes with pagination
+        let limit = params.limit.unwrap_or(100);
+        let offset = params.offset.unwrap_or(0);
+
+        let notes = state.db.note_list_all(limit, offset).await?;
+
+        // Apply additional filters if needed
+        let mut filtered = notes;
+
+        if let Some(note_type) = params.note_type {
+            filtered.retain(|n| n.note_type == note_type);
+        }
+
+        if let Some(created_after) = params.created_after {
+            filtered.retain(|n| n.created_at >= created_after);
+        }
+
+        if let Some(created_before) = params.created_before {
+            filtered.retain(|n| n.created_at <= created_before);
+        }
+
+        let total = filtered.len() as i32;
+
+        let response = ListNotesResponse {
+            notes: filtered,
+            total,
+        };
+
+        Ok(Json(response))
     }
 }
 
@@ -238,11 +261,9 @@ pub async fn update_note(
         }
     }
 
-    // TODO: Implement caliber_note_update in caliber-pg
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Note update not yet implemented in caliber-pg",
-    ))
+    let note = state.db.note_update(id.into(), &req).await?;
+    state.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
+    Ok(Json(note))
 }
 
 /// DELETE /api/v1/notes/{id} - Delete note
@@ -274,11 +295,9 @@ pub async fn delete_note(
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
-    // TODO: Implement caliber_note_delete in caliber-pg
-    // For now, return an error indicating this is not yet implemented
-    Err(ApiError::internal_error(
-        "Note deletion not yet implemented in caliber-pg",
-    ))
+    state.db.note_delete(id.into()).await?;
+    state.ws.broadcast(WsEvent::NoteDeleted { id: id.into() });
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /api/v1/notes/search - Search notes by similarity
@@ -316,17 +335,8 @@ pub async fn search_notes(
         ));
     }
 
-    // TODO: Implement caliber_note_search_similarity in caliber-pg
-    // This will:
-    // 1. Generate embedding for the query text
-    // 2. Perform vector similarity search using pgvector
-    // 3. Return ranked results with similarity scores
-
-    // For now, return an empty result set
-    let response = SearchResponse {
-        results: Vec::new(),
-        total: 0,
-    };
+    // Perform the search using the database search function
+    let response = state.db.search(&req).await?;
 
     Ok(Json(response))
 }
