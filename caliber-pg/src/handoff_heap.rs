@@ -28,20 +28,36 @@ use crate::tuple_extract::{
 };
 
 /// Create a new handoff by inserting a handoff record using direct heap operations.
-pub fn handoff_create_heap(
-    handoff_id: EntityId,
-    from_agent_id: EntityId,
-    to_agent_id: Option<EntityId>,
-    to_agent_type: Option<&str>,
-    trajectory_id: EntityId,
-    scope_id: EntityId,
-    context_snapshot_id: EntityId,
-    handoff_notes: &str,
-    next_steps: &[String],
-    blockers: &[String],
-    open_questions: &[String],
-    reason: HandoffReason,
-) -> CaliberResult<EntityId> {
+pub struct HandoffCreateParams<'a> {
+    pub handoff_id: EntityId,
+    pub from_agent_id: EntityId,
+    pub to_agent_id: Option<EntityId>,
+    pub to_agent_type: Option<&'a str>,
+    pub trajectory_id: EntityId,
+    pub scope_id: EntityId,
+    pub context_snapshot_id: EntityId,
+    pub handoff_notes: &'a str,
+    pub next_steps: &'a [String],
+    pub blockers: &'a [String],
+    pub open_questions: &'a [String],
+    pub reason: HandoffReason,
+}
+
+pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<EntityId> {
+    let HandoffCreateParams {
+        handoff_id,
+        from_agent_id,
+        to_agent_id,
+        to_agent_type,
+        trajectory_id,
+        scope_id,
+        context_snapshot_id,
+        handoff_notes,
+        next_steps,
+        blockers,
+        open_questions,
+        reason,
+    } = params;
     let rel = open_relation(handoff::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_handoff_relation(&rel)?;
 
@@ -125,8 +141,8 @@ pub fn handoff_create_heap(
     values[handoff::REASON as usize - 1] = string_to_datum(reason_str);
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
-    let _tid = insert_tuple(&rel, tuple)?;
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(handoff_id)
 }
@@ -146,11 +162,11 @@ pub fn handoff_get_heap(handoff_id: EntityId) -> CaliberResult<Option<AgentHando
         uuid_to_datum(handoff_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let handoff = tuple_to_handoff(tuple, tuple_desc)?;
+        let handoff = unsafe { tuple_to_handoff(tuple, tuple_desc) }?;
         Ok(Some(handoff))
     } else {
         Ok(None)
@@ -180,11 +196,11 @@ pub fn handoff_accept_heap(
         uuid_to_datum(handoff_id),
     );
 
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
         // Update to_agent_id - the agent accepting the handoff
         values[handoff::TO_AGENT_ID as usize - 1] = uuid_to_datum(accepting_agent_id);
@@ -211,7 +227,7 @@ pub fn handoff_accept_heap(
                 reason: "Failed to get TID of handoff tuple".to_string(),
             }))?;
 
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -233,11 +249,11 @@ pub fn handoff_complete_heap(handoff_id: EntityId) -> CaliberResult<bool> {
         uuid_to_datum(handoff_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status to "completed"
         values[handoff::STATUS as usize - 1] = string_to_datum("completed");
@@ -260,7 +276,7 @@ pub fn handoff_complete_heap(handoff_id: EntityId) -> CaliberResult<bool> {
                 reason: "Failed to get TID of handoff tuple".to_string(),
             }))?;
         
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -282,7 +298,7 @@ fn validate_handoff_relation(rel: &HeapRelation) -> CaliberResult<()> {
     Ok(())
 }
 
-fn tuple_to_handoff(
+unsafe fn tuple_to_handoff(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<AgentHandoff> {
@@ -544,20 +560,20 @@ mod tests {
                 let handoff_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let result = handoff_create_heap(
+                let result = handoff_create_heap(HandoffCreateParams {
                     handoff_id,
                     from_agent_id,
                     to_agent_id,
-                    to_agent_type.as_deref(),
+                    to_agent_type: to_agent_type.as_deref(),
                     trajectory_id,
                     scope_id,
                     context_snapshot_id,
-                    &handoff_notes,
-                    &next_steps,
-                    &blockers,
-                    &open_questions,
+                    handoff_notes: &handoff_notes,
+                    next_steps: &next_steps,
+                    blockers: &blockers,
+                    open_questions: &open_questions,
                     reason,
-                );
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), handoff_id);
 
@@ -662,20 +678,20 @@ mod tests {
                 let handoff_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = handoff_create_heap(
+                let insert_result = handoff_create_heap(HandoffCreateParams {
                     handoff_id,
                     from_agent_id,
                     to_agent_id,
-                    to_agent_type.as_deref(),
+                    to_agent_type: to_agent_type.as_deref(),
                     trajectory_id,
                     scope_id,
                     context_snapshot_id,
-                    &handoff_notes,
-                    &next_steps,
-                    &blockers,
-                    &open_questions,
+                    handoff_notes: &handoff_notes,
+                    next_steps: &next_steps,
+                    blockers: &blockers,
+                    open_questions: &open_questions,
                     reason,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial status is Initiated
@@ -750,20 +766,20 @@ mod tests {
                 let handoff_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = handoff_create_heap(
+                let insert_result = handoff_create_heap(HandoffCreateParams {
                     handoff_id,
                     from_agent_id,
                     to_agent_id,
-                    to_agent_type.as_deref(),
+                    to_agent_type: to_agent_type.as_deref(),
                     trajectory_id,
                     scope_id,
                     context_snapshot_id,
-                    &handoff_notes,
-                    &next_steps,
-                    &blockers,
-                    &open_questions,
+                    handoff_notes: &handoff_notes,
+                    next_steps: &next_steps,
+                    blockers: &blockers,
+                    open_questions: &open_questions,
                     reason,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial state
@@ -865,20 +881,20 @@ mod tests {
                 let handoff_id = caliber_core::new_entity_id();
 
                 // Insert with all fields populated
-                let result = handoff_create_heap(
+                let result = handoff_create_heap(HandoffCreateParams {
                     handoff_id,
                     from_agent_id,
-                    Some(to_agent_id),
-                    to_agent_type.as_deref(),
+                    to_agent_id: Some(to_agent_id),
+                    to_agent_type: to_agent_type.as_deref(),
                     trajectory_id,
                     scope_id,
                     context_snapshot_id,
-                    &handoff_notes,
-                    &next_steps,
-                    &blockers,
-                    &open_questions,
+                    handoff_notes: &handoff_notes,
+                    next_steps: &next_steps,
+                    blockers: &blockers,
+                    open_questions: &open_questions,
                     reason,
-                );
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed");
 
                 // Get and verify all fields

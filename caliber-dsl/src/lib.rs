@@ -2359,7 +2359,7 @@ fn pretty_print_summarization_policy(s: &SummarizationPolicyDef, indent: usize) 
     let inner_ind = indent_str(indent + 1);
     let mut result = format!("{}summarization_policy \"{}\" {{\n", ind, s.name);
     result.push_str(&format!("{}triggers: [{}]\n", inner_ind,
-        s.triggers.iter().map(|t| pretty_print_summarization_trigger(t)).collect::<Vec<_>>().join(", ")));
+        s.triggers.iter().map(pretty_print_summarization_trigger).collect::<Vec<_>>().join(", ")));
     result.push_str(&format!("{}source_level: {}\n", inner_ind, pretty_print_abstraction_level(s.source_level)));
     result.push_str(&format!("{}target_level: {}\n", inner_ind, pretty_print_abstraction_level(s.target_level)));
     result.push_str(&format!("{}max_sources: {}\n", inner_ind, s.max_sources));

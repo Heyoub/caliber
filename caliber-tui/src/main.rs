@@ -144,11 +144,11 @@ async fn handle_event(app: &mut App, event: TuiEvent) -> Result<bool, TuiError> 
     match event {
         TuiEvent::Input(key) => {
             if let Some(action) = map_key(key) {
-                return Ok(handle_action(app, action).await?);
+                return handle_action(app, action).await;
             }
         }
         TuiEvent::Ws(ws_event) => {
-            app.enqueue_event(ws_event);
+            app.enqueue_event(*ws_event);
         }
         TuiEvent::ApiError(message) => {
             app.notify(caliber_tui::notifications::NotificationLevel::Error, message);

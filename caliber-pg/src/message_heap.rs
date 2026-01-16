@@ -29,19 +29,34 @@ use crate::tuple_extract::{
 };
 
 /// Send a message by inserting a message record using direct heap operations.
-pub fn message_send_heap(
-    message_id: EntityId,
-    from_agent_id: EntityId,
-    to_agent_id: Option<EntityId>,
-    to_agent_type: Option<&str>,
-    message_type: MessageType,
-    payload: &str,
-    trajectory_id: Option<EntityId>,
-    scope_id: Option<EntityId>,
-    artifact_ids: &[EntityId],
-    priority: MessagePriority,
-    expires_at: Option<chrono::DateTime<chrono::Utc>>,
-) -> CaliberResult<EntityId> {
+pub struct MessageSendParams<'a> {
+    pub message_id: EntityId,
+    pub from_agent_id: EntityId,
+    pub to_agent_id: Option<EntityId>,
+    pub to_agent_type: Option<&'a str>,
+    pub message_type: MessageType,
+    pub payload: &'a str,
+    pub trajectory_id: Option<EntityId>,
+    pub scope_id: Option<EntityId>,
+    pub artifact_ids: &'a [EntityId],
+    pub priority: MessagePriority,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityId> {
+    let MessageSendParams {
+        message_id,
+        from_agent_id,
+        to_agent_id,
+        to_agent_type,
+        message_type,
+        payload,
+        trajectory_id,
+        scope_id,
+        artifact_ids,
+        priority,
+        expires_at,
+    } = params;
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_message_relation(&rel)?;
 
@@ -122,8 +137,8 @@ pub fn message_send_heap(
     nulls[message::EXPIRES_AT as usize - 1] = expires_null;
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
-    let _tid = insert_tuple(&rel, tuple)?;
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(message_id)
 }
@@ -143,11 +158,11 @@ pub fn message_get_heap(message_id: EntityId) -> CaliberResult<Option<AgentMessa
         uuid_to_datum(message_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let message = tuple_to_message(tuple, tuple_desc)?;
+        let message = unsafe { tuple_to_message(tuple, tuple_desc) }?;
         Ok(Some(message))
     } else {
         Ok(None)
@@ -169,13 +184,13 @@ pub fn message_list_for_agent_heap(to_agent_id: EntityId) -> CaliberResult<Vec<A
         uuid_to_datum(to_agent_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
-    while let Some(tuple) = scanner.next() {
-        let message = tuple_to_message(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let message = unsafe { tuple_to_message(tuple, tuple_desc) }?;
         results.push(message);
     }
     
@@ -197,11 +212,11 @@ pub fn message_acknowledge_heap(message_id: EntityId) -> CaliberResult<bool> {
         uuid_to_datum(message_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update acknowledged_at to current timestamp
         let now = current_timestamp();
@@ -221,7 +236,7 @@ pub fn message_acknowledge_heap(message_id: EntityId) -> CaliberResult<bool> {
                 reason: "Failed to get TID of message tuple".to_string(),
             }))?;
         
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -281,7 +296,7 @@ fn build_optional_message_datums(
      to_agent_null, to_type_null, traj_null, scope_null, expires_null)
 }
 
-fn tuple_to_message(
+unsafe fn tuple_to_message(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<AgentMessage> {
@@ -513,19 +528,19 @@ mod tests {
                 let message_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let result = message_send_heap(
+                let result = message_send_heap(MessageSendParams {
                     message_id,
                     from_agent_id,
                     to_agent_id,
-                    to_agent_type.as_deref(),
+                    to_agent_type: to_agent_type.as_deref(),
                     message_type,
-                    &payload,
+                    payload: &payload,
                     trajectory_id,
                     scope_id,
-                    &artifact_ids,
+                    artifact_ids: &artifact_ids,
                     priority,
                     expires_at,
-                );
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), message_id);
 
@@ -627,19 +642,19 @@ mod tests {
                 let message_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = message_send_heap(
+                let insert_result = message_send_heap(MessageSendParams {
                     message_id,
                     from_agent_id,
                     to_agent_id,
-                    to_agent_type.as_deref(),
+                    to_agent_type: to_agent_type.as_deref(),
                     message_type,
-                    &payload,
+                    payload: &payload,
                     trajectory_id,
                     scope_id,
-                    &artifact_ids,
+                    artifact_ids: &artifact_ids,
                     priority,
                     expires_at,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify acknowledged_at is None initially
@@ -708,19 +723,19 @@ mod tests {
                 let message_id = caliber_core::new_entity_id();
 
                 // Insert via heap with to_agent_id
-                let insert_result = message_send_heap(
+                let insert_result = message_send_heap(MessageSendParams {
                     message_id,
                     from_agent_id,
-                    Some(to_agent_id),
-                    to_agent_type.as_deref(),
+                    to_agent_id: Some(to_agent_id),
+                    to_agent_type: to_agent_type.as_deref(),
                     message_type,
-                    &payload,
+                    payload: &payload,
                     trajectory_id,
                     scope_id,
-                    &artifact_ids,
+                    artifact_ids: &artifact_ids,
                     priority,
                     expires_at,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via to_agent index

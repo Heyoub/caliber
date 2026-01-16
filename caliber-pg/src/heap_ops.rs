@@ -88,13 +88,14 @@ pub struct HeapRelation {
     lock_mode: LockMode,
 }
 
-impl HeapRelation {
-    /// Get the underlying PgRelation reference.
+impl AsRef<PgRelation> for HeapRelation {
     #[inline]
-    pub fn as_ref(&self) -> &PgRelation {
+    fn as_ref(&self) -> &PgRelation {
         &self.inner
     }
+}
 
+impl HeapRelation {
     /// Get the tuple descriptor for this relation.
     #[inline]
     pub fn tuple_desc(&self) -> pg_sys::TupleDesc {
@@ -255,7 +256,12 @@ pub fn form_tuple(
 /// # Note
 /// After calling this, you MUST call `update_indexes_for_insert` to maintain
 /// index consistency.
-pub fn insert_tuple(
+///
+/// # Safety
+/// The tuple pointer must be valid for the target relation and remain valid
+/// for the duration of the insert. The relation must be opened with an
+/// appropriate lock mode for writes.
+pub unsafe fn insert_tuple(
     rel: &HeapRelation,
     tuple: *mut pg_sys::HeapTupleData,
 ) -> CaliberResult<pg_sys::ItemPointerData> {
@@ -266,12 +272,10 @@ pub fn insert_tuple(
         }));
     }
 
-    unsafe {
-        pg_sys::simple_heap_insert(rel.inner.as_ptr(), tuple);
-    }
+    pg_sys::simple_heap_insert(rel.inner.as_ptr(), tuple);
 
     // Get the TID from the inserted tuple
-    let tid = unsafe { (*tuple).t_self };
+    let tid = (*tuple).t_self;
 
     Ok(tid)
 }
@@ -290,7 +294,11 @@ pub fn insert_tuple(
 /// # Note
 /// After calling this, you MUST call `update_indexes_for_update` if any
 /// indexed columns changed.
-pub fn update_tuple(
+///
+/// # Safety
+/// The new_tuple pointer must be valid for the target relation. The relation
+/// must be opened with an appropriate lock mode for writes.
+pub unsafe fn update_tuple(
     rel: &HeapRelation,
     otid: &pg_sys::ItemPointerData,
     new_tuple: *mut pg_sys::HeapTupleData,
@@ -303,17 +311,15 @@ pub fn update_tuple(
         }));
     }
 
-    unsafe {
-        // In PostgreSQL 18 / pgrx 0.16, simple_heap_update takes 4 args
-        // The 4th arg is an out parameter indicating which indexes to update
-        let mut update_indexes = pg_sys::TU_UpdateIndexes::TU_All;
-        pg_sys::simple_heap_update(
-            rel.inner.as_ptr(),
-            otid as *const pg_sys::ItemPointerData as *mut pg_sys::ItemPointerData,
-            new_tuple,
-            &mut update_indexes,
-        );
-    }
+    // In PostgreSQL 18 / pgrx 0.16, simple_heap_update takes 4 args
+    // The 4th arg is an out parameter indicating which indexes to update
+    let mut update_indexes = pg_sys::TU_UpdateIndexes::TU_All;
+    pg_sys::simple_heap_update(
+        rel.inner.as_ptr(),
+        otid as *const pg_sys::ItemPointerData as *mut pg_sys::ItemPointerData,
+        new_tuple,
+        &mut update_indexes,
+    );
 
     Ok(())
 }
@@ -331,16 +337,18 @@ pub fn update_tuple(
 /// # Note
 /// Index entries are NOT automatically removed. The indexes will be cleaned
 /// up during VACUUM.
-pub fn delete_tuple(
+///
+/// # Safety
+/// The TID pointer must be valid for the target relation. The relation must be
+/// opened with an appropriate lock mode for writes.
+pub unsafe fn delete_tuple(
     rel: &HeapRelation,
     tid: &pg_sys::ItemPointerData,
 ) -> CaliberResult<()> {
-    unsafe {
-        pg_sys::simple_heap_delete(
-            rel.inner.as_ptr(),
-            tid as *const pg_sys::ItemPointerData as *mut pg_sys::ItemPointerData,
-        );
-    }
+    pg_sys::simple_heap_delete(
+        rel.inner.as_ptr(),
+        tid as *const pg_sys::ItemPointerData as *mut pg_sys::ItemPointerData,
+    );
 
     Ok(())
 }
@@ -401,22 +409,23 @@ pub fn snapshot_is_valid(snapshot: *mut pg_sys::SnapshotData) -> bool {
 ///
 /// # Returns
 /// A heap scan descriptor that must be ended with `end_heap_scan`.
-pub fn begin_heap_scan(
+///
+/// # Safety
+/// The snapshot and keys pointers must be valid for the duration of the scan.
+pub unsafe fn begin_heap_scan(
     rel: &HeapRelation,
     snapshot: *mut pg_sys::SnapshotData,
     nkeys: i32,
     keys: *mut pg_sys::ScanKeyData,
 ) -> pg_sys::TableScanDesc {
-    unsafe {
-        pg_sys::heap_beginscan(
-            rel.inner.as_ptr(),
-            snapshot,
-            nkeys,
-            keys,
-            std::ptr::null_mut(), // parallel_scan
-            0,                     // flags
-        )
-    }
+    pg_sys::heap_beginscan(
+        rel.inner.as_ptr(),
+        snapshot,
+        nkeys,
+        keys,
+        std::ptr::null_mut(), // parallel_scan
+        0,                     // flags
+    )
 }
 
 /// Get the next tuple from a heap scan.
@@ -427,24 +436,26 @@ pub fn begin_heap_scan(
 ///
 /// # Returns
 /// The next tuple, or null if no more tuples.
-pub fn heap_getnext(
+///
+/// # Safety
+/// The scan descriptor must be valid and created by begin_heap_scan.
+pub unsafe fn heap_getnext(
     scan: pg_sys::TableScanDesc,
     direction: pg_sys::ScanDirection::Type,
 ) -> pg_sys::HeapTuple {
-    unsafe {
-        pg_sys::heap_getnext(scan, direction)
-    }
+    pg_sys::heap_getnext(scan, direction)
 }
 
 /// End a heap scan and release resources.
 ///
 /// # Arguments
 /// * `scan` - The heap scan descriptor to end
-pub fn end_heap_scan(scan: pg_sys::TableScanDesc) {
+///
+/// # Safety
+/// The scan descriptor must be valid and created by begin_heap_scan.
+pub unsafe fn end_heap_scan(scan: pg_sys::TableScanDesc) {
     if !scan.is_null() {
-        unsafe {
-            pg_sys::heap_endscan(scan);
-        }
+        pg_sys::heap_endscan(scan);
     }
 }
 
@@ -455,24 +466,17 @@ pub struct HeapScanner {
 
 impl HeapScanner {
     /// Create a new heap scanner.
-    pub fn new(
+    ///
+    /// # Safety
+    /// The snapshot and keys pointers must be valid for the duration of the scan.
+    pub unsafe fn new(
         rel: &HeapRelation,
         snapshot: *mut pg_sys::SnapshotData,
         nkeys: i32,
         keys: *mut pg_sys::ScanKeyData,
     ) -> Self {
-        let scan = begin_heap_scan(rel, snapshot, nkeys, keys);
+        let scan = unsafe { begin_heap_scan(rel, snapshot, nkeys, keys) };
         Self { scan }
-    }
-
-    /// Get the next tuple from the scan.
-    pub fn next(&mut self) -> Option<pg_sys::HeapTuple> {
-        let tuple = heap_getnext(self.scan, pg_sys::ScanDirection::ForwardScanDirection);
-        if tuple.is_null() {
-            None
-        } else {
-            Some(tuple)
-        }
     }
 
     /// Get the raw scan descriptor (for advanced use).
@@ -481,9 +485,24 @@ impl HeapScanner {
     }
 }
 
+impl Iterator for HeapScanner {
+    type Item = pg_sys::HeapTuple;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let tuple = unsafe { heap_getnext(self.scan, pg_sys::ScanDirection::ForwardScanDirection) };
+        if tuple.is_null() {
+            None
+        } else {
+            Some(tuple)
+        }
+    }
+}
+
 impl Drop for HeapScanner {
     fn drop(&mut self) {
-        end_heap_scan(self.scan);
+        unsafe {
+            end_heap_scan(self.scan);
+        }
     }
 }
 

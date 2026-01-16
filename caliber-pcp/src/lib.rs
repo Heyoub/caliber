@@ -1679,7 +1679,7 @@ impl PCPRuntime {
                 };
 
                 if should_fire {
-                    triggered.push((policy.policy_id, trigger.clone()));
+                    triggered.push((policy.policy_id, *trigger));
                 }
             }
         }

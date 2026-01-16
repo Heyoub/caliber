@@ -118,10 +118,10 @@ pub fn edge_create_heap(edge: &Edge) -> CaliberResult<EntityId> {
     let tuple = form_tuple(&rel, &values, &nulls)?;
 
     // Insert into heap
-    let _tid = insert_tuple(&rel, tuple)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
 
     // Update all indexes via CatalogIndexInsert
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
 
     Ok(edge.edge_id)
 }
@@ -156,18 +156,18 @@ pub fn edge_get_heap(id: EntityId) -> CaliberResult<Option<Edge>> {
     );
 
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
 
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let edge = tuple_to_edge(tuple, tuple_desc)?;
+        let edge = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
         Ok(Some(edge))
     } else {
         Ok(None)
@@ -203,20 +203,20 @@ pub fn edge_query_by_type_heap(edge_type: EdgeType) -> CaliberResult<Vec<Edge>> 
     );
 
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
 
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
 
     // Collect all matching tuples
-    while let Some(tuple) = scanner.next() {
-        let edge = tuple_to_edge(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let edge = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
         results.push(edge);
     }
 
@@ -252,20 +252,20 @@ pub fn edge_query_by_trajectory_heap(trajectory_id: EntityId) -> CaliberResult<V
     );
 
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
 
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
 
     // Collect all matching tuples
-    while let Some(tuple) = scanner.next() {
-        let edge = tuple_to_edge(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let edge = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
         results.push(edge);
     }
 
@@ -344,7 +344,7 @@ fn str_to_extraction_method(s: &str) -> ExtractionMethod {
 }
 
 /// Convert a heap tuple to an Edge struct.
-fn tuple_to_edge(
+unsafe fn tuple_to_edge(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Edge> {

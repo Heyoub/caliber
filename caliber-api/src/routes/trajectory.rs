@@ -169,7 +169,7 @@ pub async fn get_trajectory(
 ) -> ApiResult<impl IntoResponse> {
     let trajectory = state
         .db
-        .trajectory_get(id.into())
+        .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -213,7 +213,7 @@ pub async fn update_trajectory(
     }
 
     // Update trajectory via database client
-    let trajectory = state.db.trajectory_update(id.into(), &req).await?;
+    let trajectory = state.db.trajectory_update(id, &req).await?;
 
     // Broadcast TrajectoryUpdated event
     state.ws.broadcast(WsEvent::TrajectoryUpdated {
@@ -248,15 +248,15 @@ pub async fn delete_trajectory(
     // First verify the trajectory exists
     let _trajectory = state
         .db
-        .trajectory_get(id.into())
+        .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
     // Delete trajectory via database client
-    state.db.trajectory_delete(id.into()).await?;
+    state.db.trajectory_delete(id).await?;
 
     // Broadcast TrajectoryDeleted event
-    state.ws.broadcast(WsEvent::TrajectoryDeleted { id: id.into() });
+    state.ws.broadcast(WsEvent::TrajectoryDeleted { id });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -286,12 +286,12 @@ pub async fn list_trajectory_scopes(
     // First verify the trajectory exists
     let _trajectory = state
         .db
-        .trajectory_get(id.into())
+        .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
     // Get scopes for this trajectory
-    let scopes = state.db.scope_list_by_trajectory(id.into()).await?;
+    let scopes = state.db.scope_list_by_trajectory(id).await?;
 
     Ok(Json(scopes))
 }
@@ -321,12 +321,12 @@ pub async fn list_trajectory_children(
     // First verify the trajectory exists
     let _trajectory = state
         .db
-        .trajectory_get(id.into())
+        .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
     // Get child trajectories
-    let children = state.db.trajectory_list_children(id.into()).await?;
+    let children = state.db.trajectory_list_children(id).await?;
 
     Ok(Json(children))
 }

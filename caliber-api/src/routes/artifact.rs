@@ -233,7 +233,7 @@ pub async fn get_artifact(
 ) -> ApiResult<impl IntoResponse> {
     let artifact = state
         .db
-        .artifact_get(id.into())
+        .artifact_get(id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
@@ -291,7 +291,7 @@ pub async fn update_artifact(
         }
     }
 
-    let artifact = state.db.artifact_update(id.into(), &req).await?;
+    let artifact = state.db.artifact_update(id, &req).await?;
     state.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
     Ok(Json(artifact))
 }
@@ -321,12 +321,12 @@ pub async fn delete_artifact(
     // First verify the artifact exists
     let _artifact = state
         .db
-        .artifact_get(id.into())
+        .artifact_get(id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
-    state.db.artifact_delete(id.into()).await?;
-    state.ws.broadcast(WsEvent::ArtifactDeleted { id: id.into() });
+    state.db.artifact_delete(id).await?;
+    state.ws.broadcast(WsEvent::ArtifactDeleted { id });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn test_create_artifact_request_validation() {
         // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil().into();
+        let dummy_id: EntityId = uuid::Uuid::nil();
 
         let req = CreateArtifactRequest {
             trajectory_id: dummy_id,
@@ -439,7 +439,7 @@ mod tests {
         let params = ListArtifactsRequest {
             artifact_type: Some(ArtifactType::Fact),
             trajectory_id: None,
-            scope_id: Some(uuid::Uuid::nil().into()),
+            scope_id: Some(uuid::Uuid::nil()),
             created_after: None,
             created_before: None,
             limit: Some(10),

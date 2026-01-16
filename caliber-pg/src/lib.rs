@@ -631,7 +631,7 @@ fn caliber_trajectory_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "created_at": trajectory.created_at.to_rfc3339(),
                 "updated_at": trajectory.updated_at.to_rfc3339(),
                 "completed_at": trajectory.completed_at.map(|t| t.to_rfc3339()),
-                "outcome": trajectory.outcome.as_ref().map(|o| safe_to_json(o)),
+                "outcome": trajectory.outcome.as_ref().map(safe_to_json),
                 "metadata": trajectory.metadata,
             })))
         }
@@ -762,17 +762,19 @@ fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
     let outcome_ref = outcome.as_ref().map(|o| o.as_ref());
     let metadata_ref = metadata.as_ref().map(|m| m.as_ref());
 
-    match trajectory_heap::trajectory_update_heap(
-        entity_id,
+    let params = trajectory_heap::TrajectoryUpdateHeapParams {
+        id: entity_id,
         name,
         description,
         status,
         parent_trajectory_id,
         root_trajectory_id,
         agent_id,
-        outcome_ref,
-        metadata_ref,
-    ) {
+        outcome: outcome_ref,
+        metadata: metadata_ref,
+    };
+
+    match trajectory_heap::trajectory_update_heap(params) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to update trajectory: {}", e);
@@ -815,7 +817,7 @@ fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
                         "created_at": t.created_at.to_rfc3339(),
                         "updated_at": t.updated_at.to_rfc3339(),
                         "completed_at": t.completed_at.map(|dt| dt.to_rfc3339()),
-                        "outcome": t.outcome.as_ref().map(|o| safe_to_json(o)),
+                        "outcome": t.outcome.as_ref().map(safe_to_json),
                         "metadata": t.metadata,
                     })
                 })
@@ -880,7 +882,7 @@ fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "is_active": scope.is_active,
                 "created_at": scope.created_at.to_rfc3339(),
                 "closed_at": scope.closed_at.map(|t| t.to_rfc3339()),
-                "checkpoint": scope.checkpoint.as_ref().map(|c| safe_to_json(c)),
+                "checkpoint": scope.checkpoint.as_ref().map(safe_to_json),
                 "token_budget": scope.token_budget,
                 "tokens_used": scope.tokens_used,
                 "metadata": scope.metadata,
@@ -918,7 +920,7 @@ fn caliber_scope_get_current(trajectory_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     "is_active": scope.is_active,
                     "created_at": scope.created_at.to_rfc3339(),
                     "closed_at": scope.closed_at.map(|t| t.to_rfc3339()),
-                    "checkpoint": scope.checkpoint.as_ref().map(|c| safe_to_json(c)),
+                    "checkpoint": scope.checkpoint.as_ref().map(safe_to_json),
                     "token_budget": scope.token_budget,
                     "tokens_used": scope.tokens_used,
                     "metadata": scope.metadata,
@@ -1190,18 +1192,18 @@ fn caliber_artifact_create(
     };
 
     // Use direct heap operations instead of SPI
-    let result = artifact_heap::artifact_create_heap(
+    let result = artifact_heap::artifact_create_heap(artifact_heap::ArtifactCreateParams {
         artifact_id,
-        traj_id,
-        scp_id,
-        artifact_type_enum,
+        trajectory_id: traj_id,
+        scope_id: scp_id,
+        artifact_type: artifact_type_enum,
         name,
         content,
         content_hash,
-        None, // No embedding
-        &provenance,
-        TTL::Persistent,
-    );
+        embedding: None, // No embedding
+        provenance: &provenance,
+        ttl: TTL::Persistent,
+    });
 
     match result {
         Ok(_) => Some(pgrx::Uuid::from_bytes(*artifact_id.as_bytes())),
@@ -1472,19 +1474,19 @@ fn caliber_note_create(
         .unwrap_or_default();
 
     // Use direct heap operations instead of SPI
-    let result = note_heap::note_create_heap(
+    let result = note_heap::note_create_heap(note_heap::NoteCreateParams {
         note_id,
-        note_type_enum,
+        note_type: note_type_enum,
         title,
         content,
         content_hash,
-        None, // embedding
-        &source_traj_ids,
-        &[], // source_artifact_ids
-        TTL::Permanent, // default to permanent
-        AbstractionLevel::Raw, // new notes start at L0
-        &[], // source_note_ids - none for newly created notes
-    );
+        embedding: None, // embedding
+        source_trajectory_ids: &source_traj_ids,
+        source_artifact_ids: &[], // source_artifact_ids
+        ttl: TTL::Permanent, // default to permanent
+        abstraction_level: AbstractionLevel::Raw, // new notes start at L0
+        source_note_ids: &[], // source_note_ids - none for newly created notes
+    });
 
     match result {
         Ok(_) => Some(pgrx::Uuid::from_bytes(*note_id.as_bytes())),
@@ -1661,16 +1663,16 @@ fn caliber_turn_create(
     };
 
     // Use direct heap operations instead of SPI
-    let result = turn_heap::turn_create_heap(
+    let result = turn_heap::turn_create_heap(turn_heap::TurnCreateParams {
         turn_id,
-        scp_id,
+        scope_id: scp_id,
         sequence,
-        turn_role,
+        role: turn_role,
         content,
         token_count,
-        None, // tool_calls
-        None, // tool_results
-    );
+        tool_calls: None,
+        tool_results: None,
+    });
 
     match result {
         Ok(_) => Some(pgrx::Uuid::from_bytes(*turn_id.as_bytes())),
@@ -1912,8 +1914,8 @@ fn caliber_lock_check(resource_type: &str, resource_id: pgrx::Uuid) -> Option<pg
                 .filter(|lock| lock.expires_at > now)
                 .collect();
             
-            if let Some(lock) = active_locks.first() {
-                Some(pgrx::JsonB(serde_json::json!({
+            active_locks.first().map(|lock| {
+                pgrx::JsonB(serde_json::json!({
                     "lock_id": lock.lock_id.to_string(),
                     "resource_type": &lock.resource_type,
                     "resource_id": lock.resource_id.to_string(),
@@ -1924,10 +1926,8 @@ fn caliber_lock_check(resource_type: &str, resource_id: pgrx::Uuid) -> Option<pg
                         LockMode::Exclusive => "exclusive",
                         LockMode::Shared => "shared",
                     },
-                })))
-            } else {
-                None
-            }
+                }))
+            })
         }
         Err(e) => {
             pgrx::warning!("CALIBER: {:?}", e);
@@ -2070,19 +2070,19 @@ fn caliber_message_send(
     let message_id = new_entity_id();
 
     // Use direct heap operations instead of SPI
-    let result = message_heap::message_send_heap(
+    let result = message_heap::message_send_heap(message_heap::MessageSendParams {
         message_id,
-        from_agent,
-        to_agent,
+        from_agent_id: from_agent,
+        to_agent_id: to_agent,
         to_agent_type,
-        msg_type,
+        message_type: msg_type,
         payload,
-        None, // trajectory_id
-        None, // scope_id
-        &[], // artifact_ids
-        msg_priority,
-        None, // expires_at
-    );
+        trajectory_id: None,
+        scope_id: None,
+        artifact_ids: &[],
+        priority: msg_priority,
+        expires_at: None,
+    });
 
     match result {
         Ok(_) => {
@@ -2506,20 +2506,20 @@ fn caliber_delegation_create(
     let delegation_id = new_entity_id();
 
     // Use direct heap operations instead of SPI
-    let result = delegation_heap::delegation_create_heap(
+    let result = delegation_heap::delegation_create_heap(delegation_heap::DelegationCreateParams {
         delegation_id,
-        delegator,
-        delegatee,
+        delegator_agent_id: delegator,
+        delegatee_agent_id: delegatee,
         delegatee_agent_type,
         task_description,
-        parent_traj,
-        None, // child_trajectory_id
-        &[], // shared_artifacts
-        &[], // shared_notes
-        None, // additional_context
-        "{}", // constraints
-        None, // deadline
-    );
+        parent_trajectory_id: parent_traj,
+        child_trajectory_id: None,
+        shared_artifacts: &[],
+        shared_notes: &[],
+        additional_context: None,
+        constraints: "{}",
+        deadline: None,
+    });
 
     if let Err(e) = result {
         pgrx::warning!("CALIBER: Failed to insert delegation: {}", e);
@@ -2558,7 +2558,7 @@ fn caliber_delegation_get(delegation_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     DelegationStatus::Completed => "completed",
                     DelegationStatus::Failed => "failed",
                 },
-                "result": delegation.result.as_ref().map(|r| safe_to_json(r)),
+                "result": delegation.result.as_ref().map(safe_to_json),
                 "created_at": delegation.created_at.to_rfc3339(),
                 "accepted_at": delegation.accepted_at.map(|dt| dt.to_rfc3339()),
                 "completed_at": delegation.completed_at.map(|dt| dt.to_rfc3339()),
@@ -2705,20 +2705,20 @@ fn caliber_handoff_create(
     let handoff_id = caliber_core::new_entity_id();
 
     // Insert via direct heap operations
-    match handoff_heap::handoff_create_heap(
+    match handoff_heap::handoff_create_heap(handoff_heap::HandoffCreateParams {
         handoff_id,
-        from_agent,
-        to_agent,
+        from_agent_id: from_agent,
+        to_agent_id: to_agent,
         to_agent_type,
-        traj_id,
-        scp_id,
-        snapshot_id,
-        "", // handoff_notes - empty for now
-        &[], // next_steps
-        &[], // blockers
-        &[], // open_questions
-        handoff_reason,
-    ) {
+        trajectory_id: traj_id,
+        scope_id: scp_id,
+        context_snapshot_id: snapshot_id,
+        handoff_notes: "",
+        next_steps: &[],
+        blockers: &[],
+        open_questions: &[],
+        reason: handoff_reason,
+    }) {
         Ok(_) => pgrx::Uuid::from_bytes(*handoff_id.as_bytes()),
         Err(e) => {
             pgrx::error!("CALIBER: Failed to insert handoff: {}", e);
@@ -2835,17 +2835,17 @@ fn caliber_conflict_create(
     let conflict_id = conflict.conflict_id;
 
     // Insert via direct heap operations (NO SQL)
-    match conflict_heap::conflict_create_heap(
+    match conflict_heap::conflict_create_heap(conflict_heap::ConflictCreateParams {
         conflict_id,
-        c_type,
+        conflict_type: c_type,
         item_a_type,
-        a_id,
+        item_a_id: a_id,
         item_b_type,
-        b_id,
-        None, // agent_a_id
-        None, // agent_b_id
-        None, // trajectory_id
-    ) {
+        item_b_id: b_id,
+        agent_a_id: None,
+        agent_b_id: None,
+        trajectory_id: None,
+    }) {
         Ok(_) => {},
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to insert conflict: {}", e);
@@ -2887,7 +2887,7 @@ fn caliber_conflict_get(conflict_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "agent_b_id": conflict.agent_b_id.map(|id| id.to_string()),
                 "trajectory_id": conflict.trajectory_id.map(|id| id.to_string()),
                 "status": status_str,
-                "resolution": conflict.resolution.as_ref().map(|r| safe_to_json(r)),
+                "resolution": conflict.resolution.as_ref().map(safe_to_json),
                 "detected_at": conflict.detected_at.to_rfc3339(),
                 "resolved_at": conflict.resolved_at.map(|t| t.to_rfc3339()),
             });
@@ -3386,9 +3386,8 @@ fn enforce_access(
         );
 
         match result {
-            Ok(table) => {
-                // Iterate over result (SpiTupleTable is iterable in pgrx 0.16)
-                for row in table {
+            Ok(mut table) => {
+                if let Some(row) = table.next() {
                     let region_type: Option<String> = row.get(2).ok().flatten();
                     let owner_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
                     let _team_id: Option<pgrx::Uuid> = row.get(4).ok().flatten();
@@ -3405,15 +3404,16 @@ fn enforce_access(
                         .map(|u: &pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()))
                         .collect();
 
-                    return Some((
+                    Some((
                         region_type.unwrap_or_default(),
                         owner_id,
                         readers_vec,
                         writers_vec,
                         require_lock.unwrap_or(false),
-                    ));
+                    ))
+                } else {
+                    None
                 }
-                None
             }
             Err(_) => None,
         }
@@ -3624,9 +3624,8 @@ fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
         );
 
         match result {
-            Ok(table) => {
-                // Iterate over result (SpiTupleTable is iterable in pgrx 0.16)
-                for row in table {
+            Ok(mut table) => {
+                if let Some(row) = table.next() {
                     let region_id_val: Option<pgrx::Uuid> = row.get(1).ok().flatten();
                     let region_type: Option<String> = row.get(2).ok().flatten();
                     let owner_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
@@ -3650,7 +3649,7 @@ fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                         ids.iter().map(|u: &pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()).collect::<Vec<_>>()
                     });
 
-                    return Some(pgrx::JsonB(serde_json::json!({
+                    Some(pgrx::JsonB(serde_json::json!({
                         "region_id": region_id_str,
                         "region_type": region_type,
                         "owner_agent_id": owner_id_str,
@@ -3662,9 +3661,10 @@ fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                         "version_tracking": version_tracking,
                         "created_at": created_at.map(|t| format!("{:?}", t)),
                         "updated_at": updated_at.map(|t| format!("{:?}", t)),
-                    })));
+                    })))
+                } else {
+                    None
                 }
-                None
             }
             Err(e) => {
                 pgrx::warning!("CALIBER: Failed to get region: {}", e);
@@ -4084,12 +4084,12 @@ fn caliber_summarization_policy_create(
     };
 
     // Validate level transition (must go upward)
-    let valid_transition = match (source_level_enum, target_level_enum) {
-        (AbstractionLevel::Raw, AbstractionLevel::Summary) => true,
-        (AbstractionLevel::Raw, AbstractionLevel::Principle) => true,
-        (AbstractionLevel::Summary, AbstractionLevel::Principle) => true,
-        _ => false,
-    };
+    let valid_transition = matches!(
+        (source_level_enum, target_level_enum),
+        (AbstractionLevel::Raw, AbstractionLevel::Summary)
+            | (AbstractionLevel::Raw, AbstractionLevel::Principle)
+            | (AbstractionLevel::Summary, AbstractionLevel::Principle)
+    );
 
     if !valid_transition {
         pgrx::warning!("CALIBER: Invalid abstraction level transition. Must go from lower to higher level.");
@@ -4168,7 +4168,7 @@ fn caliber_summarization_policy_create(
 #[pg_extern]
 fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let result: Result<Option<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
-        let table = client.select(
+        let mut table = client.select(
             "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at
              FROM caliber_summarization_policy
              WHERE policy_id = $1",
@@ -4177,7 +4177,7 @@ fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
         )?;
 
         // Iterate and take first row
-        for row in table {
+        if let Some(row) = table.next() {
             let policy_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
             let name: Option<String> = row.get(2).ok().flatten();
             let triggers: Option<pgrx::JsonB> = row.get(3).ok().flatten();
@@ -4358,7 +4358,7 @@ impl StorageTrait for PgStorage {
 
     fn trajectory_get(&self, id: EntityId) -> CaliberResult<Option<Trajectory>> {
         Spi::connect(|client| {
-            let result = client.select(
+            let mut result = client.select(
                 "SELECT trajectory_id, name, description, status, parent_trajectory_id,
                         root_trajectory_id, agent_id, created_at, updated_at, completed_at,
                         outcome, metadata
@@ -4368,7 +4368,7 @@ impl StorageTrait for PgStorage {
             ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
 
             // Iterate over result rows (SpiTupleTable is iterable)
-            for row in result {
+            if let Some(row) = result.next() {
                 let trajectory_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
                 let name: Option<String> = row.get(2).ok().flatten();
                 let description: Option<String> = row.get(3).ok().flatten();
@@ -4549,7 +4549,7 @@ impl StorageTrait for PgStorage {
             s.trajectory_id,
             &s.name,
             s.purpose.as_deref(),
-            s.token_budget as i32,
+            s.token_budget,
         )?;
         Ok(())
     }
@@ -4583,7 +4583,7 @@ impl StorageTrait for PgStorage {
         }
         // Token updates via dedicated function
         if let Some(tokens) = update.tokens_used {
-            scope_heap::scope_update_tokens_heap(id, tokens as i32)?;
+            scope_heap::scope_update_tokens_heap(id, tokens)?;
         }
         Ok(())
     }
@@ -4600,18 +4600,18 @@ impl StorageTrait for PgStorage {
                 reason: "already exists".to_string(),
             }));
         }
-        artifact_heap::artifact_create_heap(
-            a.artifact_id,
-            a.trajectory_id,
-            a.scope_id,
-            a.artifact_type.clone(),
-            &a.name,
-            &a.content,
-            a.content_hash,
-            a.embedding.as_ref(),
-            &a.provenance,
-            a.ttl.clone(),
-        )?;
+        artifact_heap::artifact_create_heap(artifact_heap::ArtifactCreateParams {
+            artifact_id: a.artifact_id,
+            trajectory_id: a.trajectory_id,
+            scope_id: a.scope_id,
+            artifact_type: a.artifact_type,
+            name: &a.name,
+            content: &a.content,
+            content_hash: a.content_hash,
+            embedding: a.embedding.as_ref(),
+            provenance: &a.provenance,
+            ttl: a.ttl.clone(),
+        })?;
         Ok(())
     }
 
@@ -4640,9 +4640,9 @@ impl StorageTrait for PgStorage {
         // Compute content hash if content is being updated
         let content_hash = update.content.as_ref().map(|c| compute_content_hash(c.as_bytes()));
         // Convert embedding to the nested Option format (Some(Some(x)) = update, Some(None) = set to null, None = don't update)
-        let embedding_opt = update.embedding.as_ref().map(|e| Some(e));
+        let embedding_opt = update.embedding.as_ref().map(Some);
         // Same for superseded_by
-        let superseded_opt = update.superseded_by.map(|id| Some(id));
+        let superseded_opt = update.superseded_by.map(Some);
 
         artifact_heap::artifact_update_heap(
             id,
@@ -4663,19 +4663,19 @@ impl StorageTrait for PgStorage {
                 reason: "already exists".to_string(),
             }));
         }
-        note_heap::note_create_heap(
-            n.note_id,
-            n.note_type.clone(),
-            &n.title,
-            &n.content,
-            n.content_hash,
-            n.embedding.as_ref(),
-            &n.source_trajectory_ids,
-            &n.source_artifact_ids,
-            n.ttl.clone(),
-            n.abstraction_level.clone(),
-            &n.source_note_ids,
-        )?;
+        note_heap::note_create_heap(note_heap::NoteCreateParams {
+            note_id: n.note_id,
+            note_type: n.note_type,
+            title: &n.title,
+            content: &n.content,
+            content_hash: n.content_hash,
+            embedding: n.embedding.as_ref(),
+            source_trajectory_ids: &n.source_trajectory_ids,
+            source_artifact_ids: &n.source_artifact_ids,
+            ttl: n.ttl.clone(),
+            abstraction_level: n.abstraction_level,
+            source_note_ids: &n.source_note_ids,
+        })?;
         Ok(())
     }
 
@@ -4691,9 +4691,9 @@ impl StorageTrait for PgStorage {
         // Compute content hash if content is being updated
         let content_hash = update.content.as_ref().map(|c| compute_content_hash(c.as_bytes()));
         // Convert embedding to the nested Option format (Some(Some(x)) = update, Some(None) = set to null, None = don't update)
-        let embedding_opt = update.embedding.as_ref().map(|e| Some(e));
+        let embedding_opt = update.embedding.as_ref().map(Some);
         // Same for superseded_by
-        let superseded_opt = update.superseded_by.map(|id| Some(id));
+        let superseded_opt = update.superseded_by.map(Some);
 
         note_heap::note_update_heap(
             id,
@@ -4707,16 +4707,16 @@ impl StorageTrait for PgStorage {
     }
 
     fn turn_insert(&self, t: &Turn) -> CaliberResult<()> {
-        turn_heap::turn_create_heap(
-            t.turn_id,
-            t.scope_id,
-            t.sequence as i32,
-            t.role.clone(),
-            &t.content,
-            t.token_count as i32,
-            t.tool_calls.as_ref(),
-            t.tool_results.as_ref(),
-        )?;
+        turn_heap::turn_create_heap(turn_heap::TurnCreateParams {
+            turn_id: t.turn_id,
+            scope_id: t.scope_id,
+            sequence: t.sequence,
+            role: t.role,
+            content: &t.content,
+            token_count: t.token_count,
+            tool_calls: t.tool_calls.as_ref(),
+            tool_results: t.tool_results.as_ref(),
+        })?;
         Ok(())
     }
 

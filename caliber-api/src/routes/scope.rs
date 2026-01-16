@@ -249,7 +249,7 @@ pub async fn close_scope(
     // =========================================================================
     // BATTLE INTEL: Check ScopeClose summarization triggers
     // =========================================================================
-    let trajectory_id: caliber_core::EntityId = scope.trajectory_id.into();
+    let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
 
     // Fetch summarization policies for this trajectory
     if let Ok(policies) = state.db.summarization_policies_for_trajectory(trajectory_id).await {
@@ -274,7 +274,7 @@ pub async fn close_scope(
             let core_policies: Vec<caliber_core::SummarizationPolicy> = policies
                 .iter()
                 .map(|p| caliber_core::SummarizationPolicy {
-                    policy_id: p.policy_id.into(),
+                    policy_id: p.policy_id,
                     name: p.name.clone(),
                     triggers: p.triggers.clone(),
                     target_level: p.target_level,
@@ -289,9 +289,9 @@ pub async fn close_scope(
             // Build a caliber_core::Scope from our ScopeResponse
             // Note: is_active is false since we just closed it
             let core_scope = caliber_core::Scope {
-                scope_id: scope.scope_id.into(),
-                trajectory_id: scope.trajectory_id.into(),
-                parent_scope_id: scope.parent_scope_id.map(Into::into),
+                scope_id: scope.scope_id,
+                trajectory_id: scope.trajectory_id,
+                parent_scope_id: scope.parent_scope_id,
                 name: scope.name.clone(),
                 purpose: scope.purpose.clone(),
                 is_active: false, // Scope is now closed
@@ -316,7 +316,7 @@ pub async fn close_scope(
                     if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
                         state.ws.broadcast(WsEvent::SummarizationTriggered {
                             policy_id,
-                            trigger: trigger.clone(),
+                            trigger,
                             scope_id: core_scope.scope_id,
                             trajectory_id,
                             source_level: policy.source_level,
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn test_create_scope_request_validation() {
         // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil().into();
+        let dummy_id: EntityId = uuid::Uuid::nil();
 
         let req = CreateScopeRequest {
             trajectory_id: dummy_id,

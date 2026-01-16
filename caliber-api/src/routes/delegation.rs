@@ -108,7 +108,7 @@ pub async fn get_delegation(
 ) -> ApiResult<impl IntoResponse> {
     let delegation = state
         .db
-        .delegation_get(id.into())
+        .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
@@ -145,7 +145,7 @@ pub async fn accept_delegation(
     // Verify the delegation exists and is in pending state
     let delegation = state
         .db
-        .delegation_get(id.into())
+        .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
@@ -166,12 +166,12 @@ pub async fn accept_delegation(
     // Accept delegation via database client
     let _ = state
         .db
-        .delegation_accept(id.into(), req.accepting_agent_id)
+        .delegation_accept(id, req.accepting_agent_id)
         .await?;
 
     // Broadcast DelegationAccepted event
     state.ws.broadcast(WsEvent::DelegationAccepted {
-        delegation_id: id.into(),
+        delegation_id: id,
     });
 
     Ok(StatusCode::NO_CONTENT)
@@ -207,7 +207,7 @@ pub async fn reject_delegation(
     // Verify the delegation exists and is in pending state
     let delegation = state
         .db
-        .delegation_get(id.into())
+        .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
@@ -225,9 +225,9 @@ pub async fn reject_delegation(
         ));
     }
 
-    state.db.delegation_reject(id.into(), req.reason).await?;
+    state.db.delegation_reject(id, req.reason).await?;
     state.ws.broadcast(WsEvent::DelegationRejected {
-        delegation_id: id.into(),
+        delegation_id: id,
     });
     Ok(StatusCode::NO_CONTENT)
 }
@@ -261,7 +261,7 @@ pub async fn complete_delegation(
     // Verify the delegation exists and is in accepted/in-progress state
     let delegation = state
         .db
-        .delegation_get(id.into())
+        .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
@@ -288,7 +288,7 @@ pub async fn complete_delegation(
     // Complete delegation via database client
     let updated = state
         .db
-        .delegation_complete(id.into(), result_json)
+        .delegation_complete(id, result_json)
         .await?;
 
     // Broadcast DelegationCompleted event

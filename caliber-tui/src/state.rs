@@ -51,7 +51,7 @@ pub struct App {
 impl App {
     pub fn new(config: TuiConfig, api: ApiClient) -> Self {
         let theme = SynthBruteTheme::synthbrute();
-        let tenant_id = config.tenant_id.into();
+        let tenant_id = config.tenant_id;
         Self {
             config,
             theme,
@@ -847,5 +847,119 @@ impl TenantViewState {
             selected: None,
             loading: false,
         }
+    }
+}
+
+impl Default for TrajectoryViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for TrajectoryFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ScopeViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ScopeFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ArtifactViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ArtifactFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for NoteViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for NoteFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for TurnViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for TurnFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for AgentViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for AgentFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for LockViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for LockFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for MessageViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for MessageFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for DslViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ConfigViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for TenantViewState {
+    fn default() -> Self {
+        Self::new()
     }
 }

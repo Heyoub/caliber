@@ -8,6 +8,6 @@ pub enum TuiEvent {
     Input(KeyEvent),
     Tick,
     Resize { width: u16, height: u16 },
-    Ws(WsEvent),
+    Ws(Box<WsEvent>),
     ApiError(String),
 }

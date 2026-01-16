@@ -50,16 +50,28 @@ use crate::tuple_extract::{
 /// # Requirements
 /// - 5.1: Uses heap_form_tuple and simple_heap_insert instead of SPI
 /// - 5.3: Updates the scope_id index via CatalogIndexInsert
-pub fn turn_create_heap(
-    turn_id: EntityId,
-    scope_id: EntityId,
-    sequence: i32,
-    role: TurnRole,
-    content: &str,
-    token_count: i32,
-    tool_calls: Option<&serde_json::Value>,
-    tool_results: Option<&serde_json::Value>,
-) -> CaliberResult<EntityId> {
+pub struct TurnCreateParams<'a> {
+    pub turn_id: EntityId,
+    pub scope_id: EntityId,
+    pub sequence: i32,
+    pub role: TurnRole,
+    pub content: &'a str,
+    pub token_count: i32,
+    pub tool_calls: Option<&'a serde_json::Value>,
+    pub tool_results: Option<&'a serde_json::Value>,
+}
+
+pub fn turn_create_heap(params: TurnCreateParams<'_>) -> CaliberResult<EntityId> {
+    let TurnCreateParams {
+        turn_id,
+        scope_id,
+        sequence,
+        role,
+        content,
+        token_count,
+        tool_calls,
+        tool_results,
+    } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(turn::TABLE_NAME, LockMode::RowExclusive)?;
 
@@ -120,10 +132,10 @@ pub fn turn_create_heap(
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Insert into heap
-    let _tid = insert_tuple(&rel, tuple)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
     
     // Update all indexes via CatalogIndexInsert
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(turn_id)
 }
@@ -162,20 +174,20 @@ pub fn turn_get_by_scope_heap(scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
     // Collect all matching tuples
-    while let Some(tuple) = scanner.next() {
-        let turn = tuple_to_turn(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let turn = unsafe { tuple_to_turn(tuple, tuple_desc) }?;
         results.push(turn);
     }
     
@@ -228,7 +240,7 @@ fn str_to_role(s: &str) -> TurnRole {
 }
 
 /// Convert a heap tuple to a Turn struct.
-fn tuple_to_turn(
+unsafe fn tuple_to_turn(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Turn> {
@@ -359,16 +371,16 @@ mod tests {
 
                 // Create turn
                 let turn_id = caliber_core::new_entity_id();
-                let result = turn_create_heap(
+                let result = turn_create_heap(TurnCreateParams {
                     turn_id,
                     scope_id,
                     sequence,
                     role,
-                    &content,
+                    content: &content,
                     token_count,
-                    None,
-                    None,
-                );
+                    tool_calls: None,
+                    tool_results: None,
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), turn_id);
 
@@ -434,16 +446,16 @@ mod tests {
                 
                 for seq in &sequences {
                     let turn_id = caliber_core::new_entity_id();
-                    let _ = turn_create_heap(
+                    let _ = turn_create_heap(TurnCreateParams {
                         turn_id,
                         scope_id,
-                        *seq,
-                        TurnRole::User,
-                        &format!("content_{}", seq),
-                        100,
-                        None,
-                        None,
-                    );
+                        sequence: *seq,
+                        role: TurnRole::User,
+                        content: &format!("content_{}", seq),
+                        token_count: 100,
+                        tool_calls: None,
+                        tool_results: None,
+                    });
                 }
 
                 // Get by scope - should be ordered

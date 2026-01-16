@@ -342,7 +342,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.trajectory_get(uuid.into()).await {
+        match db.trajectory_get(uuid).await {
             Ok(Some(t)) => Ok(Some(t.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -369,7 +369,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.scope_get(uuid.into()).await {
+        match db.scope_get(uuid).await {
             Ok(Some(s)) => Ok(Some(s.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -382,7 +382,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&trajectory_id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.scope_list_by_trajectory(uuid.into()).await {
+        match db.scope_list_by_trajectory(uuid).await {
             Ok(scopes) => Ok(scopes.into_iter().map(|s| s.into()).collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
@@ -394,7 +394,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.artifact_get(uuid.into()).await {
+        match db.artifact_get(uuid).await {
             Ok(Some(a)) => Ok(Some(a.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -407,7 +407,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&scope_id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.artifact_list_by_scope(uuid.into()).await {
+        match db.artifact_list_by_scope(uuid).await {
             Ok(artifacts) => Ok(artifacts.into_iter().map(|a| a.into()).collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
@@ -419,7 +419,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.note_get(uuid.into()).await {
+        match db.note_get(uuid).await {
             Ok(Some(n)) => Ok(Some(n.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -432,7 +432,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&trajectory_id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.note_list_by_trajectory(uuid.into()).await {
+        match db.note_list_by_trajectory(uuid).await {
             Ok(notes) => Ok(notes.into_iter().map(|n| n.into()).collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
@@ -444,7 +444,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.agent_get(uuid.into()).await {
+        match db.agent_get(uuid).await {
             Ok(Some(a)) => Ok(Some(a.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -482,8 +482,7 @@ impl MutationRoot {
         let parent_id = if let Some(id) = input.parent_trajectory_id {
             Some(
                 Uuid::parse_str(&id.0)
-                    .map_err(|_| async_graphql::Error::new("Invalid parent_trajectory_id"))?
-                    .into(),
+                    .map_err(|_| async_graphql::Error::new("Invalid parent_trajectory_id"))?,
             )
         } else {
             None
@@ -492,8 +491,7 @@ impl MutationRoot {
         let agent_id = if let Some(id) = input.agent_id {
             Some(
                 Uuid::parse_str(&id.0)
-                    .map_err(|_| async_graphql::Error::new("Invalid agent_id"))?
-                    .into(),
+                    .map_err(|_| async_graphql::Error::new("Invalid agent_id"))?,
             )
         } else {
             None
@@ -538,7 +536,7 @@ impl MutationRoot {
             metadata: None,
         };
 
-        match db.trajectory_update(uuid.into(), &req).await {
+        match db.trajectory_update(uuid, &req).await {
             Ok(trajectory) => {
                 ws.broadcast(WsEvent::TrajectoryUpdated {
                     trajectory: trajectory.clone(),
@@ -557,9 +555,9 @@ impl MutationRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.trajectory_delete(uuid.into()).await {
+        match db.trajectory_delete(uuid).await {
             Ok(_) => {
-                ws.broadcast(WsEvent::TrajectoryDeleted { id: uuid.into() });
+                ws.broadcast(WsEvent::TrajectoryDeleted { id: uuid });
                 Ok(true)
             }
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -575,7 +573,7 @@ impl MutationRoot {
             .map_err(|_| async_graphql::Error::new("Invalid trajectory_id"))?;
 
         let req = CreateScopeRequest {
-            trajectory_id: trajectory_id.into(),
+            trajectory_id,
             parent_scope_id: None,
             name: input.name,
             purpose: input.purpose,
@@ -600,7 +598,7 @@ impl MutationRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.scope_close(uuid.into()).await {
+        match db.scope_close(uuid).await {
             Ok(scope) => {
                 ws.broadcast(WsEvent::ScopeClosed { scope: scope.clone() });
                 Ok(scope.into())
@@ -619,7 +617,6 @@ impl MutationRoot {
             .into_iter()
             .map(|id| {
                 Uuid::parse_str(&id.0)
-                    .map(|u| u.into())
                     .map_err(|_| async_graphql::Error::new("Invalid source_trajectory_id"))
             })
             .collect();
@@ -630,7 +627,6 @@ impl MutationRoot {
             .into_iter()
             .map(|id| {
                 Uuid::parse_str(&id.0)
-                    .map(|u| u.into())
                     .map_err(|_| async_graphql::Error::new("Invalid source_artifact_id"))
             })
             .collect();
@@ -739,7 +735,7 @@ mod tests {
     #[test]
     fn test_gql_trajectory_from_response() {
         let response = TrajectoryResponse {
-            trajectory_id: Uuid::new_v4().into(),
+            trajectory_id: Uuid::new_v4(),
             name: "Test".to_string(),
             description: None,
             status: caliber_core::TrajectoryStatus::Active,

@@ -29,20 +29,36 @@ use crate::tuple_extract::{
 };
 
 /// Create a new delegation by inserting a delegation record using direct heap operations.
-pub fn delegation_create_heap(
-    delegation_id: EntityId,
-    delegator_agent_id: EntityId,
-    delegatee_agent_id: Option<EntityId>,
-    delegatee_agent_type: Option<&str>,
-    task_description: &str,
-    parent_trajectory_id: EntityId,
-    child_trajectory_id: Option<EntityId>,
-    shared_artifacts: &[EntityId],
-    shared_notes: &[EntityId],
-    additional_context: Option<&str>,
-    constraints: &str,
-    deadline: Option<chrono::DateTime<chrono::Utc>>,
-) -> CaliberResult<EntityId> {
+pub struct DelegationCreateParams<'a> {
+    pub delegation_id: EntityId,
+    pub delegator_agent_id: EntityId,
+    pub delegatee_agent_id: Option<EntityId>,
+    pub delegatee_agent_type: Option<&'a str>,
+    pub task_description: &'a str,
+    pub parent_trajectory_id: EntityId,
+    pub child_trajectory_id: Option<EntityId>,
+    pub shared_artifacts: &'a [EntityId],
+    pub shared_notes: &'a [EntityId],
+    pub additional_context: Option<&'a str>,
+    pub constraints: &'a str,
+    pub deadline: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResult<EntityId> {
+    let DelegationCreateParams {
+        delegation_id,
+        delegator_agent_id,
+        delegatee_agent_id,
+        delegatee_agent_type,
+        task_description,
+        parent_trajectory_id,
+        child_trajectory_id,
+        shared_artifacts,
+        shared_notes,
+        additional_context,
+        constraints,
+        deadline,
+    } = params;
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_delegation_relation(&rel)?;
 
@@ -125,8 +141,8 @@ pub fn delegation_create_heap(
     nulls[delegation::COMPLETED_AT as usize - 1] = true;
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
-    let _tid = insert_tuple(&rel, tuple)?;
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(delegation_id)
 }
@@ -146,11 +162,11 @@ pub fn delegation_get_heap(delegation_id: EntityId) -> CaliberResult<Option<Dele
         uuid_to_datum(delegation_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let delegation = tuple_to_delegation(tuple, tuple_desc)?;
+        let delegation = unsafe { tuple_to_delegation(tuple, tuple_desc) }?;
         Ok(Some(delegation))
     } else {
         Ok(None)
@@ -182,11 +198,11 @@ pub fn delegation_accept_heap(
         uuid_to_datum(delegation_id),
     );
 
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
         // Update delegatee_agent_id - the agent accepting the delegation
         values[delegation::DELEGATEE_AGENT_ID as usize - 1] = uuid_to_datum(delegatee_agent_id);
@@ -217,7 +233,7 @@ pub fn delegation_accept_heap(
                 reason: "Failed to get TID of delegation tuple".to_string(),
             }))?;
 
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -242,11 +258,11 @@ pub fn delegation_complete_heap(
         uuid_to_datum(delegation_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status to "completed"
         values[delegation::STATUS as usize - 1] = string_to_datum("completed");
@@ -280,7 +296,7 @@ pub fn delegation_complete_heap(
                 reason: "Failed to get TID of delegation tuple".to_string(),
             }))?;
         
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -302,13 +318,13 @@ pub fn delegation_list_pending_heap() -> CaliberResult<Vec<DelegatedTask>> {
         string_to_datum("pending"),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
-    while let Some(tuple) = scanner.next() {
-        let delegation = tuple_to_delegation(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let delegation = unsafe { tuple_to_delegation(tuple, tuple_desc) }?;
         results.push(delegation);
     }
     
@@ -351,7 +367,7 @@ fn build_optional_delegation_datums(
     (delegatee, child, dl)
 }
 
-fn tuple_to_delegation(
+unsafe fn tuple_to_delegation(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<DelegatedTask> {
@@ -598,20 +614,20 @@ mod tests {
                 let delegation_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let result = delegation_create_heap(
+                let result = delegation_create_heap(DelegationCreateParams {
                     delegation_id,
                     delegator_agent_id,
                     delegatee_agent_id,
-                    delegatee_agent_type.as_deref(),
-                    &task_description,
+                    delegatee_agent_type: delegatee_agent_type.as_deref(),
+                    task_description: &task_description,
                     parent_trajectory_id,
                     child_trajectory_id,
-                    &shared_artifacts,
-                    &shared_notes,
-                    additional_context.as_deref(),
-                    &constraints,
+                    shared_artifacts: &shared_artifacts,
+                    shared_notes: &shared_notes,
+                    additional_context: additional_context.as_deref(),
+                    constraints: &constraints,
                     deadline,
-                );
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), delegation_id);
 
@@ -716,20 +732,20 @@ mod tests {
                 let delegation_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = delegation_create_heap(
+                let insert_result = delegation_create_heap(DelegationCreateParams {
                     delegation_id,
                     delegator_agent_id,
                     delegatee_agent_id,
-                    delegatee_agent_type.as_deref(),
-                    &task_description,
+                    delegatee_agent_type: delegatee_agent_type.as_deref(),
+                    task_description: &task_description,
                     parent_trajectory_id,
                     child_trajectory_id,
-                    &shared_artifacts,
-                    &shared_notes,
-                    additional_context.as_deref(),
-                    &constraints,
+                    shared_artifacts: &shared_artifacts,
+                    shared_notes: &shared_notes,
+                    additional_context: additional_context.as_deref(),
+                    constraints: &constraints,
                     deadline,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial status is Pending
@@ -808,20 +824,20 @@ mod tests {
                 let delegation_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = delegation_create_heap(
+                let insert_result = delegation_create_heap(DelegationCreateParams {
                     delegation_id,
                     delegator_agent_id,
                     delegatee_agent_id,
-                    delegatee_agent_type.as_deref(),
-                    &task_description,
+                    delegatee_agent_type: delegatee_agent_type.as_deref(),
+                    task_description: &task_description,
                     parent_trajectory_id,
                     child_trajectory_id,
-                    &shared_artifacts,
-                    &shared_notes,
-                    additional_context.as_deref(),
-                    &constraints,
+                    shared_artifacts: &shared_artifacts,
+                    shared_notes: &shared_notes,
+                    additional_context: additional_context.as_deref(),
+                    constraints: &constraints,
                     deadline,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial state
@@ -928,20 +944,20 @@ mod tests {
                 let delegation_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = delegation_create_heap(
+                let insert_result = delegation_create_heap(DelegationCreateParams {
                     delegation_id,
                     delegator_agent_id,
                     delegatee_agent_id,
-                    delegatee_agent_type.as_deref(),
-                    &task_description,
+                    delegatee_agent_type: delegatee_agent_type.as_deref(),
+                    task_description: &task_description,
                     parent_trajectory_id,
                     child_trajectory_id,
-                    &shared_artifacts,
-                    &shared_notes,
-                    additional_context.as_deref(),
-                    &constraints,
+                    shared_artifacts: &shared_artifacts,
+                    shared_notes: &shared_notes,
+                    additional_context: additional_context.as_deref(),
+                    constraints: &constraints,
                     deadline,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via status index (should be "pending")

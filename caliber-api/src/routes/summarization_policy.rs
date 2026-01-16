@@ -122,7 +122,7 @@ pub async fn get_policy(
     State(state): State<Arc<SummarizationPolicyState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let policy = state.db.summarization_policy_get(id.into()).await?;
+    let policy = state.db.summarization_policy_get(id).await?;
 
     match policy {
         Some(p) => Ok(Json(p)),
@@ -153,7 +153,7 @@ pub async fn list_policies_by_trajectory(
 ) -> ApiResult<impl IntoResponse> {
     let policies = state
         .db
-        .summarization_policies_for_trajectory(trajectory_id.into())
+        .summarization_policies_for_trajectory(trajectory_id)
         .await?;
 
     Ok(Json(ListSummarizationPoliciesResponse { policies }))
@@ -181,7 +181,7 @@ pub async fn delete_policy(
     State(state): State<Arc<SummarizationPolicyState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    state.db.summarization_policy_delete(id.into()).await?;
+    state.db.summarization_policy_delete(id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

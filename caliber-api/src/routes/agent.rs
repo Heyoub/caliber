@@ -172,7 +172,7 @@ pub async fn get_agent(
 ) -> ApiResult<impl IntoResponse> {
     let agent = state
         .db
-        .agent_get(id.into())
+        .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 
@@ -236,7 +236,7 @@ pub async fn update_agent(
     }
 
     // Update agent via database client
-    let agent = state.db.agent_update(id.into(), &req).await?;
+    let agent = state.db.agent_update(id, &req).await?;
 
     // Broadcast AgentStatusChanged when status updates are included
     if let Some(status) = &req.status {
@@ -275,7 +275,7 @@ pub async fn unregister_agent(
     // First verify the agent exists
     let agent = state
         .db
-        .agent_get(id.into())
+        .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 
@@ -287,10 +287,10 @@ pub async fn unregister_agent(
     }
 
     // Unregister agent via database client
-    state.db.agent_unregister(id.into()).await?;
+    state.db.agent_unregister(id).await?;
 
     // Broadcast AgentUnregistered event
-    state.ws.broadcast(WsEvent::AgentUnregistered { id: id.into() });
+    state.ws.broadcast(WsEvent::AgentUnregistered { id });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -318,18 +318,18 @@ pub async fn agent_heartbeat(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // Update heartbeat via database client
-    state.db.agent_heartbeat(id.into()).await?;
+    state.db.agent_heartbeat(id).await?;
 
     // Broadcast AgentHeartbeat event
     state.ws.broadcast(WsEvent::AgentHeartbeat {
-        agent_id: id.into(),
+        agent_id: id,
         timestamp: Utc::now(),
     });
 
     // Return the updated agent
     let agent = state
         .db
-        .agent_get(id.into())
+        .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 

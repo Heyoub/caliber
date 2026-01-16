@@ -13,7 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    db::DbClient,
+    db::{DbClient, MessageListParams},
     error::{ApiError, ApiResult},
     events::WsEvent,
     types::{MessageResponse, SendMessageRequest},
@@ -148,18 +148,18 @@ pub async fn list_messages(
     let limit = params.limit.unwrap_or(100);
     let offset = params.offset.unwrap_or(0);
 
-    let messages = state.db.message_list(
-        params.from_agent_id,
-        params.to_agent_id,
-        params.to_agent_type.as_deref(),
-        params.trajectory_id,
-        params.message_type.as_deref(),
-        params.priority.as_deref(),
-        params.undelivered_only.unwrap_or(false),
-        params.unacknowledged_only.unwrap_or(false),
+    let messages = state.db.message_list(MessageListParams {
+        from_agent_id: params.from_agent_id,
+        to_agent_id: params.to_agent_id,
+        to_agent_type: params.to_agent_type.as_deref(),
+        trajectory_id: params.trajectory_id,
+        message_type: params.message_type.as_deref(),
+        priority: params.priority.as_deref(),
+        undelivered_only: params.undelivered_only.unwrap_or(false),
+        unacknowledged_only: params.unacknowledged_only.unwrap_or(false),
         limit,
         offset,
-    ).await?;
+    }).await?;
 
     let total = messages.len() as i32;
 
@@ -193,7 +193,7 @@ pub async fn get_message(
 ) -> ApiResult<impl IntoResponse> {
     let message = state
         .db
-        .message_get(id.into())
+        .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
 
@@ -223,11 +223,11 @@ pub async fn acknowledge_message(
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Acknowledge message via database client
-    state.db.message_acknowledge(id.into()).await?;
+    state.db.message_acknowledge(id).await?;
 
     // Broadcast MessageAcknowledged event
     state.ws.broadcast(WsEvent::MessageAcknowledged {
-        message_id: id.into(),
+        message_id: id,
     });
 
     Ok(StatusCode::NO_CONTENT)
@@ -255,10 +255,10 @@ pub async fn deliver_message(
     State(state): State<Arc<MessageState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    state.db.message_deliver(id.into()).await?;
+    state.db.message_deliver(id).await?;
 
     state.ws.broadcast(WsEvent::MessageDelivered {
-        message_id: id.into(),
+        message_id: id,
     });
 
     Ok(StatusCode::NO_CONTENT)
