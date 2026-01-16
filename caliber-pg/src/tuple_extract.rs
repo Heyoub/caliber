@@ -54,8 +54,7 @@ use chrono::{Datelike, Timelike};
 ///
 /// # Safety
 /// The tuple and tuple_desc must be valid and correspond to each other.
-pub fn extract_datum(
-
+pub unsafe fn extract_datum(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
@@ -73,7 +72,7 @@ pub fn extract_datum(
     }
 
     // Validate attribute number
-    let natts = unsafe { (*tuple_desc).natts as i16 };
+    let natts = (*tuple_desc).natts as i16;
     if attnum < 1 || attnum > natts {
         return Err(CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!(
@@ -85,14 +84,12 @@ pub fn extract_datum(
 
     let mut is_null: bool = false;
 
-    let datum = unsafe {
-        pg_sys::heap_getattr(
-            tuple,
-            attnum as i32,
-            tuple_desc,
-            &mut is_null,
-        )
-    };
+    let datum = pg_sys::heap_getattr(
+        tuple,
+        attnum as i32,
+        tuple_desc,
+        &mut is_null,
+    );
 
     Ok((datum, is_null))
 }
@@ -110,7 +107,9 @@ pub fn extract_datum(
 /// # Note
 /// For null values, the datum will be 0 (null datum). Use `extract_all_nulls`
 /// to get the null flags.
-pub fn extract_all_datums(
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
+pub unsafe fn extract_all_datums(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Vec<pg_sys::Datum>> {
@@ -120,11 +119,11 @@ pub fn extract_all_datums(
         }));
     }
 
-    let natts = unsafe { (*tuple_desc).natts as usize };
+    let natts = (*tuple_desc).natts as usize;
     let mut values = Vec::with_capacity(natts);
 
     for i in 1..=natts {
-        let (datum, _is_null) = extract_datum(tuple, tuple_desc, i as i16)?;
+        let (datum, _is_null) = unsafe { extract_datum(tuple, tuple_desc, i as i16) }?;
         values.push(datum);
     }
 
@@ -140,7 +139,9 @@ pub fn extract_all_datums(
 /// # Returns
 /// * `Ok(Vec<bool>)` - Vector of null flags, one per column (true = NULL)
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_all_nulls(
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
+pub unsafe fn extract_all_nulls(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Vec<bool>> {
@@ -150,11 +151,11 @@ pub fn extract_all_nulls(
         }));
     }
 
-    let natts = unsafe { (*tuple_desc).natts as usize };
+    let natts = (*tuple_desc).natts as usize;
     let mut nulls = Vec::with_capacity(natts);
 
     for i in 1..=natts {
-        let (_datum, is_null) = extract_datum(tuple, tuple_desc, i as i16)?;
+        let (_datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, i as i16) }?;
         nulls.push(is_null);
     }
 
@@ -174,7 +175,9 @@ pub fn extract_all_nulls(
 /// # Returns
 /// * `Ok((Vec<Datum>, Vec<bool>))` - Tuple of (values, nulls)
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_values_and_nulls(
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
+pub unsafe fn extract_values_and_nulls(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<(Vec<pg_sys::Datum>, Vec<bool>)> {
@@ -184,12 +187,12 @@ pub fn extract_values_and_nulls(
         }));
     }
 
-    let natts = unsafe { (*tuple_desc).natts as usize };
+    let natts = (*tuple_desc).natts as usize;
     let mut values = Vec::with_capacity(natts);
     let mut nulls = Vec::with_capacity(natts);
 
     for i in 1..=natts {
-        let (datum, is_null) = extract_datum(tuple, tuple_desc, i as i16)?;
+        let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, i as i16) }?;
         values.push(datum);
         nulls.push(is_null);
     }
@@ -212,12 +215,12 @@ pub fn extract_values_and_nulls(
 /// * `Ok(Some(Uuid))` - The UUID value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_uuid(
+pub unsafe fn extract_uuid(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<uuid::Uuid>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -245,12 +248,12 @@ pub fn extract_uuid(
 /// * `Ok(Some(String))` - The text value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_text(
+pub unsafe fn extract_text(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<String>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -277,12 +280,12 @@ pub fn extract_text(
 /// * `Ok(Some(i32))` - The integer value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_i32(
+pub unsafe fn extract_i32(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<i32>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -308,12 +311,12 @@ pub fn extract_i32(
 /// * `Ok(Some(i64))` - The integer value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_i64(
+pub unsafe fn extract_i64(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<i64>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -338,12 +341,12 @@ pub fn extract_i64(
 /// * `Ok(Some(bool))` - The boolean value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_bool(
+pub unsafe fn extract_bool(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<bool>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -368,12 +371,12 @@ pub fn extract_bool(
 /// * `Ok(Some(f32))` - The float value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_float4(
+pub unsafe fn extract_float4(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<f32>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -398,12 +401,12 @@ pub fn extract_float4(
 /// * `Ok(Some(TimestampWithTimeZone))` - The timestamp value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_timestamp(
+pub unsafe fn extract_timestamp(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<TimestampWithTimeZone>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -430,12 +433,12 @@ pub fn extract_timestamp(
 /// * `Ok(Some(serde_json::Value))` - The JSON value if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_jsonb(
+pub unsafe fn extract_jsonb(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<serde_json::Value>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -460,12 +463,12 @@ pub fn extract_jsonb(
 /// * `Ok(Some(Vec<u8>))` - The binary data if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_bytea(
+pub unsafe fn extract_bytea(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<Vec<u8>>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -491,12 +494,12 @@ pub fn extract_bytea(
 /// * `Ok(Some(Vec<f32>))` - The float array if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_float4_array(
+pub unsafe fn extract_float4_array(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<Vec<f32>>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -522,12 +525,12 @@ pub fn extract_float4_array(
 /// * `Ok(Some(Vec<uuid::Uuid>))` - The UUID array if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails
-pub fn extract_uuid_array(
+pub unsafe fn extract_uuid_array(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<Vec<uuid::Uuid>>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
 
     if is_null {
         return Ok(None);
@@ -563,7 +566,7 @@ pub fn extract_uuid_array(
 /// * `Ok(Some([u8; 32]))` - The content hash if not null
 /// * `Ok(None)` - If the value is null
 /// * `Err(CaliberError)` - If extraction fails or hash is wrong size
-pub fn extract_content_hash(
+pub unsafe fn extract_content_hash(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
@@ -617,7 +620,7 @@ pub fn timestamp_to_chrono(ts: TimestampWithTimeZone) -> chrono::DateTime<chrono
     let nanos = ((pg_micros % 1_000_000) * 1000) as u32;
     
     chrono::DateTime::from_timestamp(unix_secs, nanos)
-        .unwrap_or_else(|| chrono::Utc::now())
+        .unwrap_or_else(chrono::Utc::now)
 }
 
 /// Convert a chrono DateTime<Utc> to a pgrx TimestampWithTimeZone.
@@ -872,12 +875,12 @@ pub fn text_array_to_datum(texts: &[String]) -> pg_sys::Datum {
 /// * `Ok(Some(Vec<String>))` - The string array if not null
 /// * `Ok(None)` - If the value is NULL
 /// * `Err(CaliberError)` - On extraction failure
-pub fn extract_text_array(
+pub unsafe fn extract_text_array(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attnum: i16,
 ) -> CaliberResult<Option<Vec<String>>> {
-    let (datum, is_null) = extract_datum(tuple, tuple_desc, attnum)?;
+    let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
     
     if is_null {
         return Ok(None);

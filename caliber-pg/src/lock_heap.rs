@@ -70,8 +70,8 @@ pub fn lock_acquire_heap(
     values[lock::MODE as usize - 1] = string_to_datum(mode_str);
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
-    let _tid = insert_tuple(&rel, tuple)?;
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(lock_id)
 }
@@ -91,7 +91,7 @@ pub fn lock_release_heap(lock_id: EntityId) -> CaliberResult<bool> {
         uuid_to_datum(lock_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(_tuple) = scanner.next() {
         let tid = scanner.current_tid()
@@ -99,7 +99,7 @@ pub fn lock_release_heap(lock_id: EntityId) -> CaliberResult<bool> {
                 reason: "Failed to get TID of lock tuple".to_string(),
             }))?;
         
-        delete_tuple(&rel, &tid)?;
+        unsafe { delete_tuple(&rel, &tid)? };
         Ok(true)
     } else {
         Ok(false)
@@ -121,11 +121,11 @@ pub fn lock_get_heap(lock_id: EntityId) -> CaliberResult<Option<DistributedLock>
         uuid_to_datum(lock_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let lock = tuple_to_lock(tuple, tuple_desc)?;
+        let lock = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
         Ok(Some(lock))
     } else {
         Ok(None)
@@ -162,13 +162,13 @@ pub fn lock_list_by_resource_heap(
         uuid_to_datum(resource_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 2, scan_keys.as_mut_ptr());
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 2, scan_keys.as_mut_ptr()) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
-    while let Some(tuple) = scanner.next() {
-        let lock = tuple_to_lock(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let lock = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
         results.push(lock);
     }
     
@@ -179,13 +179,13 @@ pub fn lock_list_by_resource_heap(
 pub fn lock_list_active_heap() -> CaliberResult<Vec<DistributedLock>> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::AccessShare)?;
     let snapshot = get_active_snapshot();
-    let mut scanner = HeapScanner::new(&rel, snapshot, 0, ptr::null_mut());
+    let mut scanner = unsafe { HeapScanner::new(&rel, snapshot, 0, ptr::null_mut()) };
     let tuple_desc = rel.tuple_desc();
     let now = chrono::Utc::now();
 
     let mut results = Vec::new();
-    while let Some(tuple) = scanner.next() {
-        let lock = tuple_to_lock(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let lock = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
         if lock.expires_at > now {
             results.push(lock);
         }
@@ -209,7 +209,7 @@ fn validate_lock_relation(rel: &HeapRelation) -> CaliberResult<()> {
     Ok(())
 }
 
-fn tuple_to_lock(
+unsafe fn tuple_to_lock(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<DistributedLock> {
@@ -288,7 +288,7 @@ pub fn lock_extend_heap(
         uuid_to_datum(lock_id),
     );
 
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     if let Some(tuple) = scanner.next() {
         let tid = scanner.current_tid()
@@ -297,7 +297,7 @@ pub fn lock_extend_heap(
             }))?;
 
         // Extract existing values using extract_values_and_nulls
-        let (mut values, mut nulls) = extract_values_and_nulls(tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(tuple, tuple_desc) }?;
 
         // Update expires_at
         values[lock::EXPIRES_AT as usize - 1] = chrono_to_timestamp(new_expires_at).into_datum()
@@ -310,7 +310,7 @@ pub fn lock_extend_heap(
 
         // Form and update tuple
         let new_tuple = form_tuple(&rel, &values, &nulls)?;
-        update_tuple(&rel, &tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &tid, new_tuple)? };
 
         Ok(true)
     } else {

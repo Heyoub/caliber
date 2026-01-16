@@ -112,10 +112,10 @@ pub async fn release_lock(
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Release lock via database client
-    state.db.lock_release(id.into()).await?;
+    state.db.lock_release(id).await?;
 
     // Broadcast LockReleased event
-    state.ws.broadcast(WsEvent::LockReleased { lock_id: id.into() });
+    state.ws.broadcast(WsEvent::LockReleased { lock_id: id });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -151,7 +151,7 @@ pub async fn extend_lock(
     }
 
     let duration = std::time::Duration::from_millis(req.additional_ms as u64);
-    let lock = state.db.lock_extend(id.into(), duration).await?;
+    let lock = state.db.lock_extend(id, duration).await?;
     Ok(Json(lock))
 }
 
@@ -205,7 +205,7 @@ pub async fn get_lock(
 ) -> ApiResult<impl IntoResponse> {
     let lock = state
         .db
-        .lock_get(id.into())
+        .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
 

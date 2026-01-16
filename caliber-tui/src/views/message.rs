@@ -65,20 +65,21 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
                 .constraints([Constraint::Length(9), Constraint::Min(0)])
                 .split(chunks[1]);
 
-            let mut fields = Vec::new();
-            fields.push(("Message ID", message.message_id.to_string()));
-            fields.push(("Type", message.message_type.clone()));
-            fields.push(("From", message.from_agent_id.to_string()));
-            fields.push((
-                "To",
-                message
-                    .to_agent_id
-                    .map(|id| id.to_string())
-                    .or_else(|| message.to_agent_type.clone())
-                    .unwrap_or_else(|| "unspecified".to_string()),
-            ));
-            fields.push(("Priority", message.priority.clone()));
-            fields.push(("Created", message.created_at.to_rfc3339()));
+            let mut fields = vec![
+                ("Message ID", message.message_id.to_string()),
+                ("Type", message.message_type.clone()),
+                ("From", message.from_agent_id.to_string()),
+                (
+                    "To",
+                    message
+                        .to_agent_id
+                        .map(|id| id.to_string())
+                        .or_else(|| message.to_agent_type.clone())
+                        .unwrap_or_else(|| "unspecified".to_string()),
+                ),
+                ("Priority", message.priority.clone()),
+                ("Created", message.created_at.to_rfc3339()),
+            ];
             if let Some(delivered) = message.delivered_at {
                 fields.push(("Delivered", delivered.to_rfc3339()));
             }

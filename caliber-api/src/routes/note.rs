@@ -203,7 +203,7 @@ pub async fn get_note(
 ) -> ApiResult<impl IntoResponse> {
     let note = state
         .db
-        .note_get(id.into())
+        .note_get(id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
@@ -261,7 +261,7 @@ pub async fn update_note(
         }
     }
 
-    let note = state.db.note_update(id.into(), &req).await?;
+    let note = state.db.note_update(id, &req).await?;
     state.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
     Ok(Json(note))
 }
@@ -291,12 +291,12 @@ pub async fn delete_note(
     // First verify the note exists
     let _note = state
         .db
-        .note_get(id.into())
+        .note_get(id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
-    state.db.note_delete(id.into()).await?;
-    state.ws.broadcast(WsEvent::NoteDeleted { id: id.into() });
+    state.db.note_delete(id).await?;
+    state.ws.broadcast(WsEvent::NoteDeleted { id });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn test_create_note_request_validation() {
         // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil().into();
+        let dummy_id: EntityId = uuid::Uuid::nil();
 
         let req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -406,7 +406,7 @@ mod tests {
     fn test_list_notes_pagination() {
         let params = ListNotesRequest {
             note_type: Some(NoteType::Fact),
-            source_trajectory_id: Some(uuid::Uuid::nil().into()),
+            source_trajectory_id: Some(uuid::Uuid::nil()),
             created_after: None,
             created_before: None,
             limit: Some(10),

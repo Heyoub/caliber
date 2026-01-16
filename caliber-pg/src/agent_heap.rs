@@ -97,8 +97,8 @@ pub fn agent_register_heap(
     values[agent::LAST_HEARTBEAT as usize - 1] = now_datum;
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
-    let _tid = insert_tuple(&rel, tuple)?;
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(agent_id)
 }
@@ -118,11 +118,11 @@ pub fn agent_get_heap(agent_id: EntityId) -> CaliberResult<Option<Agent>> {
         uuid_to_datum(agent_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let agent = tuple_to_agent(tuple, tuple_desc)?;
+        let agent = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
         Ok(Some(agent))
     } else {
         Ok(None)
@@ -144,11 +144,11 @@ pub fn agent_heartbeat_heap(agent_id: EntityId) -> CaliberResult<bool> {
         uuid_to_datum(agent_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update last_heartbeat to current timestamp
         let now = current_timestamp();
@@ -167,7 +167,7 @@ pub fn agent_heartbeat_heap(agent_id: EntityId) -> CaliberResult<bool> {
                 reason: "Failed to get TID of agent tuple".to_string(),
             }))?;
         
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -189,11 +189,11 @@ pub fn agent_set_status_heap(agent_id: EntityId, status: AgentStatus) -> Caliber
         uuid_to_datum(agent_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status field
         let status_str = match status {
@@ -210,7 +210,7 @@ pub fn agent_set_status_heap(agent_id: EntityId, status: AgentStatus) -> Caliber
                 reason: "Failed to get TID of agent tuple".to_string(),
             }))?;
         
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -232,13 +232,13 @@ pub fn agent_list_by_type_heap(agent_type: &str) -> CaliberResult<Vec<Agent>> {
         string_to_datum(agent_type),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
-    while let Some(tuple) = scanner.next() {
-        let agent = tuple_to_agent(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let agent = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
         results.push(agent);
     }
     
@@ -268,7 +268,7 @@ fn build_optional_agent_uuid(reports_to: Option<EntityId>) -> (pg_sys::Datum, bo
     }
 }
 
-fn tuple_to_agent(
+unsafe fn tuple_to_agent(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Agent> {

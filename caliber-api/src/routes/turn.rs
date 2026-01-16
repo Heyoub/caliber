@@ -91,9 +91,9 @@ pub async fn create_turn(
     // BATTLE INTEL: Check summarization triggers after turn creation
     // =========================================================================
     // Get the scope to check trigger conditions
-    if let Ok(Some(scope)) = state.db.scope_get(req.scope_id.into()).await {
+    if let Ok(Some(scope)) = state.db.scope_get(req.scope_id).await {
         // Get the trajectory ID from the scope for fetching policies
-        let trajectory_id: caliber_core::EntityId = scope.trajectory_id.into();
+        let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
 
         // Fetch summarization policies for this trajectory
         if let Ok(policies) = state.db.summarization_policies_for_trajectory(trajectory_id).await {
@@ -101,7 +101,7 @@ pub async fn create_turn(
                 // Get turn count for this scope
                 let turn_count = state
                     .db
-                    .turn_list_by_scope(req.scope_id.into())
+                    .turn_list_by_scope(req.scope_id)
                     .await
                     .map(|turns| turns.len() as i32)
                     .unwrap_or(0);
@@ -109,7 +109,7 @@ pub async fn create_turn(
                 // Get artifact count for this scope
                 let artifact_count = state
                     .db
-                    .artifact_list_by_scope(req.scope_id.into())
+                    .artifact_list_by_scope(req.scope_id)
                     .await
                     .map(|artifacts| artifacts.len() as i32)
                     .unwrap_or(0);
@@ -118,7 +118,7 @@ pub async fn create_turn(
                 let core_policies: Vec<caliber_core::SummarizationPolicy> = policies
                     .iter()
                     .map(|p| caliber_core::SummarizationPolicy {
-                        policy_id: p.policy_id.into(),
+                        policy_id: p.policy_id,
                         name: p.name.clone(),
                         triggers: p.triggers.clone(),
                         target_level: p.target_level,
@@ -132,9 +132,9 @@ pub async fn create_turn(
 
                 // Build a caliber_core::Scope from our ScopeResponse
                 let core_scope = caliber_core::Scope {
-                    scope_id: scope.scope_id.into(),
-                    trajectory_id: scope.trajectory_id.into(),
-                    parent_scope_id: scope.parent_scope_id.map(Into::into),
+                    scope_id: scope.scope_id,
+                    trajectory_id: scope.trajectory_id,
+                    parent_scope_id: scope.parent_scope_id,
                     name: scope.name.clone(),
                     purpose: scope.purpose.clone(),
                     is_active: scope.is_active,
@@ -159,7 +159,7 @@ pub async fn create_turn(
                         if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
                             state.ws.broadcast(WsEvent::SummarizationTriggered {
                                 policy_id,
-                                trigger: trigger.clone(),
+                                trigger,
                                 scope_id: core_scope.scope_id,
                                 trajectory_id,
                                 source_level: policy.source_level,
@@ -199,7 +199,7 @@ pub async fn get_turn(
     State(state): State<Arc<TurnState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TurnResponse>> {
-    let turn = state.db.turn_get(id.into()).await?
+    let turn = state.db.turn_get(id).await?
         .ok_or_else(|| ApiError::entity_not_found("Turn", id.to_string()))?;
 
     Ok(Json(turn))
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn test_create_turn_request_validation() {
         // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil().into();
+        let dummy_id: EntityId = uuid::Uuid::nil();
 
         let req = CreateTurnRequest {
             scope_id: dummy_id,
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_optional_fields() {
-        let dummy_id: EntityId = uuid::Uuid::nil().into();
+        let dummy_id: EntityId = uuid::Uuid::nil();
 
         let req = CreateTurnRequest {
             scope_id: dummy_id,
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_tool_calls_and_results() {
-        let dummy_id: EntityId = uuid::Uuid::nil().into();
+        let dummy_id: EntityId = uuid::Uuid::nil();
 
         let tool_calls = serde_json::json!([
             {

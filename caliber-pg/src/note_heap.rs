@@ -59,19 +59,34 @@ use crate::tuple_extract::{
 /// # Requirements
 /// - 4.1: Uses heap_form_tuple and simple_heap_insert instead of SPI
 /// - 4.5: Updates btree and hnsw indexes via CatalogIndexInsert
-pub fn note_create_heap(
-    note_id: EntityId,
-    note_type: NoteType,
-    title: &str,
-    content: &str,
-    content_hash: ContentHash,
-    embedding: Option<&EmbeddingVector>,
-    source_trajectory_ids: &[EntityId],
-    source_artifact_ids: &[EntityId],
-    ttl: TTL,
-    abstraction_level: AbstractionLevel,
-    source_note_ids: &[EntityId],
-) -> CaliberResult<EntityId> {
+pub struct NoteCreateParams<'a> {
+    pub note_id: EntityId,
+    pub note_type: NoteType,
+    pub title: &'a str,
+    pub content: &'a str,
+    pub content_hash: ContentHash,
+    pub embedding: Option<&'a EmbeddingVector>,
+    pub source_trajectory_ids: &'a [EntityId],
+    pub source_artifact_ids: &'a [EntityId],
+    pub ttl: TTL,
+    pub abstraction_level: AbstractionLevel,
+    pub source_note_ids: &'a [EntityId],
+}
+
+pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId> {
+    let NoteCreateParams {
+        note_id,
+        note_type,
+        title,
+        content,
+        content_hash,
+        embedding,
+        source_trajectory_ids,
+        source_artifact_ids,
+        ttl,
+        abstraction_level,
+        source_note_ids,
+    } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(note::TABLE_NAME, LockMode::RowExclusive)?;
     validate_note_relation(&rel)?;
@@ -159,10 +174,10 @@ pub fn note_create_heap(
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Insert into heap
-    let _tid = insert_tuple(&rel, tuple)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
     
     // Update all indexes via CatalogIndexInsert
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(note_id)
 }
@@ -201,18 +216,18 @@ pub fn note_get_heap(id: EntityId) -> CaliberResult<Option<Note>> {
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let note = tuple_to_note(tuple, tuple_desc)?;
+        let note = unsafe { tuple_to_note(tuple, tuple_desc) }?;
         Ok(Some(note))
     } else {
         Ok(None)
@@ -246,23 +261,23 @@ pub fn note_query_by_trajectory_heap(
     // For array containment queries, we need to do a heap scan and filter
     // A proper implementation would use the GIN index, but that requires
     // more complex scan key setup with array operators
-    let mut scanner = crate::heap_ops::HeapScanner::new(
+    let mut scanner = unsafe { crate::heap_ops::HeapScanner::new(
         &rel,
         snapshot,
         0,
         std::ptr::null_mut(),
-    );
+    ) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
     // Scan all tuples and filter by source_trajectory_ids containing trajectory_id
-    while let Some(tuple) = scanner.next() {
-        let source_ids = extract_uuid_array(tuple, tuple_desc, note::SOURCE_TRAJECTORY_IDS)?;
+    for tuple in &mut scanner {
+        let source_ids = unsafe { extract_uuid_array(tuple, tuple_desc, note::SOURCE_TRAJECTORY_IDS) }?;
 
         if let Some(ids) = source_ids {
             if ids.contains(&trajectory_id) {
-                let note = tuple_to_note(tuple, tuple_desc)?;
+                let note = unsafe { tuple_to_note(tuple, tuple_desc) }?;
                 // Enforce TTL - skip expired notes
                 if !is_note_expired(&note.ttl, note.created_at) {
                     results.push(note);
@@ -319,13 +334,13 @@ pub fn note_update_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Find the existing tuple
     let old_tuple = match scanner.next() {
@@ -343,7 +358,7 @@ pub fn note_update_heap(
     let tuple_desc = rel.tuple_desc();
     
     // Extract current values and nulls
-    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+    let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
     
     // Apply updates
     if let Some(new_content) = content {
@@ -399,10 +414,10 @@ pub fn note_update_heap(
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Update in place
-    update_tuple(&rel, &tid, new_tuple)?;
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
     
     // Update indexes
-    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
     
     Ok(true)
 }
@@ -579,7 +594,7 @@ pub fn is_note_expired(ttl: &TTL, created_at: chrono::DateTime<chrono::Utc>) -> 
 }
 
 /// Convert a heap tuple to a Note struct.
-fn tuple_to_note(
+unsafe fn tuple_to_note(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Note> {
@@ -759,19 +774,19 @@ mod tests {
                 let content_hash = caliber_core::compute_content_hash(content.as_bytes());
 
                 // Insert via heap
-                let result = note_create_heap(
+                let result = note_create_heap(NoteCreateParams {
                     note_id,
-                    note_type.clone(),
-                    &title,
-                    &content,
+                    note_type,
+                    title: &title,
+                    content: &content,
                     content_hash,
-                    None,
-                    &[],
-                    &[],
+                    embedding: None,
+                    source_trajectory_ids: &[],
+                    source_artifact_ids: &[],
                     ttl,
-                    AbstractionLevel::Raw,  // Battle Intel Feature 2
-                    &[],                    // Battle Intel Feature 2
-                );
+                    abstraction_level: AbstractionLevel::Raw, // Battle Intel Feature 2
+                    source_note_ids: &[],                      // Battle Intel Feature 2
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), note_id);
 
@@ -849,19 +864,19 @@ mod tests {
                 let note_id = caliber_core::new_entity_id();
                 let original_hash = caliber_core::compute_content_hash(original_content.as_bytes());
                 
-                let _ = note_create_heap(
+                let _ = note_create_heap(NoteCreateParams {
                     note_id,
-                    NoteType::Fact,
-                    "test_note",
-                    &original_content,
-                    original_hash,
-                    None,
-                    &[],
-                    &[],
-                    TTL::MediumTerm,
-                    AbstractionLevel::Raw,
-                    &[],
-                );
+                    note_type: NoteType::Fact,
+                    title: "test_note",
+                    content: &original_content,
+                    content_hash: original_hash,
+                    embedding: None,
+                    source_trajectory_ids: &[],
+                    source_artifact_ids: &[],
+                    ttl: TTL::MediumTerm,
+                    abstraction_level: AbstractionLevel::Raw,
+                    source_note_ids: &[],
+                });
 
                 // Update content
                 let new_hash = caliber_core::compute_content_hash(new_content.as_bytes());
@@ -949,19 +964,19 @@ mod tests {
                     let content = format!("note_content_{}", i);
                     let content_hash = caliber_core::compute_content_hash(content.as_bytes());
                     
-                    let _ = note_create_heap(
+                    let _ = note_create_heap(NoteCreateParams {
                         note_id,
-                        NoteType::Fact,
-                        &format!("note_{}", i),
-                        &content,
+                        note_type: NoteType::Fact,
+                        title: &format!("note_{}", i),
+                        content: &content,
                         content_hash,
-                        None,
-                        &[trajectory_id],
-                        &[],
-                        TTL::MediumTerm,
-                        AbstractionLevel::Raw,
-                        &[],
-                    );
+                        embedding: None,
+                        source_trajectory_ids: &[trajectory_id],
+                        source_artifact_ids: &[],
+                        ttl: TTL::MediumTerm,
+                        abstraction_level: AbstractionLevel::Raw,
+                        source_note_ids: &[],
+                    });
                     note_ids.push(note_id);
                 }
 

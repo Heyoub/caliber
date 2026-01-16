@@ -149,7 +149,7 @@ pub async fn get_edge(
     State(state): State<Arc<EdgeState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let edge = state.db.edge_get(id.into()).await?;
+    let edge = state.db.edge_get(id).await?;
 
     match edge {
         Some(e) => Ok(Json(e)),
@@ -178,7 +178,7 @@ pub async fn list_edges_by_participant(
     State(state): State<Arc<EdgeState>>,
     Path(entity_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let edges = state.db.edge_list_by_participant(entity_id.into()).await?;
+    let edges = state.db.edge_list_by_participant(entity_id).await?;
 
     Ok(Json(ListEdgesResponse { edges }))
 }

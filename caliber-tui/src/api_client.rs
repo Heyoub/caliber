@@ -24,15 +24,27 @@ pub enum ApiClientError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
     #[error("gRPC error: {0}")]
-    Grpc(#[from] tonic::Status),
+    Grpc(Box<tonic::Status>),
     #[error("WebSocket error: {0}")]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+    WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
     #[error("Serialization error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("Unexpected response: {0}")]
     InvalidResponse(String),
     #[error("Config error: {0}")]
     Config(String),
+}
+
+impl From<tonic::Status> for ApiClientError {
+    fn from(err: tonic::Status) -> Self {
+        Self::Grpc(Box::new(err))
+    }
+}
+
+impl From<tokio_tungstenite::tungstenite::Error> for ApiClientError {
+    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
+        Self::WebSocket(Box::new(err))
+    }
 }
 
 #[derive(Clone)]
@@ -322,7 +334,7 @@ impl WsClient {
             if let Message::Text(text) = message {
                 match serde_json::from_str::<WsEvent>(&text) {
                     Ok(event) => {
-                        let _ = sender.send(TuiEvent::Ws(event)).await;
+                        let _ = sender.send(TuiEvent::Ws(Box::new(event))).await;
                     }
                     Err(err) => {
                         let _ = sender

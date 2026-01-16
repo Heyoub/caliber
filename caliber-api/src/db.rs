@@ -111,6 +111,20 @@ pub struct DbClient {
     pool: Pool,
 }
 
+/// Parameters for message_list filters.
+pub struct MessageListParams<'a> {
+    pub from_agent_id: Option<EntityId>,
+    pub to_agent_id: Option<EntityId>,
+    pub to_agent_type: Option<&'a str>,
+    pub trajectory_id: Option<EntityId>,
+    pub message_type: Option<&'a str>,
+    pub priority: Option<&'a str>,
+    pub undelivered_only: bool,
+    pub unacknowledged_only: bool,
+    pub limit: i32,
+    pub offset: i32,
+}
+
 impl DbClient {
     /// Create a new database client with the given pool.
     pub fn new(pool: Pool) -> Self {
@@ -303,7 +317,7 @@ impl DbClient {
 
         let scope_id: Uuid = row.get(0);
 
-        self.scope_get(scope_id.into()).await?
+        self.scope_get(scope_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created scope"))
     }
 
@@ -468,7 +482,7 @@ impl DbClient {
 
         let artifact_id: Uuid = row.get(0);
 
-        self.artifact_get(artifact_id.into()).await?
+        self.artifact_get(artifact_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created artifact"))
     }
 
@@ -567,8 +581,8 @@ impl DbClient {
 
         let note_type_str = format!("{:?}", req.note_type);
         let ttl_str = self.ttl_to_string(&req.ttl);
-        let source_traj_ids: Vec<Uuid> = req.source_trajectory_ids.iter().copied().collect();
-        let source_artifact_ids: Vec<Uuid> = req.source_artifact_ids.iter().copied().collect();
+        let source_traj_ids: Vec<Uuid> = req.source_trajectory_ids.to_vec();
+        let source_artifact_ids: Vec<Uuid> = req.source_artifact_ids.to_vec();
 
         let row = conn
             .query_one(
@@ -586,7 +600,7 @@ impl DbClient {
 
         let note_id: Uuid = row.get(0);
 
-        self.note_get(note_id.into()).await?
+        self.note_get(note_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created note"))
     }
 
@@ -732,7 +746,7 @@ impl DbClient {
         let turn_id: Uuid = row.get(0);
 
         Ok(TurnResponse {
-            turn_id: turn_id.into(),
+            turn_id,
             scope_id: req.scope_id,
             sequence: req.sequence,
             role: req.role,
@@ -804,14 +818,14 @@ impl DbClient {
                     &capabilities_json,
                     &memory_access_json,
                     &can_delegate_to_json,
-                    &req.reports_to.map(|id| id),
+                    &req.reports_to,
                 ],
             )
             .await?;
 
         let agent_id: Uuid = row.get(0);
 
-        self.agent_get(agent_id.into()).await?
+        self.agent_get(agent_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve registered agent"))
     }
 
@@ -1011,7 +1025,7 @@ impl DbClient {
 
         let lock_id: Uuid = row.get(0);
 
-        self.lock_get(lock_id.into()).await?
+        self.lock_get(lock_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve acquired lock"))
     }
 
@@ -1107,19 +1121,20 @@ impl DbClient {
     /// Send a message by calling caliber_message_send.
     pub async fn message_send(&self, req: &SendMessageRequest) -> ApiResult<MessageResponse> {
         let conn = self.get_conn().await?;
+        let artifact_ids = req.artifact_ids.to_vec();
 
         let row = conn
             .query_one(
                 "SELECT caliber_message_send($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                 &[
                     &req.from_agent_id,
-                    &req.to_agent_id.map(|id| id),
+                    &req.to_agent_id,
                     &req.to_agent_type,
                     &req.message_type,
                     &req.payload,
-                    &req.trajectory_id.map(|id| id),
-                    &req.scope_id.map(|id| id),
-                    &req.artifact_ids.iter().copied().collect::<Vec<_>>(),
+                    &req.trajectory_id,
+                    &req.scope_id,
+                    &artifact_ids,
                     &req.priority,
                     &req.expires_at.map(|ts| ts.timestamp()),
                 ],
@@ -1128,7 +1143,7 @@ impl DbClient {
 
         let message_id: Uuid = row.get(0);
 
-        self.message_get(message_id.into()).await?
+        self.message_get(message_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve sent message"))
     }
 
@@ -1186,30 +1201,21 @@ impl DbClient {
     /// List messages with filters by calling caliber_message_list.
     pub async fn message_list(
         &self,
-        from_agent_id: Option<EntityId>,
-        to_agent_id: Option<EntityId>,
-        to_agent_type: Option<&str>,
-        trajectory_id: Option<EntityId>,
-        message_type: Option<&str>,
-        priority: Option<&str>,
-        undelivered_only: bool,
-        unacknowledged_only: bool,
-        limit: i32,
-        offset: i32,
+        params: MessageListParams<'_>,
     ) -> ApiResult<Vec<MessageResponse>> {
         let conn = self.get_conn().await?;
 
         let filters = serde_json::json!({
-            "from_agent_id": from_agent_id,
-            "to_agent_id": to_agent_id,
-            "to_agent_type": to_agent_type,
-            "trajectory_id": trajectory_id,
-            "message_type": message_type,
-            "priority": priority,
-            "undelivered_only": undelivered_only,
-            "unacknowledged_only": unacknowledged_only,
-            "limit": limit,
-            "offset": offset,
+            "from_agent_id": params.from_agent_id,
+            "to_agent_id": params.to_agent_id,
+            "to_agent_type": params.to_agent_type,
+            "trajectory_id": params.trajectory_id,
+            "message_type": params.message_type,
+            "priority": params.priority,
+            "undelivered_only": params.undelivered_only,
+            "unacknowledged_only": params.unacknowledged_only,
+            "limit": params.limit,
+            "offset": params.offset,
         });
 
         let row = conn
@@ -1273,7 +1279,7 @@ impl DbClient {
 
         let delegation_id: Uuid = row.get(0);
 
-        self.delegation_get(delegation_id.into()).await?
+        self.delegation_get(delegation_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created delegation"))
     }
 
@@ -1393,7 +1399,7 @@ impl DbClient {
 
         let handoff_id: Uuid = row.get(0);
 
-        self.handoff_get(handoff_id.into()).await?
+        self.handoff_get(handoff_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created handoff"))
     }
 
@@ -1488,7 +1494,7 @@ impl DbClient {
         let uuid = Uuid::parse_str(uuid_str)
             .map_err(|_| ApiError::internal_error(format!("Invalid UUID in field: {}", field)))?;
         
-        Ok(uuid.into())
+        Ok(uuid)
     }
 
     /// Parse an optional UUID from JSON field.
@@ -1496,7 +1502,6 @@ impl DbClient {
         json.get(field)
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
-            .map(|u| u.into())
     }
 
     /// Parse a string from JSON field.
@@ -1655,7 +1660,7 @@ impl DbClient {
         for item in array {
             if let Some(uuid_str) = item.as_str() {
                 if let Ok(uuid) = Uuid::parse_str(uuid_str) {
-                    uuids.push(uuid.into());
+                    uuids.push(uuid);
                 }
             }
         }
@@ -1695,7 +1700,6 @@ impl DbClient {
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|id| id.as_str().and_then(|s| Uuid::parse_str(s).ok()))
-                                .map(|u| u.into())
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -1704,7 +1708,6 @@ impl DbClient {
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|id| id.as_str().and_then(|s| Uuid::parse_str(s).ok()))
-                                .map(|u| u.into())
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -2020,7 +2023,7 @@ impl DbClient {
         let edge_id: Option<Uuid> = row.get(0);
         let edge_id = edge_id.ok_or_else(|| ApiError::internal_error("Failed to create edge"))?;
 
-        self.edge_get(edge_id.into())
+        self.edge_get(edge_id)
             .await?
             .ok_or_else(|| ApiError::internal_error("Edge created but not found"))
     }
@@ -2092,7 +2095,7 @@ impl DbClient {
         let policy_id: Option<Uuid> = row.get(0);
         let policy_id = policy_id.ok_or_else(|| ApiError::internal_error("Failed to create policy"))?;
 
-        self.summarization_policy_get(policy_id.into())
+        self.summarization_policy_get(policy_id)
             .await?
             .ok_or_else(|| ApiError::internal_error("Policy created but not found"))
     }

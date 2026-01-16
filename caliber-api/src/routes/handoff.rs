@@ -132,7 +132,7 @@ pub async fn get_handoff(
 ) -> ApiResult<impl IntoResponse> {
     let handoff = state
         .db
-        .handoff_get(id.into())
+        .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
@@ -169,7 +169,7 @@ pub async fn accept_handoff(
     // Verify the handoff exists and is in initiated state
     let handoff = state
         .db
-        .handoff_get(id.into())
+        .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
@@ -190,12 +190,12 @@ pub async fn accept_handoff(
     // Accept handoff via database client
     let _ = state
         .db
-        .handoff_accept(id.into(), req.accepting_agent_id)
+        .handoff_accept(id, req.accepting_agent_id)
         .await?;
 
     // Broadcast HandoffAccepted event
     state.ws.broadcast(WsEvent::HandoffAccepted {
-        handoff_id: id.into(),
+        handoff_id: id,
     });
 
     Ok(StatusCode::NO_CONTENT)
@@ -227,7 +227,7 @@ pub async fn complete_handoff(
     // Verify the handoff exists and is in accepted state
     let handoff = state
         .db
-        .handoff_get(id.into())
+        .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
@@ -239,7 +239,7 @@ pub async fn complete_handoff(
     }
 
     // Complete handoff via database client
-    let updated = state.db.handoff_complete(id.into()).await?;
+    let updated = state.db.handoff_complete(id).await?;
 
     // Broadcast HandoffCompleted event
     state.ws.broadcast(WsEvent::HandoffCompleted { handoff: updated });

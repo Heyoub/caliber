@@ -640,7 +640,7 @@ mod tests {
         // Test wildcard matches all
         assert!(WebhookEventType::All.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: Uuid::new_v4().into(),
+                trajectory_id: Uuid::new_v4(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -658,7 +658,7 @@ mod tests {
         // Test specific event type
         assert!(WebhookEventType::TrajectoryCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: Uuid::new_v4().into(),
+                trajectory_id: Uuid::new_v4(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -676,7 +676,7 @@ mod tests {
         // Test non-matching event type
         assert!(!WebhookEventType::NoteCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: Uuid::new_v4().into(),
+                trajectory_id: Uuid::new_v4(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,

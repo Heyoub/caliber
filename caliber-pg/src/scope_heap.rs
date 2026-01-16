@@ -123,10 +123,10 @@ pub fn scope_create_heap(
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Insert into heap
-    let _tid = insert_tuple(&rel, tuple)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
     
     // Update all indexes via CatalogIndexInsert
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(scope_id)
 }
@@ -167,18 +167,18 @@ pub fn scope_get_heap(id: EntityId) -> CaliberResult<Option<Scope>> {
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let scope = tuple_to_scope(tuple, tuple_desc)?;
+        let scope = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
         Ok(Some(scope))
     } else {
         Ok(None)
@@ -220,13 +220,13 @@ pub fn scope_close_heap(id: EntityId) -> CaliberResult<bool> {
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Find the existing tuple
     let old_tuple = match scanner.next() {
@@ -244,7 +244,7 @@ pub fn scope_close_heap(id: EntityId) -> CaliberResult<bool> {
     let tuple_desc = rel.tuple_desc();
     
     // Extract current values and nulls
-    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+    let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
     
     // Update is_active to false
     values[scope::IS_ACTIVE as usize - 1] = bool_to_datum(false);
@@ -259,10 +259,10 @@ pub fn scope_close_heap(id: EntityId) -> CaliberResult<bool> {
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Update in place
-    update_tuple(&rel, &tid, new_tuple)?;
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
     
     // Update indexes
-    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
     
     Ok(true)
 }
@@ -302,20 +302,20 @@ pub fn scope_list_by_trajectory_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
     // Collect all matching tuples
-    while let Some(tuple) = scanner.next() {
-        let scope = tuple_to_scope(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let scope = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
         results.push(scope);
     }
     
@@ -359,13 +359,13 @@ pub fn scope_update_tokens_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Find the existing tuple
     let old_tuple = match scanner.next() {
@@ -383,7 +383,7 @@ pub fn scope_update_tokens_heap(
     let tuple_desc = rel.tuple_desc();
     
     // Extract current values and nulls
-    let (mut values, nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+    let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
     // Update tokens_used
     values[scope::TOKENS_USED as usize - 1] = i32_to_datum(tokens_used);
@@ -392,10 +392,10 @@ pub fn scope_update_tokens_heap(
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Update in place
-    update_tuple(&rel, &tid, new_tuple)?;
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
     
     // Update indexes (tokens_used is not indexed, but call anyway for consistency)
-    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
     
     Ok(true)
 }
@@ -442,7 +442,7 @@ pub fn scope_update_checkpoint_heap(
         uuid_to_datum(id),
     );
 
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     let old_tuple = match scanner.next() {
         Some(t) => t,
@@ -457,7 +457,7 @@ pub fn scope_update_checkpoint_heap(
         }))?;
 
     let tuple_desc = rel.tuple_desc();
-    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+    let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
     // Update checkpoint using json_to_datum
     if let Some(cp) = checkpoint {
@@ -474,14 +474,18 @@ pub fn scope_update_checkpoint_heap(
     }
 
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
-    update_tuple(&rel, &tid, new_tuple)?;
-    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
 
     Ok(true)
 }
 
 /// Convert a heap tuple to a Scope struct.
-fn tuple_to_scope(
+unsafe fn tuple_to_scope(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Scope> {

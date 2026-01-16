@@ -28,17 +28,30 @@ use crate::tuple_extract::{
 };
 
 /// Create a new conflict by inserting a conflict record using direct heap operations.
-pub fn conflict_create_heap(
-    conflict_id: EntityId,
-    conflict_type: ConflictType,
-    item_a_type: &str,
-    item_a_id: EntityId,
-    item_b_type: &str,
-    item_b_id: EntityId,
-    agent_a_id: Option<EntityId>,
-    agent_b_id: Option<EntityId>,
-    trajectory_id: Option<EntityId>,
-) -> CaliberResult<EntityId> {
+pub struct ConflictCreateParams<'a> {
+    pub conflict_id: EntityId,
+    pub conflict_type: ConflictType,
+    pub item_a_type: &'a str,
+    pub item_a_id: EntityId,
+    pub item_b_type: &'a str,
+    pub item_b_id: EntityId,
+    pub agent_a_id: Option<EntityId>,
+    pub agent_b_id: Option<EntityId>,
+    pub trajectory_id: Option<EntityId>,
+}
+
+pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<EntityId> {
+    let ConflictCreateParams {
+        conflict_id,
+        conflict_type,
+        item_a_type,
+        item_a_id,
+        item_b_type,
+        item_b_id,
+        agent_a_id,
+        agent_b_id,
+        trajectory_id,
+    } = params;
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_conflict_relation(&rel)?;
 
@@ -100,8 +113,8 @@ pub fn conflict_create_heap(
     nulls[conflict::RESOLVED_AT as usize - 1] = true;
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
-    let _tid = insert_tuple(&rel, tuple)?;
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(conflict_id)
 }
@@ -121,11 +134,11 @@ pub fn conflict_get_heap(conflict_id: EntityId) -> CaliberResult<Option<Conflict
         uuid_to_datum(conflict_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let conflict = tuple_to_conflict(tuple, tuple_desc)?;
+        let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
         Ok(Some(conflict))
     } else {
         Ok(None)
@@ -150,11 +163,11 @@ pub fn conflict_resolve_heap(
         uuid_to_datum(conflict_id),
     );
     
-    let mut scanner = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key);
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+        let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status to "resolved"
         values[conflict::STATUS as usize - 1] = string_to_datum("resolved");
@@ -188,7 +201,7 @@ pub fn conflict_resolve_heap(
                 reason: "Failed to get TID of conflict tuple".to_string(),
             }))?;
         
-        update_tuple(&rel, &old_tid, new_tuple)?;
+        unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
         Ok(false)
@@ -214,10 +227,10 @@ pub fn conflict_list_pending_heap() -> CaliberResult<Vec<Conflict>> {
         string_to_datum("detected"),
     );
     
-    let mut scanner_detected = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_detected);
+    let mut scanner_detected = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_detected) };
     
-    while let Some(tuple) = scanner_detected.next() {
-        let conflict = tuple_to_conflict(tuple, tuple_desc)?;
+    for tuple in &mut scanner_detected {
+        let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
         results.push(conflict);
     }
     
@@ -231,10 +244,10 @@ pub fn conflict_list_pending_heap() -> CaliberResult<Vec<Conflict>> {
         string_to_datum("resolving"),
     );
     
-    let mut scanner_resolving = IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_resolving);
+    let mut scanner_resolving = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_resolving) };
     
-    while let Some(tuple) = scanner_resolving.next() {
-        let conflict = tuple_to_conflict(tuple, tuple_desc)?;
+    for tuple in &mut scanner_resolving {
+        let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
         results.push(conflict);
     }
     
@@ -277,7 +290,7 @@ fn build_optional_conflict_agents(
     (a, b, t)
 }
 
-fn tuple_to_conflict(
+unsafe fn tuple_to_conflict(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Conflict> {
@@ -495,17 +508,17 @@ mod tests {
                 let conflict_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let result = conflict_create_heap(
+                let result = conflict_create_heap(ConflictCreateParams {
                     conflict_id,
                     conflict_type,
-                    &item_a_type,
+                    item_a_type: &item_a_type,
                     item_a_id,
-                    &item_b_type,
+                    item_b_type: &item_b_type,
                     item_b_id,
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
-                );
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), conflict_id);
 
@@ -603,17 +616,17 @@ mod tests {
                 let conflict_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = conflict_create_heap(
+                let insert_result = conflict_create_heap(ConflictCreateParams {
                     conflict_id,
                     conflict_type,
-                    &item_a_type,
+                    item_a_type: &item_a_type,
                     item_a_id,
-                    &item_b_type,
+                    item_b_type: &item_b_type,
                     item_b_id,
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial status is Detected
@@ -713,17 +726,17 @@ mod tests {
                 let conflict_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = conflict_create_heap(
+                let insert_result = conflict_create_heap(ConflictCreateParams {
                     conflict_id,
                     conflict_type,
-                    &item_a_type,
+                    item_a_type: &item_a_type,
                     item_a_id,
-                    &item_b_type,
+                    item_b_type: &item_b_type,
                     item_b_id,
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via list_pending
@@ -789,17 +802,17 @@ mod tests {
                 let conflict_id = caliber_core::new_entity_id();
 
                 // Insert via heap
-                let insert_result = conflict_create_heap(
+                let insert_result = conflict_create_heap(ConflictCreateParams {
                     conflict_id,
                     conflict_type,
-                    &item_a_type,
+                    item_a_type: &item_a_type,
                     item_a_id,
-                    &item_b_type,
+                    item_b_type: &item_b_type,
                     item_b_id,
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
-                );
+                });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify it appears in pending list

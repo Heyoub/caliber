@@ -222,7 +222,11 @@ pub fn get_index_list(rel: &HeapRelation) -> Vec<pg_sys::Oid> {
 /// # Returns
 /// * `Ok(())` - All indexes updated successfully
 /// * `Err(CaliberError)` - If any index update fails
-pub fn update_indexes_for_insert(
+///
+/// # Safety
+/// The tuple pointer must be valid for the target relation. The relation must
+/// be opened with an appropriate lock mode for writes.
+pub unsafe fn update_indexes_for_insert(
     rel: &HeapRelation,
     tuple: *mut pg_sys::HeapTupleData,
     _values: &[pg_sys::Datum],  // Reserved for manual index updates if needed
@@ -235,21 +239,19 @@ pub fn update_indexes_for_insert(
         }));
     }
 
-    unsafe {
-        // Get the index info structure
-        let index_info = pg_sys::CatalogOpenIndexes(rel.as_ref().as_ptr());
+    // Get the index info structure
+    let index_info = pg_sys::CatalogOpenIndexes(rel.as_ref().as_ptr());
 
-        if !index_info.is_null() {
-            // Insert into all indexes using the WithInfo variant
-            pg_sys::CatalogTupleInsertWithInfo(
-                rel.as_ref().as_ptr(),
-                tuple,
-                index_info,
-            );
+    if !index_info.is_null() {
+        // Insert into all indexes using the WithInfo variant
+        pg_sys::CatalogTupleInsertWithInfo(
+            rel.as_ref().as_ptr(),
+            tuple,
+            index_info,
+        );
 
-            // Close the index info
-            pg_sys::CatalogCloseIndexes(index_info);
-        }
+        // Close the index info
+        pg_sys::CatalogCloseIndexes(index_info);
     }
 
     Ok(())
@@ -276,39 +278,36 @@ impl IndexScanner {
     ///
     /// # Returns
     /// A new IndexScanner ready for iteration.
-    pub fn new(
+    ///
+    /// # Safety
+    /// The snapshot and keys pointers must be valid for the duration of the scan.
+    pub unsafe fn new(
         heap_rel: &HeapRelation,
         index_rel: &IndexRelation,
         snapshot: *mut pg_sys::SnapshotData,
         nkeys: i32,
         keys: *mut pg_sys::ScanKeyData,
     ) -> Self {
-        let scan = unsafe {
-            // In PostgreSQL 18 / pgrx 0.16, index_beginscan takes 6 args:
-            // (heapRelation, indexRelation, snapshot, instrument, nkeys, norderbys)
-            pg_sys::index_beginscan(
-                heap_rel.as_ref().as_ptr(),
-                index_rel.as_ptr(),
-                snapshot,
-                std::ptr::null_mut(), // instrument (IndexScanInstrumentation*)
-                nkeys,
-                0, // norderbys
-            )
-        };
+        // In PostgreSQL 18 / pgrx 0.16, index_beginscan takes 6 args:
+        // (heapRelation, indexRelation, snapshot, instrument, nkeys, norderbys)
+        let scan = pg_sys::index_beginscan(
+            heap_rel.as_ref().as_ptr(),
+            index_rel.as_ptr(),
+            snapshot,
+            std::ptr::null_mut(), // instrument (IndexScanInstrumentation*)
+            nkeys,
+            0, // norderbys
+        );
 
         // Set the scan keys
         if nkeys > 0 && !keys.is_null() {
-            unsafe {
-                pg_sys::index_rescan(scan, keys, nkeys, std::ptr::null_mut(), 0);
-            }
+            pg_sys::index_rescan(scan, keys, nkeys, std::ptr::null_mut(), 0);
         }
 
         // Create a TupleTableSlot for fetching tuples
-        let slot = unsafe {
-            // Create a virtual tuple table slot for the heap relation
-            let tuple_desc = (*heap_rel.as_ref().as_ptr()).rd_att;
-            pg_sys::MakeSingleTupleTableSlot(tuple_desc, &pg_sys::TTSOpsHeapTuple)
-        };
+        // Create a virtual tuple table slot for the heap relation
+        let tuple_desc = (*heap_rel.as_ref().as_ptr()).rd_att;
+        let slot = pg_sys::MakeSingleTupleTableSlot(tuple_desc, &pg_sys::TTSOpsHeapTuple);
 
         Self {
             scan,
@@ -317,12 +316,28 @@ impl IndexScanner {
         }
     }
 
-    /// Get the next matching tuple from the index scan.
-    ///
-    /// # Returns
-    /// * `Some(HeapTuple)` - The next matching tuple
-    /// * `None` - No more matching tuples
-    pub fn next(&mut self) -> Option<*mut pg_sys::HeapTupleData> {
+    // next() provided by Iterator impl
+
+    /// Get the TID of the current tuple (after calling next()).
+    pub fn current_tid(&self) -> Option<pg_sys::ItemPointerData> {
+        unsafe {
+            if self.scan.is_null() {
+                return None;
+            }
+            Some((*self.scan).xs_heaptid)
+        }
+    }
+
+    /// Get the raw scan descriptor.
+    pub fn as_ptr(&self) -> *mut pg_sys::IndexScanDescData {
+        self.scan
+    }
+}
+
+impl Iterator for IndexScanner {
+    type Item = *mut pg_sys::HeapTupleData;
+
+    fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             // Get the next TID from the index
             let tid = pg_sys::index_getnext_tid(
@@ -350,21 +365,6 @@ impl IndexScanner {
                 }
             }
         }
-    }
-
-    /// Get the TID of the current tuple (after calling next()).
-    pub fn current_tid(&self) -> Option<pg_sys::ItemPointerData> {
-        unsafe {
-            if self.scan.is_null() {
-                return None;
-            }
-            Some((*self.scan).xs_heaptid)
-        }
-    }
-
-    /// Get the raw scan descriptor.
-    pub fn as_ptr(&self) -> *mut pg_sys::IndexScanDescData {
-        self.scan
     }
 }
 
@@ -410,13 +410,13 @@ pub fn index_lookup_single(
         id_datum,
     );
 
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         heap_rel,
         index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
 
     if let Some(tuple) = scanner.next() {
         let tid = scanner.current_tid()?;
@@ -439,17 +439,20 @@ pub fn index_lookup_single(
 ///
 /// # Note
 /// The returned tuples are only valid within the current transaction.
-pub fn index_scan_collect(
+///
+/// # Safety
+/// The keys pointer must be valid for the duration of the scan.
+pub unsafe fn index_scan_collect(
     heap_rel: &HeapRelation,
     index_rel: &IndexRelation,
     nkeys: i32,
     keys: *mut pg_sys::ScanKeyData,
 ) -> Vec<(*mut pg_sys::HeapTupleData, pg_sys::ItemPointerData)> {
     let snapshot = crate::heap_ops::get_active_snapshot();
-    let mut scanner = IndexScanner::new(heap_rel, index_rel, snapshot, nkeys, keys);
+    let mut scanner = unsafe { IndexScanner::new(heap_rel, index_rel, snapshot, nkeys, keys) };
     let mut results = Vec::new();
 
-    while let Some(tuple) = scanner.next() {
+    for tuple in &mut scanner {
         if let Some(tid) = scanner.current_tid() {
             results.push((tuple, tid));
         }

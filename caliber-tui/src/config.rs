@@ -125,7 +125,7 @@ impl TuiConfig {
                 reason: "must not be empty".to_string(),
             });
         }
-        if self.theme.name.to_ascii_lowercase() != "synthbrute" {
+        if !self.theme.name.eq_ignore_ascii_case("synthbrute") {
             return Err(ConfigError::InvalidValue {
                 field: "theme.name",
                 reason: "only 'synthbrute' is supported".to_string(),

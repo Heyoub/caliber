@@ -81,7 +81,7 @@ pub async fn get_tenant(
     State(state): State<Arc<TenantState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let tenant = state.db.tenant_get(id.into()).await?
+    let tenant = state.db.tenant_get(id).await?
         .ok_or_else(|| ApiError::entity_not_found("Tenant", id))?;
     Ok(Json(tenant))
 }
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn test_tenant_info_structure() {
         let tenant = TenantInfo {
-            tenant_id: Uuid::new_v4().into(),
+            tenant_id: Uuid::new_v4(),
             name: "Test Tenant".to_string(),
             status: TenantStatus::Active,
             created_at: chrono::Utc::now(),
@@ -135,13 +135,13 @@ mod tests {
         let response = ListTenantsResponse {
             tenants: vec![
                 TenantInfo {
-                    tenant_id: Uuid::new_v4().into(),
+                    tenant_id: Uuid::new_v4(),
                     name: "Tenant 1".to_string(),
                     status: TenantStatus::Active,
                     created_at: chrono::Utc::now(),
                 },
                 TenantInfo {
-                    tenant_id: Uuid::new_v4().into(),
+                    tenant_id: Uuid::new_v4(),
                     name: "Tenant 2".to_string(),
                     status: TenantStatus::Suspended,
                     created_at: chrono::Utc::now(),

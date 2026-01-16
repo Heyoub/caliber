@@ -20,7 +20,7 @@ pub fn spawn_ws_manager(
             match ws.connect(tenant_id).await {
                 Ok(mut stream) => {
                     let _ = sender
-                        .send(TuiEvent::Ws(WsEvent::Connected { tenant_id }))
+                        .send(TuiEvent::Ws(Box::new(WsEvent::Connected { tenant_id })))
                         .await;
                     backoff = ws.reconnect_config().initial_ms;
 
@@ -29,7 +29,7 @@ pub fn spawn_ws_manager(
                             Ok(Message::Text(text)) => {
                                 match serde_json::from_str::<WsEvent>(&text) {
                                     Ok(event) => {
-                                        let _ = sender.send(TuiEvent::Ws(event)).await;
+                                        let _ = sender.send(TuiEvent::Ws(Box::new(event))).await;
                                     }
                                     Err(err) => {
                                         let _ = sender
@@ -46,9 +46,9 @@ pub fn spawn_ws_manager(
                             Ok(_) => {}
                             Err(err) => {
                                 let _ = sender
-                                    .send(TuiEvent::Ws(WsEvent::Error {
+                                    .send(TuiEvent::Ws(Box::new(WsEvent::Error {
                                         message: err.to_string(),
-                                    }))
+                                    })))
                                     .await;
                                 break;
                             }
@@ -56,16 +56,16 @@ pub fn spawn_ws_manager(
                     }
 
                     let _ = sender
-                        .send(TuiEvent::Ws(WsEvent::Disconnected {
+                        .send(TuiEvent::Ws(Box::new(WsEvent::Disconnected {
                             reason: "connection closed".to_string(),
-                        }))
+                        })))
                         .await;
                 }
                 Err(err) => {
                     let _ = sender
-                        .send(TuiEvent::Ws(WsEvent::Error {
+                        .send(TuiEvent::Ws(Box::new(WsEvent::Error {
                             message: err.to_string(),
-                        }))
+                        })))
                         .await;
                 }
             }

@@ -61,18 +61,32 @@ use crate::tuple_extract::{
 /// # Requirements
 /// - 3.1: Uses heap_form_tuple and simple_heap_insert instead of SPI
 /// - 3.6: Updates btree and hnsw indexes via CatalogIndexInsert
-pub fn artifact_create_heap(
-    artifact_id: EntityId,
-    trajectory_id: EntityId,
-    scope_id: EntityId,
-    artifact_type: ArtifactType,
-    name: &str,
-    content: &str,
-    content_hash: ContentHash,
-    embedding: Option<&EmbeddingVector>,
-    provenance: &Provenance,
-    ttl: TTL,
-) -> CaliberResult<EntityId> {
+pub struct ArtifactCreateParams<'a> {
+    pub artifact_id: EntityId,
+    pub trajectory_id: EntityId,
+    pub scope_id: EntityId,
+    pub artifact_type: ArtifactType,
+    pub name: &'a str,
+    pub content: &'a str,
+    pub content_hash: ContentHash,
+    pub embedding: Option<&'a EmbeddingVector>,
+    pub provenance: &'a Provenance,
+    pub ttl: TTL,
+}
+
+pub fn artifact_create_heap(params: ArtifactCreateParams<'_>) -> CaliberResult<EntityId> {
+    let ArtifactCreateParams {
+        artifact_id,
+        trajectory_id,
+        scope_id,
+        artifact_type,
+        name,
+        content,
+        content_hash,
+        embedding,
+        provenance,
+        ttl,
+    } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(artifact::TABLE_NAME, LockMode::RowExclusive)?;
     validate_artifact_relation(&rel)?;
@@ -144,10 +158,10 @@ pub fn artifact_create_heap(
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Insert into heap
-    let _tid = insert_tuple(&rel, tuple)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
     
     // Update all indexes via CatalogIndexInsert
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(artifact_id)
 }
@@ -188,18 +202,18 @@ pub fn artifact_get_heap(id: EntityId) -> CaliberResult<Option<Artifact>> {
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let artifact = tuple_to_artifact(tuple, tuple_desc)?;
+        let artifact = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
         Ok(Some(artifact))
     } else {
         Ok(None)
@@ -240,20 +254,20 @@ pub fn artifact_query_by_type_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
 
     // Collect all matching tuples, filtering out expired ones
-    while let Some(tuple) = scanner.next() {
-        let artifact = tuple_to_artifact(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let artifact = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
         // Enforce TTL - skip expired artifacts
         if !is_artifact_expired(&artifact.ttl, artifact.created_at) {
             results.push(artifact);
@@ -297,20 +311,20 @@ pub fn artifact_query_by_scope_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
 
     // Collect all matching tuples, filtering out expired ones
-    while let Some(tuple) = scanner.next() {
-        let artifact = tuple_to_artifact(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let artifact = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
         // Enforce TTL - skip expired artifacts
         if !is_artifact_expired(&artifact.ttl, artifact.created_at) {
             results.push(artifact);
@@ -366,13 +380,13 @@ pub fn artifact_update_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Find the existing tuple
     let old_tuple = match scanner.next() {
@@ -390,7 +404,7 @@ pub fn artifact_update_heap(
     let tuple_desc = rel.tuple_desc();
     
     // Extract current values and nulls
-    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+    let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
     
     // Apply updates
     if let Some(new_content) = content {
@@ -446,10 +460,10 @@ pub fn artifact_update_heap(
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Update in place
-    update_tuple(&rel, &tid, new_tuple)?;
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
     
     // Update indexes
-    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
     
     Ok(true)
 }
@@ -502,7 +516,10 @@ pub fn binary_data_to_datum(data: &[u8]) -> pg_sys::Datum {
 
 /// Extract binary data from a tuple at the specified column.
 /// This is useful for retrieving raw binary artifacts.
-pub fn extract_binary_data(
+///
+/// # Safety
+/// The tuple and tuple_desc must be valid and correspond to each other.
+pub unsafe fn extract_binary_data(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
     attno: i16,
@@ -650,7 +667,7 @@ pub fn is_artifact_expired(ttl: &TTL, created_at: chrono::DateTime<chrono::Utc>)
 }
 
 /// Convert a heap tuple to an Artifact struct.
-fn tuple_to_artifact(
+unsafe fn tuple_to_artifact(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Artifact> {
@@ -870,18 +887,18 @@ mod tests {
                 let content_hash = caliber_core::compute_content_hash(content.as_bytes());
 
                 // Insert via heap
-                let result = artifact_create_heap(
+                let result = artifact_create_heap(ArtifactCreateParams {
                     artifact_id,
                     trajectory_id,
                     scope_id,
-                    artifact_type.clone(),
-                    &name,
-                    &content,
+                    artifact_type,
+                    name: &name,
+                    content: &content,
                     content_hash,
-                    None, // No embedding for basic test
-                    &provenance,
+                    embedding: None, // No embedding for basic test
+                    provenance: &provenance,
                     ttl,
-                );
+                });
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), artifact_id);
 
@@ -986,18 +1003,18 @@ mod tests {
                         confidence: None,
                     };
                     
-                    let _ = artifact_create_heap(
+                    let _ = artifact_create_heap(ArtifactCreateParams {
                         artifact_id,
                         trajectory_id,
                         scope_id,
-                        artifact_type.clone(),
-                        &format!("artifact_{}", i),
-                        &content,
+                        artifact_type,
+                        name: &format!("artifact_{}", i),
+                        content: &content,
                         content_hash,
-                        None,
-                        &provenance,
-                        TTL::MediumTerm,
-                    );
+                        embedding: None,
+                        provenance: &provenance,
+                        ttl: TTL::MediumTerm,
+                    });
                     artifact_ids.push(artifact_id);
                 }
 
@@ -1067,18 +1084,18 @@ mod tests {
                         confidence: None,
                     };
                     
-                    let _ = artifact_create_heap(
+                    let _ = artifact_create_heap(ArtifactCreateParams {
                         artifact_id,
                         trajectory_id,
                         scope_id,
-                        ArtifactType::Document,
-                        &format!("artifact_{}", i),
-                        &content,
+                        artifact_type: ArtifactType::Document,
+                        name: &format!("artifact_{}", i),
+                        content: &content,
                         content_hash,
-                        None,
-                        &provenance,
-                        TTL::MediumTerm,
-                    );
+                        embedding: None,
+                        provenance: &provenance,
+                        ttl: TTL::MediumTerm,
+                    });
                     artifact_ids.push(artifact_id);
                 }
 
@@ -1177,18 +1194,18 @@ mod tests {
                     confidence: None,
                 };
                 
-                let _ = artifact_create_heap(
+                let _ = artifact_create_heap(ArtifactCreateParams {
                     artifact_id,
                     trajectory_id,
                     scope_id,
-                    ArtifactType::Document,
-                    "test_artifact",
-                    &original_content,
-                    original_hash,
-                    None,
-                    &provenance,
-                    TTL::MediumTerm,
-                );
+                    artifact_type: ArtifactType::Document,
+                    name: "test_artifact",
+                    content: &original_content,
+                    content_hash: original_hash,
+                    embedding: None,
+                    provenance: &provenance,
+                    ttl: TTL::MediumTerm,
+                });
 
                 // Update content
                 let new_hash = caliber_core::compute_content_hash(new_content.as_bytes());

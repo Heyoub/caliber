@@ -673,8 +673,7 @@ async fn execute_tool(
             let description = args["description"].as_str().map(|s| s.to_string());
             let agent_id = args["agent_id"]
                 .as_str()
-                .and_then(|s| Uuid::parse_str(s).ok())
-                .map(|u| u.into());
+                .and_then(|s| Uuid::parse_str(s).ok());
 
             let req = CreateTrajectoryRequest {
                 name: name.to_string(),
@@ -704,7 +703,7 @@ async fn execute_tool(
 
             let trajectory = state
                 .db
-                .trajectory_get(id.into())
+                .trajectory_get(id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -751,7 +750,6 @@ async fn execute_tool(
                 .iter()
                 .filter_map(|v| v.as_str())
                 .filter_map(|s| Uuid::parse_str(s).ok())
-                .map(|u| u.into())
                 .collect();
 
             let note_type = match note_type_str {
@@ -842,8 +840,8 @@ async fn execute_tool(
             };
 
             let req = CreateArtifactRequest {
-                trajectory_id: trajectory_id.into(),
-                scope_id: scope_id.into(),
+                trajectory_id,
+                scope_id,
                 artifact_type,
                 name: name.to_string(),
                 content: content.to_string(),
@@ -874,7 +872,7 @@ async fn execute_tool(
 
             let artifact = state
                 .db
-                .artifact_get(id.into())
+                .artifact_get(id)
                 .await?
                 .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
@@ -899,7 +897,7 @@ async fn execute_tool(
             let token_budget = args["token_budget"].as_i64().unwrap_or(4096) as i32;
 
             let req = CreateScopeRequest {
-                trajectory_id: trajectory_id.into(),
+                trajectory_id,
                 parent_scope_id: None,
                 name: name.to_string(),
                 purpose,
@@ -1052,7 +1050,7 @@ async fn read_resource_content(state: &McpState, uri: &str) -> ApiResult<Resourc
 
             let trajectory = state
                 .db
-                .trajectory_get(id.into())
+                .trajectory_get(id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 

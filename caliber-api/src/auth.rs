@@ -158,7 +158,6 @@ impl Claims {
         self.tenant_id
             .as_ref()
             .and_then(|s| Uuid::parse_str(s).ok())
-            .map(|u| u.into())
     }
 }
 
@@ -295,7 +294,6 @@ pub fn generate_jwt_token(
 /// Parses the X-Tenant-ID header as a UUID.
 pub fn extract_tenant_id(header_value: &str) -> ApiResult<EntityId> {
     Uuid::parse_str(header_value)
-        .map(|u| u.into())
         .map_err(|_| ApiError::invalid_format("X-Tenant-ID", "valid UUID"))
 }
 
@@ -318,7 +316,7 @@ pub fn authenticate_api_key(
         return Err(ApiError::missing_field("X-Tenant-ID"));
     } else {
         // Use a default tenant ID if not required (for single-tenant deployments)
-        Uuid::nil().into()
+        Uuid::nil()
     };
     
     // For API key auth, we use the key itself as a user identifier
@@ -354,7 +352,7 @@ pub fn authenticate_jwt(
         return Err(ApiError::missing_field("X-Tenant-ID or JWT tenant_id claim"));
     } else {
         // Use a default tenant ID if not required
-        Uuid::nil().into()
+        Uuid::nil()
     };
     
     Ok(AuthContext::new(
@@ -447,7 +445,7 @@ mod tests {
     fn test_jwt_generation_and_validation() {
         let config = test_config();
         let user_id = "user123".to_string();
-        let tenant_id = Some(Uuid::now_v7().into());
+        let tenant_id = Some(Uuid::now_v7());
         let roles = vec!["admin".to_string()];
         
         // Generate token
@@ -492,7 +490,7 @@ mod tests {
         let tenant_id_str = tenant_id.to_string();
         
         let extracted = extract_tenant_id(&tenant_id_str).expect("Failed to extract tenant ID");
-        let expected: EntityId = tenant_id.into();
+        let expected: EntityId = tenant_id;
         assert_eq!(extracted, expected);
         
         // Invalid UUID
@@ -511,7 +509,7 @@ mod tests {
         )
         .expect("Failed to authenticate");
         
-        let expected_tenant: EntityId = tenant_id.into();
+        let expected_tenant: EntityId = tenant_id;
         assert_eq!(auth_context.tenant_id, expected_tenant);
         assert_eq!(auth_context.auth_method, AuthMethod::ApiKey);
         assert!(auth_context.has_role("api_user"));
@@ -527,7 +525,7 @@ mod tests {
         let token = generate_jwt_token(
             &config,
             user_id.clone(),
-            Some(tenant_id.into()),
+            Some(tenant_id),
             roles.clone(),
         )
         .expect("Failed to generate token");
@@ -535,7 +533,7 @@ mod tests {
         let auth_context = authenticate_jwt(&config, &token, None)
             .expect("Failed to authenticate");
         
-        let expected_tenant: EntityId = tenant_id.into();
+        let expected_tenant: EntityId = tenant_id;
         assert_eq!(auth_context.user_id, user_id);
         assert_eq!(auth_context.tenant_id, expected_tenant);
         assert_eq!(auth_context.roles, roles);
@@ -564,7 +562,7 @@ mod tests {
         let user_id = "user123".to_string();
         let tenant_id = Uuid::now_v7();
         
-        let token = generate_jwt_token(&config, user_id.clone(), Some(tenant_id.into()), vec![])
+        let token = generate_jwt_token(&config, user_id.clone(), Some(tenant_id), vec![])
             .expect("Failed to generate token");
         
         let auth_header = format!("Bearer {}", token);
@@ -593,17 +591,17 @@ mod tests {
         let tenant_id = Uuid::now_v7();
         let auth_context = AuthContext::new(
             "user123".to_string(),
-            tenant_id.into(),
+            tenant_id,
             vec![],
             AuthMethod::ApiKey,
         );
         
         // Same tenant - should succeed
-        assert!(check_tenant_access(&auth_context, tenant_id.into()).is_ok());
+        assert!(check_tenant_access(&auth_context, tenant_id).is_ok());
         
         // Different tenant - should fail
         let other_tenant_id = Uuid::now_v7();
-        let result = check_tenant_access(&auth_context, other_tenant_id.into());
+        let result = check_tenant_access(&auth_context, other_tenant_id);
         assert!(result.is_err());
         
         if let Err(e) = result {
@@ -615,7 +613,7 @@ mod tests {
     fn test_auth_context_role_checks() {
         let auth_context = AuthContext::new(
             "user123".to_string(),
-            Uuid::now_v7().into(),
+            Uuid::now_v7(),
             vec!["admin".to_string(), "editor".to_string()],
             AuthMethod::Jwt,
         );
@@ -637,12 +635,12 @@ mod tests {
         let tenant_id = Uuid::now_v7();
         let expiration_secs = 3600;
         
-        let claims = Claims::new(user_id.clone(), Some(tenant_id.into()), expiration_secs)
+        let claims = Claims::new(user_id.clone(), Some(tenant_id), expiration_secs)
             .with_role("admin".to_string())
             .with_roles(vec!["editor".to_string(), "viewer".to_string()]);
         
         assert_eq!(claims.sub, user_id);
-        assert_eq!(claims.tenant_id(), Some(tenant_id.into()));
+        assert_eq!(claims.tenant_id(), Some(tenant_id));
         assert_eq!(claims.roles.len(), 3);
         assert!(claims.roles.contains(&"admin".to_string()));
         assert!(!claims.is_expired());

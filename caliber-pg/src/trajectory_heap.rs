@@ -126,10 +126,10 @@ pub fn trajectory_create_heap(
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Insert into heap
-    let _tid = insert_tuple(&rel, tuple)?;
+    let _tid = unsafe { insert_tuple(&rel, tuple)? };
     
     // Update all indexes via CatalogIndexInsert
-    update_indexes_for_insert(&rel, tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
     
     Ok(trajectory_id)
 }
@@ -171,18 +171,18 @@ pub fn trajectory_get_heap(id: EntityId) -> CaliberResult<Option<Trajectory>> {
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let trajectory = tuple_to_trajectory(tuple, tuple_desc)?;
+        let trajectory = unsafe { tuple_to_trajectory(tuple, tuple_desc) }?;
         Ok(Some(trajectory))
     } else {
         // Not found - return None per requirement 1.7
@@ -210,17 +210,30 @@ pub fn trajectory_get_heap(id: EntityId) -> CaliberResult<Option<Trajectory>> {
 ///
 /// # Requirements
 /// - 1.3: Uses simple_heap_update instead of SPI UPDATE
-pub fn trajectory_update_heap(
-    id: EntityId,
-    name: Option<&str>,
-    description: Option<Option<&str>>,
-    status: Option<TrajectoryStatus>,
-    parent_trajectory_id: Option<Option<EntityId>>,
-    root_trajectory_id: Option<Option<EntityId>>,
-    agent_id: Option<Option<EntityId>>,
-    outcome: Option<Option<&TrajectoryOutcome>>,
-    metadata: Option<Option<&serde_json::Value>>,
-) -> CaliberResult<bool> {
+pub struct TrajectoryUpdateHeapParams<'a> {
+    pub id: EntityId,
+    pub name: Option<&'a str>,
+    pub description: Option<Option<&'a str>>,
+    pub status: Option<TrajectoryStatus>,
+    pub parent_trajectory_id: Option<Option<EntityId>>,
+    pub root_trajectory_id: Option<Option<EntityId>>,
+    pub agent_id: Option<Option<EntityId>>,
+    pub outcome: Option<Option<&'a TrajectoryOutcome>>,
+    pub metadata: Option<Option<&'a serde_json::Value>>,
+}
+
+pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> CaliberResult<bool> {
+    let TrajectoryUpdateHeapParams {
+        id,
+        name,
+        description,
+        status,
+        parent_trajectory_id,
+        root_trajectory_id,
+        agent_id,
+        outcome,
+        metadata,
+    } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(trajectory::TABLE_NAME, LockMode::RowExclusive)?;
     
@@ -241,13 +254,13 @@ pub fn trajectory_update_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     // Find the existing tuple
     let old_tuple = match scanner.next() {
@@ -265,7 +278,7 @@ pub fn trajectory_update_heap(
     let tuple_desc = rel.tuple_desc();
     
     // Extract current values and nulls
-    let (mut values, mut nulls) = extract_values_and_nulls(old_tuple, tuple_desc)?;
+    let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
     
     // Apply updates
     if let Some(new_name) = name {
@@ -371,10 +384,10 @@ pub fn trajectory_update_heap(
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
     
     // Update in place
-    update_tuple(&rel, &tid, new_tuple)?;
+    unsafe { update_tuple(&rel, &tid, new_tuple)? };
     
     // Update indexes (status index may have changed)
-    update_indexes_for_insert(&rel, new_tuple, &values, &nulls)?;
+    unsafe { update_indexes_for_insert(&rel, new_tuple, &values, &nulls)? };
     
     Ok(true)
 }
@@ -398,17 +411,17 @@ pub fn trajectory_set_status_heap(
     id: EntityId,
     status: TrajectoryStatus,
 ) -> CaliberResult<bool> {
-    trajectory_update_heap(
+    trajectory_update_heap(TrajectoryUpdateHeapParams {
         id,
-        None,           // name
-        None,           // description
-        Some(status),   // status
-        None,           // parent_trajectory_id
-        None,           // root_trajectory_id
-        None,           // agent_id
-        None,           // outcome
-        None,           // metadata
-    )
+        name: None,
+        description: None,
+        status: Some(status),
+        parent_trajectory_id: None,
+        root_trajectory_id: None,
+        agent_id: None,
+        outcome: None,
+        metadata: None,
+    })
 }
 
 /// List trajectories by status using direct heap operations.
@@ -445,20 +458,20 @@ pub fn trajectory_list_by_status_heap(
     );
     
     // Create index scanner
-    let mut scanner = IndexScanner::new(
+    let mut scanner = unsafe { IndexScanner::new(
         &rel,
         &index_rel,
         snapshot,
         1,
         &mut scan_key,
-    );
+    ) };
     
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
     
     // Collect all matching tuples
-    while let Some(tuple) = scanner.next() {
-        let trajectory = tuple_to_trajectory(tuple, tuple_desc)?;
+    for tuple in &mut scanner {
+        let trajectory = unsafe { tuple_to_trajectory(tuple, tuple_desc) }?;
         results.push(trajectory);
     }
     
@@ -544,7 +557,7 @@ fn str_to_status(s: &str) -> TrajectoryStatus {
 }
 
 /// Convert a heap tuple to a Trajectory struct.
-fn tuple_to_trajectory(
+unsafe fn tuple_to_trajectory(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<Trajectory> {
@@ -880,17 +893,17 @@ mod tests {
                 prop_assert!(create_result.is_ok());
 
                 // Update multiple fields
-                let update_result = trajectory_update_heap(
-                    trajectory_id,
-                    Some(&new_name),
-                    Some(new_desc.as_deref()),
-                    Some(new_status),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
+                let update_result = trajectory_update_heap(TrajectoryUpdateHeapParams {
+                    id: trajectory_id,
+                    name: Some(&new_name),
+                    description: Some(new_desc.as_deref()),
+                    status: Some(new_status),
+                    parent_trajectory_id: None,
+                    root_trajectory_id: None,
+                    agent_id: None,
+                    outcome: None,
+                    metadata: None,
+                });
                 prop_assert!(update_result.is_ok());
                 prop_assert!(update_result.unwrap());
 
