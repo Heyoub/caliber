@@ -16,6 +16,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mutation testing (planned)
 - Test coverage reporting (planned)
 
+## [0.3.2] - 2026-01-17
+
+### Fixed - SDK Codegen Pipeline & Lint Cleanup
+
+- All Biome lint warnings resolved (0 errors, 0 warnings)
+- `.gitignore` path for `caliber-sdk/src/generated/` (was incorrect)
+- Non-null assertion in `websocket.ts` (single lookup pattern)
+- Cognitive complexity in `context.ts` formatters (extracted 10 helpers)
+
+### Changed
+
+- Biome config excludes `**/*.astro` and `**/*.svelte` (false positives)
+- Disabled import sorting in Biome (not needed)
+- Removed format check from `bun check` (types + lint only)
+- Refactored `formatMarkdown` and `formatXml` (complexity 21/23 → ~5)
+
+### Added
+
+- `is:inline` directive to Astro scripts (explicit intent)
+- `tsup.config.ts` for SDK bundling configuration
+- `.gitignore` for `examples/convex-integration/`
+- Type helpers for Convex → SDK type bridging
+- `.claude/` to gitignore (user-specific settings)
+
+### Repository Hygiene
+
+- Tracked `*.proptest-regressions` files (valuable test seeds)
+- Tracked `caliber-sdk/tsup.config.ts` (build config)
+- Removed `.claude/settings.local.json` from tracking
+
 ## [0.3.1] - 2026-01-17
 
 ### Added - Testing Infrastructure

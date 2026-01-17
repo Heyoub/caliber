@@ -10,6 +10,9 @@ Cargo.lock
 # IDEs
 .vscode/
 .idea/
+
+# Claude Code (user-specific settings)
+.claude/
 *.swp
 *.swo
 *~
