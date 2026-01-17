@@ -207,10 +207,10 @@ use caliber_pcp::ConflictResolution;
             // === Tenant Types ===
             TenantInfo, TenantStatus, ListTenantsResponse,
 
-            // === Route-local Types ===
-            agent::ListAgentsRequest, agent::ListAgentsResponse,
-            lock::ListLocksResponse,
-            message::ListMessagesRequest, message::ListMessagesResponse,
+            // === List Types (from types.rs, not route modules) ===
+            ListAgentsRequest, ListAgentsResponse,
+            ListLocksResponse,
+            ListMessagesRequest, ListMessagesResponse,
             delegation::AcceptDelegationRequest, delegation::RejectDelegationRequest,
             delegation::CompleteDelegationRequest,
             handoff::AcceptHandoffRequest,

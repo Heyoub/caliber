@@ -5,7 +5,7 @@
 
 use axum::{
     body::Bytes,
-    extract::{State, Query},
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -18,9 +18,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
+    middleware::AuthExtractor,
 };
 
 // ============================================================================
@@ -190,7 +190,7 @@ impl BillingState {
 )]
 pub async fn get_billing_status(
     State(state): State<Arc<BillingState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Get billing status from database
     // For now, return mock data - in production, query the database
@@ -229,7 +229,7 @@ pub async fn get_billing_status(
 )]
 pub async fn create_checkout(
     State(state): State<Arc<BillingState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateCheckoutRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Check if LemonSqueezy is configured
@@ -334,8 +334,8 @@ pub async fn create_checkout(
     )
 )]
 pub async fn get_portal_url(
+    AuthExtractor(auth): AuthExtractor,
     State(state): State<Arc<BillingState>>,
-    auth: AuthContext,
 ) -> ApiResult<impl IntoResponse> {
     // Get customer ID for tenant from database
     let customer_id = state.db.billing_get_customer_id(auth.tenant_id).await

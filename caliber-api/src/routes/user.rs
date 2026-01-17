@@ -6,7 +6,6 @@
 
 use axum::{
     extract::State,
-    http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -16,9 +15,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
+    middleware::AuthExtractor,
 };
 
 // ============================================================================
@@ -95,7 +94,7 @@ impl UserState {
 )]
 pub async fn get_current_user(
     State(state): State<Arc<UserState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Get user profile from database or auth context
     // For now, we derive from the auth context and check for API key in DB
@@ -132,7 +131,7 @@ pub async fn get_current_user(
 )]
 pub async fn regenerate_api_key(
     State(state): State<Arc<UserState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Generate a new API key
     let new_key = generate_api_key();
