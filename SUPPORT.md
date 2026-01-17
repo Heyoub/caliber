@@ -45,8 +45,8 @@ psql --version
 
 ### Community Support
 
-- **GitHub Issues:** [Open an issue](https://github.com/your-org/caliber/issues/new)
-- **GitHub Discussions:** [Ask a question](https://github.com/your-org/caliber/discussions)
+- **GitHub Issues:** [Open an issue](https://github.com/caliber-run/caliber/issues/new)
+- **GitHub Discussions:** [Ask a question](https://github.com/caliber-run/caliber/discussions)
 - **Documentation:** Check the `docs/` directory
 
 ### Bug Reports

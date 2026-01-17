@@ -5,7 +5,7 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.2.1  
+**Version:** 0.3.2  
 **Architecture:** Multi-crate ECS (Entity-Component-System)  
 **Language:** Rust (pgrx)
 
@@ -23,7 +23,7 @@ A Postgres-native memory framework for AI agents, built as a multi-crate Rust wo
 
 ```bash
 # Clone the repository (replace with your repo URL)
-git clone https://github.com/your-org/caliber.git
+git clone https://github.com/caliber-run/caliber.git
 cd caliber
 
 # Build all crates (excluding pgrx extension)
