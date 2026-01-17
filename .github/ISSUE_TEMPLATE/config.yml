@@ -1,13 +1,13 @@
 blank_issues_enabled: false
 contact_links:
   - name: 📚 Documentation
-    url: https://github.com/your-org/caliber/tree/main/docs
+    url: https://github.com/caliber-run/caliber/tree/main/docs
     about: Check the comprehensive documentation in the docs/ directory
   - name: 💬 GitHub Discussions
-    url: https://github.com/your-org/caliber/discussions
+    url: https://github.com/caliber-run/caliber/discussions
     about: Ask questions and discuss ideas with the community
   - name: 🔒 Security Vulnerability
-    url: https://github.com/your-org/caliber/security/advisories/new
+    url: https://github.com/caliber-run/caliber/security/advisories/new
     about: Report security vulnerabilities privately (DO NOT open public issues)
   - name: 🌐 Website
     url: https://heyoub.dev

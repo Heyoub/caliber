@@ -497,7 +497,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/your-org/caliber"
+repository = "https://github.com/caliber-run/caliber"
 
 [workspace.dependencies]
 # Core dependencies

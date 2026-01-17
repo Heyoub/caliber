@@ -18,7 +18,7 @@ Be respectful, constructive, and professional. We're all here to build cool shit
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/caliber.git
+git clone https://github.com/caliber-run/caliber.git
 cd caliber
 
 # Build everything (excluding pgrx extension)
