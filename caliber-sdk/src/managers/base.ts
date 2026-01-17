@@ -4,7 +4,7 @@
  * Provides common functionality for all resource managers.
  */
 
-import { HttpClient, RequestOptions } from '../http';
+import type { HttpClient } from '../http';
 
 /**
  * Pagination parameters
@@ -37,7 +37,7 @@ export abstract class BaseManager {
   /**
    * Build query parameters, filtering out undefined values
    */
-  protected buildParams(params: Record<string, unknown>): Record<string, unknown> {
+  protected buildParams<T extends object>(params: T): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null) {

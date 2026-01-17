@@ -52,7 +52,7 @@ describe.skipIf(!SDK_AVAILABLE)('smoke: SDK imports', () => {
 describe('smoke: Environment', () => {
   it('has required Node.js version', () => {
     const version = process.version;
-    const major = parseInt(version.slice(1).split('.')[0]);
+    const major = Number.parseInt(version.slice(1).split('.')[0], 10);
     expect(major).toBeGreaterThanOrEqual(20);
   });
 
@@ -155,7 +155,7 @@ describe('smoke: Core operations (mocked)', () => {
       return { ...mockResponses.trajectory, id };
     }
 
-    async createTrajectory(name: string): Promise<{ id: string }> {
+    async createTrajectory(_name: string): Promise<{ id: string }> {
       return { id: `traj-${Date.now()}` };
     }
   }

@@ -1,14 +1,15 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
   "organizeImports": {
-    "enabled": true
+    "enabled": false
   },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
       "complexity": {
-        "noExcessiveCognitiveComplexity": "warn"
+        "noExcessiveCognitiveComplexity": "warn",
+        "noForEach": "off"
       },
       "correctness": {
         "noUnusedImports": "error",
@@ -53,7 +54,22 @@
       ".astro",
       "coverage",
       "*.min.js",
-      "generated"
+      "**/generated",
+      "**/*.astro",
+      "**/*.svelte",
+      "**/bench/**"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "include": ["**/tests/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsoleLog": "off"
+          }
+        }
+      }
+    }
+  ]
 }

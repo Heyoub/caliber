@@ -201,10 +201,12 @@ export class CaliberWebSocket {
    * Subscribe to a specific event type
    */
   on<T extends WsEvent = WsEvent>(eventType: WsEventType, handler: EventHandler<T>): () => void {
-    if (!this.eventHandlers.has(eventType)) {
-      this.eventHandlers.set(eventType, new Set());
+    let handlers = this.eventHandlers.get(eventType);
+    if (!handlers) {
+      handlers = new Set();
+      this.eventHandlers.set(eventType, handlers);
     }
-    this.eventHandlers.get(eventType)!.add(handler as EventHandler);
+    handlers.add(handler as EventHandler);
 
     // Return unsubscribe function
     return () => {
@@ -260,7 +262,7 @@ export class CaliberWebSocket {
         // The WebSocket API in browsers doesn't support custom headers
         // So we pass auth via query params (API must support this)
         this.socket = new WebSocket(wsUrl);
-      } catch (error) {
+      } catch {
         this.setState('disconnected');
         reject(new CaliberError('Failed to create WebSocket connection', 'CONNECTION_ERROR'));
         return;
@@ -385,7 +387,7 @@ export class CaliberWebSocket {
 
     // Exponential backoff with jitter
     const delay = Math.min(
-      this.config.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1) + Math.random() * 1000,
+      this.config.reconnectDelay * 2 ** (this.reconnectAttempts - 1) + Math.random() * 1000,
       this.config.maxReconnectDelay
     );
 

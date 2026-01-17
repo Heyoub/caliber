@@ -6,7 +6,7 @@
  * Run with: bun test tests/chaos/
  */
 
-import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 
 // Chaos utilities
 class ChaosMonkey {

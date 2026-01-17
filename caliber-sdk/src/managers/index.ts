@@ -126,6 +126,8 @@ export type {
 
   // DSL types
   ValidateDslResponse,
-  ParseDslResponse,
   ParseError,
 } from '../types';
+
+// ParseDslResponse is a local alias in dsl.ts (same as ValidateDslResponse)
+export type { ParseDslResponse } from './dsl';

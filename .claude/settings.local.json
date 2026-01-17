@@ -27,7 +27,12 @@
       "Bash(bun run test:fuzz:*)",
       "Bash(bun run test:chaos:*)",
       "Bash(bun run:*)",
-      "Bash(openapi-generator-cli version:*)"
+      "Bash(openapi-generator-cli version:*)",
+      "Bash(fi)",
+      "Bash(bunx biome lint:*)",
+      "Bash(bun check:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git ls-files:*)"
     ],
     "deny": [
       "Bash(cargo:*)"
