@@ -5,7 +5,8 @@ use crate::events::TuiEvent;
 use caliber_api::error::ApiError as ApiServerError;
 use caliber_api::events::WsEvent;
 use caliber_api::types::{
-    AgentResponse, ListArtifactsRequest, ListArtifactsResponse, ListNotesRequest, ListNotesResponse,
+    AgentResponse, ListAgentsRequest, ListAgentsResponse, ListArtifactsRequest, ListArtifactsResponse,
+    ListLocksResponse, ListMessagesRequest, ListMessagesResponse, ListNotesRequest, ListNotesResponse,
     ListTenantsResponse, ListTrajectoriesRequest, ListTrajectoriesResponse, LockResponse,
     MessageResponse, ScopeResponse, TurnResponse,
 };
@@ -147,7 +148,7 @@ impl RestClient {
     pub async fn list_agents(
         &self,
         tenant_id: EntityId,
-        params: &ListAgentsQuery,
+        params: &ListAgentsRequest,
     ) -> Result<ListAgentsResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/agents", Some(params))
             .await
@@ -161,7 +162,7 @@ impl RestClient {
     pub async fn list_messages(
         &self,
         tenant_id: EntityId,
-        params: &ListMessagesQuery,
+        params: &ListMessagesRequest,
     ) -> Result<ListMessagesResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/messages", Some(params))
             .await
@@ -221,50 +222,10 @@ impl RestClient {
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ListAgentsResponse {
-    pub agents: Vec<AgentResponse>,
-    pub total: i32,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ListLocksResponse {
-    pub locks: Vec<LockResponse>,
-    pub total: i32,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ListMessagesResponse {
-    pub messages: Vec<MessageResponse>,
-    pub total: i32,
-}
-
 #[derive(Clone)]
 pub struct GrpcClient {
     endpoint: String,
     auth: AuthHeaders,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ListAgentsQuery {
-    pub agent_type: Option<String>,
-    pub status: Option<String>,
-    pub trajectory_id: Option<EntityId>,
-    pub active_only: Option<bool>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ListMessagesQuery {
-    pub message_type: Option<String>,
-    pub from_agent_id: Option<EntityId>,
-    pub to_agent_id: Option<EntityId>,
-    pub to_agent_type: Option<String>,
-    pub trajectory_id: Option<EntityId>,
-    pub priority: Option<String>,
-    pub undelivered_only: Option<bool>,
-    pub unacknowledged_only: Option<bool>,
-    pub limit: Option<i32>,
-    pub offset: Option<i32>,
 }
 
 impl GrpcClient {

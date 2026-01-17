@@ -63,14 +63,18 @@ validate_spec() {
 generate_typescript() {
     log_info "Generating TypeScript SDK..."
 
-    local out_dir="$SDK_DIR/typescript"
-    rm -rf "$out_dir"
+    local sdk_dir="$ROOT_DIR/caliber-sdk"
+    local gen_dir="$sdk_dir/generated"
+
+    # Clean generated directory but preserve src/ if it exists
+    rm -rf "$gen_dir"
+    mkdir -p "$sdk_dir"
 
     openapi-generator-cli generate \
         -i "$SPEC_FILE" \
         -g typescript-axios \
-        -o "$out_dir" \
-        --additional-properties=npmName=@caliber/sdk \
+        -o "$gen_dir" \
+        --additional-properties=npmName=@caliber-run/sdk \
         --additional-properties=npmVersion="$SDK_VERSION" \
         --additional-properties=supportsES6=true \
         --additional-properties=withSeparateModelsAndApi=true \
@@ -79,13 +83,91 @@ generate_typescript() {
         --additional-properties=withInterfaces=true \
         --global-property=skipFormModel=true
 
-    # Add package.json enhancements
-    cat > "$out_dir/tsconfig.json" << 'EOF'
+    # Create package.json if it doesn't exist (preserve custom changes)
+    if [[ ! -f "$sdk_dir/package.json" ]]; then
+        cat > "$sdk_dir/package.json" << EOF
+{
+  "name": "@caliber-run/sdk",
+  "version": "${SDK_VERSION}",
+  "description": "TypeScript SDK for CALIBER memory framework",
+  "author": "Caliber",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caliber-run/caliber.git",
+    "directory": "caliber-sdk"
+  },
+  "homepage": "https://caliber.run",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./generated": {
+      "import": "./dist/generated/index.js",
+      "require": "./dist/generated/index.js",
+      "types": "./dist/generated/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "caliber",
+    "memory",
+    "ai",
+    "agents",
+    "llm",
+    "context",
+    "sdk",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
+EOF
+    fi
+
+    # Create tsconfig.json
+    cat > "$sdk_dir/tsconfig.json" << 'EOF'
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -95,14 +177,33 @@ generate_typescript() {
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
-  "include": ["*.ts", "api/**/*.ts", "models/**/*.ts"],
+  "include": ["src/**/*.ts", "generated/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
 EOF
 
-    log_success "TypeScript SDK generated at $out_dir"
+    # Create tsup.config.ts
+    cat > "$sdk_dir/tsup.config.ts" << 'EOF'
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['cjs', 'esm'],
+  dts: true,
+  splitting: false,
+  sourcemap: true,
+  clean: true,
+  treeshake: true,
+  minify: false,
+});
+EOF
+
+    log_success "TypeScript SDK generated at $sdk_dir"
+    log_info "Generated API code is in $gen_dir"
+    log_info "Ergonomic wrapper should be in $sdk_dir/src"
 }
 
 # Generate Python SDK
@@ -221,7 +322,7 @@ defmodule Caliber.MixProject do
   defp package do
     [
       maintainers: ["CALIBER Team"],
-      licenses: ["MIT"],
+      licenses: ["AGPL-3.0-or-later"],
       links: %{
         "GitHub" => @source_url,
         "Docs" => "https://docs.caliber.run"
@@ -288,7 +389,7 @@ config :caliber,
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+AGPL-3.0-or-later - see [LICENSE](LICENSE) for details.
 EOF
 
     log_success "Elixir SDK generated at $out_dir"
@@ -316,13 +417,13 @@ generate_all() {
     log_success "All SDKs generated successfully!"
     echo ""
     echo "Generated SDKs:"
-    echo "  - TypeScript: $SDK_DIR/typescript"
+    echo "  - TypeScript: $ROOT_DIR/caliber-sdk (@caliber-run/sdk)"
     echo "  - Python:     $SDK_DIR/python"
     echo "  - Go:         $SDK_DIR/go"
     echo "  - Elixir:     $SDK_DIR/elixir"
     echo ""
     echo "Next steps:"
-    echo "  TypeScript: cd sdks/typescript && npm install && npm run build"
+    echo "  TypeScript: cd caliber-sdk && npm install && npm run build"
     echo "  Python:     cd sdks/python && pip install -e ."
     echo "  Go:         cd sdks/go && go mod tidy"
     echo "  Elixir:     cd sdks/elixir && mix deps.get && mix compile"

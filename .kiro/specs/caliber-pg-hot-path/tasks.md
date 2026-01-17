@@ -4,6 +4,8 @@
 
 This plan migrates `caliber-pg` from SPI-based SQL operations to direct heap operations using pgrx. The implementation follows a bottom-up approach: first building the core heap operation helpers, then migrating each entity type with property tests alongside, and finally updating the pg_extern functions.
 
+**Status:** ✅ COMPLETE - All entity operations use direct heap access, bypassing SQL parsing in hot path.
+
 **Key Principles (from steering):**
 - NO STUBS, NO TODOs - Complete code only
 - NO SQL IN HOT PATH - Direct pgrx storage access
@@ -11,9 +13,11 @@ This plan migrates `caliber-pg` from SPI-based SQL operations to direct heap ope
 - Reference `docs/DEPENDENCY_GRAPH.md` for type definitions
 
 **Current State:**
-- `heap_ops.rs` and `index_ops.rs` exist but are NOT wired into lib.rs
-- All pg_extern functions currently use SPI-based SQL
-- `tuple_extract.rs` is incomplete (only has doc header)
+- ✅ All heap operation modules implemented and wired into lib.rs
+- ✅ All 11 entity types migrated to direct heap operations
+- ✅ All pg_extern functions use heap implementations
+- ✅ Property tests validate correctness
+- ✅ Zero SPI usage in hot-path operations
 
 ## Tasks
 

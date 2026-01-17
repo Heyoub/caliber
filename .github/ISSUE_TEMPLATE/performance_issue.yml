@@ -1,0 +1,231 @@
+name: 🚀 Performance Issue
+description: Report a performance problem or optimization opportunity
+title: "[Performance]: "
+labels: ["performance", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a performance issue! CALIBER is designed for high performance with direct heap operations. Help us identify bottlenecks.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which component has the performance issue?
+      options:
+        - caliber-pg (Heap operations, indexes)
+        - caliber-api (REST/gRPC/WebSocket)
+        - caliber-context (Context assembly, token counting)
+        - caliber-llm (Embedding generation, vector search)
+        - caliber-agents (Lock acquisition, message passing)
+        - caliber-pcp (Validation, checkpoints)
+        - caliber-dsl (DSL parsing)
+        - caliber-storage (Storage operations)
+        - Multiple components
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operation_type
+    attributes:
+      label: Operation Type
+      description: What type of operation is slow?
+      options:
+        - Entity creation (trajectory, scope, artifact, note, turn)
+        - Entity retrieval (get by ID, query, list)
+        - Entity update (status change, field update)
+        - Vector search (embedding similarity)
+        - Lock operations (acquire, release, check)
+        - Message operations (send, receive, acknowledge)
+        - Context assembly (token budget, section ordering)
+        - DSL parsing (lexer, parser, validation)
+        - API request handling (REST, gRPC, WebSocket)
+        - Database query (index scan, heap scan)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Performance Issue Description
+      description: Describe the performance problem you're experiencing
+      placeholder: |
+        Example: Vector search on 10,000 artifacts takes 5+ seconds, making real-time context assembly impractical. Expected sub-second performance based on HNSW index.
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Performance Measurements
+      description: Provide actual measurements (timing, throughput, resource usage)
+      placeholder: |
+        Measured with `EXPLAIN ANALYZE`:
+        
+        ```sql
+        EXPLAIN ANALYZE SELECT * FROM caliber_artifact 
+        WHERE embedding <-> '[0.1, 0.2, ...]'::vector < 0.5
+        ORDER BY embedding <-> '[0.1, 0.2, ...]'::vector
+        LIMIT 10;
+        ```
+        
+        Results:
+        - Planning Time: 0.5ms
+        - Execution Time: 5234ms
+        - Rows Scanned: 10,000
+        - Index Used: No (sequential scan)
+        
+        System metrics:
+        - CPU: 80% on single core
+        - Memory: 2GB allocated
+        - Disk I/O: 500 IOPS
+      render: sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_performance
+    attributes:
+      label: Expected Performance
+      description: What performance did you expect? Include benchmarks or comparisons if available.
+      placeholder: |
+        Expected: <100ms for vector search with HNSW index
+        Basis: pgvector documentation claims <10ms for 1M vectors with proper indexing
+    validations:
+      required: true
+
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload Characteristics
+      description: Describe your workload (data size, query patterns, concurrency)
+      value: |
+        - **Data Size:** (e.g., 10,000 artifacts, 1,000 notes)
+        - **Query Frequency:** (e.g., 100 queries/second)
+        - **Concurrency:** (e.g., 10 concurrent agents)
+        - **Embedding Dimensions:** (e.g., 1536 for OpenAI ada-002)
+        - **Token Budget:** (e.g., 8000 tokens per context)
+        - **Scope Size:** (e.g., 50 artifacts per scope)
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Hardware and software environment
+      value: |
+        **Hardware:**
+        - CPU: (e.g., Intel i7-12700K, 12 cores)
+        - RAM: (e.g., 32GB DDR4)
+        - Storage: (e.g., NVMe SSD, 3000MB/s read)
+        
+        **Software:**
+        - CALIBER Version: (e.g., 0.2.1)
+        - PostgreSQL Version: (e.g., 16.1)
+        - pgvector Version: (e.g., 0.5.1)
+        - Operating System: (e.g., Ubuntu 22.04)
+        - Rust Version: (e.g., 1.75.0)
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: database_config
+    attributes:
+      label: Database Configuration
+      description: Relevant PostgreSQL configuration settings
+      placeholder: |
+        ```
+        shared_buffers = 8GB
+        effective_cache_size = 24GB
+        work_mem = 256MB
+        maintenance_work_mem = 2GB
+        max_connections = 100
+        ```
+      render: text
+
+  - type: textarea
+    id: profiling_data
+    attributes:
+      label: Profiling Data (if available)
+      description: Include profiling output, flame graphs, or query plans
+      placeholder: |
+        Attach:
+        - EXPLAIN ANALYZE output
+        - Flame graphs (perf, cargo-flamegraph)
+        - pg_stat_statements data
+        - OpenTelemetry traces
+      render: text
+
+  - type: dropdown
+    id: hot_path
+    attributes:
+      label: Hot Path Operation?
+      description: Is this a hot-path operation (frequent, performance-critical)?
+      options:
+        - "Yes - Called frequently (>100/sec)"
+        - "Yes - Called moderately (10-100/sec)"
+        - "No - Called infrequently (<10/sec)"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: optimization_ideas
+    attributes:
+      label: Optimization Ideas
+      description: Do you have ideas for how to optimize this? (Optional)
+      placeholder: |
+        Potential optimizations:
+        1. Use HNSW index instead of IVFFlat for vector search
+        2. Batch entity creation to reduce heap operation overhead
+        3. Cache frequently accessed artifacts in Redis
+        4. Use connection pooling to reduce connection overhead
+        5. Parallelize context assembly across multiple cores
+
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Performance Regression?
+      description: Was this operation faster in a previous version?
+      options:
+        - "Yes - Regression from previous version"
+        - "No - Always been slow"
+        - "Unsure - First time using this feature"
+    validations:
+      required: true
+
+  - type: textarea
+    id: workarounds
+    attributes:
+      label: Workarounds Tried
+      description: What have you tried to improve performance?
+      placeholder: |
+        Tried:
+        1. Increased shared_buffers to 8GB - no improvement
+        2. Added index on artifact_type - 10% improvement
+        3. Reduced token_budget to 4000 - 20% improvement but insufficient
+        4. Switched from REST to gRPC - no significant change
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm you've done the following
+      options:
+        - label: I've measured actual performance (not just perceived slowness)
+          required: true
+        - label: I've included specific numbers (timing, throughput, etc.)
+          required: true
+        - label: I've described my workload characteristics
+          required: true
+        - label: I've checked PostgreSQL logs for slow queries
+          required: false
+        - label: I've verified indexes are being used (EXPLAIN ANALYZE)
+          required: false
+        - label: I've profiled the code to identify bottlenecks
+          required: false

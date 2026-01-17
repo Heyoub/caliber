@@ -1,0 +1,172 @@
+name: 🐛 Bug Report
+description: Report a bug in CALIBER
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us diagnose and fix the issue.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which CALIBER component is affected?
+      options:
+        - caliber-core (Entity types, config)
+        - caliber-storage (Storage trait, mock)
+        - caliber-context (Context assembly)
+        - caliber-pcp (Validation, checkpoints)
+        - caliber-llm (VAL, embeddings)
+        - caliber-agents (Locks, messages, delegation)
+        - caliber-dsl (DSL parser)
+        - caliber-pg (PostgreSQL extension)
+        - caliber-api (REST/gRPC/WebSocket API)
+        - caliber-tui (Terminal UI)
+        - Build system / CI/CD
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: error_type
+    attributes:
+      label: Error Type
+      description: What type of error are you seeing?
+      options:
+        - StorageError (NotFound, InsertFailed, UpdateFailed, etc.)
+        - ValidationError (RequiredFieldMissing, InvalidValue, etc.)
+        - AgentError (NotRegistered, LockTimeout, MessageDeliveryFailed, etc.)
+        - ConfigError (MissingRequired, InvalidValue)
+        - VectorError (DimensionMismatch, InvalidDimension)
+        - LlmError (ProviderNotConfigured, EmbeddingFailed, etc.)
+        - ParseError (DSL parsing)
+        - Build/Compilation error
+        - Runtime panic
+        - Performance issue
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: |
+        Example: When calling caliber_trajectory_create with a null agent_id, the function panics instead of returning an error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the behavior.
+      placeholder: |
+        1. Install CALIBER extension: CREATE EXTENSION caliber;
+        2. Initialize: SELECT caliber_init();
+        3. Call: SELECT caliber_trajectory_create('test', NULL, NULL);
+        4. Observe panic in PostgreSQL logs
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Function should return a valid trajectory ID or a CaliberError
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include error messages, stack traces, or logs.
+      placeholder: |
+        thread 'main' panicked at 'called `Option::unwrap()` on a `None` value'
+        stack backtrace:
+        ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide your environment details
+      value: |
+        - **CALIBER Version:** (e.g., 0.2.1)
+        - **Rust Version:** (output of `rustc --version`)
+        - **PostgreSQL Version:** (output of `psql --version`, if using caliber-pg)
+        - **Operating System:** (e.g., Ubuntu 22.04, macOS 14, Windows 11 WSL2)
+        - **Installation Method:** (cargo build, Docker, Helm, etc.)
+      render: markdown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: verification_gates
+    attributes:
+      label: Verification Gates Status
+      description: Did you run the verification gates before reporting?
+      options:
+        - "Yes - All gates passed (build, clippy, tests)"
+        - "Yes - Some gates failed"
+        - "No - Haven't run verification gates"
+        - "Not applicable (runtime issue)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration (if applicable)
+      description: If the bug involves configuration, please share your CaliberConfig or DSL
+      placeholder: |
+        ```rust
+        CaliberConfig {
+            token_budget: 8000,
+            checkpoint_retention: 5,
+            // ... other fields
+        }
+        ```
+      render: rust
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: |
+        Add any other context about the problem here. This could include:
+        - Relevant code snippets
+        - Database schema
+        - Network configuration
+        - Related issues
+        - Workarounds you've tried
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm you've done the following
+      options:
+        - label: I've searched existing issues to avoid duplicates
+          required: true
+        - label: I've included all relevant error messages and logs
+          required: true
+        - label: I've provided steps to reproduce the issue
+          required: true
+        - label: I've checked the documentation (docs/ directory)
+          required: false
+        - label: I've run `cargo clippy` and `cargo test` (if applicable)
+          required: false

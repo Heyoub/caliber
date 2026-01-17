@@ -590,6 +590,31 @@ pub struct MemoryPermissionResponse {
     pub filter: Option<String>,
 }
 
+/// Request to list agents with filters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListAgentsRequest {
+    /// Filter by agent type
+    pub agent_type: Option<String>,
+    /// Filter by status
+    pub status: Option<String>,
+    /// Filter by current trajectory
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// Only return active agents
+    pub active_only: Option<bool>,
+}
+
+/// Response containing a list of agents.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListAgentsResponse {
+    /// List of agents
+    pub agents: Vec<AgentResponse>,
+    /// Total count
+    pub total: i32,
+}
+
 // ============================================================================
 // LOCK TYPES
 // ============================================================================
@@ -638,6 +663,16 @@ pub struct LockResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub expires_at: Timestamp,
     pub mode: String,
+}
+
+/// Response containing a list of locks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListLocksResponse {
+    /// List of locks
+    pub locks: Vec<LockResponse>,
+    /// Total count
+    pub total: i32,
 }
 
 // ============================================================================
@@ -706,6 +741,45 @@ pub struct MessageResponse {
     pub priority: String,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub expires_at: Option<Timestamp>,
+}
+
+/// Request to list messages with filters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListMessagesRequest {
+    /// Filter by message type
+    pub message_type: Option<String>,
+    /// Filter by sender agent
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub from_agent_id: Option<EntityId>,
+    /// Filter by recipient agent
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub to_agent_id: Option<EntityId>,
+    /// Filter by recipient agent type
+    pub to_agent_type: Option<String>,
+    /// Filter by trajectory
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub trajectory_id: Option<EntityId>,
+    /// Filter by priority
+    pub priority: Option<String>,
+    /// Only return undelivered messages
+    pub undelivered_only: Option<bool>,
+    /// Only return unacknowledged messages
+    pub unacknowledged_only: Option<bool>,
+    /// Maximum number of results
+    pub limit: Option<i32>,
+    /// Offset for pagination
+    pub offset: Option<i32>,
+}
+
+/// Response containing a list of messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ListMessagesResponse {
+    /// List of messages
+    pub messages: Vec<MessageResponse>,
+    /// Total count
+    pub total: i32,
 }
 
 // ============================================================================

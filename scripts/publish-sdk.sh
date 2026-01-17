@@ -53,8 +53,8 @@ echo "[INFO] Generating SDKs with version ${SDK_VERSION}"
 "$ROOT_DIR/scripts/generate-sdk.sh"
 
 if [[ "$PUBLISH" == "true" ]]; then
-    echo "[INFO] Publishing TypeScript SDK to npm..."
-    (cd "$ROOT_DIR/sdks/typescript" && npm publish --access public)
+    echo "[INFO] Publishing TypeScript SDK (@caliber-run/sdk) to npm..."
+    (cd "$ROOT_DIR/caliber-sdk" && npm publish --access public)
 
     echo "[INFO] Publishing Python SDK to PyPI..."
     (cd "$ROOT_DIR/sdks/python" && python -m build && twine upload dist/*)
@@ -63,6 +63,10 @@ if [[ "$PUBLISH" == "true" ]]; then
     echo "[INFO] Publishing Elixir SDK to Hex..."
     (cd "$ROOT_DIR/sdks/elixir" && mix hex.publish --yes)
 else
-    echo "[INFO] SDKs generated under $ROOT_DIR/sdks."
+    echo "[INFO] SDKs generated:"
+    echo "         - TypeScript: $ROOT_DIR/caliber-sdk (@caliber-run/sdk)"
+    echo "         - Python:     $ROOT_DIR/sdks/python"
+    echo "         - Go:         $ROOT_DIR/sdks/go"
+    echo "         - Elixir:     $ROOT_DIR/sdks/elixir"
     echo "[INFO] To publish, re-run with: scripts/publish-sdk.sh ${SDK_VERSION} --publish"
 fi
