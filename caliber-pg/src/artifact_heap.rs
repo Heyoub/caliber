@@ -504,7 +504,10 @@ pub fn str_to_extraction_method(s: &str) -> ExtractionMethod {
         "explicit" | "explicit_save" => ExtractionMethod::Explicit,
         "inferred" | "automatic_extraction" | "system_inferred" => ExtractionMethod::Inferred,
         "user_provided" | "agent_suggestion" => ExtractionMethod::UserProvided,
-        _ => ExtractionMethod::Inferred, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown extraction method '{}', defaulting to Inferred", s);
+            ExtractionMethod::Inferred
+        }
     }
 }
 
@@ -574,7 +577,12 @@ fn str_to_artifact_type(s: &str) -> ArtifactType {
         "decision" => ArtifactType::Decision,
         "plan" => ArtifactType::Plan,
         // Default
-        _ => ArtifactType::Custom,
+        _ => {
+            if s != "custom" {
+                pgrx::warning!("CALIBER: Unknown artifact type '{}', defaulting to Custom", s);
+            }
+            ArtifactType::Custom
+        }
     }
 }
 
@@ -614,7 +622,10 @@ fn str_to_ttl(s: &str) -> TTL {
             let ms_str = &s[9..];
             ms_str.parse::<i64>().map(TTL::Duration).unwrap_or(TTL::Session)
         }
-        _ => TTL::Session, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown TTL value '{}', defaulting to Session", s);
+            TTL::Session
+        }
     }
 }
 
@@ -817,7 +828,7 @@ mod tests {
         (0i32..100i32, any::<Option<f32>>().prop_map(|o| o.map(|f| f.abs() % 1.0)))
             .prop_map(|(source_turn, confidence)| Provenance {
                 source_turn,
-                extraction_method: ExtractionMethod::Manual,
+                extraction_method: ExtractionMethod::Explicit,
                 confidence,
             })
     }
@@ -999,7 +1010,7 @@ mod tests {
                     let content_hash = caliber_core::compute_content_hash(content.as_bytes());
                     let provenance = Provenance {
                         source_turn: i as i32,
-                        extraction_method: ExtractionMethod::Manual,
+                        extraction_method: ExtractionMethod::Explicit,
                         confidence: None,
                     };
                     
@@ -1080,7 +1091,7 @@ mod tests {
                     let content_hash = caliber_core::compute_content_hash(content.as_bytes());
                     let provenance = Provenance {
                         source_turn: i as i32,
-                        extraction_method: ExtractionMethod::Manual,
+                        extraction_method: ExtractionMethod::Explicit,
                         confidence: None,
                     };
                     
@@ -1190,7 +1201,7 @@ mod tests {
                 let original_hash = caliber_core::compute_content_hash(original_content.as_bytes());
                 let provenance = Provenance {
                     source_turn: 0,
-                    extraction_method: ExtractionMethod::Manual,
+                    extraction_method: ExtractionMethod::Explicit,
                     confidence: None,
                 };
                 

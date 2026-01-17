@@ -252,7 +252,10 @@ unsafe fn tuple_to_lock(
     let mode = match mode_str.as_str() {
         "exclusive" => LockMode::Exclusive,
         "shared" => LockMode::Shared,
-        _ => LockMode::Exclusive,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown lock mode '{}', defaulting to Exclusive", mode_str);
+            LockMode::Exclusive
+        }
     };
     
     Ok(DistributedLock {

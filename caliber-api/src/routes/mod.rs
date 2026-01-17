@@ -25,6 +25,7 @@ pub mod mcp;
 pub mod message;
 pub mod note;
 pub mod scope;
+pub mod sso;
 pub mod summarization_policy;
 pub mod tenant;
 pub mod trajectory;
@@ -63,6 +64,10 @@ pub use webhooks::create_router as webhooks_router;
 // Battle Intel routes
 pub use edge::create_router as edge_router;
 pub use summarization_policy::create_router as summarization_policy_router;
+
+// SSO routes (when workos feature is enabled)
+#[cfg(feature = "workos")]
+pub use sso::create_router as sso_router;
 
 // ============================================================================
 // OPENAPI ENDPOINTS
@@ -151,6 +156,16 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -
         // OpenAPI spec
         .route("/openapi.json", get(openapi_json));
 
+    // Add SSO routes when workos feature is enabled
+    #[cfg(feature = "workos")]
+    {
+        use crate::workos_auth::WorkOsConfig;
+        // Only add SSO routes if WorkOS is configured
+        if let Ok(workos_config) = WorkOsConfig::from_env() {
+            router = router.nest("/auth/sso", sso::create_router(db.clone(), workos_config));
+        }
+    }
+
     // Add YAML endpoint if openapi feature is enabled
     #[cfg(feature = "openapi")]
     {
@@ -173,7 +188,7 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -
 
 /// Create a minimal router for testing without WebSocket support.
 #[cfg(test)]
-pub fn create_test_router(db: DbClient) -> Router {
+pub fn create_test_router(_db: DbClient) -> Router {
     Router::new()
         .route("/openapi.json", get(openapi_json))
 }

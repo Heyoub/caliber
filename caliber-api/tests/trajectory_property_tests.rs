@@ -13,24 +13,25 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
-    db::{DbClient, DbConfig},
+    db::DbClient,
     types::{CreateTrajectoryRequest, UpdateTrajectoryRequest},
 };
 use caliber_core::{EntityId, TrajectoryStatus};
 use proptest::prelude::*;
 use uuid::Uuid;
 
+mod test_support;
+
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
 
-/// Create a test database client.
+/// Create a test database client using shared test infrastructure.
 ///
 /// This connects to a test PostgreSQL database with the caliber-pg extension.
 /// The database should be set up with the CALIBER schema.
 fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
+    test_support::test_db_client()
 }
 
 // ============================================================================

@@ -11,7 +11,7 @@
 use axum::extract::{Path, State};
 use axum::Json;
 use caliber_api::{
-    db::{DbClient, DbConfig},
+    db::DbClient,
     events::WsEvent,
     routes::{
         agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn,
@@ -22,7 +22,6 @@ use caliber_api::{
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, SendMessageRequest,
         UpdateAgentRequest, UpdateScopeRequest, UpdateTrajectoryRequest,
     },
-    ws::WsState,
 };
 use caliber_core::{ArtifactType, EntityId, ExtractionMethod, NoteType, TTL, TrajectoryStatus, TurnRole};
 use proptest::prelude::*;
@@ -30,22 +29,16 @@ use proptest::test_runner::TestCaseError;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 use uuid::Uuid;
+mod test_support;
 
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
 
-/// Create a test database client.
-fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
-}
-
 /// Create a WebSocket state for testing broadcasts.
-fn test_ws_state() -> Arc<WsState> {
-    Arc::new(WsState::new(128))
+fn test_ws_state() -> Arc<caliber_api::ws::WsState> {
+    test_support::test_ws_state(128)
 }
-
 // ============================================================================
 // MUTATION CASES
 // ============================================================================
@@ -286,7 +279,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_eq!(trajectory.trajectory_id, id);
             Ok(())
         }
-        (ExpectedEvent::TrajectoryDeleted(id), WsEvent::TrajectoryDeleted { id: event_id }) => {
+        (ExpectedEvent::TrajectoryDeleted(id), WsEvent::TrajectoryDeleted { tenant_id: _, id: event_id }) => {
             prop_assert_eq!(event_id, id);
             Ok(())
         }
@@ -318,12 +311,12 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(agent.agent_id, nil_id);
             Ok(())
         }
-        (ExpectedEvent::AgentStatusChanged(id, status), WsEvent::AgentStatusChanged { agent_id, status: actual_status }) => {
+        (ExpectedEvent::AgentStatusChanged(id, status), WsEvent::AgentStatusChanged { tenant_id: _, agent_id, status: actual_status }) => {
             prop_assert_eq!(agent_id, id);
             prop_assert_eq!(actual_status.to_lowercase(), status.to_lowercase());
             Ok(())
         }
-        (ExpectedEvent::AgentUnregistered(id), WsEvent::AgentUnregistered { id: event_id }) => {
+        (ExpectedEvent::AgentUnregistered(id), WsEvent::AgentUnregistered { tenant_id: _, id: event_id }) => {
             prop_assert_eq!(event_id, id);
             Ok(())
         }
@@ -331,7 +324,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(lock.lock_id, nil_id);
             Ok(())
         }
-        (ExpectedEvent::LockReleased(id), WsEvent::LockReleased { lock_id }) => {
+        (ExpectedEvent::LockReleased(id), WsEvent::LockReleased { tenant_id: _, lock_id }) => {
             prop_assert_eq!(lock_id, id);
             Ok(())
         }
@@ -339,7 +332,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(message.message_id, nil_id);
             Ok(())
         }
-        (ExpectedEvent::MessageAcknowledged(id), WsEvent::MessageAcknowledged { message_id }) => {
+        (ExpectedEvent::MessageAcknowledged(id), WsEvent::MessageAcknowledged { tenant_id: _, message_id }) => {
             prop_assert_eq!(message_id, id);
             Ok(())
         }
@@ -347,7 +340,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(delegation.delegation_id, nil_id);
             Ok(())
         }
-        (ExpectedEvent::DelegationAccepted(id), WsEvent::DelegationAccepted { delegation_id }) => {
+        (ExpectedEvent::DelegationAccepted(id), WsEvent::DelegationAccepted { tenant_id: _, delegation_id }) => {
             prop_assert_eq!(delegation_id, id);
             Ok(())
         }
@@ -359,7 +352,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(handoff.handoff_id, nil_id);
             Ok(())
         }
-        (ExpectedEvent::HandoffAccepted(id), WsEvent::HandoffAccepted { handoff_id }) => {
+        (ExpectedEvent::HandoffAccepted(id), WsEvent::HandoffAccepted { tenant_id: _, handoff_id }) => {
             prop_assert_eq!(handoff_id, id);
             Ok(())
         }
@@ -389,15 +382,16 @@ proptest! {
     fn prop_mutation_broadcast(case in mutation_case_strategy()) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_db_client();
+            let db = test_support::test_db_client();
             let ws = test_ws_state();
+            let pcp = test_support::test_pcp_runtime();
             let mut rx = ws.subscribe();
 
             let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
-            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone()));
+            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone(), pcp.clone()));
             let artifact_state = Arc::new(artifact::ArtifactState::new(db.clone(), ws.clone()));
             let note_state = Arc::new(note::NoteState::new(db.clone(), ws.clone()));
-            let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone()));
+            let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone(), pcp));
             let agent_state = Arc::new(agent::AgentState::new(db.clone(), ws.clone()));
             let lock_state = Arc::new(lock::LockState::new(db.clone(), ws.clone()));
             let message_state = Arc::new(message::MessageState::new(db.clone(), ws.clone()));
@@ -434,9 +428,11 @@ proptest! {
                 }
                 MutationCase::TrajectoryDelete => {
                     let trajectory = seed_trajectory(&db, "Seed Trajectory Delete").await;
+                    let auth = test_support::test_auth_context();
                     trajectory::delete_trajectory(
                         State(trajectory_state),
                         Path(trajectory.trajectory_id),
+                        auth,
                     )
                     .await?;
                     ExpectedEvent::TrajectoryDeleted(trajectory.trajectory_id)
@@ -533,6 +529,7 @@ proptest! {
                 }
                 MutationCase::AgentUpdate => {
                     let agent = seed_agent(&db, "seed-updater").await;
+                    let auth = test_support::test_auth_context();
                     let req = UpdateAgentRequest {
                         status: Some("active".to_string()),
                         current_trajectory_id: None,
@@ -540,12 +537,13 @@ proptest! {
                         capabilities: None,
                         memory_access: None,
                     };
-                    agent::update_agent(State(agent_state), Path(agent.agent_id), Json(req)).await?;
+                    agent::update_agent(State(agent_state), Path(agent.agent_id), auth, Json(req)).await?;
                     ExpectedEvent::AgentStatusChanged(agent.agent_id, "active".to_string())
                 }
                 MutationCase::AgentUnregister => {
                     let agent = seed_agent(&db, "seed-unregister").await;
-                    agent::unregister_agent(State(agent_state), Path(agent.agent_id)).await?;
+                    let auth = test_support::test_auth_context();
+                    agent::unregister_agent(State(agent_state), Path(agent.agent_id), auth).await?;
                     ExpectedEvent::AgentUnregistered(agent.agent_id)
                 }
                 MutationCase::LockAcquire => {
@@ -565,7 +563,8 @@ proptest! {
                     let agent = seed_agent(&db, "lock-releaser").await;
                     let resource_id: EntityId = Uuid::now_v7().into();
                     let lock = seed_lock(&db, agent.agent_id, resource_id).await;
-                    lock::release_lock(State(lock_state), Path(lock.lock_id)).await?;
+                    let auth = test_support::test_auth_context();
+                    lock::release_lock(State(lock_state), Path(lock.lock_id), auth).await?;
                     ExpectedEvent::LockReleased(lock.lock_id)
                 }
                 MutationCase::MessageSend => {
@@ -590,7 +589,8 @@ proptest! {
                     let sender = seed_agent(&db, "ack-sender").await;
                     let receiver = seed_agent(&db, "ack-receiver").await;
                     let message = seed_message(&db, sender.agent_id, receiver.agent_id, None, None).await;
-                    message::acknowledge_message(State(message_state), Path(message.message_id)).await?;
+                    let auth = test_support::test_auth_context();
+                    message::acknowledge_message(State(message_state), Path(message.message_id), auth).await?;
                     ExpectedEvent::MessageAcknowledged(message.message_id)
                 }
                 MutationCase::DelegationCreate => {
@@ -616,12 +616,14 @@ proptest! {
                     let trajectory = seed_trajectory(&db, "Delegation Accept Trajectory").await;
                     let scope = seed_scope(&db, trajectory.trajectory_id).await;
                     let delegation = seed_delegation(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id).await;
+                    let auth = test_support::test_auth_context();
                     let req = delegation::AcceptDelegationRequest {
                         accepting_agent_id: to_agent.agent_id,
                     };
                     delegation::accept_delegation(
                         State(delegation_state),
                         Path(delegation.delegation_id),
+                        auth,
                         Json(req),
                     )
                     .await?;
@@ -672,12 +674,14 @@ proptest! {
                     let trajectory = seed_trajectory(&db, "Handoff Accept Trajectory").await;
                     let scope = seed_scope(&db, trajectory.trajectory_id).await;
                     let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id).await;
+                    let auth = test_support::test_auth_context();
                     let req = handoff::AcceptHandoffRequest {
                         accepting_agent_id: to_agent.agent_id,
                     };
                     handoff::accept_handoff(
                         State(handoff_state),
                         Path(handoff.handoff_id),
+                        auth,
                         Json(req),
                     )
                     .await?;
@@ -703,210 +707,7 @@ proptest! {
 
             assert_event(expected, event)?;
 
-            Ok(())
-        })?;
-    }
-}
-//! Property-Based Tests for Mutation Broadcast
-//!
-//! **Property 3: Mutation Broadcast**
-//!
-//! For any entity mutation (create), the API SHALL broadcast a corresponding
-//! WebSocket event to connected clients.
-//!
-//! **Validates: Requirements 1.4**
-
-use axum::{extract::State, Json};
-use caliber_api::{
-    db::{DbClient, DbConfig},
-    events::WsEvent,
-    routes::{artifact, note, scope, trajectory, turn},
-    types::{
-        CreateArtifactRequest, CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest,
-        CreateTurnRequest,
-    },
-    WsState,
-};
-use caliber_core::{ArtifactType, ExtractionMethod, NoteType, TTL, TurnRole};
-use proptest::prelude::*;
-use std::sync::Arc;
-use tokio::sync::broadcast;
-use tokio::time::{timeout, Duration};
-
-// ============================================================================
-// TEST CONFIGURATION
-// ============================================================================
-
-/// Create a test database client.
-fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
-}
-
-async fn recv_event(
-    rx: &mut broadcast::Receiver<WsEvent>,
-    label: &str,
-) -> WsEvent {
-    match timeout(Duration::from_millis(200), rx.recv()).await {
-        Ok(Ok(event)) => event,
-        Ok(Err(err)) => panic!("Broadcast recv error for {}: {:?}", label, err),
-        Err(_) => panic!("Timed out waiting for broadcast event: {}", label),
-    }
-}
-
-// ============================================================================
-// PROPERTY TEST STRATEGIES
-// ============================================================================
-
-fn name_strategy() -> impl Strategy<Value = String> {
-    "[a-zA-Z0-9 _-]{3,32}".prop_map(|s| s.trim().to_string())
-}
-
-fn content_strategy() -> impl Strategy<Value = String> {
-    "[a-zA-Z0-9 .,;:_-]{10,120}".prop_map(|s| s.trim().to_string())
-}
-
-fn token_budget_strategy() -> impl Strategy<Value = i32> {
-    1..10_000i32
-}
-
-// ============================================================================
-// PROPERTY TESTS
-// ============================================================================
-
-proptest! {
-    #![proptest_config(ProptestConfig::with_cases(50))]
-
-    /// **Property 3: Mutation Broadcast**
-    ///
-    /// For any valid create requests, the API SHALL broadcast the corresponding
-    /// WebSocket events.
-    #[test]
-    fn prop_mutation_broadcasts_events(
-        trajectory_name in name_strategy(),
-        scope_name in name_strategy(),
-        artifact_name in name_strategy(),
-        note_title in name_strategy(),
-        turn_content in content_strategy(),
-        token_budget in token_budget_strategy(),
-    ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let db = test_db_client();
-            let ws = Arc::new(WsState::new(100));
-            let mut rx = ws.subscribe();
-
-            // ------------------------------------------------------------
-            // Trajectory Created
-            // ------------------------------------------------------------
-            let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
-            let create_traj = CreateTrajectoryRequest {
-                name: trajectory_name.clone(),
-                description: None,
-                parent_trajectory_id: None,
-                agent_id: None,
-                metadata: None,
-            };
-            let _ = trajectory::create_trajectory(
-                State(trajectory_state),
-                Json(create_traj)
-            ).await?;
-
-            let trajectory = match recv_event(&mut rx, "TrajectoryCreated").await {
-                WsEvent::TrajectoryCreated { trajectory } => trajectory,
-                other => {
-                    prop_assert!(false, "Expected TrajectoryCreated, got {:?}", other);
-                    unreachable!()
-                }
-            };
-
-            // ------------------------------------------------------------
-            // Scope Created
-            // ------------------------------------------------------------
-            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone()));
-            let create_scope = CreateScopeRequest {
-                trajectory_id: trajectory.trajectory_id,
-                parent_scope_id: None,
-                name: scope_name.clone(),
-                purpose: None,
-                token_budget,
-                metadata: None,
-            };
-            let _ = scope::create_scope(State(scope_state), Json(create_scope)).await?;
-
-            let scope = match recv_event(&mut rx, "ScopeCreated").await {
-                WsEvent::ScopeCreated { scope } => scope,
-                other => {
-                    prop_assert!(false, "Expected ScopeCreated, got {:?}", other);
-                    unreachable!()
-                }
-            };
-
-            // ------------------------------------------------------------
-            // Artifact Created
-            // ------------------------------------------------------------
-            let artifact_state = Arc::new(artifact::ArtifactState::new(db.clone(), ws.clone()));
-            let create_artifact = CreateArtifactRequest {
-                trajectory_id: trajectory.trajectory_id,
-                scope_id: scope.scope_id,
-                artifact_type: ArtifactType::Fact,
-                name: artifact_name.clone(),
-                content: "artifact content".to_string(),
-                source_turn: 0,
-                extraction_method: ExtractionMethod::Explicit,
-                confidence: Some(0.9),
-                ttl: TTL::Session,
-                metadata: None,
-            };
-            let _ = artifact::create_artifact(State(artifact_state), Json(create_artifact)).await?;
-
-            match recv_event(&mut rx, "ArtifactCreated").await {
-                WsEvent::ArtifactCreated { .. } => {}
-                other => prop_assert!(false, "Expected ArtifactCreated, got {:?}", other),
-            }
-
-            // ------------------------------------------------------------
-            // Note Created
-            // ------------------------------------------------------------
-            let note_state = Arc::new(note::NoteState::new(db.clone(), ws.clone()));
-            let create_note = CreateNoteRequest {
-                note_type: NoteType::Fact,
-                title: note_title.clone(),
-                content: "note content".to_string(),
-                source_trajectory_ids: vec![trajectory.trajectory_id],
-                source_artifact_ids: Vec::new(),
-                ttl: TTL::Session,
-                metadata: None,
-            };
-            let _ = note::create_note(State(note_state), Json(create_note)).await?;
-
-            match recv_event(&mut rx, "NoteCreated").await {
-                WsEvent::NoteCreated { .. } => {}
-                other => prop_assert!(false, "Expected NoteCreated, got {:?}", other),
-            }
-
-            // ------------------------------------------------------------
-            // Turn Created
-            // ------------------------------------------------------------
-            let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone()));
-            let create_turn = CreateTurnRequest {
-                scope_id: scope.scope_id,
-                sequence: 0,
-                role: TurnRole::User,
-                content: turn_content.clone(),
-                token_count: 1,
-                tool_calls: None,
-                tool_results: None,
-                metadata: None,
-            };
-            let _ = turn::create_turn(State(turn_state), Json(create_turn)).await?;
-
-            match recv_event(&mut rx, "TurnCreated").await {
-                WsEvent::TurnCreated { .. } => {}
-                other => prop_assert!(false, "Expected TurnCreated, got {:?}", other),
-            }
-
-            Ok(())
+            Ok::<(), TestCaseError>(())
         })?;
     }
 }

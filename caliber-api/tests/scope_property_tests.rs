@@ -13,21 +13,22 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
-    db::{DbClient, DbConfig},
+    db::DbClient,
     types::{CreateScopeRequest, CreateTrajectoryRequest, UpdateScopeRequest},
 };
 use caliber_core::EntityId;
 use proptest::prelude::*;
 use uuid::Uuid;
 
+mod test_support;
+
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
 
-/// Create a test database client.
+/// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
+    test_support::test_db_client()
 }
 
 /// Helper to create a test trajectory for scope tests.
@@ -112,6 +113,8 @@ fn optional_metadata_strategy() -> impl Strategy<Value = Option<serde_json::Valu
 }
 
 /// Strategy for generating a complete CreateScopeRequest.
+/// TODO: Wire this into tests that could benefit from full request generation
+#[allow(dead_code)]
 fn create_scope_request_strategy(trajectory_id: EntityId) -> impl Strategy<Value = CreateScopeRequest> {
     (
         scope_name_strategy(),
@@ -132,6 +135,8 @@ fn create_scope_request_strategy(trajectory_id: EntityId) -> impl Strategy<Value
 }
 
 /// Strategy for generating an UpdateScopeRequest.
+/// TODO: Wire this into update-focused property tests
+#[allow(dead_code)]
 fn update_scope_request_strategy() -> impl Strategy<Value = UpdateScopeRequest> {
     (
         prop::option::of(scope_name_strategy()),

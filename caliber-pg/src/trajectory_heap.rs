@@ -552,7 +552,10 @@ fn str_to_status(s: &str) -> TrajectoryStatus {
         "completed" => TrajectoryStatus::Completed,
         "failed" => TrajectoryStatus::Failed,
         "suspended" => TrajectoryStatus::Suspended,
-        _ => TrajectoryStatus::Active, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown trajectory status '{}', defaulting to Active", s);
+            TrajectoryStatus::Active
+        }
     }
 }
 

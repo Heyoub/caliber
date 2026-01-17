@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -140,6 +141,7 @@ pub async fn get_delegation(
 pub async fn accept_delegation(
     State(state): State<Arc<DelegationState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
     Json(req): Json<AcceptDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
@@ -169,8 +171,9 @@ pub async fn accept_delegation(
         .delegation_accept(id, req.accepting_agent_id)
         .await?;
 
-    // Broadcast DelegationAccepted event
+    // Broadcast DelegationAccepted event with tenant_id for filtering
     state.ws.broadcast(WsEvent::DelegationAccepted {
+        tenant_id: auth.tenant_id,
         delegation_id: id,
     });
 
@@ -202,6 +205,7 @@ pub async fn accept_delegation(
 pub async fn reject_delegation(
     State(state): State<Arc<DelegationState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
     Json(req): Json<RejectDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
@@ -227,6 +231,7 @@ pub async fn reject_delegation(
 
     state.db.delegation_reject(id, req.reason).await?;
     state.ws.broadcast(WsEvent::DelegationRejected {
+        tenant_id: auth.tenant_id,
         delegation_id: id,
     });
     Ok(StatusCode::NO_CONTENT)

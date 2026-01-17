@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -164,6 +165,7 @@ pub async fn get_handoff(
 pub async fn accept_handoff(
     State(state): State<Arc<HandoffState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
     Json(req): Json<AcceptHandoffRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in initiated state
@@ -193,8 +195,9 @@ pub async fn accept_handoff(
         .handoff_accept(id, req.accepting_agent_id)
         .await?;
 
-    // Broadcast HandoffAccepted event
+    // Broadcast HandoffAccepted event with tenant_id for filtering
     state.ws.broadcast(WsEvent::HandoffAccepted {
+        tenant_id: auth.tenant_id,
         handoff_id: id,
     });
 

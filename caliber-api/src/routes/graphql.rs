@@ -23,6 +23,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     events::WsEvent,
     types::*,
@@ -551,13 +552,17 @@ impl MutationRoot {
     async fn delete_trajectory(&self, ctx: &Context<'_>, id: ID) -> GqlResult<bool> {
         let db = ctx.data::<DbClient>()?;
         let ws = ctx.data::<Arc<WsState>>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
         match db.trajectory_delete(uuid).await {
             Ok(_) => {
-                ws.broadcast(WsEvent::TrajectoryDeleted { id: uuid });
+                ws.broadcast(WsEvent::TrajectoryDeleted {
+                    tenant_id: auth.tenant_id,
+                    id: uuid,
+                });
                 Ok(true)
             }
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -669,9 +674,12 @@ pub fn create_schema(db: DbClient, ws: Arc<WsState>) -> CaliberSchema {
 /// Handler for GraphQL requests.
 pub async fn graphql_handler(
     State(schema): State<CaliberSchema>,
+    auth: AuthContext,
     req: GraphQLRequest,
 ) -> GraphQLResponse {
-    schema.execute(req.into_inner()).await.into()
+    // Add auth context to the request so resolvers can access tenant_id
+    let request = req.into_inner().data(auth);
+    schema.execute(request).await.into()
 }
 
 /// Handler for GraphiQL playground.

@@ -423,7 +423,10 @@ unsafe fn tuple_to_delegation(
         "in_progress" => DelegationStatus::InProgress,
         "completed" => DelegationStatus::Completed,
         "failed" => DelegationStatus::Failed,
-        _ => DelegationStatus::Pending,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown delegation status '{}', defaulting to Pending", status_str);
+            DelegationStatus::Pending
+        }
     };
     
     let result = extract_jsonb(tuple, tuple_desc, delegation::RESULT)?

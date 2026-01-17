@@ -9,6 +9,7 @@ repository.workspace = true
 default = ["openapi", "swagger-ui"]
 openapi = ["caliber-core/openapi", "caliber-agents/openapi", "caliber-pcp/openapi"]
 swagger-ui = ["dep:utoipa-swagger-ui"]
+workos = ["dep:workos"]
 
 [dependencies]
 # Core CALIBER dependencies
@@ -46,6 +47,7 @@ serde_yaml = "0.9"
 
 # Authentication
 jsonwebtoken = "9.3"
+workos = { version = "0.8", optional = true }
 
 # Error handling
 thiserror = { workspace = true }

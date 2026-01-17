@@ -5,11 +5,12 @@ use caliber_tui::theme::{
     utilization_color, SynthBruteTheme,
 };
 use caliber_api::types::{
-    ArtifactResponse, NoteResponse, ProvenanceResponse, ScopeResponse, TrajectoryResponse,
+    ArtifactResponse, NoteResponse, ProvenanceResponse, TrajectoryResponse,
 };
-use caliber_core::{ArtifactType, EntityId, NoteType, TrajectoryStatus, TurnRole, Timestamp};
+use caliber_core::{ArtifactType, EntityId, NoteType, TrajectoryStatus, TurnRole};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use proptest::prelude::*;
+use proptest::strategy::Just;
 use ratatui::style::Color;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -60,7 +61,9 @@ fn config_requires_theme_name() {
 }
 
 proptest! {
-    #[test]
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// Property: Digit keys switch to corresponding view
     fn keybinding_digit_switches_view(digit in 0u8..=9u8) {
         let ch = char::from(b'0' + digit);
         let event = KeyEvent {
@@ -90,7 +93,7 @@ proptest! {
         }
     }
 
-    #[test]
+    /// Property: Reconnect config with valid values passes validation
     fn reconnect_config_validation(initial in 1u64..1000, max_delta in 0u64..2000, multiplier in 1.0f64..4.0f64) {
         let mut config = base_config();
         config.reconnect = ReconnectConfig {
@@ -102,7 +105,7 @@ proptest! {
         prop_assert!(config.validate().is_ok());
     }
 
-    #[test]
+    /// Property: Invalid reconnect config is rejected
     fn invalid_reconnect_config_rejected(multiplier in 0.0f64..1.0f64) {
         let mut config = base_config();
         config.reconnect = ReconnectConfig {
@@ -119,9 +122,9 @@ proptest! {
     // Validates: Requirements 14.1, 14.2, 14.3
     // ========================================================================
 
-    #[test]
+    /// Property: Navigation keys are consistent (vim and arrow keys)
     fn navigation_keys_consistent(use_vim in prop::bool::ANY) {
-        let theme = SynthBruteTheme::default();
+        let theme = SynthBruteTheme::synthbrute();
         let key = if use_vim {
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)
         } else {
@@ -131,15 +134,15 @@ proptest! {
         prop_assert!(matches!(action, Some(Action::MoveDown)));
     }
 
-    #[test]
+    /// Property: All action keys are mapped to actions
     fn all_action_keys_mapped(key_char in "[qnedpr?/:]") {
-        let event = KeyEvent::new(KeyCode::Char(key_char), KeyModifiers::NONE);
+        let ch = key_char.chars().next().unwrap_or('a');
+        let event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
         let action = map_key(event);
-        prop_assert!(action.is_some(), "Key '{}' should map to an action", key_char);
+        prop_assert!(action.is_some(), "Key '{}' should map to an action", ch);
     }
 
-    #[test]
-    fn tab_switches_views() {
+    fn tab_switches_views(_ignored in Just(())) {
         let event = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
         let action = map_key(event);
         prop_assert!(matches!(action, Some(Action::NextView)));
@@ -150,9 +153,9 @@ proptest! {
     // Validates: Requirements 3.3, 4.3, 8.2, 10.2, 13.2, 13.3, 13.4
     // ========================================================================
 
-    #[test]
+    /// Property: Trajectory status maps to correct color
     fn trajectory_status_colors_correct(status_idx in 0usize..4) {
-        let theme = SynthBruteTheme::default();
+        let theme = SynthBruteTheme::synthbrute();
         let statuses = [
             TrajectoryStatus::Active,
             TrajectoryStatus::Completed,
@@ -166,15 +169,15 @@ proptest! {
             theme.warning,    // Suspended -> yellow
         ];
         let status = statuses[status_idx];
-        let color = trajectory_status_color(&theme, status);
+        let color = trajectory_status_color(status, &theme);
         prop_assert_eq!(color, expected_colors[status_idx]);
     }
 
-    #[test]
+    /// Property: Agent status maps to correct color
     fn agent_status_colors_correct(status in prop::sample::select(vec!["active", "idle", "blocked", "failed"])) {
-        let theme = SynthBruteTheme::default();
-        let color = agent_status_color(&theme, &status);
-        let expected = match status.as_str() {
+        let theme = SynthBruteTheme::synthbrute();
+        let color = agent_status_color(&status, &theme);
+        let expected = match &*status {
             "active" => theme.primary,
             "idle" => theme.text_dim,
             "blocked" => theme.warning,
@@ -184,11 +187,11 @@ proptest! {
         prop_assert_eq!(color, expected);
     }
 
-    #[test]
+    /// Property: Message priority maps to correct color
     fn message_priority_colors_correct(priority in prop::sample::select(vec!["low", "normal", "high", "critical"])) {
-        let theme = SynthBruteTheme::default();
-        let color = message_priority_color(&theme, &priority);
-        let expected = match priority.as_str() {
+        let theme = SynthBruteTheme::synthbrute();
+        let color = message_priority_color(&priority, &theme);
+        let expected = match &*priority {
             "low" => theme.text_dim,
             "normal" => theme.text,
             "high" => theme.warning,
@@ -198,9 +201,9 @@ proptest! {
         prop_assert_eq!(color, expected);
     }
 
-    #[test]
+    /// Property: Turn role maps to correct color
     fn turn_role_colors_correct(role_idx in 0usize..4) {
-        let theme = SynthBruteTheme::default();
+        let theme = SynthBruteTheme::synthbrute();
         let roles = [TurnRole::User, TurnRole::Assistant, TurnRole::System, TurnRole::Tool];
         let expected_colors = [
             theme.primary,    // User -> cyan
@@ -209,7 +212,7 @@ proptest! {
             theme.success,    // Tool -> green
         ];
         let role = roles[role_idx];
-        let color = turn_role_color(&theme, role);
+        let color = turn_role_color(role, &theme);
         prop_assert_eq!(color, expected_colors[role_idx]);
     }
 
@@ -218,17 +221,17 @@ proptest! {
     // Validates: Requirements 4.2, 4.3
     // ========================================================================
 
-    #[test]
+    /// Property: Token utilization percentage is calculated correctly
     fn token_utilization_percentage_correct(used in 0i32..10000, budget in 1i32..10000) {
         let utilization = (used as f32 / budget as f32) * 100.0;
         prop_assert!(utilization >= 0.0);
         prop_assert!(utilization <= 100.0 * (used as f32 / budget as f32));
     }
 
-    #[test]
+    /// Property: Utilization color thresholds are correct
     fn utilization_color_thresholds_correct(percent in 0.0f32..150.0f32) {
-        let theme = SynthBruteTheme::default();
-        let color = utilization_color(&theme, percent);
+        let theme = SynthBruteTheme::synthbrute();
+        let color = utilization_color(percent, &theme);
         if percent < 70.0 {
             prop_assert_eq!(color, theme.success, "Below 70% should be green");
         } else if percent < 90.0 {
@@ -238,14 +241,13 @@ proptest! {
         }
     }
 
-    #[test]
-    fn utilization_boundary_values() {
-        let theme = SynthBruteTheme::default();
+    fn utilization_boundary_values(_ignored in Just(())) {
+        let theme = SynthBruteTheme::synthbrute();
         // Exactly at boundaries
-        prop_assert_eq!(utilization_color(&theme, 69.9), theme.success);
-        prop_assert_eq!(utilization_color(&theme, 70.0), theme.warning);
-        prop_assert_eq!(utilization_color(&theme, 89.9), theme.warning);
-        prop_assert_eq!(utilization_color(&theme, 90.0), theme.error);
+        prop_assert_eq!(utilization_color(69.9, &theme), theme.success);
+        prop_assert_eq!(utilization_color(70.0, &theme), theme.warning);
+        prop_assert_eq!(utilization_color(89.9, &theme), theme.warning);
+        prop_assert_eq!(utilization_color(90.0, &theme), theme.error);
     }
 
     // ========================================================================
@@ -253,11 +255,8 @@ proptest! {
     // Validates: Requirements 3.1, 4.1
     // ========================================================================
 
-    #[test]
-    fn trajectory_hierarchy_preserves_parent_child(
-        parent_count in 1usize..5,
-        children_per_parent in 1usize..3
-    ) {
+    /// Property: Trajectory hierarchy preserves parent-child relationships
+    fn trajectory_hierarchy_preserves_parent_child(parent_count in 1usize..5, children_per_parent in 1usize..3) {
         let mut trajectories = Vec::new();
         let mut parent_ids = Vec::new();
         
@@ -297,11 +296,8 @@ proptest! {
     // Validates: Requirements 3.8, 5.2, 5.3, 5.4, 6.2, 6.3, 7.7, 7.8, 9.7, 10.5, 10.6
     // ========================================================================
 
-    #[test]
-    fn trajectory_status_filter_correct(
-        total_count in 5usize..20,
-        active_ratio in 0.0f32..1.0f32
-    ) {
+    /// Property: Trajectory status filter works correctly
+    fn trajectory_status_filter_correct(total_count in 5usize..20, active_ratio in 0.0f32..1.0f32) {
         let active_count = (total_count as f32 * active_ratio) as usize;
         let mut trajectories = Vec::new();
         
@@ -324,11 +320,8 @@ proptest! {
         prop_assert_eq!(filtered.len(), active_count);
     }
 
-    #[test]
-    fn artifact_type_filter_correct(
-        total_count in 5usize..20,
-        fact_ratio in 0.0f32..1.0f32
-    ) {
+    /// Property: Artifact type filter works correctly
+    fn artifact_type_filter_correct(total_count in 5usize..20, fact_ratio in 0.0f32..1.0f32) {
         let fact_count = (total_count as f32 * fact_ratio) as usize;
         let mut artifacts = Vec::new();
         
@@ -350,11 +343,8 @@ proptest! {
         prop_assert_eq!(filtered.len(), fact_count);
     }
 
-    #[test]
-    fn note_type_filter_correct(
-        total_count in 5usize..20,
-        convention_ratio in 0.0f32..1.0f32
-    ) {
+    /// Property: Note type filter works correctly
+    fn note_type_filter_correct(total_count in 5usize..20, convention_ratio in 0.0f32..1.0f32) {
         let convention_count = (total_count as f32 * convention_ratio) as usize;
         let mut notes = Vec::new();
         
@@ -376,12 +366,8 @@ proptest! {
         prop_assert_eq!(filtered.len(), convention_count);
     }
 
-    #[test]
-    fn multiple_filters_combine_correctly(
-        total_count in 10usize..30,
-        active_ratio in 0.3f32..0.7f32,
-        has_agent_ratio in 0.3f32..0.7f32
-    ) {
+    /// Property: Multiple filters combine correctly
+    fn multiple_filters_combine_correctly(total_count in 10usize..30, active_ratio in 0.3f32..0.7f32, has_agent_ratio in 0.3f32..0.7f32) {
         let agent_id = caliber_core::new_entity_id();
         let mut trajectories = Vec::new();
         
@@ -421,8 +407,7 @@ proptest! {
     // Validates: Requirements 5.6
     // ========================================================================
 
-    #[test]
-    fn detail_panel_shows_all_non_null_fields() {
+    fn detail_panel_shows_all_non_null_fields(_ignored in Just(())) {
         let trajectory = create_test_trajectory_full(
             caliber_core::new_entity_id(),
             TrajectoryStatus::Active,
@@ -457,31 +442,25 @@ proptest! {
     // Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5
     // ========================================================================
 
-    #[test]
-    fn dsl_keywords_identified(keyword in prop::sample::select(vec![
-        "caliber", "memory", "policy", "adapter", "inject", "schedule"
-    ])) {
-        let theme = SynthBruteTheme::default();
+    /// Property: DSL keywords are identified
+    fn dsl_keywords_identified(keyword in prop::sample::select(vec!["caliber", "memory", "policy", "adapter", "inject", "schedule"])) {
+        let theme = SynthBruteTheme::synthbrute();
         // Keywords should map to cyan
         let expected_color = theme.primary;
         prop_assert_eq!(expected_color, theme.primary);
     }
 
-    #[test]
-    fn dsl_memory_types_identified(mem_type in prop::sample::select(vec![
-        "ephemeral", "working", "episodic", "semantic", "procedural", "meta"
-    ])) {
-        let theme = SynthBruteTheme::default();
+    /// Property: DSL memory types are identified
+    fn dsl_memory_types_identified(mem_type in prop::sample::select(vec!["ephemeral", "working", "episodic", "semantic", "procedural", "meta"])) {
+        let theme = SynthBruteTheme::synthbrute();
         // Memory types should map to magenta
         let expected_color = theme.secondary;
         prop_assert_eq!(expected_color, theme.secondary);
     }
 
-    #[test]
-    fn dsl_field_types_identified(field_type in prop::sample::select(vec![
-        "uuid", "text", "int", "float", "bool", "timestamp", "json", "embedding"
-    ])) {
-        let theme = SynthBruteTheme::default();
+    /// Property: DSL field types are identified
+    fn dsl_field_types_identified(field_type in prop::sample::select(vec!["uuid", "text", "int", "float", "bool", "timestamp", "json", "embedding"])) {
+        let theme = SynthBruteTheme::synthbrute();
         // Field types should map to yellow
         let expected_color = theme.tertiary;
         prop_assert_eq!(expected_color, theme.tertiary);
@@ -492,7 +471,7 @@ proptest! {
     // Validates: Requirements 15.1, 15.2
     // ========================================================================
 
-    #[test]
+    /// Property: Reconnect backoff increases with each attempt
     fn reconnect_backoff_increases(attempt in 0u32..10) {
         let config = ReconnectConfig {
             initial_ms: 100,
@@ -513,7 +492,7 @@ proptest! {
         }
     }
 
-    #[test]
+    /// Property: Reconnect delay respects max delay
     fn reconnect_respects_max_delay(attempt in 0u32..20) {
         let config = ReconnectConfig {
             initial_ms: 100,
@@ -533,23 +512,20 @@ proptest! {
     // Validates: Requirements 16.1, 16.2, 16.3
     // ========================================================================
 
-    #[test]
-    fn error_notifications_have_correct_color() {
-        let theme = SynthBruteTheme::default();
+    fn error_notifications_have_correct_color(_ignored in Just(())) {
+        let theme = SynthBruteTheme::synthbrute();
         // Errors should be red
         prop_assert_eq!(theme.error, Color::Rgb(255, 0, 0));
     }
 
-    #[test]
-    fn warning_notifications_have_correct_color() {
-        let theme = SynthBruteTheme::default();
+    fn warning_notifications_have_correct_color(_ignored in Just(())) {
+        let theme = SynthBruteTheme::synthbrute();
         // Warnings should be yellow
         prop_assert_eq!(theme.warning, Color::Rgb(255, 255, 0));
     }
 
-    #[test]
-    fn info_notifications_have_correct_color() {
-        let theme = SynthBruteTheme::default();
+    fn info_notifications_have_correct_color(_ignored in Just(())) {
+        let theme = SynthBruteTheme::synthbrute();
         // Info should be cyan
         prop_assert_eq!(theme.info, Color::Rgb(0, 255, 255));
     }

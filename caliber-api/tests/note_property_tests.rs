@@ -13,21 +13,22 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
-    db::{DbClient, DbConfig},
+    db::DbClient,
     types::{CreateNoteRequest, CreateTrajectoryRequest},
 };
 use caliber_core::{EntityId, NoteType, TTL};
 use proptest::prelude::*;
 use uuid::Uuid;
 
+mod test_support;
+
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
 
-/// Create a test database client.
+/// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
+    test_support::test_db_client()
 }
 
 /// Helper to create a test trajectory for note tests.
@@ -130,6 +131,11 @@ fn optional_metadata_strategy() -> impl Strategy<Value = Option<serde_json::Valu
 }
 
 /// Strategy for generating a complete CreateNoteRequest.
+///
+/// NOTE: This strategy is kept for future use when tests evolve to use
+/// proptest strategies for full request generation. Currently tests
+/// construct CreateNoteRequest manually for more explicit control.
+#[allow(dead_code)]
 fn create_note_request_strategy(
     trajectory_id: EntityId,
 ) -> impl Strategy<Value = CreateNoteRequest> {

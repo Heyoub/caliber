@@ -309,7 +309,10 @@ unsafe fn tuple_to_conflict(
         "incompatible_decision" => ConflictType::IncompatibleDecision,
         "resource_contention" => ConflictType::ResourceContention,
         "goal_conflict" => ConflictType::GoalConflict,
-        _ => ConflictType::ConcurrentWrite,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown conflict type '{}', defaulting to ConcurrentWrite", conflict_type_str);
+            ConflictType::ConcurrentWrite
+        }
     };
     
     let item_a_type = extract_text(tuple, tuple_desc, conflict::ITEM_A_TYPE)?
@@ -345,7 +348,10 @@ unsafe fn tuple_to_conflict(
         "resolving" => ConflictStatus::Resolving,
         "resolved" => ConflictStatus::Resolved,
         "escalated" => ConflictStatus::Escalated,
-        _ => ConflictStatus::Detected,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown conflict status '{}', defaulting to Detected", status_str);
+            ConflictStatus::Detected
+        }
     };
     
     let resolution = extract_jsonb(tuple, tuple_desc, conflict::RESOLUTION)?

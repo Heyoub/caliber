@@ -353,7 +353,10 @@ unsafe fn tuple_to_handoff(
         "accepted" => HandoffStatus::Accepted,
         "completed" => HandoffStatus::Completed,
         "rejected" => HandoffStatus::Rejected,
-        _ => HandoffStatus::Initiated,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown handoff status '{}', defaulting to Initiated", status_str);
+            HandoffStatus::Initiated
+        }
     };
     
     let initiated_at_ts = extract_timestamp(tuple, tuple_desc, handoff::INITIATED_AT)?
@@ -380,7 +383,10 @@ unsafe fn tuple_to_handoff(
         "timeout" => HandoffReason::Timeout,
         "failure" => HandoffReason::Failure,
         "scheduled" => HandoffReason::Scheduled,
-        _ => HandoffReason::Scheduled,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown handoff reason '{}', defaulting to Scheduled", reason_str);
+            HandoffReason::Scheduled
+        }
     };
     
     Ok(AgentHandoff {

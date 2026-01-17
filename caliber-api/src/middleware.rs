@@ -2,22 +2,34 @@
 //!
 //! This module provides Axum middleware that:
 //! - Authenticates requests using API keys or JWT tokens
+//! - Supports WorkOS SSO authentication (with `workos` feature)
 //! - Extracts tenant context from headers
 //! - Injects AuthContext into request extensions
 //! - Returns 401 for unauthenticated requests
 //! - Returns 403 for unauthorized tenant access
 //!
+//! # Auth Provider Selection
+//!
+//! The `CALIBER_AUTH_PROVIDER` environment variable controls which authentication
+//! backend is used:
+//! - `jwt` (default): Standard JWT + API key authentication
+//! - `workos`: WorkOS SSO authentication (requires `workos` feature)
+//!
 //! Requirements: 1.7, 1.8
 
-use crate::auth::{authenticate, AuthConfig, AuthContext};
+use crate::auth::{authenticate, AuthConfig, AuthContext, AuthProvider};
 use crate::error::ApiError;
 use axum::{
-    extract::{Request, State},
-    http::StatusCode,
+    async_trait,
+    extract::{FromRequestParts, Request, State},
+    http::{request::Parts, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use std::sync::Arc;
+
+#[cfg(feature = "workos")]
+use crate::workos_auth::{validate_workos_token, WorkOsConfig};
 
 // ============================================================================
 // MIDDLEWARE STATE
@@ -30,13 +42,36 @@ use std::sync::Arc;
 pub struct AuthMiddlewareState {
     /// Authentication configuration
     pub auth_config: Arc<AuthConfig>,
+
+    /// WorkOS configuration (when `workos` feature is enabled)
+    #[cfg(feature = "workos")]
+    pub workos_config: Option<Arc<WorkOsConfig>>,
 }
 
 impl AuthMiddlewareState {
     /// Create new middleware state with the given auth configuration.
     pub fn new(auth_config: AuthConfig) -> Self {
+        // Initialize WorkOS config if the provider is WorkOS
+        #[cfg(feature = "workos")]
+        let workos_config = if auth_config.auth_provider == AuthProvider::WorkOs {
+            WorkOsConfig::from_env().ok().map(Arc::new)
+        } else {
+            None
+        };
+
         Self {
             auth_config: Arc::new(auth_config),
+            #[cfg(feature = "workos")]
+            workos_config,
+        }
+    }
+
+    /// Create middleware state with explicit WorkOS configuration.
+    #[cfg(feature = "workos")]
+    pub fn with_workos(auth_config: AuthConfig, workos_config: WorkOsConfig) -> Self {
+        Self {
+            auth_config: Arc::new(auth_config),
+            workos_config: Some(Arc::new(workos_config)),
         }
     }
 }
@@ -79,29 +114,83 @@ pub async fn auth_middleware(
         .headers()
         .get("x-api-key")
         .and_then(|h| h.to_str().ok());
-    
+
     let auth_header = request
         .headers()
         .get("authorization")
         .and_then(|h| h.to_str().ok());
-    
+
     let tenant_id_header = request
         .headers()
         .get("x-tenant-id")
         .and_then(|h| h.to_str().ok());
-    
-    // Authenticate the request
-    let auth_context = authenticate(
-        &state.auth_config,
-        api_key_header,
-        auth_header,
-        tenant_id_header,
-    )
-    .map_err(AuthMiddlewareError)?;
-    
+
+    // Route to appropriate auth handler based on provider
+    let auth_context = match state.auth_config.auth_provider {
+        // Standard JWT/API key authentication
+        AuthProvider::Jwt => {
+            authenticate(
+                &state.auth_config,
+                api_key_header,
+                auth_header,
+                tenant_id_header,
+            )
+            .map_err(AuthMiddlewareError)?
+        }
+
+        // WorkOS SSO authentication
+        #[cfg(feature = "workos")]
+        AuthProvider::WorkOs => {
+            // API key auth still works as fallback even in WorkOS mode
+            if let Some(api_key) = api_key_header {
+                authenticate(
+                    &state.auth_config,
+                    Some(api_key),
+                    None,
+                    tenant_id_header,
+                )
+                .map_err(AuthMiddlewareError)?
+            } else if let Some(auth_value) = auth_header {
+                // Extract Bearer token for WorkOS validation
+                let token = auth_value
+                    .strip_prefix("Bearer ")
+                    .ok_or_else(|| {
+                        AuthMiddlewareError(ApiError::invalid_token(
+                            "Authorization header must use Bearer scheme",
+                        ))
+                    })?;
+
+                // Get WorkOS config
+                let workos_config = state.workos_config.as_ref().ok_or_else(|| {
+                    AuthMiddlewareError(ApiError::internal_error(
+                        "WorkOS authentication enabled but not configured",
+                    ))
+                })?;
+
+                // Validate token against WorkOS
+                validate_workos_token(workos_config, token, tenant_id_header)
+                    .await
+                    .map_err(AuthMiddlewareError)?
+            } else {
+                return Err(AuthMiddlewareError(ApiError::unauthorized(
+                    "Authentication required: provide X-API-Key or Authorization header",
+                )));
+            }
+        }
+
+        // WorkOS provider selected but feature not enabled
+        #[cfg(not(feature = "workos"))]
+        AuthProvider::WorkOs => {
+            return Err(AuthMiddlewareError(ApiError::internal_error(
+                "WorkOS authentication provider selected but 'workos' feature is not enabled. \
+                 Rebuild with --features workos or set CALIBER_AUTH_PROVIDER=jwt",
+            )));
+        }
+    };
+
     // Inject AuthContext into request extensions
     request.extensions_mut().insert(auth_context);
-    
+
     // Continue to the next middleware/handler
     Ok(next.run(request).await)
 }
@@ -136,6 +225,80 @@ impl IntoResponse for AuthMiddlewareError {
         
         // Return JSON error response
         (status, axum::Json(api_error)).into_response()
+    }
+}
+
+// ============================================================================
+// TYPED EXTRACTOR
+// ============================================================================
+
+/// Typed Axum extractor for authentication context.
+///
+/// This extractor implements `FromRequestParts`, allowing it to be used
+/// directly in route handler signatures. It provides compile-time guarantees
+/// that authentication has been performed and makes auth required by the type system.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use axum::{Json, response::IntoResponse};
+/// use caliber_api::middleware::AuthExtractor;
+/// use serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct UserResponse {
+///     user_id: String,
+///     tenant_id: String,
+/// }
+///
+/// async fn get_current_user(
+///     AuthExtractor(auth): AuthExtractor,
+/// ) -> impl IntoResponse {
+///     Json(UserResponse {
+///         user_id: auth.user_id,
+///         tenant_id: auth.tenant_id.to_string(),
+///     })
+/// }
+/// ```
+///
+/// # Requirements
+///
+/// The `auth_middleware` must be applied to the route or router for this
+/// extractor to work. If the middleware is not present, the extractor will
+/// return a 500 Internal Server Error.
+#[derive(Debug, Clone)]
+pub struct AuthExtractor(pub AuthContext);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthExtractor
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthMiddlewareError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Extract AuthContext from request extensions
+        // This should have been injected by the auth_middleware
+        parts
+            .extensions
+            .get::<AuthContext>()
+            .cloned()
+            .map(AuthExtractor)
+            .ok_or_else(|| {
+                AuthMiddlewareError(ApiError::internal_error(
+                    "AuthContext not found in request extensions. \
+                     Ensure auth_middleware is applied to this route."
+                ))
+            })
+    }
+}
+
+// Implement Deref to make it easier to access the inner AuthContext
+impl std::ops::Deref for AuthExtractor {
+    type Target = AuthContext;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -400,7 +563,7 @@ mod tests {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
         let tenant_id = Uuid::now_v7();
-        
+
         // Handler that extracts and verifies AuthContext
         async fn handler(request: Request<Body>) -> String {
             let auth_context = extract_auth_context(&request);
@@ -409,30 +572,129 @@ mod tests {
                 auth_context.user_id, auth_context.tenant_id, auth_context.auth_method
             )
         }
-        
+
         let app = Router::new()
             .route("/protected", get(handler))
             .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("x-api-key", "test_key_123")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
             .unwrap();
-        
+
         let response = app.oneshot(request).await.unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         // Verify the response contains expected data
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        
+
         assert!(body_str.contains("User: api_key_"));
         assert!(body_str.contains(&format!("Tenant: {}", tenant_id)));
         assert!(body_str.contains("Method: ApiKey"));
+    }
+
+    #[tokio::test]
+    async fn test_auth_extractor_with_valid_auth() {
+        let auth_config = test_auth_config();
+        let auth_state = AuthMiddlewareState::new(auth_config);
+        let tenant_id = Uuid::now_v7();
+
+        // Handler using the typed AuthExtractor
+        async fn handler(AuthExtractor(auth): AuthExtractor) -> String {
+            format!(
+                "User: {}, Tenant: {}, Method: {:?}",
+                auth.user_id, auth.tenant_id, auth.auth_method
+            )
+        }
+
+        let app = Router::new()
+            .route("/protected", get(handler))
+            .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
+
+        let request = Request::builder()
+            .uri("/protected")
+            .header("x-api-key", "test_key_123")
+            .header("x-tenant-id", tenant_id.to_string())
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(body_str.contains("User: api_key_"));
+        assert!(body_str.contains(&format!("Tenant: {}", tenant_id)));
+        assert!(body_str.contains("Method: ApiKey"));
+    }
+
+    #[tokio::test]
+    async fn test_auth_extractor_without_middleware() {
+        // Handler using AuthExtractor without auth middleware
+        async fn handler(AuthExtractor(_auth): AuthExtractor) -> String {
+            "Should not reach here".to_string()
+        }
+
+        // Router WITHOUT auth middleware
+        let app = Router::new().route("/unprotected", get(handler));
+
+        let request = Request::builder()
+            .uri("/unprotected")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        // Should return 500 because middleware is not configured
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_auth_extractor_deref() {
+        let auth_config = test_auth_config();
+        let auth_state = AuthMiddlewareState::new(auth_config);
+        let tenant_id = Uuid::now_v7();
+
+        // Handler that uses Deref to access AuthContext methods
+        async fn handler(auth: AuthExtractor) -> String {
+            // Can use methods directly thanks to Deref
+            if auth.has_role("api_user") {
+                format!("User {} has api_user role", auth.user_id)
+            } else {
+                "No role".to_string()
+            }
+        }
+
+        let app = Router::new()
+            .route("/protected", get(handler))
+            .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
+
+        let request = Request::builder()
+            .uri("/protected")
+            .header("x-api-key", "test_key_123")
+            .header("x-tenant-id", tenant_id.to_string())
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(body_str.contains("has api_user role"));
     }
 }

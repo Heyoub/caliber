@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -317,6 +318,7 @@ pub async fn update_artifact(
 pub async fn delete_artifact(
     State(state): State<Arc<ArtifactState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
 ) -> ApiResult<StatusCode> {
     // First verify the artifact exists
     let _artifact = state
@@ -326,7 +328,10 @@ pub async fn delete_artifact(
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
     state.db.artifact_delete(id).await?;
-    state.ws.broadcast(WsEvent::ArtifactDeleted { id });
+    state.ws.broadcast(WsEvent::ArtifactDeleted {
+        tenant_id: auth.tenant_id,
+        id,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 

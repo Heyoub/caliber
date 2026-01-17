@@ -1,0 +1,720 @@
+-- CALIBER Regression Tests
+-- Tests core CRUD operations, constraints, triggers, and indexes
+-- Run with: cargo pgrx regress pg18
+-- ============================================================================
+-- SETUP: Load extension and schema
+-- ============================================================================
+CREATE EXTENSION IF NOT EXISTS caliber CASCADE;
+-- Verify extension loaded
+SELECT extname, extversion FROM pg_extension WHERE extname = 'caliber';
+ extname | extversion
+---------+------------
+ caliber | 0.1.0
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Trajectory CRUD (Insert-Get Round Trip)
+-- Validates: Requirements 1.1, 1.2
+-- ============================================================================
+-- Test: Create trajectory
+INSERT INTO caliber_trajectory (trajectory_id, name, description, status)
+VALUES ('11111111-1111-1111-1111-111111111111', 'Test Trajectory', 'A test description', 'active')
+RETURNING trajectory_id, name, status;
+             trajectory_id              |      name       | status
+----------------------------------------+-----------------+--------
+ 11111111-1111-1111-1111-111111111111 | Test Trajectory | active
+(1 row)
+
+-- Test: Get trajectory
+SELECT trajectory_id, name, description, status
+FROM caliber_trajectory
+WHERE trajectory_id = '11111111-1111-1111-1111-111111111111';
+             trajectory_id              |      name       |   description    | status
+----------------------------------------+-----------------+------------------+--------
+ 11111111-1111-1111-1111-111111111111 | Test Trajectory | A test description | active
+(1 row)
+
+-- Test: Status constraint (should succeed)
+UPDATE caliber_trajectory
+SET status = 'completed'
+WHERE trajectory_id = '11111111-1111-1111-1111-111111111111'
+RETURNING trajectory_id, status;
+             trajectory_id              |  status
+----------------------------------------+-----------
+ 11111111-1111-1111-1111-111111111111 | completed
+(1 row)
+
+-- Test: Invalid status (should fail)
+\set ON_ERROR_STOP off
+INSERT INTO caliber_trajectory (trajectory_id, name, status)
+VALUES ('11111111-1111-1111-1111-111111111112', 'Bad Status', 'invalid_status');
+ERROR:  new row for relation "caliber_trajectory" violates check constraint "caliber_trajectory_status_check"
+DETAIL:  Failing row contains (11111111-1111-1111-1111-111111111112, Bad Status, null, invalid_status, null, null, null, ...).
+\set ON_ERROR_STOP on
+-- Test: Parent-child relationship
+INSERT INTO caliber_trajectory (trajectory_id, name, status, parent_trajectory_id)
+VALUES ('22222222-2222-2222-2222-222222222222', 'Child Trajectory', 'active', '11111111-1111-1111-1111-111111111111')
+RETURNING trajectory_id, parent_trajectory_id;
+             trajectory_id              |          parent_trajectory_id
+----------------------------------------+----------------------------------------
+ 22222222-2222-2222-2222-222222222222 | 11111111-1111-1111-1111-111111111111
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Scope CRUD
+-- Validates: Requirements 2.1, 2.2
+-- ============================================================================
+-- Test: Create scope
+INSERT INTO caliber_scope (scope_id, trajectory_id, name, purpose, token_budget)
+VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Test Scope', 'Testing purposes', 4000)
+RETURNING scope_id, trajectory_id, name, is_active, token_budget, tokens_used;
+               scope_id               |             trajectory_id              |    name    | is_active | token_budget | tokens_used
+--------------------------------------+----------------------------------------+------------+-----------+--------------+-------------
+ 33333333-3333-3333-3333-333333333333 | 11111111-1111-1111-1111-111111111111 | Test Scope | t         |         4000 |           0
+(1 row)
+
+-- Test: Get scope
+SELECT scope_id, name, is_active, token_budget, tokens_used
+FROM caliber_scope
+WHERE scope_id = '33333333-3333-3333-3333-333333333333';
+               scope_id               |    name    | is_active | token_budget | tokens_used
+--------------------------------------+------------+-----------+--------------+-------------
+ 33333333-3333-3333-3333-333333333333 | Test Scope | t         |         4000 |           0
+(1 row)
+
+-- Test: Close scope (update)
+UPDATE caliber_scope
+SET is_active = FALSE, closed_at = NOW()
+WHERE scope_id = '33333333-3333-3333-3333-333333333333'
+RETURNING scope_id, is_active, closed_at IS NOT NULL AS has_closed_at;
+               scope_id               | is_active | has_closed_at
+--------------------------------------+-----------+---------------
+ 33333333-3333-3333-3333-333333333333 | f         | t
+(1 row)
+
+-- Test: Nested scope
+INSERT INTO caliber_scope (scope_id, trajectory_id, parent_scope_id, name, token_budget)
+VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', '33333333-3333-3333-3333-333333333333', 'Child Scope', 2000)
+RETURNING scope_id, parent_scope_id;
+               scope_id               |           parent_scope_id
+--------------------------------------+--------------------------------------
+ 44444444-4444-4444-4444-444444444444 | 33333333-3333-3333-3333-333333333333
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Turn CRUD
+-- Validates: Requirements 5.1, 5.2
+-- ============================================================================
+-- Reactivate scope for turn tests
+UPDATE caliber_scope SET is_active = TRUE WHERE scope_id = '33333333-3333-3333-3333-333333333333';
+UPDATE 1
+-- Test: Create turns in sequence
+INSERT INTO caliber_turn (turn_id, scope_id, sequence, role, content, token_count)
+VALUES
+    ('55555555-5555-5555-5555-555555555551', '33333333-3333-3333-3333-333333333333', 1, 'user', 'Hello, assistant.', 10),
+    ('55555555-5555-5555-5555-555555555552', '33333333-3333-3333-3333-333333333333', 2, 'assistant', 'Hello! How can I help?', 15),
+    ('55555555-5555-5555-5555-555555555553', '33333333-3333-3333-3333-333333333333', 3, 'user', 'Run a tool please.', 12)
+RETURNING turn_id, sequence, role, token_count;
+               turn_id                | sequence |   role    | token_count
+--------------------------------------+----------+-----------+-------------
+ 55555555-5555-5555-5555-555555555551 |        1 | user      |          10
+ 55555555-5555-5555-5555-555555555552 |        2 | assistant |          15
+ 55555555-5555-5555-5555-555555555553 |        3 | user      |          12
+(3 rows)
+
+-- Test: Get turns in order
+SELECT turn_id, sequence, role, content
+FROM caliber_turn
+WHERE scope_id = '33333333-3333-3333-3333-333333333333'
+ORDER BY sequence;
+               turn_id                | sequence |   role    |        content
+--------------------------------------+----------+-----------+------------------------
+ 55555555-5555-5555-5555-555555555551 |        1 | user      | Hello, assistant.
+ 55555555-5555-5555-5555-555555555552 |        2 | assistant | Hello! How can I help?
+ 55555555-5555-5555-5555-555555555553 |        3 | user      | Run a tool please.
+(3 rows)
+
+-- Test: Role constraint (should fail)
+\set ON_ERROR_STOP off
+INSERT INTO caliber_turn (turn_id, scope_id, sequence, role, content, token_count)
+VALUES ('55555555-5555-5555-5555-555555555554', '33333333-3333-3333-3333-333333333333', 4, 'invalid_role', 'Bad role', 5);
+ERROR:  new row for relation "caliber_turn" violates check constraint "caliber_turn_role_check"
+\set ON_ERROR_STOP on
+-- Test: Sequence uniqueness (should fail)
+\set ON_ERROR_STOP off
+INSERT INTO caliber_turn (turn_id, scope_id, sequence, role, content, token_count)
+VALUES ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333', 1, 'user', 'Duplicate sequence', 5);
+ERROR:  duplicate key value violates unique constraint "caliber_turn_scope_id_sequence_key"
+\set ON_ERROR_STOP on
+-- ============================================================================
+-- PROPERTY 1: Artifact CRUD
+-- Validates: Requirements 3.1, 3.2
+-- ============================================================================
+-- Test: Create artifact
+INSERT INTO caliber_artifact (artifact_id, trajectory_id, scope_id, artifact_type, name, content, content_hash, provenance)
+VALUES (
+    '66666666-6666-6666-6666-666666666666',
+    '11111111-1111-1111-1111-111111111111',
+    '33333333-3333-3333-3333-333333333333',
+    'fact',
+    'Test Artifact',
+    'This is important content.',
+    E'\\xDEADBEEF',
+    '{"source_turn": 1, "extraction_method": "explicit", "confidence": 0.95}'
+)
+RETURNING artifact_id, artifact_type, name, ttl;
+              artifact_id              | artifact_type |     name      |    ttl
+---------------------------------------+---------------+---------------+------------
+ 66666666-6666-6666-6666-666666666666 | fact          | Test Artifact | persistent
+(1 row)
+
+-- Test: Get artifact
+SELECT artifact_id, artifact_type, name, content, ttl
+FROM caliber_artifact
+WHERE artifact_id = '66666666-6666-6666-6666-666666666666';
+              artifact_id              | artifact_type |     name      |          content           |    ttl
+---------------------------------------+---------------+---------------+----------------------------+------------
+ 66666666-6666-6666-6666-666666666666 | fact          | Test Artifact | This is important content. | persistent
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Note CRUD
+-- Validates: Requirements 4.1, 4.2
+-- ============================================================================
+-- Test: Create note
+INSERT INTO caliber_note (note_id, note_type, title, content, content_hash, abstraction_level)
+VALUES (
+    '77777777-7777-7777-7777-777777777777',
+    'convention',
+    'Code Style',
+    'Use 4-space indentation.',
+    E'\\xCAFEBABE',
+    'raw'
+)
+RETURNING note_id, note_type, title, abstraction_level, access_count;
+               note_id                | note_type  |   title    | abstraction_level | access_count
+--------------------------------------+------------+------------+-------------------+--------------
+ 77777777-7777-7777-7777-777777777777 | convention | Code Style | raw               |            0
+(1 row)
+
+-- Test: Get note
+SELECT note_id, note_type, title, content, access_count
+FROM caliber_note
+WHERE note_id = '77777777-7777-7777-7777-777777777777';
+               note_id                | note_type  |   title    |         content          | access_count
+--------------------------------------+------------+------------+--------------------------+--------------
+ 77777777-7777-7777-7777-777777777777 | convention | Code Style | Use 4-space indentation. |            0
+(1 row)
+
+-- Test: Update access count
+UPDATE caliber_note
+SET access_count = access_count + 1, accessed_at = NOW()
+WHERE note_id = '77777777-7777-7777-7777-777777777777'
+RETURNING note_id, access_count;
+               note_id                | access_count
+--------------------------------------+--------------
+ 77777777-7777-7777-7777-777777777777 |            1
+(1 row)
+
+-- Test: Abstraction level constraint (should fail)
+\set ON_ERROR_STOP off
+INSERT INTO caliber_note (note_id, note_type, title, content, content_hash, abstraction_level)
+VALUES ('77777777-7777-7777-7777-777777777778', 'fact', 'Bad Level', 'Content', E'\\x00', 'invalid_level');
+ERROR:  new row for relation "caliber_note" violates check constraint "caliber_note_abstraction_level_check"
+\set ON_ERROR_STOP on
+-- ============================================================================
+-- PROPERTY 1: Agent CRUD
+-- Validates: Requirements 6.1, 6.2, 6.3
+-- ============================================================================
+-- Test: Register agent
+INSERT INTO caliber_agent (agent_id, agent_type, capabilities, status)
+VALUES (
+    '88888888-8888-8888-8888-888888888888',
+    'coordinator',
+    ARRAY['planning', 'delegation'],
+    'idle'
+)
+RETURNING agent_id, agent_type, status;
+               agent_id               | agent_type  | status
+--------------------------------------+-------------+--------
+ 88888888-8888-8888-8888-888888888888 | coordinator | idle
+(1 row)
+
+-- Test: Get agent
+SELECT agent_id, agent_type, capabilities, status
+FROM caliber_agent
+WHERE agent_id = '88888888-8888-8888-8888-888888888888';
+               agent_id               | agent_type  |     capabilities      | status
+--------------------------------------+-------------+-----------------------+--------
+ 88888888-8888-8888-8888-888888888888 | coordinator | {planning,delegation} | idle
+(1 row)
+
+-- Test: Update agent status
+UPDATE caliber_agent
+SET status = 'active',
+    current_trajectory_id = '11111111-1111-1111-1111-111111111111',
+    current_scope_id = '33333333-3333-3333-3333-333333333333'
+WHERE agent_id = '88888888-8888-8888-8888-888888888888'
+RETURNING agent_id, status, current_trajectory_id IS NOT NULL AS has_trajectory;
+               agent_id               | status | has_trajectory
+--------------------------------------+--------+----------------
+ 88888888-8888-8888-8888-888888888888 | active | t
+(1 row)
+
+-- Test: Agent heartbeat
+UPDATE caliber_agent
+SET last_heartbeat = NOW()
+WHERE agent_id = '88888888-8888-8888-8888-888888888888'
+RETURNING agent_id, last_heartbeat > NOW() - INTERVAL '1 second' AS heartbeat_recent;
+               agent_id               | heartbeat_recent
+--------------------------------------+------------------
+ 88888888-8888-8888-8888-888888888888 | t
+(1 row)
+
+-- Test: Status constraint (should fail)
+\set ON_ERROR_STOP off
+INSERT INTO caliber_agent (agent_id, agent_type, status)
+VALUES ('88888888-8888-8888-8888-888888888889', 'worker', 'invalid_status');
+ERROR:  new row for relation "caliber_agent" violates check constraint "caliber_agent_status_check"
+\set ON_ERROR_STOP on
+-- ============================================================================
+-- PROPERTY 1: Lock CRUD
+-- Validates: Requirements 7.1, 7.2
+-- ============================================================================
+-- Test: Acquire lock
+INSERT INTO caliber_lock (lock_id, resource_type, resource_id, holder_agent_id, expires_at, mode)
+VALUES (
+    '99999999-9999-9999-9999-999999999999',
+    'trajectory',
+    '11111111-1111-1111-1111-111111111111',
+    '88888888-8888-8888-8888-888888888888',
+    NOW() + INTERVAL '5 minutes',
+    'exclusive'
+)
+RETURNING lock_id, resource_type, resource_id, mode;
+               lock_id                | resource_type |             resource_id              |   mode
+--------------------------------------+---------------+--------------------------------------+-----------
+ 99999999-9999-9999-9999-999999999999 | trajectory    | 11111111-1111-1111-1111-111111111111 | exclusive
+(1 row)
+
+-- Test: Get lock
+SELECT lock_id, resource_type, resource_id, holder_agent_id, mode,
+       expires_at > NOW() AS is_valid
+FROM caliber_lock
+WHERE lock_id = '99999999-9999-9999-9999-999999999999';
+               lock_id                | resource_type |             resource_id              |           holder_agent_id            |   mode    | is_valid
+--------------------------------------+---------------+--------------------------------------+--------------------------------------+-----------+----------
+ 99999999-9999-9999-9999-999999999999 | trajectory    | 11111111-1111-1111-1111-111111111111 | 88888888-8888-8888-8888-888888888888 | exclusive | t
+(1 row)
+
+-- Test: Lock mode constraint (should fail)
+\set ON_ERROR_STOP off
+INSERT INTO caliber_lock (lock_id, resource_type, resource_id, holder_agent_id, expires_at, mode)
+VALUES ('99999999-9999-9999-9999-999999999990', 'scope', '33333333-3333-3333-3333-333333333333', '88888888-8888-8888-8888-888888888888', NOW() + INTERVAL '1 minute', 'invalid_mode');
+ERROR:  new row for relation "caliber_lock" violates check constraint "caliber_lock_mode_check"
+\set ON_ERROR_STOP on
+-- ============================================================================
+-- PROPERTY 1: Message CRUD
+-- Validates: Requirements 8.1, 8.2
+-- ============================================================================
+-- Create second agent for messaging
+INSERT INTO caliber_agent (agent_id, agent_type, status)
+VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'worker', 'idle');
+INSERT 0 1
+-- Test: Send message
+INSERT INTO caliber_message (message_id, from_agent_id, to_agent_id, message_type, payload, priority)
+VALUES (
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    '88888888-8888-8888-8888-888888888888',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'task_request',
+    '{"action": "process_data"}',
+    'high'
+)
+RETURNING message_id, message_type, priority, delivered_at IS NULL AS is_pending;
+              message_id               | message_type | priority | is_pending
+---------------------------------------+--------------+----------+------------
+ bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb | task_request | high     | t
+(1 row)
+
+-- Test: Get pending messages
+SELECT message_id, from_agent_id, message_type, priority
+FROM caliber_message
+WHERE to_agent_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  AND delivered_at IS NULL;
+              message_id               |            from_agent_id             | message_type | priority
+---------------------------------------+--------------------------------------+--------------+----------
+ bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb | 88888888-8888-8888-8888-888888888888 | task_request | high
+(1 row)
+
+-- Test: Deliver message
+UPDATE caliber_message
+SET delivered_at = NOW()
+WHERE message_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+RETURNING message_id, delivered_at IS NOT NULL AS is_delivered;
+              message_id               | is_delivered
+---------------------------------------+--------------
+ bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb | t
+(1 row)
+
+-- Test: Acknowledge message
+UPDATE caliber_message
+SET acknowledged_at = NOW()
+WHERE message_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+RETURNING message_id, acknowledged_at IS NOT NULL AS is_acknowledged;
+              message_id               | is_acknowledged
+---------------------------------------+-----------------
+ bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb | t
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Delegation CRUD
+-- Validates: Requirements 9.1, 9.2
+-- ============================================================================
+-- Test: Create delegation
+INSERT INTO caliber_delegation (delegation_id, delegator_agent_id, delegatee_agent_id, task_description, parent_trajectory_id, status)
+VALUES (
+    'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    '88888888-8888-8888-8888-888888888888',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'Process the data files',
+    '11111111-1111-1111-1111-111111111111',
+    'pending'
+)
+RETURNING delegation_id, status;
+             delegation_id             | status
+---------------------------------------+---------
+ cccccccc-cccc-cccc-cccc-cccccccccccc | pending
+(1 row)
+
+-- Test: Accept delegation
+UPDATE caliber_delegation
+SET status = 'accepted', accepted_at = NOW()
+WHERE delegation_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+RETURNING delegation_id, status, accepted_at IS NOT NULL AS was_accepted;
+             delegation_id             |  status  | was_accepted
+---------------------------------------+----------+--------------
+ cccccccc-cccc-cccc-cccc-cccccccccccc | accepted | t
+(1 row)
+
+-- Test: Complete delegation
+UPDATE caliber_delegation
+SET status = 'completed', completed_at = NOW(), result = '{"success": true}'
+WHERE delegation_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+RETURNING delegation_id, status, result;
+             delegation_id             |  status   |      result
+---------------------------------------+-----------+-------------------
+ cccccccc-cccc-cccc-cccc-cccccccccccc | completed | {"success": true}
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Conflict CRUD
+-- Validates: Requirements 11.1, 11.2
+-- ============================================================================
+-- Create second artifact for conflict
+INSERT INTO caliber_artifact (artifact_id, trajectory_id, scope_id, artifact_type, name, content, content_hash, provenance)
+VALUES (
+    '66666666-6666-6666-6666-666666666667',
+    '11111111-1111-1111-1111-111111111111',
+    '33333333-3333-3333-3333-333333333333',
+    'fact',
+    'Conflicting Artifact',
+    'Different content.',
+    E'\\xFEEDFACE',
+    '{"source_turn": 2, "extraction_method": "inferred", "confidence": 0.8}'
+);
+INSERT 0 1
+-- Test: Detect conflict
+INSERT INTO caliber_conflict (conflict_id, conflict_type, item_a_type, item_a_id, item_b_type, item_b_id, trajectory_id, status)
+VALUES (
+    'dddddddd-dddd-dddd-dddd-dddddddddddd',
+    'contradiction',
+    'artifact',
+    '66666666-6666-6666-6666-666666666666',
+    'artifact',
+    '66666666-6666-6666-6666-666666666667',
+    '11111111-1111-1111-1111-111111111111',
+    'detected'
+)
+RETURNING conflict_id, conflict_type, status;
+              conflict_id              | conflict_type |  status
+---------------------------------------+---------------+----------
+ dddddddd-dddd-dddd-dddd-dddddddddddd | contradiction | detected
+(1 row)
+
+-- Test: Resolve conflict
+UPDATE caliber_conflict
+SET status = 'resolved', resolved_at = NOW(), resolution = '{"winner": "item_a", "reason": "higher confidence"}'
+WHERE conflict_id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'
+RETURNING conflict_id, status, resolution;
+              conflict_id              |  status  |                       resolution
+---------------------------------------+----------+---------------------------------------------------------
+ dddddddd-dddd-dddd-dddd-dddddddddddd | resolved | {"winner": "item_a", "reason": "higher confidence"}
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Handoff CRUD
+-- Validates: Requirements 10.1, 10.2
+-- ============================================================================
+-- Test: Create handoff
+INSERT INTO caliber_handoff (handoff_id, from_agent_id, to_agent_id, trajectory_id, scope_id, context_snapshot_id, reason, status)
+VALUES (
+    'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+    '88888888-8888-8888-8888-888888888888',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '11111111-1111-1111-1111-111111111111',
+    '33333333-3333-3333-3333-333333333333',
+    'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    'shift_change',
+    'initiated'
+)
+RETURNING handoff_id, reason, status;
+              handoff_id               |    reason    |  status
+---------------------------------------+--------------+-----------
+ eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee | shift_change | initiated
+(1 row)
+
+-- Test: Accept handoff
+UPDATE caliber_handoff
+SET status = 'accepted', accepted_at = NOW()
+WHERE handoff_id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'
+RETURNING handoff_id, status;
+              handoff_id               |  status
+---------------------------------------+----------
+ eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee | accepted
+(1 row)
+
+-- Test: Complete handoff
+UPDATE caliber_handoff
+SET status = 'completed', completed_at = NOW()
+WHERE handoff_id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'
+RETURNING handoff_id, status;
+              handoff_id               |  status
+---------------------------------------+-----------
+ eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee | completed
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 1: Edge CRUD (Battle Intel Feature 1)
+-- Validates: Graph relationships
+-- ============================================================================
+-- Test: Create edge between artifacts
+INSERT INTO caliber_edge (edge_id, edge_type, participants, weight, trajectory_id, source_turn, extraction_method, confidence)
+VALUES (
+    '12121212-1212-1212-1212-121212121212',
+    'contradicts',
+    '[{"entity_type": "artifact", "id": "66666666-6666-6666-6666-666666666666", "role": "source"}, {"entity_type": "artifact", "id": "66666666-6666-6666-6666-666666666667", "role": "target"}]'::jsonb,
+    0.85,
+    '11111111-1111-1111-1111-111111111111',
+    2,
+    'inferred',
+    0.9
+)
+RETURNING edge_id, edge_type, weight;
+               edge_id                | edge_type  | weight
+--------------------------------------+------------+--------
+ 12121212-1212-1212-1212-121212121212 | contradicts |   0.85
+(1 row)
+
+-- Test: Query edges by type
+SELECT edge_id, edge_type, weight, participants
+FROM caliber_edge
+WHERE edge_type = 'contradicts';
+               edge_id                | edge_type  | weight |                                                                                     participants
+--------------------------------------+------------+--------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 12121212-1212-1212-1212-121212121212 | contradicts |   0.85 | [{"id": "66666666-6666-6666-6666-666666666666", "role": "source", "entity_type": "artifact"}, {"id": "66666666-6666-6666-6666-666666666667", "role": "target", "entity_type": "artifact"}]
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 2: Update Persistence (Trigger Tests)
+-- Validates: Requirements 15.1
+-- ============================================================================
+-- Test: Trajectory updated_at trigger
+SELECT updated_at AS before_update FROM caliber_trajectory WHERE trajectory_id = '11111111-1111-1111-1111-111111111111';
+        before_update
+------------------------------
+ 2026-01-17 00:00:00.000000+00
+(1 row)
+
+-- Small delay to ensure timestamp difference
+SELECT pg_sleep(0.01);
+ pg_sleep
+----------
+
+(1 row)
+
+UPDATE caliber_trajectory
+SET description = 'Updated description'
+WHERE trajectory_id = '11111111-1111-1111-1111-111111111111';
+UPDATE 1
+SELECT updated_at AS after_update,
+       updated_at > created_at AS updated_after_created
+FROM caliber_trajectory
+WHERE trajectory_id = '11111111-1111-1111-1111-111111111111';
+         after_update          | updated_after_created
+-------------------------------+-----------------------
+ 2026-01-17 00:00:00.010000+00 | t
+(1 row)
+
+-- ============================================================================
+-- PROPERTY 3: Index Consistency
+-- Validates: Requirements 13.1, 13.2
+-- ============================================================================
+-- Test: Index on trajectory status
+EXPLAIN (COSTS OFF) SELECT * FROM caliber_trajectory WHERE status = 'active';
+                       QUERY PLAN
+---------------------------------------------------------
+ Index Scan using idx_trajectory_status on caliber_trajectory
+   Index Cond: (status = 'active'::text)
+(2 rows)
+
+-- Test: Index on scope trajectory_id
+EXPLAIN (COSTS OFF) SELECT * FROM caliber_scope WHERE trajectory_id = '11111111-1111-1111-1111-111111111111';
+                     QUERY PLAN
+-----------------------------------------------------
+ Index Scan using idx_scope_trajectory on caliber_scope
+   Index Cond: (trajectory_id = '11111111-1111-1111-1111-111111111111'::uuid)
+(2 rows)
+
+-- Test: Index on turn scope_id + sequence
+EXPLAIN (COSTS OFF) SELECT * FROM caliber_turn WHERE scope_id = '33333333-3333-3333-3333-333333333333' ORDER BY sequence;
+                     QUERY PLAN
+-----------------------------------------------------
+ Index Scan using idx_turn_scope_seq on caliber_turn
+   Index Cond: (scope_id = '33333333-3333-3333-3333-333333333333'::uuid)
+(2 rows)
+
+-- Test: Index on agent status
+EXPLAIN (COSTS OFF) SELECT * FROM caliber_agent WHERE status = 'active';
+                    QUERY PLAN
+---------------------------------------------------
+ Index Scan using idx_agent_status on caliber_agent
+   Index Cond: (status = 'active'::text)
+(2 rows)
+
+-- Test: Index on message pending
+EXPLAIN (COSTS OFF) SELECT * FROM caliber_message WHERE to_agent_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' AND delivered_at IS NULL;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan using idx_message_pending on caliber_message
+   Index Cond: (to_agent_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid)
+   Filter: (delivered_at IS NULL)
+(3 rows)
+
+-- ============================================================================
+-- PROPERTY 8: Not Found Returns Empty (Not Error)
+-- Validates: Requirement 14.2
+-- ============================================================================
+-- Test: Get non-existent trajectory (should return 0 rows, not error)
+SELECT COUNT(*) AS found_count
+FROM caliber_trajectory
+WHERE trajectory_id = 'ffffffff-ffff-ffff-ffff-000000000000';
+ found_count
+-------------
+           0
+(1 row)
+
+-- Test: Get non-existent agent
+SELECT COUNT(*) AS found_count
+FROM caliber_agent
+WHERE agent_id = 'ffffffff-ffff-ffff-ffff-000000000001';
+ found_count
+-------------
+           0
+(1 row)
+
+-- ============================================================================
+-- CLEANUP FUNCTION TESTS
+-- Validates: Lock and message expiry
+-- ============================================================================
+-- Create an expired lock for testing
+INSERT INTO caliber_lock (lock_id, resource_type, resource_id, holder_agent_id, expires_at, mode)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    'artifact',
+    '66666666-6666-6666-6666-666666666666',
+    '88888888-8888-8888-8888-888888888888',
+    NOW() - INTERVAL '1 hour',  -- Already expired
+    'shared'
+);
+INSERT 0 1
+-- Test: Cleanup expired locks
+SELECT caliber_cleanup_expired_locks() AS locks_deleted;
+ locks_deleted
+---------------
+             1
+(1 row)
+
+-- Verify lock was deleted
+SELECT COUNT(*) AS remaining_expired_locks
+FROM caliber_lock
+WHERE lock_id = '00000000-0000-0000-0000-000000000001';
+ remaining_expired_locks
+-------------------------
+                       0
+(1 row)
+
+-- ============================================================================
+-- VIEW TESTS
+-- Validates: Debug views work correctly
+-- ============================================================================
+-- Test: Active trajectories view
+SELECT trajectory_id, name, status, scope_count
+FROM caliber_v_active_trajectories
+LIMIT 5;
+ trajectory_id | name | status | scope_count
+---------------+------+--------+-------------
+(0 rows)
+
+-- Test: Agent status view
+SELECT agent_id, agent_type, status, held_locks, pending_messages
+FROM caliber_v_agent_status
+LIMIT 5;
+               agent_id               | agent_type  | status | held_locks | pending_messages
+--------------------------------------+-------------+--------+------------+------------------
+ 88888888-8888-8888-8888-888888888888 | coordinator | active |          1 |                0
+ aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa | worker      | idle   |          0 |                0
+(2 rows)
+
+-- ============================================================================
+-- CLEANUP
+-- ============================================================================
+-- Delete in reverse dependency order
+DELETE FROM caliber_edge;
+DELETE 1
+DELETE FROM caliber_handoff;
+DELETE 1
+DELETE FROM caliber_conflict;
+DELETE 1
+DELETE FROM caliber_delegation;
+DELETE 1
+DELETE FROM caliber_message;
+DELETE 1
+DELETE FROM caliber_lock;
+DELETE 1
+DELETE FROM caliber_turn;
+DELETE 3
+DELETE FROM caliber_artifact;
+DELETE 2
+DELETE FROM caliber_note;
+DELETE 1
+DELETE FROM caliber_scope;
+DELETE 2
+DELETE FROM caliber_trajectory WHERE parent_trajectory_id IS NOT NULL;
+DELETE 1
+DELETE FROM caliber_trajectory;
+DELETE 1
+DELETE FROM caliber_agent;
+DELETE 2
+-- Verify cleanup
+SELECT
+    (SELECT COUNT(*) FROM caliber_trajectory) AS trajectories,
+    (SELECT COUNT(*) FROM caliber_scope) AS scopes,
+    (SELECT COUNT(*) FROM caliber_artifact) AS artifacts,
+    (SELECT COUNT(*) FROM caliber_note) AS notes,
+    (SELECT COUNT(*) FROM caliber_agent) AS agents;
+ trajectories | scopes | artifacts | notes | agents
+--------------+--------+-----------+-------+--------
+            0 |      0 |         0 |     0 |      0
+(1 row)
+

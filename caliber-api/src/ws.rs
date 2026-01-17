@@ -190,7 +190,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>, tenant_id: Entity
                 match result {
                     Ok(event) => {
                         // Filter events by tenant
-                        if should_send_event(&event, tenant_id) {
+                        if should_deliver_event(&event, tenant_id) {
                             if let Err(e) = send_event(&mut sender, event).await {
                                 error!(
                                     tenant_id = %tenant_id,
@@ -260,7 +260,11 @@ async fn send_event(
 /// Most events are tenant-specific and should only be sent to clients
 /// connected to that tenant. Connection events (Connected, Disconnected, Error)
 /// are always sent.
-fn should_send_event(event: &WsEvent, client_tenant_id: EntityId) -> bool {
+///
+/// # Security
+/// This function implements DENY by default - if tenant_id cannot be determined
+/// from an event that is tenant-specific, the event will NOT be delivered.
+pub fn should_deliver_event(event: &WsEvent, client_tenant_id: EntityId) -> bool {
     // Connection events are always sent
     if !event.is_tenant_specific() {
         return true;
@@ -269,31 +273,134 @@ fn should_send_event(event: &WsEvent, client_tenant_id: EntityId) -> bool {
     match tenant_id_from_event(event) {
         Some(event_tenant_id) => event_tenant_id == client_tenant_id,
         None => {
-            // Tenant-aware metadata is optional; fall back to allow when missing.
-            debug!(
+            // SECURITY: Deny by default when tenant cannot be determined.
+            // This prevents cross-tenant data leakage.
+            warn!(
                 event_type = event.event_type(),
-                "Tenant metadata missing for event; allowing broadcast"
+                "Tenant metadata missing for event; DENYING broadcast for security"
             );
-            true
+            false
         }
     }
 }
 
-fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
+/// Extract tenant_id from an event if available.
+///
+/// This function is used for tenant filtering of WebSocket events.
+/// Returns `Some(tenant_id)` if the event contains tenant information,
+/// `None` otherwise.
+pub fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
     match event {
+        // ========================================================================
+        // TRAJECTORY EVENTS
+        // ========================================================================
         WsEvent::TrajectoryCreated { trajectory } => tenant_id_from_metadata(&trajectory.metadata),
         WsEvent::TrajectoryUpdated { trajectory } => tenant_id_from_metadata(&trajectory.metadata),
+        WsEvent::TrajectoryDeleted { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // SCOPE EVENTS
+        // ========================================================================
         WsEvent::ScopeCreated { scope } => tenant_id_from_metadata(&scope.metadata),
         WsEvent::ScopeUpdated { scope } => tenant_id_from_metadata(&scope.metadata),
         WsEvent::ScopeClosed { scope } => tenant_id_from_metadata(&scope.metadata),
+
+        // ========================================================================
+        // ARTIFACT EVENTS
+        // ========================================================================
         WsEvent::ArtifactCreated { artifact } => tenant_id_from_metadata(&artifact.metadata),
         WsEvent::ArtifactUpdated { artifact } => tenant_id_from_metadata(&artifact.metadata),
+        WsEvent::ArtifactDeleted { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // NOTE EVENTS
+        // ========================================================================
         WsEvent::NoteCreated { note } => tenant_id_from_metadata(&note.metadata),
         WsEvent::NoteUpdated { note } => tenant_id_from_metadata(&note.metadata),
+        WsEvent::NoteDeleted { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // TURN EVENTS
+        // ========================================================================
         WsEvent::TurnCreated { turn } => tenant_id_from_metadata(&turn.metadata),
+
+        // ========================================================================
+        // AGENT EVENTS
+        // ========================================================================
+        WsEvent::AgentRegistered { agent } => {
+            // AgentResponse doesn't have metadata, but agents are scoped to tenants
+            // via the auth context when registered. For now, return None and rely
+            // on the fallback DENY behavior.
+            // TODO: Add tenant_id field to AgentResponse or use a lookup
+            None
+        }
+        WsEvent::AgentStatusChanged { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::AgentHeartbeat { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::AgentUnregistered { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // LOCK EVENTS
+        // ========================================================================
+        WsEvent::LockAcquired { lock } => {
+            // LockResponse doesn't have tenant metadata
+            // TODO: Add tenant_id field to LockResponse
+            None
+        }
+        WsEvent::LockReleased { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::LockExpired { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // MESSAGE EVENTS
+        // ========================================================================
+        WsEvent::MessageSent { message } => {
+            // MessageResponse doesn't have tenant metadata
+            // TODO: Add tenant_id field to MessageResponse
+            None
+        }
+        WsEvent::MessageDelivered { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::MessageAcknowledged { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // DELEGATION EVENTS
+        // ========================================================================
         WsEvent::DelegationCreated { delegation } => tenant_id_from_metadata(&delegation.context),
+        WsEvent::DelegationAccepted { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::DelegationRejected { tenant_id, .. } => Some(*tenant_id),
         WsEvent::DelegationCompleted { delegation } => tenant_id_from_metadata(&delegation.context),
-        _ => None,
+
+        // ========================================================================
+        // HANDOFF EVENTS
+        // ========================================================================
+        WsEvent::HandoffCreated { handoff } => {
+            // HandoffResponse doesn't have tenant metadata
+            // TODO: Add tenant_id field to HandoffResponse
+            None
+        }
+        WsEvent::HandoffAccepted { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::HandoffCompleted { handoff } => {
+            // HandoffResponse doesn't have tenant metadata
+            // TODO: Add tenant_id field to HandoffResponse
+            None
+        }
+
+        // ========================================================================
+        // CONFIG EVENTS - Not tenant-specific (handled by is_tenant_specific())
+        // ========================================================================
+        WsEvent::ConfigUpdated { .. } => None,
+
+        // ========================================================================
+        // CONNECTION EVENTS - Not tenant-specific (handled by is_tenant_specific())
+        // ========================================================================
+        WsEvent::Connected { tenant_id } => Some(*tenant_id),
+        WsEvent::Disconnected { .. } => None,
+        WsEvent::Error { .. } => None,
+
+        // ========================================================================
+        // BATTLE INTEL EVENTS
+        // ========================================================================
+        WsEvent::SummarizationTriggered { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::EdgeCreated { tenant_id, .. } => Some(*tenant_id),
+        WsEvent::EdgesBatchCreated { tenant_id, .. } => Some(*tenant_id),
     }
 }
 
@@ -348,12 +455,12 @@ mod tests {
 
         // Connection events should always be sent
         let connected = WsEvent::Connected { tenant_id };
-        assert!(should_send_event(&connected, tenant_id));
+        assert!(should_deliver_event(&connected, tenant_id));
 
         let error = WsEvent::Error {
             message: "test".to_string(),
         };
-        assert!(should_send_event(&error, tenant_id));
+        assert!(should_deliver_event(&error, tenant_id));
 
         // Tenant-specific events should be filtered
         // (Currently sends to all, but test the logic)
@@ -373,7 +480,7 @@ mod tests {
                 metadata: Some(json!({ "tenant_id": tenant_id.to_string() })),
             },
         };
-        assert!(should_send_event(&trajectory_created, tenant_id));
+        assert!(should_deliver_event(&trajectory_created, tenant_id));
 
         let other_tenant = caliber_core::new_entity_id();
         let other_tenant_event = WsEvent::TrajectoryCreated {
@@ -392,6 +499,6 @@ mod tests {
                 metadata: Some(json!({ "tenant_id": other_tenant.to_string() })),
             },
         };
-        assert!(!should_send_event(&other_tenant_event, tenant_id));
+        assert!(!should_deliver_event(&other_tenant_event, tenant_id));
     }
 }

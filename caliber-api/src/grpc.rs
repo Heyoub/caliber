@@ -762,8 +762,46 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
         Ok(Response::new(Empty {}))
     }
 
-    async fn search_artifacts(&self, _request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
-        Ok(Response::new(SearchResponse { results: vec![], total: 0 }))
+    async fn search_artifacts(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        let req = request.into_inner();
+
+        // Validate search query
+        if req.query.trim().is_empty() {
+            return Err(Status::invalid_argument("query cannot be empty"));
+        }
+
+        // Convert proto request to internal type
+        let search_req = crate::types::SearchRequest {
+            query: req.query,
+            entity_types: req.entity_types.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            filters: req.filters.into_iter().map(|f| crate::types::FilterExpr {
+                field: f.field,
+                operator: f.operator,
+                value: serde_json::from_str(&f.value).unwrap_or(serde_json::Value::Null),
+            }).collect(),
+            limit: req.limit,
+        };
+
+        // Validate entity types include Artifact
+        if !search_req.entity_types.contains(&caliber_core::EntityType::Artifact) {
+            return Err(Status::invalid_argument(
+                "entity_types must include Artifact for artifact search",
+            ));
+        }
+
+        // Perform the search
+        let result = self.db.search(&search_req).await?;
+
+        Ok(Response::new(SearchResponse {
+            results: result.results.into_iter().map(|r| SearchResult {
+                entity_type: r.entity_type.to_string(),
+                id: r.id.to_string(),
+                name: r.name,
+                snippet: r.snippet,
+                score: r.score,
+            }).collect(),
+            total: result.total,
+        }))
     }
 }
 
@@ -803,8 +841,77 @@ impl note_service_server::NoteService for NoteServiceImpl {
         Ok(Response::new(note_to_proto(&note)))
     }
 
-    async fn list_notes(&self, _request: Request<ListNotesRequest>) -> Result<Response<ListNotesResponse>, Status> {
-        Ok(Response::new(ListNotesResponse { notes: vec![], total: 0 }))
+    async fn list_notes(&self, request: Request<ListNotesRequest>) -> Result<Response<ListNotesResponse>, Status> {
+        let req = request.into_inner();
+
+        if let Some(source_trajectory_id) = req.source_trajectory_id {
+            // Filter by source trajectory
+            let trajectory_id = source_trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid source_trajectory_id"))?;
+            let notes = self.db.note_list_by_trajectory(trajectory_id).await?;
+
+            // Apply additional filters if needed
+            let mut filtered = notes;
+
+            if let Some(note_type) = req.note_type {
+                if let Ok(parsed_type) = note_type.parse::<caliber_core::NoteType>() {
+                    filtered.retain(|n| n.note_type == parsed_type);
+                }
+            }
+
+            if let Some(created_after) = req.created_after {
+                let timestamp = parse_timestamp_millis(created_after, "created_after")?;
+                filtered.retain(|n| n.created_at >= timestamp);
+            }
+
+            if let Some(created_before) = req.created_before {
+                let timestamp = parse_timestamp_millis(created_before, "created_before")?;
+                filtered.retain(|n| n.created_at <= timestamp);
+            }
+
+            // Apply pagination
+            let total = filtered.len() as i32;
+            let offset = req.offset.unwrap_or(0) as usize;
+            let limit = req.limit.unwrap_or(100) as usize;
+
+            let paginated: Vec<_> = filtered.into_iter().skip(offset).take(limit).collect();
+
+            Ok(Response::new(ListNotesResponse {
+                notes: paginated.into_iter().map(|n| note_to_proto(&n)).collect(),
+                total,
+            }))
+        } else {
+            // No trajectory filter - return all notes with pagination
+            let limit = req.limit.unwrap_or(100);
+            let offset = req.offset.unwrap_or(0);
+
+            let notes = self.db.note_list_all(limit, offset).await?;
+
+            // Apply additional filters if needed
+            let mut filtered = notes;
+
+            if let Some(note_type) = req.note_type {
+                if let Ok(parsed_type) = note_type.parse::<caliber_core::NoteType>() {
+                    filtered.retain(|n| n.note_type == parsed_type);
+                }
+            }
+
+            if let Some(created_after) = req.created_after {
+                let timestamp = parse_timestamp_millis(created_after, "created_after")?;
+                filtered.retain(|n| n.created_at >= timestamp);
+            }
+
+            if let Some(created_before) = req.created_before {
+                let timestamp = parse_timestamp_millis(created_before, "created_before")?;
+                filtered.retain(|n| n.created_at <= timestamp);
+            }
+
+            let total = filtered.len() as i32;
+
+            Ok(Response::new(ListNotesResponse {
+                notes: filtered.into_iter().map(|n| note_to_proto(&n)).collect(),
+                total,
+            }))
+        }
     }
 
     async fn update_note(&self, request: Request<UpdateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
@@ -829,8 +936,46 @@ impl note_service_server::NoteService for NoteServiceImpl {
         Ok(Response::new(Empty {}))
     }
 
-    async fn search_notes(&self, _request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
-        Ok(Response::new(SearchResponse { results: vec![], total: 0 }))
+    async fn search_notes(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        let req = request.into_inner();
+
+        // Validate search query
+        if req.query.trim().is_empty() {
+            return Err(Status::invalid_argument("query cannot be empty"));
+        }
+
+        // Convert proto request to internal type
+        let search_req = crate::types::SearchRequest {
+            query: req.query,
+            entity_types: req.entity_types.into_iter().filter_map(|s| s.parse().ok()).collect(),
+            filters: req.filters.into_iter().map(|f| crate::types::FilterExpr {
+                field: f.field,
+                operator: f.operator,
+                value: serde_json::from_str(&f.value).unwrap_or(serde_json::Value::Null),
+            }).collect(),
+            limit: req.limit,
+        };
+
+        // Validate entity types include Note
+        if !search_req.entity_types.contains(&caliber_core::EntityType::Note) {
+            return Err(Status::invalid_argument(
+                "entity_types must include Note for note search",
+            ));
+        }
+
+        // Perform the search
+        let result = self.db.search(&search_req).await?;
+
+        Ok(Response::new(SearchResponse {
+            results: result.results.into_iter().map(|r| SearchResult {
+                entity_type: r.entity_type.to_string(),
+                id: r.id.to_string(),
+                name: r.name,
+                snippet: r.snippet,
+                score: r.score,
+            }).collect(),
+            total: result.total,
+        }))
     }
 }
 
@@ -918,8 +1063,29 @@ impl agent_service_server::AgentService for AgentServiceImpl {
         Ok(Response::new(agent_to_proto(&agent)))
     }
 
-    async fn list_agents(&self, _request: Request<ListAgentsRequest>) -> Result<Response<ListAgentsResponse>, Status> {
-        Ok(Response::new(ListAgentsResponse { agents: vec![] }))
+    async fn list_agents(&self, request: Request<ListAgentsRequest>) -> Result<Response<ListAgentsResponse>, Status> {
+        let req = request.into_inner();
+
+        let agents = if let Some(agent_type) = req.agent_type {
+            // Filter by agent type
+            self.db.agent_list_by_type(&agent_type).await?
+        } else if let Some(status) = req.status {
+            // If status filter is "active", use agent_list_active
+            if status.to_lowercase() == "active" {
+                self.db.agent_list_active().await?
+            } else {
+                // Otherwise, list all and filter by status
+                let all_agents = self.db.agent_list_all().await?;
+                all_agents.into_iter().filter(|a| a.status == status).collect()
+            }
+        } else {
+            // List all agents
+            self.db.agent_list_all().await?
+        };
+
+        Ok(Response::new(ListAgentsResponse {
+            agents: agents.into_iter().map(|a| agent_to_proto(&a)).collect(),
+        }))
     }
 
     async fn update_agent(&self, request: Request<UpdateAgentRequest>) -> Result<Response<AgentResponse>, Status> {
@@ -1072,8 +1238,28 @@ impl message_service_server::MessageService for MessageServiceImpl {
         Ok(Response::new(message_to_proto(&message)))
     }
 
-    async fn list_messages(&self, _request: Request<ListMessagesRequest>) -> Result<Response<ListMessagesResponse>, Status> {
-        Ok(Response::new(ListMessagesResponse { messages: vec![] }))
+    async fn list_messages(&self, request: Request<ListMessagesRequest>) -> Result<Response<ListMessagesResponse>, Status> {
+        let req = request.into_inner();
+
+        let limit = 100;
+        let offset = 0;
+
+        let messages = self.db.message_list(crate::db::MessageListParams {
+            from_agent_id: req.from_agent_id.and_then(|s| s.parse().ok()),
+            to_agent_id: req.to_agent_id.and_then(|s| s.parse().ok()),
+            to_agent_type: None,
+            trajectory_id: req.trajectory_id.and_then(|s| s.parse().ok()),
+            message_type: req.message_type.as_deref(),
+            priority: None,
+            undelivered_only: false,
+            unacknowledged_only: false,
+            limit,
+            offset,
+        }).await?;
+
+        Ok(Response::new(ListMessagesResponse {
+            messages: messages.into_iter().map(|m| message_to_proto(&m)).collect(),
+        }))
     }
 
     async fn deliver_message(&self, request: Request<DeliverMessageRequest>) -> Result<Response<MessageResponse>, Status> {

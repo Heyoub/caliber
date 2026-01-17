@@ -562,7 +562,6 @@ unsafe fn tuple_to_scope(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use proptest::prelude::*;
 
     // ========================================================================

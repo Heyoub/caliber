@@ -7,6 +7,10 @@ license.workspace = true
 [lib]
 crate-type = ["cdylib"]
 
+[[bin]]
+name = "pgrx_embed"
+path = "src/bin/pgrx_embed.rs"
+
 [features]
 default = ["pg18"]
 pg13 = ["pgrx/pg13"]
@@ -15,7 +19,9 @@ pg15 = ["pgrx/pg15"]
 pg16 = ["pgrx/pg16"]
 pg17 = ["pgrx/pg17"]
 pg18 = ["pgrx/pg18"]
-pg_test = []
+# pg_test feature gates pgrx-tests dependency (currently broken with PG18)
+# Once pgrx-tests is fixed upstream, enable with: cargo pgrx test pg18 --features pg_test
+pg_test = ["dep:pgrx-tests"]
 debug = []  # Enable debug endpoints (caliber_debug_*)
 
 [dependencies]
@@ -35,5 +41,12 @@ once_cell = { workspace = true }
 hex = { workspace = true }
 
 [dev-dependencies]
-pgrx-tests = "0.16"
 proptest = { workspace = true }
+
+# pgrx-tests is optional - gated behind pg_test feature
+# Currently broken with Postgres 18 (Pg_magic_struct field changes)
+# Tracking: https://github.com/pgcentralfoundation/pgrx/issues
+[dependencies.pgrx-tests]
+version = "0.16"
+features = ["pg_test"]
+optional = true

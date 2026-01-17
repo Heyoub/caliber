@@ -326,7 +326,10 @@ unsafe fn tuple_to_message(
         "handoff" => MessageType::Handoff,
         "interrupt" => MessageType::Interrupt,
         "heartbeat" => MessageType::Heartbeat,
-        _ => MessageType::CoordinationSignal,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown message type '{}', defaulting to CoordinationSignal", message_type_str);
+            MessageType::CoordinationSignal
+        }
     };
     
     let payload = extract_text(tuple, tuple_desc, message::PAYLOAD)?
@@ -361,7 +364,10 @@ unsafe fn tuple_to_message(
         "normal" => MessagePriority::Normal,
         "high" => MessagePriority::High,
         "critical" => MessagePriority::Critical,
-        _ => MessagePriority::Normal,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown message priority '{}', defaulting to Normal", priority_str);
+            MessagePriority::Normal
+        }
     };
     
     let expires_at = extract_timestamp(tuple, tuple_desc, message::EXPIRES_AT)?

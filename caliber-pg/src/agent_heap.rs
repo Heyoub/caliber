@@ -303,7 +303,10 @@ unsafe fn tuple_to_agent(
         "active" => AgentStatus::Active,
         "blocked" => AgentStatus::Blocked,
         "failed" => AgentStatus::Failed,
-        _ => AgentStatus::Idle,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown agent status '{}', defaulting to Idle", status_str);
+            AgentStatus::Idle
+        }
     };
     
     let current_trajectory_id = extract_uuid(tuple, tuple_desc, agent::CURRENT_TRAJECTORY_ID)?;

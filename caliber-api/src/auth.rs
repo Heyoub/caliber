@@ -21,23 +21,58 @@ use uuid::Uuid;
 // CONFIGURATION
 // ============================================================================
 
+/// Authentication provider selection.
+///
+/// Determines which authentication backend to use for validating credentials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AuthProvider {
+    /// Standard JWT authentication (default)
+    #[default]
+    Jwt,
+
+    /// WorkOS SSO authentication (requires `workos` feature)
+    WorkOs,
+}
+
+impl AuthProvider {
+    /// Parse auth provider from string (case-insensitive).
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "workos" => AuthProvider::WorkOs,
+            _ => AuthProvider::Jwt,
+        }
+    }
+}
+
 /// Authentication configuration.
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
     /// Valid API keys (in production, load from secure storage)
     pub api_keys: HashSet<String>,
-    
+
     /// JWT secret key for signing and verification
     pub jwt_secret: String,
-    
+
     /// JWT algorithm (default: HS256)
     pub jwt_algorithm: Algorithm,
-    
+
     /// JWT token expiration in seconds (default: 1 hour)
     pub jwt_expiration_secs: i64,
-    
+
     /// Whether to require tenant header
     pub require_tenant_header: bool,
+
+    /// WorkOS client ID (optional, required when using WorkOS auth)
+    pub workos_client_id: Option<String>,
+
+    /// WorkOS API key (optional, required when using WorkOS auth)
+    pub workos_api_key: Option<String>,
+
+    /// WorkOS redirect URI for SSO callback
+    pub workos_redirect_uri: Option<String>,
+
+    /// Authentication provider to use
+    pub auth_provider: AuthProvider,
 }
 
 impl Default for AuthConfig {
@@ -49,15 +84,29 @@ impl Default for AuthConfig {
             jwt_algorithm: Algorithm::HS256,
             jwt_expiration_secs: 3600, // 1 hour
             require_tenant_header: true,
+            workos_client_id: None,
+            workos_api_key: None,
+            workos_redirect_uri: None,
+            auth_provider: AuthProvider::default(),
         }
     }
 }
 
 impl AuthConfig {
     /// Create authentication configuration from environment variables.
+    ///
+    /// # Environment Variables
+    /// - `CALIBER_API_KEYS`: Comma-separated list of valid API keys
+    /// - `CALIBER_JWT_SECRET`: JWT signing secret
+    /// - `CALIBER_JWT_EXPIRATION_SECS`: JWT token expiration (default: 3600)
+    /// - `CALIBER_REQUIRE_TENANT_HEADER`: Whether X-Tenant-ID is required (default: true)
+    /// - `CALIBER_AUTH_PROVIDER`: Authentication provider ("jwt" | "workos", default: "jwt")
+    /// - `CALIBER_WORKOS_CLIENT_ID`: WorkOS application client ID
+    /// - `CALIBER_WORKOS_API_KEY`: WorkOS API key
+    /// - `CALIBER_WORKOS_REDIRECT_URI`: WorkOS SSO callback redirect URI
     pub fn from_env() -> Self {
         let mut api_keys = HashSet::new();
-        
+
         // Load API keys from environment (comma-separated)
         if let Ok(keys_str) = std::env::var("CALIBER_API_KEYS") {
             for key in keys_str.split(',') {
@@ -67,7 +116,12 @@ impl AuthConfig {
                 }
             }
         }
-        
+
+        // Determine auth provider
+        let auth_provider = std::env::var("CALIBER_AUTH_PROVIDER")
+            .map(|s| AuthProvider::from_str(&s))
+            .unwrap_or_default();
+
         Self {
             api_keys,
             jwt_secret: std::env::var("CALIBER_JWT_SECRET")
@@ -81,6 +135,55 @@ impl AuthConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(true),
+            workos_client_id: std::env::var("CALIBER_WORKOS_CLIENT_ID").ok(),
+            workos_api_key: std::env::var("CALIBER_WORKOS_API_KEY").ok(),
+            workos_redirect_uri: std::env::var("CALIBER_WORKOS_REDIRECT_URI").ok(),
+            auth_provider,
+        }
+    }
+
+    /// Validate the authentication configuration for production use.
+    ///
+    /// This function should be called at server startup to ensure that
+    /// insecure defaults are not being used in production environments.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the JWT secret is set to the insecure default value
+    /// when running in a production environment.
+    pub fn validate_for_production(&self) {
+        // Check if running in production environment
+        let environment = std::env::var("CALIBER_ENVIRONMENT")
+            .unwrap_or_else(|_| "development".to_string())
+            .to_lowercase();
+
+        if environment == "production" || environment == "prod" {
+            // Verify JWT secret is not the insecure default
+            if self.jwt_secret == "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION" {
+                panic!(
+                    "CRITICAL SECURITY ERROR: Cannot start server in production with insecure JWT secret!\n\
+                     Please set the CALIBER_JWT_SECRET environment variable to a secure random value.\n\
+                     Current environment: CALIBER_ENVIRONMENT={}\n\
+                     \n\
+                     To fix this:\n\
+                     1. Generate a secure secret: openssl rand -base64 32\n\
+                     2. Set it in your environment: export CALIBER_JWT_SECRET=\"your-secure-secret\"\n\
+                     3. Restart the server",
+                    environment
+                );
+            }
+
+            // Additional production checks
+            if self.jwt_secret.len() < 32 {
+                panic!(
+                    "CRITICAL SECURITY ERROR: JWT secret is too short for production use!\n\
+                     The JWT secret must be at least 32 characters long in production.\n\
+                     Current length: {} characters\n\
+                     \n\
+                     Generate a secure secret with: openssl rand -base64 32",
+                    self.jwt_secret.len()
+                );
+            }
         }
     }
     
@@ -220,9 +323,12 @@ impl AuthContext {
 pub enum AuthMethod {
     /// API key authentication
     ApiKey,
-    
+
     /// JWT token authentication
     Jwt,
+
+    /// WorkOS SSO authentication
+    WorkOs,
 }
 
 // ============================================================================
@@ -634,15 +740,72 @@ mod tests {
         let user_id = "user123".to_string();
         let tenant_id = Uuid::now_v7();
         let expiration_secs = 3600;
-        
+
         let claims = Claims::new(user_id.clone(), Some(tenant_id), expiration_secs)
             .with_role("admin".to_string())
             .with_roles(vec!["editor".to_string(), "viewer".to_string()]);
-        
+
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.tenant_id(), Some(tenant_id));
         assert_eq!(claims.roles.len(), 3);
         assert!(claims.roles.contains(&"admin".to_string()));
         assert!(!claims.is_expired());
+    }
+
+    #[test]
+    fn test_production_validation_allows_secure_secret() {
+        std::env::set_var("CALIBER_ENVIRONMENT", "production");
+        let mut config = AuthConfig::default();
+        config.jwt_secret = "this-is-a-very-secure-secret-that-is-at-least-32-characters-long".to_string();
+
+        // Should not panic
+        config.validate_for_production();
+
+        std::env::remove_var("CALIBER_ENVIRONMENT");
+    }
+
+    #[test]
+    #[should_panic(expected = "CRITICAL SECURITY ERROR: Cannot start server in production with insecure JWT secret")]
+    fn test_production_validation_rejects_insecure_default() {
+        std::env::set_var("CALIBER_ENVIRONMENT", "production");
+        let config = AuthConfig::default(); // Uses insecure default
+
+        // Should panic
+        config.validate_for_production();
+
+        std::env::remove_var("CALIBER_ENVIRONMENT");
+    }
+
+    #[test]
+    #[should_panic(expected = "CRITICAL SECURITY ERROR: JWT secret is too short")]
+    fn test_production_validation_rejects_short_secret() {
+        std::env::set_var("CALIBER_ENVIRONMENT", "production");
+        let mut config = AuthConfig::default();
+        config.jwt_secret = "short".to_string(); // Too short
+
+        // Should panic
+        config.validate_for_production();
+
+        std::env::remove_var("CALIBER_ENVIRONMENT");
+    }
+
+    #[test]
+    fn test_production_validation_allows_development() {
+        std::env::set_var("CALIBER_ENVIRONMENT", "development");
+        let config = AuthConfig::default(); // Uses insecure default
+
+        // Should not panic in development
+        config.validate_for_production();
+
+        std::env::remove_var("CALIBER_ENVIRONMENT");
+    }
+
+    #[test]
+    fn test_production_validation_without_env_var() {
+        std::env::remove_var("CALIBER_ENVIRONMENT");
+        let config = AuthConfig::default(); // Uses insecure default
+
+        // Should not panic when no environment is set (defaults to development)
+        config.validate_for_production();
     }
 }

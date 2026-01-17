@@ -13,21 +13,22 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
-    db::{DbClient, DbConfig},
+    db::DbClient,
     types::{CreateArtifactRequest, CreateScopeRequest, CreateTrajectoryRequest},
 };
 use caliber_core::{ArtifactType, EntityId, ExtractionMethod, TTL};
 use proptest::prelude::*;
 use uuid::Uuid;
 
+mod test_support;
+
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
 
-/// Create a test database client.
+/// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
+    test_support::test_db_client()
 }
 
 /// Helper to create a test trajectory for artifact tests.
@@ -190,6 +191,11 @@ fn optional_metadata_strategy() -> impl Strategy<Value = Option<serde_json::Valu
 }
 
 /// Strategy for generating a complete CreateArtifactRequest.
+///
+/// NOTE: This strategy is kept for future use when tests evolve to use
+/// proptest strategies for full request generation. Currently tests
+/// construct CreateArtifactRequest manually for more explicit control.
+#[allow(dead_code)]
 fn create_artifact_request_strategy(
     trajectory_id: EntityId,
     scope_id: EntityId,
@@ -268,7 +274,7 @@ proptest! {
                 source_turn,
                 extraction_method,
                 confidence,
-                ttl,
+                ttl: ttl.clone(),
                 metadata: metadata.clone(),
             };
 
@@ -287,7 +293,7 @@ proptest! {
             prop_assert_eq!(created.artifact_type, artifact_type);
             prop_assert_eq!(created.trajectory_id, trajectory_id);
             prop_assert_eq!(created.scope_id, scope_id);
-            prop_assert_eq!(created.ttl, ttl);
+            prop_assert_eq!(&created.ttl, &ttl);
 
             // Verify provenance
             prop_assert_eq!(created.provenance.source_turn, source_turn);
@@ -316,7 +322,7 @@ proptest! {
             prop_assert_eq!(retrieved.artifact_type, created.artifact_type);
             prop_assert_eq!(retrieved.trajectory_id, created.trajectory_id);
             prop_assert_eq!(retrieved.scope_id, created.scope_id);
-            prop_assert_eq!(retrieved.ttl, created.ttl);
+            prop_assert_eq!(&retrieved.ttl, &created.ttl);
             prop_assert_eq!(retrieved.provenance.source_turn, created.provenance.source_turn);
             prop_assert_eq!(retrieved.provenance.extraction_method, created.provenance.extraction_method);
             prop_assert_eq!(retrieved.provenance.confidence, created.provenance.confidence);
@@ -643,19 +649,19 @@ proptest! {
                 source_turn: 0,
                 extraction_method: ExtractionMethod::Explicit,
                 confidence: None,
-                ttl,
+                ttl: ttl.clone(),
                 metadata: None,
             };
 
             let created = db.artifact_create(&create_req).await?;
 
             // Property: TTL should be preserved
-            prop_assert_eq!(created.ttl, ttl);
+            prop_assert_eq!(&created.ttl, &ttl);
 
             // Verify persistence
             let retrieved = db.artifact_get(created.artifact_id).await?
                 .expect("Artifact should exist");
-            prop_assert_eq!(retrieved.ttl, ttl);
+            prop_assert_eq!(&retrieved.ttl, &ttl);
 
             Ok(())
         })?;
@@ -1136,7 +1142,7 @@ mod edge_cases {
             TTL::Permanent,
         ];
 
-        for ttl in ttl_variants {
+        for ttl in &ttl_variants {
             let create_req = CreateArtifactRequest {
                 trajectory_id,
                 scope_id,
@@ -1146,21 +1152,21 @@ mod edge_cases {
                 source_turn: 0,
                 extraction_method: ExtractionMethod::Explicit,
                 confidence: None,
-                ttl,
+                ttl: ttl.clone(),
                 metadata: None,
             };
 
             let created = db.artifact_create(&create_req).await
                 .expect(&format!("Should create artifact with TTL {:?}", ttl));
 
-            assert_eq!(created.ttl, ttl);
+            assert_eq!(&created.ttl, ttl);
 
             // Verify persistence
             let retrieved = db.artifact_get(created.artifact_id).await
                 .expect("Should retrieve artifact")
                 .expect("Artifact should exist");
 
-            assert_eq!(retrieved.ttl, ttl);
+            assert_eq!(&retrieved.ttl, ttl);
         }
     }
 
