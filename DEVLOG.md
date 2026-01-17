@@ -4758,3 +4758,269 @@ JWT_SECRET=xxx
 
 **Status:** Managed service infrastructure complete, ready for deployment
 
+
+
+---
+
+### January 17, 2026 — Comprehensive Testing Infrastructure
+
+**Context:** Created complete testing infrastructure for TypeScript/SDK with unit, property-based, fuzz, chaos, and smoke tests.
+
+**Completed:**
+
+- ✅ Created test directory structure (5 test types)
+- ✅ Unit test examples with mocking
+- ✅ Property-based tests with fast-check
+- ✅ Fuzz tests for parsers and handlers
+- ✅ Chaos tests for resilience and failure scenarios
+- ✅ Smoke tests for quick sanity checks
+- ✅ Benchmark suite for performance tracking
+- ✅ Updated SDK package.json with test scripts
+
+**Test Directory Structure:**
+
+```
+tests/
+├── unit/                    # Unit tests (isolated functions)
+│   └── example.test.ts
+├── property/                # Property-based tests (fast-check)
+│   └── trajectory.property.test.ts
+├── fuzz/                    # Fuzz tests (random inputs)
+│   └── parser.fuzz.test.ts
+├── chaos/                   # Chaos tests (failure scenarios)
+│   └── resilience.chaos.test.ts
+└── smoke/                   # Smoke tests (quick sanity)
+    └── api.test.ts
+```
+
+**Test Types Implemented:**
+
+| Test Type | Purpose | Tool | Lines |
+|-----------|---------|------|-------|
+| Unit | Verify individual functions in isolation | bun:test | 94 |
+| Property | Verify properties hold for all inputs | fast-check | 163 |
+| Fuzz | Find crashes with random/malformed inputs | fast-check | 217 |
+| Chaos | Simulate failures and adverse conditions | bun:test + mocks | 334 |
+| Smoke | Quick sanity checks before deeper tests | bun:test | 188 |
+
+**Unit Tests (`tests/unit/example.test.ts`):**
+
+Features:
+- Isolated function testing
+- Mock dependencies
+- beforeEach/afterEach hooks
+- Async/await support
+
+Example tests:
+- `formatTrajectoryName()` - String formatting
+- `calculateTokens()` - Token counting
+- `validateConfig()` - Configuration validation
+- `parseTimestamp()` - Date parsing
+
+**Property-Based Tests (`tests/property/trajectory.property.test.ts`):**
+
+Features:
+- Generates 100+ random test cases per property
+- Uses fast-check for property testing
+- Verifies invariants hold for all inputs
+
+Properties tested:
+- Trajectory ID is always valid UUID
+- Trajectory name is never empty
+- Token budget is always positive
+- Status transitions are valid
+- Timestamps are chronological
+
+**Fuzz Tests (`tests/fuzz/parser.fuzz.test.ts`):**
+
+Features:
+- Random/malformed input generation
+- Parser robustness testing
+- Error handling verification
+- No crashes/hangs
+
+Fuzz targets:
+- JSON parser (malformed JSON)
+- UUID parser (invalid UUIDs)
+- Timestamp parser (invalid dates)
+- Config parser (invalid configs)
+- API response parser (malformed responses)
+
+**Chaos Tests (`tests/chaos/resilience.chaos.test.ts`):**
+
+Features:
+- Network failure simulation
+- Timeout scenarios
+- Rate limiting
+- Partial failures
+- Retry logic verification
+
+Scenarios tested:
+- Network failures (connection refused, timeout)
+- API errors (500, 503, rate limiting)
+- Partial failures (some requests succeed, some fail)
+- Retry with exponential backoff
+- Circuit breaker pattern
+- Graceful degradation
+
+**Smoke Tests (`tests/smoke/api.test.ts`):**
+
+Features:
+- Quick sanity checks (< 10 seconds)
+- Basic functionality verification
+- Run before deeper tests
+
+Checks:
+- API is reachable
+- Authentication works
+- Basic CRUD operations
+- WebSocket connection
+- Health endpoint
+
+**Benchmark Suite (`caliber-sdk/bench/index.ts`):**
+
+Features:
+- Performance tracking
+- Comparison between implementations
+- JSON output for CI
+- Warmup runs
+
+Benchmarks:
+- Trajectory creation (10,000 iterations)
+- Artifact queries (10,000 iterations)
+- Context assembly (1,000 iterations)
+- WebSocket message handling (10,000 iterations)
+- Batch operations (1,000 iterations)
+
+**SDK Package.json Updates:**
+
+Added scripts:
+```json
+{
+  "test": "bun test",
+  "test:coverage": "bun test --coverage",
+  "lint": "bunx biome lint src/",
+  "lint:fix": "bunx biome lint --write src/",
+  "format": "bunx biome format --write src/",
+  "bench": "bun run bench/index.ts",
+  "bench:ci": "bun run bench/index.ts --json > bench-results.json"
+}
+```
+
+**Test Commands:**
+
+```bash
+# Run all tests
+bun test
+
+# Run specific test type
+bun test tests/unit/
+bun test tests/property/
+bun test tests/fuzz/
+bun test tests/chaos/
+bun test tests/smoke/
+
+# Run with coverage
+bun test --coverage
+
+# Run benchmarks
+bun run bench
+
+# Run benchmarks for CI (JSON output)
+bun run bench:ci
+```
+
+**Test Coverage Goals:**
+
+| Component | Target | Status |
+|-----------|--------|--------|
+| SDK Core | 80%+ | ⏳ Pending |
+| WebSocket | 70%+ | ⏳ Pending |
+| Context Assembly | 80%+ | ⏳ Pending |
+| Batch Operations | 80%+ | ⏳ Pending |
+| Error Handling | 90%+ | ⏳ Pending |
+
+**Testing Philosophy:**
+
+1. **Unit tests** - Fast, isolated, run on every commit
+2. **Property tests** - Verify invariants, catch edge cases
+3. **Fuzz tests** - Find crashes, run periodically
+4. **Chaos tests** - Verify resilience, run before release
+5. **Smoke tests** - Quick sanity, run first
+
+**Test Pyramid:**
+
+```
+        /\
+       /  \      Chaos (few, slow, comprehensive)
+      /____\
+     /      \    Fuzz (some, medium, edge cases)
+    /________\
+   /          \  Property (many, fast, invariants)
+  /____________\
+ /              \ Unit (most, fastest, isolated)
+/______________\
+```
+
+**CI/CD Integration (Planned):**
+
+```yaml
+# .github/workflows/test.yml
+- name: Run smoke tests
+  run: bun test tests/smoke/
+  
+- name: Run unit tests
+  run: bun test tests/unit/
+  
+- name: Run property tests
+  run: bun test tests/property/
+  
+- name: Run fuzz tests (nightly)
+  run: bun test tests/fuzz/
+  if: github.event_name == 'schedule'
+  
+- name: Run chaos tests (pre-release)
+  run: bun test tests/chaos/
+  if: github.ref == 'refs/heads/main'
+```
+
+**Code Statistics:**
+
+| Component | Files | Lines |
+|-----------|-------|-------|
+| Unit tests | 1 | 94 |
+| Property tests | 1 | 163 |
+| Fuzz tests | 1 | 217 |
+| Chaos tests | 1 | 334 |
+| Smoke tests | 1 | 188 |
+| Benchmarks | 1 | 160 |
+| **Total** | **6** | **1,156** |
+
+**Files Created:**
+
+- `tests/unit/example.test.ts` - Unit test examples
+- `tests/property/trajectory.property.test.ts` - Property-based tests
+- `tests/fuzz/parser.fuzz.test.ts` - Fuzz tests
+- `tests/chaos/resilience.chaos.test.ts` - Chaos tests
+- `tests/smoke/api.test.ts` - Smoke tests
+- `caliber-sdk/bench/index.ts` - Benchmark suite
+
+**Dependencies Added:**
+
+- `fast-check` - Property-based testing (already in landing/package.json)
+- `@biomejs/biome` - Fast linter/formatter (via bunx)
+
+**Next Steps:**
+
+- [ ] Run tests and verify all pass
+- [ ] Add test coverage reporting
+- [ ] Integrate tests into CI/CD
+- [ ] Add more test cases for each type
+- [ ] Set up continuous benchmarking
+- [ ] Add mutation testing
+- [ ] Create test documentation
+
+**Time Spent:** ~10 minutes (automated test generation)
+
+**Status:** Comprehensive testing infrastructure complete, ready for test execution
+

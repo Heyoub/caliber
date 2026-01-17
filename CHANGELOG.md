@@ -13,6 +13,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD pipelines for automated testing
 - Continuous fuzzing integration (planned)
 - Stripe payment integration (alternative to LemonSqueezy)
+- Mutation testing (planned)
+- Test coverage reporting (planned)
+
+## [0.3.1] - 2026-01-17
+
+### Added - Testing Infrastructure
+
+- Comprehensive test directory structure (5 test types)
+- Unit tests with mocking and async support
+- Property-based tests with fast-check (100+ random cases per property)
+- Fuzz tests for parser robustness
+- Chaos tests for resilience and failure scenarios
+- Smoke tests for quick sanity checks
+- Benchmark suite for performance tracking
+- Test coverage goals and CI/CD integration plan
+
+### Added - Test Files
+
+- `tests/unit/example.test.ts` - Unit test examples (94 lines)
+- `tests/property/trajectory.property.test.ts` - Property tests (163 lines)
+- `tests/fuzz/parser.fuzz.test.ts` - Fuzz tests (217 lines)
+- `tests/chaos/resilience.chaos.test.ts` - Chaos tests (334 lines)
+- `tests/smoke/api.test.ts` - Smoke tests (188 lines)
+- `caliber-sdk/bench/index.ts` - Benchmark suite (160 lines)
+
+### Added - Test Scripts
+
+- `test:coverage` - Run tests with coverage reporting
+- `lint` - Lint code with Biome
+- `lint:fix` - Auto-fix linting issues
+- `format` - Format code with Biome
+- `bench` - Run performance benchmarks
+- `bench:ci` - Run benchmarks with JSON output for CI
+
+### Testing Philosophy
+
+- **Unit tests** - Fast, isolated, run on every commit
+- **Property tests** - Verify invariants, catch edge cases
+- **Fuzz tests** - Find crashes, run periodically
+- **Chaos tests** - Verify resilience, run before release
+- **Smoke tests** - Quick sanity, run first
+
+### Test Coverage
+
+- Unit tests: Isolated function testing with mocks
+- Property tests: 100+ random test cases per property
+- Fuzz tests: Random/malformed input generation
+- Chaos tests: Network failures, timeouts, rate limiting, retries
+- Smoke tests: Quick sanity checks (< 10 seconds)
+- Benchmarks: Performance tracking with 10,000+ iterations
 
 ## [0.3.0] - 2026-01-17
 
