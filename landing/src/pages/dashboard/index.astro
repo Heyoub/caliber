@@ -163,7 +163,7 @@ import DashboardLayout from '../../layouts/DashboardLayout.astro';
         </div>
       </div>
       <div class="mt-6 p-4 bg-bg-secondary border border-border">
-        <pre class="text-xs text-text-secondary overflow-x-auto"><code>import { CaliberClient } from '@caliber/sdk';
+        <pre class="text-xs text-text-secondary overflow-x-auto"><code set:html={`import { CaliberClient } from '@caliber/sdk';
 
 const caliber = new CaliberClient({
   apiKey: 'your-api-key',
@@ -171,7 +171,7 @@ const caliber = new CaliberClient({
 
 const trajectory = await caliber.trajectories.create({
   name: 'my-agent-session',
-});</code></pre>
+});`} /></pre>
       </div>
     </div>
   </div>

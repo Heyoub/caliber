@@ -342,6 +342,11 @@ impl ApiError {
             format!("{} with id {} not found", entity_type, id),
         )
     }
+
+    /// Create a generic not found error with custom message.
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::EntityNotFound, message)
+    }
     
     /// Create a TenantNotFound error.
     pub fn tenant_not_found(tenant_id: impl fmt::Display) -> Self {

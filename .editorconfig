@@ -1,0 +1,45 @@
+# CALIBER Editor Configuration
+# https://editorconfig.org
+# Ensures consistent coding styles across different editors and IDEs
+
+root = true
+
+# Default settings for all files
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Rust files - 4 space indent per Rust convention
+[*.rs]
+indent_size = 4
+
+# TOML files (Cargo.toml, etc.)
+[*.toml]
+indent_size = 4
+
+# Makefiles require tabs
+[Makefile]
+indent_style = tab
+
+# Shell scripts
+[*.sh]
+indent_size = 4
+
+# Markdown - preserve trailing whitespace for line breaks
+[*.md]
+trim_trailing_whitespace = false
+
+# Generated files - don't modify
+[caliber-sdk/generated/**]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+
+[sdks/**]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false

@@ -20,8 +20,6 @@ use crate::{
     types::{ListMessagesRequest, ListMessagesResponse, MessageResponse, SendMessageRequest},
     ws::WsState,
 };
-use caliber_core::EntityId;
-
 // ============================================================================
 // SHARED STATE
 // ============================================================================
@@ -289,6 +287,7 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityId;
 
     #[test]
     fn test_send_message_request_validation() {
