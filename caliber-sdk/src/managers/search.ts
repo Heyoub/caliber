@@ -5,7 +5,7 @@
  */
 
 import { BaseManager } from './base';
-import { HttpClient } from '../http';
+import type { HttpClient } from '../http';
 import type { SearchParams, SearchResponse } from '../types';
 
 /**

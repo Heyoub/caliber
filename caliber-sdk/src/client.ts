@@ -5,7 +5,7 @@
  * Provides a unified interface to all CALIBER resources.
  */
 
-import { HttpClient, HttpClientConfig } from './http';
+import { HttpClient, type HttpClientConfig } from './http';
 import {
   TrajectoryManager,
   ScopeManager,

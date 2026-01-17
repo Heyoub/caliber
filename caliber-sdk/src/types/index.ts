@@ -90,7 +90,7 @@ export type {
   // Delegation types (from types.rs)
   DelegationResponse as Delegation,
   CreateDelegationRequest as CreateDelegationParams,
-  DelegationResultRequest as CompleteDelegationParams,
+  CompleteDelegationRequest as CompleteDelegationParams,
   DelegationResultResponse as DelegationResult,
   DelegationStatus,
   DelegationResultStatus,
@@ -108,7 +108,6 @@ export type {
 
   // DSL types (from types.rs)
   ValidateDslResponse,
-  ParseDslResponse,
   ParseErrorResponse as ParseError,
 } from '../generated/models';
 
@@ -118,7 +117,7 @@ export type {
 
 // ListLocksParams doesn't exist in REST API (no query params)
 // Export an empty interface for consistency
-export interface ListLocksParams {}
+export type ListLocksParams = Record<string, never>;
 
 // SearchArtifactsParams and SearchNotesParams use the generic SearchRequest
 export type { SearchRequest as SearchArtifactsParams } from '../generated/models';

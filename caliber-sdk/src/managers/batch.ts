@@ -6,7 +6,7 @@
  * setup or bulk imports.
  */
 
-import { HttpClient } from '../http';
+import type { HttpClient } from '../http';
 import type {
   Trajectory,
   Artifact,

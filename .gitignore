@@ -48,7 +48,7 @@ landing/.astro/
 
 # Generated SDKs
 sdks/
-caliber-sdk/generated/
+caliber-sdk/src/generated/
 caliber-sdk/dist/
 caliber-sdk/node_modules/
 openapi.json

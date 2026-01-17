@@ -5,7 +5,7 @@
  * and error handling.
  */
 
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { type AxiosInstance, type AxiosRequestConfig, } from 'axios';
 import { CaliberError, parseApiError, AuthenticationError } from './errors';
 
 export interface HttpClientConfig {

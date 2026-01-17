@@ -29,21 +29,21 @@ interface Artifact {
   tokens: number;
 }
 
-// Arbitraries (generators)
-const artifactArb = fc.record({
+// Arbitraries (generators) - typed to match domain interfaces
+const artifactArb: fc.Arbitrary<Artifact> = fc.record({
   id: fc.uuid(),
   type: fc.constantFrom('code', 'text', 'config', 'data') as fc.Arbitrary<Artifact['type']>,
   content: fc.string({ maxLength: 10000 }),
   tokens: fc.nat({ max: 100000 }),
 });
 
-const scopeArb = fc.record({
+const scopeArb: fc.Arbitrary<Scope> = fc.record({
   id: fc.uuid(),
   parentId: fc.option(fc.uuid(), { nil: null }),
   artifacts: fc.array(artifactArb, { maxLength: 100 }),
 });
 
-const trajectoryArb = fc.record({
+const trajectoryArb: fc.Arbitrary<Trajectory> = fc.record({
   id: fc.uuid(),
   name: fc.string({ minLength: 1, maxLength: 255 }),
   createdAt: fc.date(),
@@ -138,7 +138,7 @@ describe('property: Scope hierarchy', () => {
   it('root scopes have null parentId', () => {
     fc.assert(
       fc.property(trajectoryArb, (trajectory) => {
-        const rootScopes = trajectory.scopes.filter((s) => s.parentId === null);
+        trajectory.scopes.filter((s) => s.parentId === null);
         // At least structure is valid (may have 0 roots if randomly generated)
         return true;
       })

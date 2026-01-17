@@ -159,7 +159,7 @@ describe('fuzz: Config parser', () => {
         }
         json += '}'.repeat(depth);
 
-        const result = parseConfig(json);
+        parseConfig(json);
         // May fail to parse if too deep, but shouldn't crash
         return true;
       }),

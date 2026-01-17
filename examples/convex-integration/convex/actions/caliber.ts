@@ -39,6 +39,29 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { CalibrClient } from "@caliber-run/sdk";
+import type { ArtifactType, NoteType } from "@caliber-run/sdk";
+
+// ============================================================================
+// TYPE CEREMONY: Convex validators → SDK types
+// ============================================================================
+// Dear Future Developer,
+//
+// Convex's `v.union(v.literal(...))` creates a type at runtime AND compile-time.
+// The SDK's enums are the CANONICAL source of truth from the Rust API.
+// These must match. If they don't, you'll get runtime errors and deserve them.
+//
+// The casting below is NOT hiding bugs - it's bridging Convex's validator types
+// to the SDK's branded types. Both represent the same string literals.
+//
+// If you're seeing type errors here, the Convex validators are out of sync
+// with caliber-api's Rust enums. Go fix the source of truth, coward.
+// ============================================================================
+
+/** Convex validator string → SDK ArtifactType. Trust but verify at the API. */
+const toArtifactType = (s: string): ArtifactType => s as ArtifactType;
+
+/** Convex validator string → SDK NoteType. The API will reject invalid values. */
+const toNoteType = (s: string): NoteType => s as NoteType;
 
 // ============================================================================
 // CALIBER CLIENT INITIALIZATION
@@ -249,7 +272,7 @@ export const listArtifacts = action({
     const response = await caliber.artifacts.list({
       trajectory_id: args.trajectoryId,
       limit: args.limit ?? 20,
-      artifact_type: args.artifactType as any,
+      artifact_type: args.artifactType ? toArtifactType(args.artifactType) : undefined,
     });
 
     return response;
@@ -315,7 +338,7 @@ export const listNotes = action({
 
     const response = await caliber.notes.list({
       limit: args.limit ?? 20,
-      note_type: args.noteType as any,
+      note_type: args.noteType ? toNoteType(args.noteType) : undefined,
     });
 
     return response;
@@ -478,7 +501,7 @@ export const batchCreateArtifacts = action({
         scope_id: a.scopeId,
         name: a.name,
         content: a.content,
-        artifact_type: a.artifactType as any,
+        artifact_type: toArtifactType(a.artifactType),
         source_turn: a.sourceTurn,
         extraction_method: "Explicit" as const,
         ttl: "Persistent" as const,
@@ -513,7 +536,7 @@ export const batchCreateNotes = action({
       args.notes.map((n) => ({
         title: n.title,
         content: n.content,
-        note_type: n.noteType as any,
+        note_type: toNoteType(n.noteType),
         ttl: "Persistent" as const,
       }))
     );

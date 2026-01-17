@@ -89,9 +89,9 @@ class CaliberApi {
 
     // Add query params
     if (options.params) {
-      Object.entries(options.params).forEach(([key, value]) => {
+      for (const [key, value] of Object.entries(options.params)) {
         url.searchParams.set(key, value);
-      });
+      }
     }
 
     const headers: Record<string, string> = {
@@ -101,7 +101,7 @@ class CaliberApi {
 
     // Add auth token if available
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
 
     const response = await fetch(url.toString(), {

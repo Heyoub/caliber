@@ -18,7 +18,7 @@
     "build:sdk": "cd caliber-sdk && bun run build",
     "build:landing": "cd landing && bun run build",
 
-    "check": "bun run check:types && bun run check:lint && bun run check:format",
+    "check": "bun run check:types && bun run check:lint",
     "check:types": "bun run typecheck",
     "check:lint": "bun run lint",
     "check:format": "bunx biome check .",

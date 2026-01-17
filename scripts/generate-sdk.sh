@@ -64,7 +64,7 @@ generate_typescript() {
     log_info "Generating TypeScript SDK..."
 
     local sdk_dir="$ROOT_DIR/caliber-sdk"
-    local gen_dir="$sdk_dir/generated"
+    local gen_dir="$sdk_dir/src/generated"
 
     # Clean generated directory but preserve src/ if it exists
     rm -rf "$gen_dir"
@@ -180,7 +180,7 @@ EOF
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*.ts", "generated/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
 EOF

@@ -374,7 +374,7 @@ export class ContextHelper {
     let currentId: string | undefined = trajectoryId;
 
     while (currentId) {
-      const trajectory = await this.http.get<Trajectory>(
+      const trajectory: Trajectory = await this.http.get<Trajectory>(
         `/api/v1/trajectories/${currentId}`
       );
       hierarchy.push(trajectory);
@@ -394,57 +394,78 @@ export class ContextHelper {
   ): string {
     const lines: string[] = [];
 
-    lines.push(`# Context for: ${context.trajectory.name}`);
-    lines.push('');
-
-    if (context.trajectory.description) {
-      lines.push(`> ${context.trajectory.description}`);
-      lines.push('');
-    }
-
-    if (context.parentTrajectories && context.parentTrajectories.length > 0) {
-      lines.push('## Parent Tasks');
-      for (const parent of context.parentTrajectories) {
-        lines.push(`- **${parent.name}**: ${parent.description ?? 'No description'}`);
-      }
-      lines.push('');
-    }
-
-    if (context.artifacts.length > 0) {
-      lines.push('## Artifacts (Extracted Knowledge)');
-      for (const artifact of context.artifacts) {
-        lines.push(`### ${artifact.name} (${artifact.artifact_type})`);
-        if (includeContent) {
-          const content = this.truncateContent(artifact.content, maxContentLength);
-          lines.push('```');
-          lines.push(content);
-          lines.push('```');
-        }
-        lines.push('');
-      }
-    }
-
-    if (context.notes.length > 0) {
-      lines.push('## Notes (Long-term Memory)');
-      for (const note of context.notes) {
-        lines.push(`### ${note.title} (${note.note_type})`);
-        if (includeContent) {
-          const content = this.truncateContent(note.content, maxContentLength);
-          lines.push(content);
-        }
-        lines.push('');
-      }
-    }
-
-    if (context.turns.length > 0) {
-      lines.push('## Recent Conversation');
-      for (const turn of context.turns.slice().reverse()) {
-        lines.push(`**${turn.role}**: ${turn.content}`);
-      }
-      lines.push('');
-    }
+    this.formatTrajectoryHeaderMd(context.trajectory, lines);
+    this.formatParentsMd(context.parentTrajectories, lines);
+    this.formatArtifactsMd(context.artifacts, lines, includeContent, maxContentLength);
+    this.formatNotesMd(context.notes, lines, includeContent, maxContentLength);
+    this.formatTurnsMd(context.turns, lines);
 
     return lines.join('\n');
+  }
+
+  private formatTrajectoryHeaderMd(trajectory: Trajectory, lines: string[]): void {
+    lines.push(`# Context for: ${trajectory.name}`);
+    lines.push('');
+    if (trajectory.description) {
+      lines.push(`> ${trajectory.description}`);
+      lines.push('');
+    }
+  }
+
+  private formatParentsMd(parents: Trajectory[] | undefined, lines: string[]): void {
+    if (!parents?.length) return;
+    lines.push('## Parent Tasks');
+    for (const parent of parents) {
+      lines.push(`- **${parent.name}**: ${parent.description ?? 'No description'}`);
+    }
+    lines.push('');
+  }
+
+  private formatArtifactsMd(
+    artifacts: Artifact[],
+    lines: string[],
+    includeContent: boolean,
+    maxLength: number
+  ): void {
+    if (!artifacts.length) return;
+    lines.push('## Artifacts (Extracted Knowledge)');
+    for (const artifact of artifacts) {
+      lines.push(`### ${artifact.name} (${artifact.artifact_type})`);
+      if (includeContent) {
+        const content = this.truncateContent(artifact.content, maxLength);
+        lines.push('```');
+        lines.push(content);
+        lines.push('```');
+      }
+      lines.push('');
+    }
+  }
+
+  private formatNotesMd(
+    notes: Note[],
+    lines: string[],
+    includeContent: boolean,
+    maxLength: number
+  ): void {
+    if (!notes.length) return;
+    lines.push('## Notes (Long-term Memory)');
+    for (const note of notes) {
+      lines.push(`### ${note.title} (${note.note_type})`);
+      if (includeContent) {
+        const content = this.truncateContent(note.content, maxLength);
+        lines.push(content);
+      }
+      lines.push('');
+    }
+  }
+
+  private formatTurnsMd(turns: Turn[], lines: string[]): void {
+    if (!turns.length) return;
+    lines.push('## Recent Conversation');
+    for (const turn of turns.slice().reverse()) {
+      lines.push(`**${turn.role}**: ${turn.content}`);
+    }
+    lines.push('');
   }
 
   private formatXml(
@@ -455,69 +476,90 @@ export class ContextHelper {
     const lines: string[] = [];
 
     lines.push('<context>');
-    lines.push(`  <trajectory name="${this.escapeXml(context.trajectory.name)}">`);
-    if (context.trajectory.description) {
-      lines.push(`    <description>${this.escapeXml(context.trajectory.description)}</description>`);
-    }
-    lines.push(`    <status>${context.trajectory.status}</status>`);
-    lines.push('  </trajectory>');
-
-    if (context.parentTrajectories && context.parentTrajectories.length > 0) {
-      lines.push('  <parent_tasks>');
-      for (const parent of context.parentTrajectories) {
-        lines.push(`    <task name="${this.escapeXml(parent.name)}">`);
-        if (parent.description) {
-          lines.push(`      <description>${this.escapeXml(parent.description)}</description>`);
-        }
-        lines.push('    </task>');
-      }
-      lines.push('  </parent_tasks>');
-    }
-
-    if (context.artifacts.length > 0) {
-      lines.push('  <artifacts>');
-      for (const artifact of context.artifacts) {
-        lines.push(`    <artifact name="${this.escapeXml(artifact.name)}" type="${artifact.artifact_type}">`);
-        if (includeContent) {
-          const content = this.truncateContent(artifact.content, maxContentLength);
-          lines.push(`      <content>${this.escapeXml(content)}</content>`);
-        }
-        lines.push('    </artifact>');
-      }
-      lines.push('  </artifacts>');
-    }
-
-    if (context.notes.length > 0) {
-      lines.push('  <notes>');
-      for (const note of context.notes) {
-        lines.push(`    <note title="${this.escapeXml(note.title)}" type="${note.note_type}">`);
-        if (includeContent) {
-          const content = this.truncateContent(note.content, maxContentLength);
-          lines.push(`      <content>${this.escapeXml(content)}</content>`);
-        }
-        lines.push('    </note>');
-      }
-      lines.push('  </notes>');
-    }
-
-    if (context.turns.length > 0) {
-      lines.push('  <conversation>');
-      for (const turn of context.turns.slice().reverse()) {
-        lines.push(`    <turn role="${turn.role}">${this.escapeXml(turn.content)}</turn>`);
-      }
-      lines.push('  </conversation>');
-    }
-
+    this.formatTrajectoryXml(context.trajectory, lines);
+    this.formatParentsXml(context.parentTrajectories, lines);
+    this.formatArtifactsXml(context.artifacts, lines, includeContent, maxContentLength);
+    this.formatNotesXml(context.notes, lines, includeContent, maxContentLength);
+    this.formatTurnsXml(context.turns, lines);
     lines.push('</context>');
 
     return lines.join('\n');
+  }
+
+  private formatTrajectoryXml(trajectory: Trajectory, lines: string[]): void {
+    lines.push(`  <trajectory name="${this.escapeXml(trajectory.name)}">`);
+    if (trajectory.description) {
+      lines.push(`    <description>${this.escapeXml(trajectory.description)}</description>`);
+    }
+    lines.push(`    <status>${trajectory.status}</status>`);
+    lines.push('  </trajectory>');
+  }
+
+  private formatParentsXml(parents: Trajectory[] | undefined, lines: string[]): void {
+    if (!parents?.length) return;
+    lines.push('  <parent_tasks>');
+    for (const parent of parents) {
+      lines.push(`    <task name="${this.escapeXml(parent.name)}">`);
+      if (parent.description) {
+        lines.push(`      <description>${this.escapeXml(parent.description)}</description>`);
+      }
+      lines.push('    </task>');
+    }
+    lines.push('  </parent_tasks>');
+  }
+
+  private formatArtifactsXml(
+    artifacts: Artifact[],
+    lines: string[],
+    includeContent: boolean,
+    maxLength: number
+  ): void {
+    if (!artifacts.length) return;
+    lines.push('  <artifacts>');
+    for (const artifact of artifacts) {
+      lines.push(`    <artifact name="${this.escapeXml(artifact.name)}" type="${artifact.artifact_type}">`);
+      if (includeContent) {
+        const content = this.truncateContent(artifact.content, maxLength);
+        lines.push(`      <content>${this.escapeXml(content)}</content>`);
+      }
+      lines.push('    </artifact>');
+    }
+    lines.push('  </artifacts>');
+  }
+
+  private formatNotesXml(
+    notes: Note[],
+    lines: string[],
+    includeContent: boolean,
+    maxLength: number
+  ): void {
+    if (!notes.length) return;
+    lines.push('  <notes>');
+    for (const note of notes) {
+      lines.push(`    <note title="${this.escapeXml(note.title)}" type="${note.note_type}">`);
+      if (includeContent) {
+        const content = this.truncateContent(note.content, maxLength);
+        lines.push(`      <content>${this.escapeXml(content)}</content>`);
+      }
+      lines.push('    </note>');
+    }
+    lines.push('  </notes>');
+  }
+
+  private formatTurnsXml(turns: Turn[], lines: string[]): void {
+    if (!turns.length) return;
+    lines.push('  <conversation>');
+    for (const turn of turns.slice().reverse()) {
+      lines.push(`    <turn role="${turn.role}">${this.escapeXml(turn.content)}</turn>`);
+    }
+    lines.push('  </conversation>');
   }
 
   private truncateContent(content: string, maxLength: number): string {
     if (maxLength === 0 || content.length <= maxLength) {
       return content;
     }
-    return content.slice(0, maxLength) + '... [truncated]';
+    return `${content.slice(0, maxLength)}... [truncated]`;
   }
 
   private escapeXml(text: string): string {
