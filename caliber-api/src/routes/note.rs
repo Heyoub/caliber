@@ -13,10 +13,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{
         CreateNoteRequest, ListNotesRequest, ListNotesResponse, NoteResponse, SearchRequest,
         SearchResponse, UpdateNoteRequest,
@@ -288,7 +288,7 @@ pub async fn update_note(
 pub async fn delete_note(
     State(state): State<Arc<NoteState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<StatusCode> {
     // First verify the note exists
     let _note = state

@@ -14,10 +14,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{AgentResponse, RegisterAgentRequest, UpdateAgentRequest},
     ws::WsState,
 };
@@ -203,7 +203,7 @@ pub async fn get_agent(
 pub async fn update_agent(
     State(state): State<Arc<AgentState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -274,7 +274,7 @@ pub async fn update_agent(
 pub async fn unregister_agent(
     State(state): State<Arc<AgentState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<StatusCode> {
     // First verify the agent exists
     let agent = state
@@ -323,7 +323,7 @@ pub async fn unregister_agent(
 pub async fn agent_heartbeat(
     State(state): State<Arc<AgentState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Update heartbeat via database client
     state.db.agent_heartbeat(id).await?;

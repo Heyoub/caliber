@@ -20,6 +20,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{CreateTurnRequest, TurnResponse},
     ws::WsState,
 };
@@ -64,6 +65,7 @@ impl TurnState {
 )]
 pub async fn create_turn(
     State(state): State<Arc<TurnState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateTurnRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -158,6 +160,7 @@ pub async fn create_turn(
                         // Find the policy to get its details
                         if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
                             state.ws.broadcast(WsEvent::SummarizationTriggered {
+                                tenant_id: auth.tenant_id,
                                 policy_id,
                                 trigger,
                                 scope_id: core_scope.scope_id,

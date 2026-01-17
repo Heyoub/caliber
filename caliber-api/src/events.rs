@@ -439,6 +439,7 @@ mod tests {
     #[test]
     fn test_event_serialization() {
         let event = WsEvent::AgentStatusChanged {
+            tenant_id: caliber_core::new_entity_id(),
             agent_id: caliber_core::new_entity_id(),
             status: "Active".to_string(),
         };

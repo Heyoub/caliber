@@ -107,3 +107,128 @@ pub fn some_function(input: &str) -> CaliberResult<SomeType> {
     // Actual implementation
 }
 ```
+
+## Verification Workflow
+
+**CRITICAL:** Follow this workflow for EVERY crate implementation:
+
+### Phase 1: Generate Complete Code
+
+1. Read `docs/DEPENDENCY_GRAPH.md` for exact types
+2. Create lib.rs with FULL implementation
+3. Include all types, traits, and impls
+4. NO stubs, NO TODOs, NO placeholders
+
+### Phase 2: Build Verification
+
+```bash
+cargo build -p caliber-{name}
+```
+
+- Fix compilation errors
+- Verify all dependencies resolve
+- Ensure types match docs
+
+### Phase 3: Clippy Verification (REQUIRED)
+
+```bash
+cargo clippy -p caliber-{name} -- -D warnings
+```
+
+- **ZERO warnings allowed**
+- Fix unused imports
+- Fix unused variables
+- Verify all code paths reachable
+
+**DO NOT mark complete until clippy is clean.**
+
+### Phase 4: Test Verification
+
+```bash
+cargo test -p caliber-{name}
+```
+
+- All unit tests pass
+- All property tests pass (100+ iterations)
+- All integration tests pass
+
+### Phase 5: Mark Complete
+
+Only after ALL phases pass:
+
+- [ ] Build succeeds
+- [ ] Clippy clean (zero warnings)
+- [ ] All tests pass
+- [ ] No stubs or TODOs
+- [ ] All types match docs
+
+## Framework Integration Standards
+
+When integrating with frameworks (Axum, Tokio, pgrx):
+
+1. **Verify version in Cargo.toml**
+   ```toml
+   axum = "0.8.0"  # Check current version
+   ```
+
+2. **Check current version API docs** (don't rely on AI training data)
+
+3. **Use debug attributes** where available:
+   ```rust
+   #[axum::debug_handler]  // Framework validates signature
+   async fn my_handler(...) -> Result<...> { ... }
+   ```
+
+4. **Verify imports compile**:
+   ```rust
+   // ❌ WRONG - Assumes re-export
+   use axum::async_trait;
+   
+   // ✅ RIGHT - Direct import
+   use async_trait::async_trait;
+   ```
+
+## Security Implementation Standards
+
+For security-sensitive code:
+
+1. **Grep for all affected locations** before implementing
+2. **Update ALL locations atomically** (no partial fixes)
+3. **Add property tests** for security properties
+4. **Document security implications** in code comments
+
+Example:
+```bash
+# Before implementing tenant isolation fix
+rg "WsEvent::" --type rust  # Find all usage locations
+# Update ALL locations, not just some
+```
+
+## Error Handling Standards
+
+```rust
+// ❌ WRONG - Panics in production
+let value = env::var("CONFIG").expect("CONFIG must be set");
+let result = operation().unwrap();
+
+// ✅ RIGHT - Returns CaliberResult
+let value = env::var("CONFIG")
+    .map_err(|_| CaliberError::Config(ConfigError::MissingEnvVar("CONFIG")))?;
+let result = operation()?;
+```
+
+## Completeness Checklist
+
+Before marking crate complete:
+
+- [ ] All types from docs/DEPENDENCY_GRAPH.md implemented
+- [ ] Zero clippy warnings
+- [ ] Zero unused imports/variables
+- [ ] All extracted values used
+- [ ] All functions wired up
+- [ ] No TODO/FIXME in production code
+- [ ] All tests passing
+- [ ] Property tests run 100+ iterations
+- [ ] Documentation comments on public items
+- [ ] Error handling uses CaliberResult<T>
+- [ ] No unwrap()/expect() in production code

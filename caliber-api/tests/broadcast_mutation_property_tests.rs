@@ -9,6 +9,7 @@
 
 use axum::{extract::State, Json};
 use caliber_api::events::WsEvent;
+use caliber_api::middleware::AuthExtractor;
 use caliber_api::routes::{artifact, note, scope, trajectory, turn};
 use caliber_api::types::{
     CreateArtifactRequest, CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest,
@@ -156,6 +157,7 @@ proptest! {
             // Turn Created
             // ------------------------------------------------------------
             let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone(), pcp));
+            let auth = test_support::test_auth_context();
             let create_turn = CreateTurnRequest {
                 scope_id: scope.scope_id,
                 sequence: 0,
@@ -166,7 +168,7 @@ proptest! {
                 tool_results: None,
                 metadata: None,
             };
-            let _ = turn::create_turn(State(turn_state), Json(create_turn)).await?;
+            let _ = turn::create_turn(State(turn_state), AuthExtractor(auth), Json(create_turn)).await?;
 
             match recv_event(&mut rx, "TurnCreated").await {
                 WsEvent::TurnCreated { .. } => {}

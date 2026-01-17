@@ -20,7 +20,6 @@
 use crate::auth::{authenticate, AuthConfig, AuthContext, AuthProvider};
 use crate::error::ApiError;
 use axum::{
-    async_trait,
     extract::{FromRequestParts, Request, State},
     http::{request::Parts, StatusCode},
     middleware::Next,
@@ -269,7 +268,6 @@ impl IntoResponse for AuthMiddlewareError {
 #[derive(Debug, Clone)]
 pub struct AuthExtractor(pub AuthContext);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AuthExtractor
 where
     S: Send + Sync,

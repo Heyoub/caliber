@@ -984,6 +984,7 @@ impl DbClient {
     /// Parse agent JSON into AgentResponse.
     fn parse_agent_json(&self, json: &JsonValue) -> ApiResult<AgentResponse> {
         Ok(AgentResponse {
+            tenant_id: self.parse_uuid(json, "tenant_id")?,
             agent_id: self.parse_uuid(json, "agent_id")?,
             agent_type: self.parse_string(json, "agent_type")?,
             capabilities: self.parse_string_array(json, "capabilities")?,
@@ -1104,6 +1105,7 @@ impl DbClient {
     /// Parse lock JSON into LockResponse.
     fn parse_lock_json(&self, json: &JsonValue) -> ApiResult<LockResponse> {
         Ok(LockResponse {
+            tenant_id: self.parse_uuid(json, "tenant_id")?,
             lock_id: self.parse_uuid(json, "lock_id")?,
             resource_type: self.parse_string(json, "resource_type")?,
             resource_id: self.parse_uuid(json, "resource_id")?,
@@ -1237,6 +1239,7 @@ impl DbClient {
     /// Parse message JSON into MessageResponse.
     fn parse_message_json(&self, json: &JsonValue) -> ApiResult<MessageResponse> {
         Ok(MessageResponse {
+            tenant_id: self.parse_uuid(json, "tenant_id")?,
             message_id: self.parse_uuid(json, "message_id")?,
             from_agent_id: self.parse_uuid(json, "from_agent_id")?,
             to_agent_id: self.parse_optional_uuid(json, "to_agent_id"),
@@ -1466,6 +1469,7 @@ impl DbClient {
     /// Parse handoff JSON into HandoffResponse.
     fn parse_handoff_json(&self, json: &JsonValue) -> ApiResult<HandoffResponse> {
         Ok(HandoffResponse {
+            tenant_id: self.parse_uuid(json, "tenant_id")?,
             handoff_id: self.parse_uuid(json, "handoff_id")?,
             from_agent_id: self.parse_uuid(json, "from_agent_id")?,
             to_agent_id: self.parse_uuid(json, "to_agent_id")?,

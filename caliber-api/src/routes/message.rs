@@ -13,10 +13,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::{DbClient, MessageListParams},
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{MessageResponse, SendMessageRequest},
     ws::WsState,
 };
@@ -222,7 +222,7 @@ pub async fn get_message(
 pub async fn acknowledge_message(
     State(state): State<Arc<MessageState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<StatusCode> {
     // Acknowledge message via database client
     state.db.message_acknowledge(id).await?;
@@ -257,7 +257,7 @@ pub async fn acknowledge_message(
 pub async fn deliver_message(
     State(state): State<Arc<MessageState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<StatusCode> {
     state.db.message_deliver(id).await?;
 

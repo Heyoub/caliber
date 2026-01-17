@@ -327,13 +327,7 @@ pub fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
         // ========================================================================
         // AGENT EVENTS
         // ========================================================================
-        WsEvent::AgentRegistered { agent } => {
-            // AgentResponse doesn't have metadata, but agents are scoped to tenants
-            // via the auth context when registered. For now, return None and rely
-            // on the fallback DENY behavior.
-            // TODO: Add tenant_id field to AgentResponse or use a lookup
-            None
-        }
+        WsEvent::AgentRegistered { agent } => Some(agent.tenant_id),
         WsEvent::AgentStatusChanged { tenant_id, .. } => Some(*tenant_id),
         WsEvent::AgentHeartbeat { tenant_id, .. } => Some(*tenant_id),
         WsEvent::AgentUnregistered { tenant_id, .. } => Some(*tenant_id),
@@ -341,22 +335,14 @@ pub fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
         // ========================================================================
         // LOCK EVENTS
         // ========================================================================
-        WsEvent::LockAcquired { lock } => {
-            // LockResponse doesn't have tenant metadata
-            // TODO: Add tenant_id field to LockResponse
-            None
-        }
+        WsEvent::LockAcquired { lock } => Some(lock.tenant_id),
         WsEvent::LockReleased { tenant_id, .. } => Some(*tenant_id),
         WsEvent::LockExpired { tenant_id, .. } => Some(*tenant_id),
 
         // ========================================================================
         // MESSAGE EVENTS
         // ========================================================================
-        WsEvent::MessageSent { message } => {
-            // MessageResponse doesn't have tenant metadata
-            // TODO: Add tenant_id field to MessageResponse
-            None
-        }
+        WsEvent::MessageSent { message } => Some(message.tenant_id),
         WsEvent::MessageDelivered { tenant_id, .. } => Some(*tenant_id),
         WsEvent::MessageAcknowledged { tenant_id, .. } => Some(*tenant_id),
 
@@ -371,17 +357,9 @@ pub fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
         // ========================================================================
         // HANDOFF EVENTS
         // ========================================================================
-        WsEvent::HandoffCreated { handoff } => {
-            // HandoffResponse doesn't have tenant metadata
-            // TODO: Add tenant_id field to HandoffResponse
-            None
-        }
+        WsEvent::HandoffCreated { handoff } => Some(handoff.tenant_id),
         WsEvent::HandoffAccepted { tenant_id, .. } => Some(*tenant_id),
-        WsEvent::HandoffCompleted { handoff } => {
-            // HandoffResponse doesn't have tenant metadata
-            // TODO: Add tenant_id field to HandoffResponse
-            None
-        }
+        WsEvent::HandoffCompleted { handoff } => Some(handoff.tenant_id),
 
         // ========================================================================
         // CONFIG EVENTS - Not tenant-specific (handled by is_tenant_specific())

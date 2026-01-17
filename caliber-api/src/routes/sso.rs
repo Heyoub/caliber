@@ -27,14 +27,22 @@ use crate::workos_auth::{
 
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
+use axum::Router;
+use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "workos")]
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
     routing::{get, post},
-    Json, Router,
+    Json,
 };
-use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "workos")]
 use std::sync::Arc;
+
+#[cfg(not(feature = "workos"))]
+use axum::routing::get;
 
 // ============================================================================
 // STATE

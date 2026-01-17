@@ -13,10 +13,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{AcquireLockRequest, ExtendLockRequest, LockResponse},
     ws::WsState,
 };
@@ -111,7 +111,7 @@ pub async fn acquire_lock(
 pub async fn release_lock(
     State(state): State<Arc<LockState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<StatusCode> {
     // Release lock via database client
     state.db.lock_release(id).await?;

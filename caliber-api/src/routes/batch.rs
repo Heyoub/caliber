@@ -18,10 +18,10 @@ use std::sync::Arc;
 use caliber_core::EntityId;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::ApiError,
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{
         ArtifactBatchItem, ArtifactResponse, BatchArtifactRequest, BatchArtifactResponse,
         BatchItemResult, BatchNoteRequest, BatchNoteResponse, BatchOperation,
@@ -70,7 +70,7 @@ impl BatchState {
 )]
 pub async fn batch_trajectories(
     State(state): State<Arc<BatchState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<BatchTrajectoryRequest>,
 ) -> impl IntoResponse {
     let mut results: Vec<BatchItemResult<TrajectoryResponse>> = Vec::with_capacity(req.items.len());
@@ -230,7 +230,7 @@ async fn process_trajectory_item(
 )]
 pub async fn batch_artifacts(
     State(state): State<Arc<BatchState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<BatchArtifactRequest>,
 ) -> impl IntoResponse {
     let mut results: Vec<BatchItemResult<ArtifactResponse>> = Vec::with_capacity(req.items.len());
@@ -413,7 +413,7 @@ async fn process_artifact_item(
 )]
 pub async fn batch_notes(
     State(state): State<Arc<BatchState>>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<BatchNoteRequest>,
 ) -> impl IntoResponse {
     let mut results: Vec<BatchItemResult<NoteResponse>> = Vec::with_capacity(req.items.len());
