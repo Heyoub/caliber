@@ -278,15 +278,24 @@ impl Claims {
 pub struct AuthContext {
     /// User ID (from JWT sub claim or API key identifier)
     pub user_id: String,
-    
+
     /// Tenant ID (from X-Tenant-ID header or JWT claim)
     pub tenant_id: EntityId,
-    
+
     /// User roles/permissions
     pub roles: Vec<String>,
-    
+
     /// Authentication method used
     pub auth_method: AuthMethod,
+
+    /// User's email address (from JWT or WorkOS)
+    pub email: Option<String>,
+
+    /// User's first name (from JWT or WorkOS)
+    pub first_name: Option<String>,
+
+    /// User's last name (from JWT or WorkOS)
+    pub last_name: Option<String>,
 }
 
 impl AuthContext {
@@ -302,6 +311,30 @@ impl AuthContext {
             tenant_id,
             roles,
             auth_method,
+            email: None,
+            first_name: None,
+            last_name: None,
+        }
+    }
+
+    /// Create a new authentication context with user profile info.
+    pub fn with_profile(
+        user_id: String,
+        tenant_id: EntityId,
+        roles: Vec<String>,
+        auth_method: AuthMethod,
+        email: Option<String>,
+        first_name: Option<String>,
+        last_name: Option<String>,
+    ) -> Self {
+        Self {
+            user_id,
+            tenant_id,
+            roles,
+            auth_method,
+            email,
+            first_name,
+            last_name,
         }
     }
     

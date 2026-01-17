@@ -96,8 +96,19 @@ pub struct AuthorizeParams {
     /// State parameter for CSRF protection (optional, will be generated if not provided)
     pub state: Option<String>,
 
-    /// Redirect URI after successful auth (for client apps)
+    /// Redirect URI after successful auth (for web clients)
+    /// When provided, callback will redirect to this URI with token in query string
+    /// instead of returning JSON. This enables browser-based auth flows.
     pub redirect_uri: Option<String>,
+}
+
+/// Encoded state for maintaining redirect_uri across the OAuth flow
+#[derive(Debug, Serialize, Deserialize)]
+struct AuthState {
+    /// CSRF token
+    csrf: String,
+    /// Client redirect URI (if web flow)
+    redirect_uri: Option<String>,
 }
 
 /// Response from token endpoint.
@@ -123,6 +134,26 @@ pub struct TokenResponse {
     pub email: String,
 }
 
+/// Response type for callback that can be either JSON or a redirect.
+/// This enables both API client and web client flows.
+#[cfg(feature = "workos")]
+pub enum CallbackResponse {
+    /// JSON response for API clients
+    Json(Json<TokenResponse>),
+    /// Redirect for web clients
+    Redirect(Redirect),
+}
+
+#[cfg(feature = "workos")]
+impl IntoResponse for CallbackResponse {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            CallbackResponse::Json(json) => json.into_response(),
+            CallbackResponse::Redirect(redirect) => redirect.into_response(),
+        }
+    }
+}
+
 // ============================================================================
 // ROUTE HANDLERS
 // ============================================================================
@@ -136,21 +167,37 @@ pub struct TokenResponse {
 /// - `organization`: WorkOS organization ID (for org-level SSO)
 /// - `login_hint`: Email to pre-fill in login form
 /// - `state`: CSRF protection state (generated if not provided)
+/// - `redirect_uri`: Redirect URI for web clients (token returned via redirect)
 #[cfg(feature = "workos")]
 async fn authorize(
     State(state): State<SsoState>,
     Query(params): Query<AuthorizeParams>,
 ) -> impl IntoResponse {
-    // Generate state if not provided
-    let csrf_state = params.state.unwrap_or_else(|| {
+    // Generate CSRF token
+    let csrf = params.state.unwrap_or_else(|| {
         uuid::Uuid::new_v4().to_string()
     });
+
+    // Encode redirect_uri in state if provided (for web client flow)
+    let state_value = if params.redirect_uri.is_some() {
+        let auth_state = AuthState {
+            csrf,
+            redirect_uri: params.redirect_uri,
+        };
+        // Base64 encode the state to pass through OAuth flow
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        let state_json = serde_json::to_string(&auth_state)
+            .map_err(|e| ApiError::internal_error(format!("Failed to serialize state: {}", e)))?;
+        URL_SAFE_NO_PAD.encode(state_json.as_bytes())
+    } else {
+        csrf
+    };
 
     let auth_params = SsoAuthorizationParams {
         connection: params.connection,
         organization: params.organization,
         login_hint: params.login_hint,
-        state: Some(csrf_state),
+        state: Some(state_value),
     };
 
     let auth_url = generate_authorization_url(&state.workos_config, &auth_params);
@@ -170,17 +217,25 @@ async fn authorize(
 /// - `code`: Authorization code from WorkOS
 /// - `state`: State parameter for CSRF validation
 ///
-/// Returns a JSON response with the session token and user information.
+/// Returns:
+/// - For API clients: JSON response with session token and user information
+/// - For web clients (redirect_uri in state): Redirects to the provided URI with token
 #[cfg(feature = "workos")]
 async fn callback(
     State(state): State<SsoState>,
     Query(params): Query<SsoCallbackParams>,
-) -> ApiResult<Json<TokenResponse>> {
-    // TODO: Validate state parameter against session storage for CSRF protection
-    // For now, we just proceed with the code exchange
+) -> ApiResult<CallbackResponse> {
+    // Try to decode state to check for redirect_uri
+    let auth_state: Option<AuthState> = params.state.as_ref().and_then(|s| {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        URL_SAFE_NO_PAD.decode(s)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|json| serde_json::from_str(&json).ok())
+    });
 
     // Exchange authorization code for profile and token
-    let (access_token, claims) = exchange_code_for_profile(&state.workos_config, &params.code).await?;
+    let (_access_token, claims) = exchange_code_for_profile(&state.workos_config, &params.code).await?;
 
     // Create a session token for subsequent API calls
     let expiration_secs = std::env::var("CALIBER_JWT_EXPIRATION_SECS")
@@ -190,15 +245,25 @@ async fn callback(
 
     let session_token = create_session_token(&claims, expiration_secs)?;
 
-    // Return the token response
-    Ok(Json(TokenResponse {
+    // If we have a redirect_uri from web client, redirect with token
+    if let Some(ref redirect_uri) = auth_state.as_ref().and_then(|s| s.redirect_uri.clone()) {
+        // Build redirect URL with token
+        let mut redirect_url = redirect_uri.clone();
+        let separator = if redirect_url.contains('?') { "&" } else { "?" };
+        redirect_url.push_str(&format!("{}token={}", separator, session_token));
+
+        return Ok(CallbackResponse::Redirect(Redirect::temporary(&redirect_url)));
+    }
+
+    // Return JSON response for API clients
+    Ok(CallbackResponse::Json(Json(TokenResponse {
         access_token: session_token,
         token_type: "Bearer".to_string(),
         expires_in: expiration_secs,
         tenant_id: claims.organization_id.clone(),
         user_id: claims.user_id,
         email: claims.email,
-    }))
+    })))
 }
 
 /// POST /auth/sso/callback
@@ -208,7 +273,7 @@ async fn callback(
 async fn callback_post(
     State(state): State<SsoState>,
     Query(params): Query<SsoCallbackParams>,
-) -> ApiResult<Json<TokenResponse>> {
+) -> ApiResult<CallbackResponse> {
     callback(State(state), Query(params)).await
 }
 

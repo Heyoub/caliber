@@ -28,6 +28,24 @@ export {
 } from './errors';
 export type { ApiErrorDetails } from './errors';
 
+// WebSocket client
+export { CaliberWebSocket } from './websocket';
+export type {
+  WsEventType,
+  WsEvent,
+  ConnectionState,
+  CaliberWebSocketConfig,
+  EventHandler,
+} from './websocket';
+
+// Context assembly helper
+export { ContextHelper } from './context';
+export type {
+  AssembleContextOptions,
+  ContextPackage,
+  FormatContextOptions,
+} from './context';
+
 // Managers
 export {
   TrajectoryManager,
@@ -42,6 +60,18 @@ export {
   HandoffManager,
   SearchManager,
   DslManager,
+  BatchManager,
+} from './managers';
+
+// Batch operation types
+export type {
+  BatchOperation,
+  BatchItemResult,
+  TrajectoryBatchItem,
+  ArtifactBatchItem,
+  NoteBatchItem,
+  BatchRequestParams,
+  BatchResponse,
 } from './managers';
 
 // Types - Trajectory

@@ -1,46 +1,85 @@
-# Astro Starter Kit: Basics
+# CALIBER Landing Page
 
-```sh
-npm create astro@latest -- --template basics
+Landing page and dashboard for CALIBER - Memory for AI Agents.
+
+Built with Astro 5 + Svelte 5 + Tailwind CSS 4.
+
+## Getting Started
+
+```bash
+# Install dependencies
+bun install
+
+# Start dev server
+bun run dev
+
+# Type-check
+bun run typecheck
+
+# Build for production
+bun run build
+
+# Preview production build
+bun run preview
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
+## Project Structure
 
 ```text
 /
 ├── public/
-│   └── favicon.svg
-├── src
-│   ├── assets
-│   │   └── astro.svg
-│   ├── components
-│   │   └── Welcome.astro
-│   ├── layouts
-│   │   └── Layout.astro
-│   └── pages
-│       └── index.astro
+│   ├── favicon.svg
+│   └── ...
+├── src/
+│   ├── components/
+│   │   ├── svelte/          # Svelte 5 components
+│   │   └── *.astro          # Astro components
+│   ├── layouts/
+│   │   ├── Layout.astro     # Marketing layout
+│   │   └── DashboardLayout.astro  # Dashboard layout
+│   ├── lib/
+│   │   └── api.ts           # API client
+│   ├── pages/
+│   │   ├── index.astro      # Landing page
+│   │   ├── login.astro      # Login page
+│   │   ├── auth/callback.astro  # OAuth callback
+│   │   └── dashboard/       # Dashboard pages
+│   ├── stores/
+│   │   └── auth.ts          # Auth state management
+│   └── styles/
+│       └── global.css       # Global styles
 └── package.json
 ```
 
-To learn more about the folder structure of an Astro project, refer to [our guide on project structure](https://docs.astro.build/en/basics/project-structure/).
+## Commands
 
-## 🧞 Commands
+| Command           | Action                                      |
+|:------------------|:--------------------------------------------|
+| `bun install`     | Install dependencies                        |
+| `bun run dev`     | Start dev server at `localhost:4321`        |
+| `bun run build`   | Build production site to `./dist/`          |
+| `bun run preview` | Preview build locally                       |
+| `bun run test`    | Run Playwright tests                        |
+| `bun run typecheck` | Run TypeScript type checking              |
 
-All commands are run from the root of the project, from a terminal:
+## npm Compatibility
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+For npm users, replace `bun` with `npm`:
 
-## 👀 Want to learn more?
+```bash
+npm install
+npm run dev
+npm run build
+```
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+## Environment Variables
+
+Create a `.env` file:
+
+```env
+PUBLIC_API_URL=https://api.caliber.run
+```
+
+## License
+
+AGPL-3.0-or-later

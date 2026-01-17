@@ -18,7 +18,7 @@ dockerfilePath = "docker/Dockerfile.api"
 
 # Build arguments for the Docker build
 [build.args]
-FEATURES = "openapi,swagger-ui"
+FEATURES = "openapi,swagger-ui,workos"
 
 [deploy]
 # Health check endpoint

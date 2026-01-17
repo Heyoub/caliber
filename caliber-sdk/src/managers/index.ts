@@ -21,6 +21,16 @@ export { DelegationManager } from './delegation';
 export { HandoffManager } from './handoff';
 export { SearchManager } from './search';
 export { DslManager } from './dsl';
+export { BatchManager } from './batch';
+export type {
+  BatchOperation,
+  BatchItemResult,
+  TrajectoryBatchItem,
+  ArtifactBatchItem,
+  NoteBatchItem,
+  BatchRequestParams,
+  BatchResponse,
+} from './batch';
 
 // Re-export all types from ../types (which imports from generated code)
 // This ensures all types come from the single source of truth

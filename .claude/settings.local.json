@@ -21,7 +21,8 @@
       "Bash(git -C /mnt/c/Users/eayou/.projects/fs.crm log --all --format=\"%ai\")",
       "WebFetch(domain:docs.convex.dev)",
       "WebFetch(domain:stack.convex.dev)",
-      "WebFetch(domain:news.convex.dev)"
+      "WebFetch(domain:news.convex.dev)",
+      "Bash(tree:*)"
     ],
     "deny": [
       "Bash(cargo:*)"

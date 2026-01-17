@@ -1,0 +1,22 @@
+{
+  "name": "caliber-convex-example",
+  "version": "1.0.0",
+  "description": "Example integration of CALIBER with Convex",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx convex dev",
+    "build": "bun run tsc",
+    "deploy": "bunx convex deploy",
+    "test:sdk": "bun test"
+  },
+  "dependencies": {
+    "@caliber-run/sdk": "workspace:*",
+    "convex": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0"
+  }
+}

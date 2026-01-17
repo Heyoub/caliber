@@ -5,7 +5,14 @@ TypeScript SDK for **CALIBER** - Cognitive Agent Long-term Intelligence, Behavio
 ## Installation
 
 ```bash
+# Using bun (recommended)
+bun add @caliber-run/sdk
+
+# Using npm
 npm install @caliber-run/sdk
+
+# Using pnpm
+pnpm add @caliber-run/sdk
 ```
 
 ## Quick Start

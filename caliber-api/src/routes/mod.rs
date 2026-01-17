@@ -9,10 +9,12 @@
 //! - Webhook registration and delivery
 //! - MCP (Model Context Protocol) server
 //! - GraphQL endpoint
+//! - CORS support for browser-based clients (SPAs, Convex, etc.)
 
 pub mod agent;
 pub mod artifact;
 pub mod batch;
+pub mod billing;
 pub mod config;
 pub mod delegation;
 pub mod dsl;
@@ -30,12 +32,14 @@ pub mod summarization_policy;
 pub mod tenant;
 pub mod trajectory;
 pub mod turn;
+pub mod user;
 pub mod webhooks;
 
 use std::sync::Arc;
 
-use axum::{response::IntoResponse, routing::get, Json, Router};
+use axum::{http::Method, response::IntoResponse, routing::get, Json, Router};
 use caliber_pcp::PCPRuntime;
+use tower_http::cors::{Any, CorsLayer};
 use utoipa::OpenApi;
 
 use crate::db::DbClient;
@@ -46,6 +50,7 @@ use crate::ws::WsState;
 pub use agent::create_router as agent_router;
 pub use artifact::create_router as artifact_router;
 pub use batch::create_router as batch_router;
+pub use billing::create_router as billing_router;
 pub use config::create_router as config_router;
 pub use delegation::create_router as delegation_router;
 pub use dsl::create_router as dsl_router;
@@ -60,6 +65,7 @@ pub use scope::create_router as scope_router;
 pub use tenant::create_router as tenant_router;
 pub use trajectory::create_router as trajectory_router;
 pub use turn::create_router as turn_router;
+pub use user::create_router as user_router;
 pub use webhooks::create_router as webhooks_router;
 // Battle Intel routes
 pub use edge::create_router as edge_router;
@@ -136,6 +142,9 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -
         .nest("/dsl", dsl::create_router(db.clone()))
         .nest("/config", config::create_router(db.clone(), ws.clone()))
         .nest("/tenants", tenant::create_router(db.clone()))
+        // User and billing routes
+        .nest("/users", user::create_router(db.clone()))
+        .nest("/billing", billing::create_router(db.clone()))
         // New routes
         .nest("/batch", batch::create_router(db.clone(), ws.clone()))
         .nest("/webhooks", webhooks::create_router(db.clone(), ws.clone()))
@@ -182,8 +191,26 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -
         );
     }
 
-    // Add observability middleware
-    router.layer(from_fn(observability_middleware))
+    // Configure CORS for browser-based clients (SPAs, Convex Actions, etc.)
+    // This is a permissive configuration suitable for development.
+    // In production, consider restricting origins via environment config.
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(Any)
+        .expose_headers(Any);
+
+    // Add observability middleware and CORS
+    router
+        .layer(from_fn(observability_middleware))
+        .layer(cors)
 }
 
 /// Create a minimal router for testing without WebSocket support.

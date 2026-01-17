@@ -1,0 +1,25 @@
+---
+/**
+ * Trajectories Page
+ * List and manage trajectories
+ */
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import TrajectoryList from '../../components/svelte/TrajectoryList.svelte';
+---
+
+<DashboardLayout title="Trajectories - CALIBER">
+  <!-- Page header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold font-title text-text-primary">
+        Trajectories
+      </h1>
+      <p class="text-text-secondary mt-1">
+        Memory contexts for your AI agents
+      </p>
+    </div>
+  </div>
+
+  <!-- Trajectory list -->
+  <TrajectoryList client:load />
+</DashboardLayout>

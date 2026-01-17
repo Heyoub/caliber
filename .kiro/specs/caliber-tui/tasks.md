@@ -5,15 +5,18 @@
 This plan implements the CALIBER TUI terminal interface using Ratatui with the SynthBrute aesthetic.
 
 **✅ Prerequisites Complete:**
+
 - `caliber-pg` is production-ready with zero warnings and direct heap operations
 - `caliber-api` is complete with REST/gRPC/WebSocket endpoints (14 route modules, 9 property tests)
 - All core crates tested and production-hardened (165 tests passing)
 
 **Current State:**
+
 - **caliber-api**: ✅ COMPLETE - Full REST/gRPC/WebSocket API with auth, telemetry, and real-time events
 - **caliber-tui**: ⏳ IN PROGRESS - Basic structure exists, needs full implementation
 
 **Key Principles (from steering):**
+
 - NO STUBS, NO TODOs - Complete code only
 - CaliberResult<T> for all fallible operations
 - Reference `docs/DEPENDENCY_GRAPH.md` for type definitions
@@ -22,6 +25,7 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
 ## Build Philosophy
 
 **AI-NATIVE WORKFLOW:**
+
 1. Write ALL code complete with correct types from docs/DEPENDENCY_GRAPH.md ✅
 2. Write ALL tests (unit + property-based) ✅
 3. Verify type alignment across all modules ✅
@@ -234,6 +238,7 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
 ## Implementation Summary
 
 **What's Already Done:**
+
 - ✅ Full API client with REST/gRPC/WebSocket support (970 lines)
 - ✅ Complete state management with all view states (700+ lines)
 - ✅ All 11 views implemented with real rendering logic (700+ lines total)
@@ -250,11 +255,13 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
 - ✅ **ZERO CLIPPY WARNINGS** - Production code is clean 🎉
 
 **What Needs Completion:**
+
 - ⏳ Manual smoke testing with live API (Phase 5)
 - ⏳ Integration test scenarios documentation
 - ⏳ Final polish and documentation
 
 **Test Coverage:**
+
 - ✅ Property 6: Status-to-Color Mapping (4 tests)
 - ✅ Property 7: Filter Correctness (4 tests)
 - ✅ Property 8: Hierarchy Rendering (1 test)
