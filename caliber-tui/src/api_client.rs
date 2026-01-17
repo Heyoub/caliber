@@ -154,8 +154,28 @@ impl RestClient {
             .await
     }
 
+    pub async fn get_agent(
+        &self,
+        tenant_id: EntityId,
+        agent_id: EntityId,
+    ) -> Result<AgentResponse, ApiClientError> {
+        let path = format!("/api/v1/agents/{}", agent_id);
+        self.get_json::<AgentResponse, ()>(tenant_id, &path, None)
+            .await
+    }
+
     pub async fn list_locks(&self, tenant_id: EntityId) -> Result<ListLocksResponse, ApiClientError> {
         self.get_json::<ListLocksResponse, ()>(tenant_id, "/api/v1/locks", None)
+            .await
+    }
+
+    pub async fn get_lock(
+        &self,
+        tenant_id: EntityId,
+        lock_id: EntityId,
+    ) -> Result<LockResponse, ApiClientError> {
+        let path = format!("/api/v1/locks/{}", lock_id);
+        self.get_json::<LockResponse, ()>(tenant_id, &path, None)
             .await
     }
 
@@ -165,6 +185,16 @@ impl RestClient {
         params: &ListMessagesRequest,
     ) -> Result<ListMessagesResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/messages", Some(params))
+            .await
+    }
+
+    pub async fn get_message(
+        &self,
+        tenant_id: EntityId,
+        message_id: EntityId,
+    ) -> Result<MessageResponse, ApiClientError> {
+        let path = format!("/api/v1/messages/{}", message_id);
+        self.get_json::<MessageResponse, ()>(tenant_id, &path, None)
             .await
     }
 
