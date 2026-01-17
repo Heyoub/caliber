@@ -8,6 +8,7 @@
 //! which internally use direct heap operations for maximum performance.
 
 pub mod auth;
+pub mod config;
 pub mod db;
 pub mod error;
 pub mod events;
@@ -42,13 +43,14 @@ pub use workos_auth::{
     validate_workos_token, SsoAuthorizationParams, SsoCallbackParams, SsoCallbackResponse,
     WorkOsClaims, WorkOsConfig,
 };
-pub use db::{DbClient, DbConfig};
+pub use config::ApiConfig;
+pub use db::{DbClient, DbConfig, TenantInfo};
 pub use error::{ApiError, ApiResult, ErrorCode};
 pub use events::WsEvent;
 pub use grpc::{create_services, proto};
 pub use middleware::{
-    auth_middleware, extract_auth_context, extract_auth_context_owned, tenant_access_middleware,
-    AuthExtractor, AuthMiddlewareState,
+    auth_middleware, extract_auth_context, extract_auth_context_owned, rate_limit_middleware,
+    tenant_access_middleware, AuthExtractor, AuthMiddlewareState, RateLimitKey, RateLimitState,
 };
 pub use openapi::ApiDoc;
 pub use routes::create_api_router;

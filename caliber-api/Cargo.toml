@@ -95,6 +95,9 @@ prometheus = { version = "0.13", features = ["process"] }
 regex = "1.10"
 once_cell = "1.19"
 
+# Rate limiting
+governor = "0.8"
+
 [[bin]]
 name = "generate-openapi"
 path = "src/bin/generate-openapi.rs"

@@ -214,6 +214,10 @@ async fn authorize(
 /// GET /auth/sso/callback
 ///
 /// Handles the OAuth callback from WorkOS after user authentication.
+/// This handler also performs automatic tenant provisioning:
+/// - If user has WorkOS org_id → maps to existing or creates tenant
+/// - If user has corporate email → joins existing or creates corporate tenant
+/// - If user has public email (gmail, etc.) → creates personal tenant
 ///
 /// Query parameters:
 /// - `code`: Authorization code from WorkOS
@@ -239,13 +243,32 @@ async fn callback(
     // Exchange authorization code for profile and token
     let (_access_token, claims) = exchange_code_for_profile(&state.workos_config, &params.code).await?;
 
+    // Resolve or create tenant (automatic provisioning)
+    let tenant_id = resolve_or_create_tenant(&state.db, &claims).await?;
+
+    // Determine member role (first member = admin, others = member)
+    let role = determine_member_role(&state.db, tenant_id, &claims).await?;
+
+    // Upsert tenant member
+    state.db.tenant_member_upsert(
+        tenant_id,
+        &claims.user_id,
+        &claims.email,
+        &role,
+        claims.first_name.as_deref(),
+        claims.last_name.as_deref(),
+    ).await?;
+
     // Create a session token for subsequent API calls
     let expiration_secs = std::env::var("CALIBER_JWT_EXPIRATION_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3600i64);
 
-    let session_token = create_session_token(&claims, expiration_secs)?;
+    // Create session token with the resolved tenant_id
+    let mut claims_with_tenant = claims.clone();
+    claims_with_tenant.organization_id = Some(tenant_id.to_string());
+    let session_token = create_session_token(&claims_with_tenant, expiration_secs)?;
 
     // If we have a redirect_uri from web client, redirect with token
     if let Some(ref redirect_uri) = auth_state.as_ref().and_then(|s| s.redirect_uri.clone()) {
@@ -262,10 +285,103 @@ async fn callback(
         access_token: session_token,
         token_type: "Bearer".to_string(),
         expires_in: expiration_secs,
-        tenant_id: claims.organization_id.clone(),
+        tenant_id: Some(tenant_id.to_string()),
         user_id: claims.user_id,
         email: claims.email,
     })))
+}
+
+/// Resolve an existing tenant or create a new one based on user claims.
+///
+/// Logic:
+/// 1. If WorkOS org_id is present, check for existing tenant mapped to it
+/// 2. Extract email domain
+/// 3. If public domain (gmail, etc.), create personal tenant
+/// 4. If corporate domain, check for existing tenant or create new one
+#[cfg(feature = "workos")]
+async fn resolve_or_create_tenant(
+    db: &DbClient,
+    claims: &crate::workos_auth::WorkOsClaims,
+) -> ApiResult<uuid::Uuid> {
+    use crate::error::ApiError;
+
+    // 1. Check WorkOS organization ID first
+    if let Some(org_id) = &claims.organization_id {
+        if let Some(tenant) = db.tenant_get_by_workos_org(org_id).await? {
+            tracing::info!(
+                tenant_id = %tenant.tenant_id,
+                workos_org = %org_id,
+                "User joined existing tenant via WorkOS org"
+            );
+            return Ok(tenant.tenant_id);
+        }
+    }
+
+    // 2. Extract email domain
+    let domain = claims.email
+        .split('@')
+        .nth(1)
+        .ok_or_else(|| ApiError::invalid_input("Invalid email format"))?;
+
+    // 3. Check if it's a public email domain (gmail, outlook, etc.)
+    if db.is_public_email_domain(domain).await? {
+        // Create personal tenant for public email users
+        let name = format!(
+            "{}'s Workspace",
+            claims.first_name.as_deref().unwrap_or("Personal")
+        );
+        let tenant_id = db.tenant_create(&name, None, claims.organization_id.as_deref()).await?;
+        tracing::info!(
+            tenant_id = %tenant_id,
+            email = %claims.email,
+            "Created personal tenant for public email user"
+        );
+        return Ok(tenant_id);
+    }
+
+    // 4. Check for existing tenant with this domain
+    if let Some(tenant) = db.tenant_get_by_domain(domain).await? {
+        tracing::info!(
+            tenant_id = %tenant.tenant_id,
+            domain = %domain,
+            "User joined existing corporate tenant"
+        );
+        return Ok(tenant.tenant_id);
+    }
+
+    // 5. Create new corporate tenant
+    let name = capitalize_domain(domain);
+    let tenant_id = db.tenant_create(&name, Some(domain), claims.organization_id.as_deref()).await?;
+    tracing::info!(
+        tenant_id = %tenant_id,
+        domain = %domain,
+        "Created new corporate tenant"
+    );
+    Ok(tenant_id)
+}
+
+/// Determine the role for a new tenant member.
+/// First member of a tenant becomes admin, subsequent members are regular members.
+#[cfg(feature = "workos")]
+async fn determine_member_role(
+    db: &DbClient,
+    tenant_id: uuid::Uuid,
+    _claims: &crate::workos_auth::WorkOsClaims,
+) -> ApiResult<String> {
+    let count = db.tenant_member_count(tenant_id).await?;
+    Ok(if count == 0 { "admin" } else { "member" }.to_string())
+}
+
+/// Capitalize the first letter of a domain name for tenant naming.
+/// e.g., "acme.com" -> "Acme"
+#[cfg(feature = "workos")]
+fn capitalize_domain(domain: &str) -> String {
+    let name = domain.split('.').next().unwrap_or(domain);
+    let mut chars = name.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+    }
 }
 
 /// POST /auth/sso/callback

@@ -394,6 +394,201 @@ pub async fn tenant_access_middleware(
 }
 
 // ============================================================================
+// RATE LIMITING MIDDLEWARE
+// ============================================================================
+
+use crate::config::ApiConfig;
+use governor::{clock::DefaultClock, Quota, RateLimiter};
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::num::NonZeroU32;
+use std::sync::RwLock;
+
+/// Type alias for the rate limiter we use.
+type DirectRateLimiter = RateLimiter<
+    governor::state::NotKeyed,
+    governor::state::InMemoryState,
+    DefaultClock,
+>;
+
+/// Key for rate limiting - either IP address or tenant ID.
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum RateLimitKey {
+    /// Unauthenticated request - keyed by IP address
+    Ip(IpAddr),
+    /// Authenticated request - keyed by tenant ID
+    Tenant(String),
+}
+
+/// State for rate limiting middleware.
+#[derive(Clone)]
+pub struct RateLimitState {
+    /// API configuration
+    config: Arc<ApiConfig>,
+    /// Per-key rate limiters
+    limiters: Arc<RwLock<HashMap<RateLimitKey, Arc<DirectRateLimiter>>>>,
+}
+
+impl RateLimitState {
+    /// Create new rate limit state from API configuration.
+    pub fn new(config: ApiConfig) -> Self {
+        Self {
+            config: Arc::new(config),
+            limiters: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Get or create a rate limiter for the given key.
+    fn get_or_create_limiter(&self, key: &RateLimitKey) -> Arc<DirectRateLimiter> {
+        // Check if limiter exists (read lock)
+        {
+            let limiters = self.limiters.read().unwrap();
+            if let Some(limiter) = limiters.get(key) {
+                return limiter.clone();
+            }
+        }
+
+        // Create new limiter (write lock)
+        let mut limiters = self.limiters.write().unwrap();
+
+        // Double-check in case another thread created it
+        if let Some(limiter) = limiters.get(key) {
+            return limiter.clone();
+        }
+
+        // Determine rate limit based on key type
+        let requests_per_minute = match key {
+            RateLimitKey::Ip(_) => self.config.rate_limit_unauthenticated,
+            RateLimitKey::Tenant(_) => self.config.rate_limit_authenticated,
+        };
+
+        // Create limiter with configured quota
+        let quota =
+            Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap_or(NonZeroU32::MIN))
+                .allow_burst(
+                    NonZeroU32::new(self.config.rate_limit_burst).unwrap_or(NonZeroU32::MIN),
+                );
+
+        let limiter = Arc::new(RateLimiter::direct(quota));
+        limiters.insert(key.clone(), limiter.clone());
+        limiter
+    }
+}
+
+/// Error type for rate limit middleware.
+pub struct RateLimitError {
+    /// Seconds until rate limit resets
+    pub retry_after: u64,
+}
+
+impl IntoResponse for RateLimitError {
+    fn into_response(self) -> Response {
+        let error = crate::error::ApiError::too_many_requests(Some(self.retry_after));
+        let status = StatusCode::TOO_MANY_REQUESTS;
+
+        // Add rate limit headers
+        let mut response = (status, axum::Json(error)).into_response();
+        let headers = response.headers_mut();
+        headers.insert(
+            axum::http::header::HeaderName::from_static("retry-after"),
+            self.retry_after.to_string().parse().unwrap(),
+        );
+
+        response
+    }
+}
+
+/// Extract client IP from request, considering proxy headers.
+fn extract_client_ip(request: &Request, fallback: std::net::SocketAddr) -> IpAddr {
+    // Check X-Forwarded-For header first (for proxied requests)
+    if let Some(forwarded_for) = request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+    {
+        // X-Forwarded-For can contain multiple IPs, take the first one
+        if let Some(first_ip) = forwarded_for.split(',').next() {
+            if let Ok(ip) = first_ip.trim().parse() {
+                return ip;
+            }
+        }
+    }
+
+    // Check X-Real-IP header
+    if let Some(real_ip) = request
+        .headers()
+        .get("x-real-ip")
+        .and_then(|h| h.to_str().ok())
+    {
+        if let Ok(ip) = real_ip.trim().parse() {
+            return ip;
+        }
+    }
+
+    // Fall back to connection IP
+    fallback.ip()
+}
+
+/// Rate limiting middleware.
+///
+/// This middleware enforces rate limits based on:
+/// - IP address for unauthenticated requests (100 req/min default)
+/// - Tenant ID for authenticated requests (1000 req/min default)
+///
+/// When rate limited, returns 429 Too Many Requests with Retry-After header.
+pub async fn rate_limit_middleware(
+    State(state): State<RateLimitState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Result<Response, RateLimitError> {
+    // Skip if rate limiting is disabled
+    if !state.config.rate_limit_enabled {
+        return Ok(next.run(request).await);
+    }
+
+    // Determine rate limit key based on authentication
+    let key = if let Some(auth) = request.extensions().get::<AuthContext>() {
+        RateLimitKey::Tenant(auth.tenant_id.to_string())
+    } else {
+        RateLimitKey::Ip(extract_client_ip(&request, addr))
+    };
+
+    // Get or create limiter for this key
+    let limiter = state.get_or_create_limiter(&key);
+
+    // Check rate limit
+    match limiter.check() {
+        Ok(_) => {
+            // Request allowed - add rate limit headers to response
+            let mut response = next.run(request).await;
+            let headers = response.headers_mut();
+
+            // Add informational headers
+            let limit = match &key {
+                RateLimitKey::Ip(_) => state.config.rate_limit_unauthenticated,
+                RateLimitKey::Tenant(_) => state.config.rate_limit_authenticated,
+            };
+            headers.insert(
+                axum::http::header::HeaderName::from_static("x-ratelimit-limit"),
+                limit.to_string().parse().unwrap(),
+            );
+
+            Ok(response)
+        }
+        Err(not_until) => {
+            // Rate limited
+            let retry_after = not_until
+                .wait_time_from(governor::clock::Clock::now(&DefaultClock::default()))
+                .as_secs()
+                .max(1); // Minimum 1 second
+
+            Err(RateLimitError { retry_after })
+        }
+    }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
