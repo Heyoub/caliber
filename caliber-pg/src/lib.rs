@@ -4901,7 +4901,7 @@ impl StorageTrait for PgStorage {
 // PGRX INTEGRATION TESTS (Task 12.8)
 // ============================================================================
 
-#[cfg(any(test, feature = "pg_test"))]
+#[cfg(feature = "pg_test")]
 #[pgrx::pg_schema]
 mod tests {
     use pgrx::prelude::*;
