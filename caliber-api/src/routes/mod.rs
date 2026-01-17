@@ -36,12 +36,19 @@ pub mod user;
 pub mod webhooks;
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use axum::{http::Method, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    http::{header, header::HeaderName, HeaderValue, Method},
+    response::IntoResponse,
+    routing::get,
+    Json, Router,
+};
 use caliber_pcp::PCPRuntime;
 use tower_http::cors::{Any, CorsLayer};
 use utoipa::OpenApi;
 
+use crate::config::ApiConfig;
 use crate::db::DbClient;
 use crate::openapi::ApiDoc;
 use crate::ws::WsState;
@@ -107,6 +114,59 @@ async fn openapi_yaml() -> impl IntoResponse {
 // ROUTER BUILDER
 // ============================================================================
 
+/// Build the CORS layer from ApiConfig.
+///
+/// In development mode (empty origins), allows all origins.
+/// In production mode, only allows configured origins.
+fn build_cors_layer(config: &ApiConfig) -> CorsLayer {
+    let cors = CorsLayer::new()
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+            HeaderName::from_static("x-api-key"),
+            HeaderName::from_static("x-tenant-id"),
+        ])
+        .expose_headers([
+            HeaderName::from_static("x-ratelimit-limit"),
+            HeaderName::from_static("x-ratelimit-remaining"),
+            HeaderName::from_static("x-ratelimit-reset"),
+            HeaderName::from_static("retry-after"),
+        ])
+        .max_age(Duration::from_secs(config.cors_max_age_secs));
+
+    if config.cors_origins.is_empty() {
+        // Development mode: allow all origins
+        tracing::info!("CORS: Development mode - allowing all origins");
+        cors.allow_origin(Any).allow_headers(Any).expose_headers(Any)
+    } else {
+        // Production mode: only allow configured origins
+        tracing::info!(
+            "CORS: Production mode - allowing origins: {:?}",
+            config.cors_origins
+        );
+        let origins: Vec<HeaderValue> = config
+            .cors_origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+
+        if config.cors_allow_credentials {
+            cors.allow_origin(origins).allow_credentials(true)
+        } else {
+            cors.allow_origin(origins)
+        }
+    }
+}
+
 /// Create the complete API router with all routes and OpenAPI documentation.
 ///
 /// This function creates a fully configured Axum router with:
@@ -123,7 +183,15 @@ async fn openapi_yaml() -> impl IntoResponse {
 /// # Battle Intel Integration
 /// The `pcp` parameter enables auto-summarization trigger checking on turn
 /// creation and scope close events, supporting L0→L1→L2 abstraction transitions.
-pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> Router {
+///
+/// # Production Hardening
+/// The `api_config` parameter controls CORS origins and rate limiting.
+pub fn create_api_router(
+    db: DbClient,
+    ws: Arc<WsState>,
+    pcp: Arc<PCPRuntime>,
+    api_config: &ApiConfig,
+) -> Router {
     use crate::telemetry::{middleware::observability_middleware, metrics_handler};
     use axum::middleware::from_fn;
 
@@ -191,21 +259,10 @@ pub fn create_api_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -
         );
     }
 
-    // Configure CORS for browser-based clients (SPAs, Convex Actions, etc.)
-    // This is a permissive configuration suitable for development.
-    // In production, consider restricting origins via environment config.
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::PATCH,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers(Any)
-        .expose_headers(Any);
+    // Configure CORS based on ApiConfig
+    // In development (empty origins): allow all
+    // In production: only allow configured origins
+    let cors = build_cors_layer(api_config);
 
     // Add observability middleware and CORS
     router

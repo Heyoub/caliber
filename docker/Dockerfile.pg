@@ -1,5 +1,7 @@
 # CALIBER PostgreSQL with pgrx Extension
-# PostgreSQL 16 with caliber-pg extension pre-installed
+# PostgreSQL 18 with caliber-pg extension pre-installed
+#
+# BREAKING CHANGE (v0.4.0): CALIBER now requires PostgreSQL 18+
 #
 # Usage:
 #   docker build -f docker/Dockerfile.pg -t caliber-pg .
@@ -9,35 +11,45 @@ FROM rust:1.83-bookworm AS builder
 
 WORKDIR /build
 
-# Install pgrx dependencies
+# Add PostgreSQL 18 APT repository
+RUN apt-get update && apt-get install -y wget gnupg lsb-release \
+    && echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
+# Install pgrx dependencies and PostgreSQL 18 dev packages
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     libclang-dev \
     clang \
-    postgresql-server-dev-16 \
-    postgresql-16 \
+    postgresql-server-dev-18 \
+    postgresql-18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pgrx
-RUN cargo install cargo-pgrx --version 0.12.9 --locked
-RUN cargo pgrx init --pg16 /usr/lib/postgresql/16/bin/pg_config
+RUN cargo install cargo-pgrx --version 0.16 --locked
+RUN cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
 
 # Copy workspace files
 COPY Cargo.toml Cargo.lock ./
 COPY caliber-core ./caliber-core
+COPY caliber-storage ./caliber-storage
+COPY caliber-context ./caliber-context
+COPY caliber-pcp ./caliber-pcp
+COPY caliber-llm ./caliber-llm
+COPY caliber-agents ./caliber-agents
 COPY caliber-dsl ./caliber-dsl
 COPY caliber-pg ./caliber-pg
 
-# Build extension
-RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/16/bin/pg_config
+# Build extension for PostgreSQL 18
+RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
 
 # Stage 2: Runtime
-FROM postgres:16-bookworm
+FROM postgres:18-bookworm
 
 # Copy extension files from builder
-COPY --from=builder /build/target/release/caliber_pg-pg16/usr/share/postgresql/16/extension/* /usr/share/postgresql/16/extension/
-COPY --from=builder /build/target/release/caliber_pg-pg16/usr/lib/postgresql/16/lib/* /usr/lib/postgresql/16/lib/
+COPY --from=builder /build/target/release/caliber_pg-pg18/usr/share/postgresql/18/extension/* /usr/share/postgresql/18/extension/
+COPY --from=builder /build/target/release/caliber_pg-pg18/usr/lib/postgresql/18/lib/* /usr/lib/postgresql/18/lib/
 
 # Copy initialization script
 COPY docker/init-caliber.sh /docker-entrypoint-initdb.d/01-init-caliber.sh

@@ -2495,5 +2495,139 @@ impl DbClient {
 
         Ok(())
     }
+
+    // ========================================================================
+    // TENANT OPERATIONS (for SSO auto-provisioning)
+    // ========================================================================
+
+    /// Check if an email domain is a public domain (gmail, outlook, etc.).
+    pub async fn is_public_email_domain(&self, domain: &str) -> ApiResult<bool> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_is_public_email_domain($1)",
+                &[&domain],
+            )
+            .await?;
+
+        Ok(row.get(0))
+    }
+
+    /// Create a new tenant.
+    pub async fn tenant_create(
+        &self,
+        name: &str,
+        domain: Option<&str>,
+        workos_organization_id: Option<&str>,
+    ) -> ApiResult<EntityId> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_tenant_create($1, $2, $3)",
+                &[&name, &domain, &workos_organization_id],
+            )
+            .await?;
+
+        let tenant_id: Uuid = row.get(0);
+        Ok(tenant_id)
+    }
+
+    /// Get a tenant by domain.
+    pub async fn tenant_get_by_domain(&self, domain: &str) -> ApiResult<Option<TenantInfo>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_tenant_get_by_domain($1)",
+                &[&domain],
+            )
+            .await?;
+
+        let json_opt: Option<JsonValue> = row.get(0);
+
+        match json_opt {
+            Some(json) => Ok(Some(self.parse_tenant_json(&json)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get a tenant by WorkOS organization ID.
+    pub async fn tenant_get_by_workos_org(&self, workos_org_id: &str) -> ApiResult<Option<TenantInfo>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_tenant_get_by_workos_org($1)",
+                &[&workos_org_id],
+            )
+            .await?;
+
+        let json_opt: Option<JsonValue> = row.get(0);
+
+        match json_opt {
+            Some(json) => Ok(Some(self.parse_tenant_json(&json)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Upsert a tenant member (insert or update).
+    pub async fn tenant_member_upsert(
+        &self,
+        tenant_id: EntityId,
+        user_id: &str,
+        email: &str,
+        role: &str,
+        first_name: Option<&str>,
+        last_name: Option<&str>,
+    ) -> ApiResult<EntityId> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_tenant_member_upsert($1, $2, $3, $4, $5, $6)",
+                &[&tenant_id, &user_id, &email, &role, &first_name, &last_name],
+            )
+            .await?;
+
+        let member_id: Uuid = row.get(0);
+        Ok(member_id)
+    }
+
+    /// Count the number of members in a tenant.
+    pub async fn tenant_member_count(&self, tenant_id: EntityId) -> ApiResult<i32> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_tenant_member_count($1)",
+                &[&tenant_id],
+            )
+            .await?;
+
+        Ok(row.get(0))
+    }
+
+    /// Parse tenant JSON into TenantInfo struct.
+    fn parse_tenant_json(&self, json: &JsonValue) -> ApiResult<TenantInfo> {
+        Ok(TenantInfo {
+            tenant_id: self.parse_uuid(json, "tenant_id")?,
+            name: self.parse_string(json, "name")?,
+            domain: self.parse_optional_string(json, "domain"),
+            workos_organization_id: self.parse_optional_string(json, "workos_organization_id"),
+            status: self.parse_string(json, "status")?,
+        })
+    }
+}
+
+/// Information about a tenant (used for SSO auto-provisioning).
+#[derive(Debug, Clone)]
+pub struct TenantInfo {
+    pub tenant_id: EntityId,
+    pub name: String,
+    pub domain: Option<String>,
+    pub workos_organization_id: Option<String>,
+    pub status: String,
 }
 

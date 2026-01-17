@@ -1,0 +1,48 @@
+{
+   "name": "caliber",
+   "abstract": "PostgreSQL-native memory framework for AI agents",
+   "description": "CALIBER provides hierarchical memory management, multi-agent coordination, and context window optimization for AI applications, all running natively in PostgreSQL.",
+   "version": "0.4.0",
+   "maintainer": ["Caliber Team <team@caliber.run>"],
+   "license": "mit",
+   "provides": {
+      "caliber": {
+         "abstract": "AI agent memory framework",
+         "file": "sql/caliber--0.4.0.sql",
+         "version": "0.4.0"
+      }
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "18.0.0"
+         },
+         "recommends": {
+            "pgvector": "0.7.0"
+         }
+      }
+   },
+   "resources": {
+      "homepage": "https://caliber.run",
+      "bugtracker": {
+         "web": "https://github.com/caliber-run/caliber/issues"
+      },
+      "repository": {
+         "type": "git",
+         "url": "https://github.com/caliber-run/caliber.git"
+      }
+   },
+   "tags": [
+      "ai",
+      "memory",
+      "agents",
+      "llm",
+      "context",
+      "pgrx",
+      "rust"
+   ],
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "https://pgxn.org/meta/spec.txt"
+   }
+}

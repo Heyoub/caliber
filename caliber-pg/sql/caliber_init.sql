@@ -3,6 +3,78 @@
 -- All hot-path operations use direct pgrx heap operations.
 
 -- ============================================================================
+-- SCHEMA VERSION TRACKING (for built-in migrations)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS caliber_schema_version (
+    version INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    checksum TEXT NOT NULL,
+    execution_time_ms INTEGER
+);
+
+INSERT INTO caliber_schema_version (version, description, checksum)
+VALUES (1, 'Initial schema - CALIBER 0.4.0', 'base')
+ON CONFLICT DO NOTHING;
+
+CREATE OR REPLACE FUNCTION caliber_schema_version()
+RETURNS INTEGER AS $$
+    SELECT COALESCE(MAX(version), 0) FROM caliber_schema_version;
+$$ LANGUAGE SQL STABLE;
+
+-- ============================================================================
+-- TENANT TABLES (Multi-tenancy support)
+-- ============================================================================
+
+-- Tenant: Organization-level container
+CREATE TABLE IF NOT EXISTS caliber_tenant (
+    tenant_id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    domain TEXT UNIQUE,                    -- For auto-association (acme.com → "acme")
+    workos_organization_id TEXT UNIQUE,    -- WorkOS mapping
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata JSONB
+);
+
+-- Tenant Member: User membership in a tenant
+CREATE TABLE IF NOT EXISTS caliber_tenant_member (
+    member_id UUID PRIMARY KEY,
+    tenant_id UUID NOT NULL REFERENCES caliber_tenant(tenant_id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,                 -- WorkOS user ID
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member', 'readonly')),
+    first_name TEXT,
+    last_name TEXT,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, user_id)
+);
+
+-- Public Email Domains: gmail, outlook, etc. - users get personal tenants
+CREATE TABLE IF NOT EXISTS caliber_public_email_domain (
+    domain TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed common public domains
+INSERT INTO caliber_public_email_domain (domain) VALUES
+    ('gmail.com'), ('googlemail.com'), ('outlook.com'), ('hotmail.com'),
+    ('live.com'), ('yahoo.com'), ('icloud.com'), ('protonmail.com'),
+    ('proton.me'), ('aol.com'), ('zoho.com')
+ON CONFLICT DO NOTHING;
+
+-- Tenant indexes
+CREATE INDEX IF NOT EXISTS idx_tenant_domain ON caliber_tenant(domain) WHERE domain IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tenant_workos_org ON caliber_tenant(workos_organization_id) WHERE workos_organization_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tenant_status ON caliber_tenant(status);
+CREATE INDEX IF NOT EXISTS idx_tenant_member_tenant ON caliber_tenant_member(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_member_user ON caliber_tenant_member(user_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_member_email ON caliber_tenant_member(email);
+
+-- ============================================================================
 -- CORE ENTITY TABLES
 -- ============================================================================
 
@@ -386,6 +458,10 @@ CREATE TRIGGER artifact_updated_at
 
 CREATE TRIGGER note_updated_at
     BEFORE UPDATE ON caliber_note
+    FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+
+CREATE TRIGGER tenant_updated_at
+    BEFORE UPDATE ON caliber_tenant
     FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
 
 

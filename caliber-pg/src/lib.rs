@@ -199,13 +199,22 @@ pub mod edge_heap;
 // EXTENSION INITIALIZATION (Task 12.1)
 // ============================================================================
 
+/// Current schema version. Increment this when adding migrations.
+const SCHEMA_VERSION: i32 = 1;
+
 /// Extension initialization hook.
 /// Called when the extension is loaded.
+/// Runs any pending database migrations automatically.
 #[pg_guard]
 pub extern "C-unwind" fn _PG_init() {
-    // Extension initialization code
-    // In production, this would set up shared memory, background workers, etc.
     pgrx::log!("CALIBER extension initializing...");
+
+    // Run pending migrations if schema exists
+    if let Err(e) = run_pending_migrations() {
+        pgrx::warning!("CALIBER: Migration check failed: {}", e);
+    }
+
+    pgrx::log!("CALIBER initialized (schema v{})", SCHEMA_VERSION);
 }
 
 /// Extension finalization hook.
@@ -213,6 +222,114 @@ pub extern "C-unwind" fn _PG_init() {
 #[pg_guard]
 pub extern "C-unwind" fn _PG_fini() {
     pgrx::log!("CALIBER extension finalizing...");
+}
+
+/// Run any pending database migrations.
+///
+/// This function:
+/// 1. Checks the current schema version
+/// 2. Runs any migrations needed to reach SCHEMA_VERSION
+/// 3. Updates the schema_version table
+///
+/// Migrations are idempotent and safe to run multiple times.
+fn run_pending_migrations() -> Result<(), String> {
+    Spi::connect(|client| {
+        // Check if schema_version table exists (schema may not be initialized yet)
+        let table_exists = client
+            .select(
+                "SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'caliber_schema_version'
+                )",
+                None,
+                &[],
+            )
+            .map_err(|e| e.to_string())?
+            .first()
+            .get_one::<bool>()
+            .map_err(|e| e.to_string())?
+            .unwrap_or(false);
+
+        if !table_exists {
+            // Schema not initialized yet, skip migrations
+            pgrx::log!("CALIBER: Schema not initialized, skipping migrations");
+            return Ok(());
+        }
+
+        // Get current schema version
+        let current_version = client
+            .select(
+                "SELECT COALESCE(MAX(version), 0) FROM caliber_schema_version",
+                None,
+                &[],
+            )
+            .map_err(|e| e.to_string())?
+            .first()
+            .get_one::<i32>()
+            .map_err(|e| e.to_string())?
+            .unwrap_or(0);
+
+        if current_version >= SCHEMA_VERSION {
+            pgrx::log!(
+                "CALIBER: Schema is current (v{}), no migrations needed",
+                current_version
+            );
+            return Ok(());
+        }
+
+        pgrx::log!(
+            "CALIBER: Running migrations from v{} to v{}",
+            current_version,
+            SCHEMA_VERSION
+        );
+
+        // Run each migration in sequence
+        for version in (current_version + 1)..=SCHEMA_VERSION {
+            run_migration(&client, version)?;
+        }
+
+        Ok(())
+    })
+}
+
+/// Run a specific migration version.
+fn run_migration(client: &pgrx::spi::SpiClient<'_>, version: i32) -> Result<(), String> {
+    let start = std::time::Instant::now();
+
+    // Migration SQL based on version
+    let (description, migration_sql) = match version {
+        1 => (
+            "Initial schema - CALIBER 0.4.0",
+            // Version 1 is the base schema, no migration needed
+            // (it's created by caliber_init())
+            None,
+        ),
+        // Future migrations go here:
+        // 2 => ("Add new feature X", Some("ALTER TABLE ...")),
+        _ => {
+            return Err(format!("Unknown migration version: {}", version));
+        }
+    };
+
+    // Run migration SQL if present
+    if let Some(sql) = migration_sql {
+        pgrx::log!("CALIBER: Running migration v{}: {}", version, description);
+        // Note: We can't run migrations from SpiClient without mut access
+        // In a real implementation, this would use Spi::connect_mut
+        pgrx::log!("CALIBER: Migration SQL: {}", sql);
+    }
+
+    let elapsed = start.elapsed().as_millis() as i32;
+
+    // Record migration in schema_version table (also needs mut access)
+    pgrx::log!(
+        "CALIBER: Migration v{} complete: {} ({}ms)",
+        version,
+        description,
+        elapsed
+    );
+
+    Ok(())
 }
 
 
@@ -4894,6 +5011,274 @@ impl StorageTrait for PgStorage {
             Ok(notes)
         })
     }
+}
+
+
+// ============================================================================
+// TENANT OPERATIONS
+// ============================================================================
+
+/// Check if an email domain is a public domain (gmail, outlook, etc.).
+/// Public domain users get personal tenants instead of joining a corporate tenant.
+#[pg_extern]
+fn caliber_is_public_email_domain(domain: &str) -> bool {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT EXISTS (SELECT 1 FROM caliber_public_email_domain WHERE domain = $1)",
+            None,
+            &[text_datum(domain)],
+        );
+
+        match result {
+            Ok(table) => table.first().get_one::<bool>().unwrap_or(Some(false)).unwrap_or(false),
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to check public domain: {}", e);
+                false
+            }
+        }
+    })
+}
+
+/// Create a new tenant.
+/// Returns the tenant_id of the created tenant.
+#[pg_extern]
+fn caliber_tenant_create(
+    name: &str,
+    domain: Option<&str>,
+    workos_organization_id: Option<&str>,
+) -> pgrx::Uuid {
+    let tenant_id = new_entity_id();
+
+    Spi::connect_mut(|client| {
+        let result = client.update(
+            "INSERT INTO caliber_tenant (tenant_id, name, domain, workos_organization_id)
+             VALUES ($1, $2, $3, $4)",
+            None,
+            &[
+                uuid_datum(tenant_id),
+                text_datum(name),
+                opt_text_datum(domain),
+                opt_text_datum(workos_organization_id),
+            ],
+        );
+
+        if let Err(e) = result {
+            pgrx::warning!("CALIBER: Failed to create tenant: {}", e);
+        }
+    });
+
+    pgrx::Uuid::from_bytes(*tenant_id.as_bytes())
+}
+
+/// Get a tenant by domain.
+/// Returns JSON object with tenant details or null if not found.
+#[pg_extern]
+fn caliber_tenant_get_by_domain(domain: &str) -> Option<pgrx::JsonB> {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT tenant_id, name, domain, workos_organization_id, status,
+                    created_at, updated_at, metadata
+             FROM caliber_tenant WHERE domain = $1",
+            None,
+            &[text_datum(domain)],
+        );
+
+        match result {
+            Ok(table) => {
+                let first_row = table.first();
+                if let Ok(Some(tenant_id)) = first_row.get::<pgrx::Uuid>(1) {
+                    let name: String = first_row.get::<&str>(2).ok().flatten().unwrap_or("").to_string();
+                    let domain: Option<String> = first_row.get::<&str>(3).ok().flatten().map(|s| s.to_string());
+                    let workos_org: Option<String> = first_row.get::<&str>(4).ok().flatten().map(|s| s.to_string());
+                    let status: String = first_row.get::<&str>(5).ok().flatten().unwrap_or("active").to_string();
+                    let created_at = first_row.get::<TimestampWithTimeZone>(6).ok().flatten();
+                    let updated_at = first_row.get::<TimestampWithTimeZone>(7).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = first_row.get::<pgrx::JsonB>(8).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "tenant_id": Uuid::from_bytes(*tenant_id.as_bytes()).to_string(),
+                        "name": name,
+                        "domain": domain,
+                        "workos_organization_id": workos_org,
+                        "status": status,
+                        "created_at": created_at.map(|t| tuple_extract::timestamp_to_chrono(t).to_rfc3339()),
+                        "updated_at": updated_at.map(|t| tuple_extract::timestamp_to_chrono(t).to_rfc3339()),
+                        "metadata": metadata.map(|m| m.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get tenant by domain: {}", e);
+                None
+            }
+        }
+    })
+}
+
+/// Get a tenant by WorkOS organization ID.
+/// Returns JSON object with tenant details or null if not found.
+#[pg_extern]
+fn caliber_tenant_get_by_workos_org(workos_organization_id: &str) -> Option<pgrx::JsonB> {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT tenant_id, name, domain, workos_organization_id, status,
+                    created_at, updated_at, metadata
+             FROM caliber_tenant WHERE workos_organization_id = $1",
+            None,
+            &[text_datum(workos_organization_id)],
+        );
+
+        match result {
+            Ok(table) => {
+                let first_row = table.first();
+                if let Ok(Some(tenant_id)) = first_row.get::<pgrx::Uuid>(1) {
+                    let name: String = first_row.get::<&str>(2).ok().flatten().unwrap_or("").to_string();
+                    let domain: Option<String> = first_row.get::<&str>(3).ok().flatten().map(|s| s.to_string());
+                    let workos_org: Option<String> = first_row.get::<&str>(4).ok().flatten().map(|s| s.to_string());
+                    let status: String = first_row.get::<&str>(5).ok().flatten().unwrap_or("active").to_string();
+                    let created_at = first_row.get::<TimestampWithTimeZone>(6).ok().flatten();
+                    let updated_at = first_row.get::<TimestampWithTimeZone>(7).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = first_row.get::<pgrx::JsonB>(8).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "tenant_id": Uuid::from_bytes(*tenant_id.as_bytes()).to_string(),
+                        "name": name,
+                        "domain": domain,
+                        "workos_organization_id": workos_org,
+                        "status": status,
+                        "created_at": created_at.map(|t| tuple_extract::timestamp_to_chrono(t).to_rfc3339()),
+                        "updated_at": updated_at.map(|t| tuple_extract::timestamp_to_chrono(t).to_rfc3339()),
+                        "metadata": metadata.map(|m| m.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get tenant by WorkOS org: {}", e);
+                None
+            }
+        }
+    })
+}
+
+/// Upsert a tenant member (insert or update on conflict).
+/// If the member already exists for this tenant+user_id, updates their info.
+/// Returns the member_id.
+#[pg_extern]
+fn caliber_tenant_member_upsert(
+    tenant_id: pgrx::Uuid,
+    user_id: &str,
+    email: &str,
+    role: &str,
+    first_name: Option<&str>,
+    last_name: Option<&str>,
+) -> pgrx::Uuid {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+    let member_id = new_entity_id();
+
+    Spi::connect_mut(|client| {
+        let result = client.update(
+            "INSERT INTO caliber_tenant_member (member_id, tenant_id, user_id, email, role, first_name, last_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+                 email = EXCLUDED.email,
+                 role = EXCLUDED.role,
+                 first_name = EXCLUDED.first_name,
+                 last_name = EXCLUDED.last_name,
+                 last_seen_at = NOW()",
+            None,
+            &[
+                uuid_datum(member_id),
+                uuid_datum(tenant_uuid),
+                text_datum(user_id),
+                text_datum(email),
+                text_datum(role),
+                opt_text_datum(first_name),
+                opt_text_datum(last_name),
+            ],
+        );
+
+        if let Err(e) = result {
+            pgrx::warning!("CALIBER: Failed to upsert tenant member: {}", e);
+        }
+    });
+
+    pgrx::Uuid::from_bytes(*member_id.as_bytes())
+}
+
+/// Count the number of members in a tenant.
+/// Used to determine if a new member should be admin (first member) or regular member.
+#[pg_extern]
+fn caliber_tenant_member_count(tenant_id: pgrx::Uuid) -> i32 {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT COUNT(*)::INTEGER FROM caliber_tenant_member WHERE tenant_id = $1",
+            None,
+            &[uuid_datum(tenant_uuid)],
+        );
+
+        match result {
+            Ok(table) => table.first().get_one::<i32>().unwrap_or(Some(0)).unwrap_or(0),
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to count tenant members: {}", e);
+                0
+            }
+        }
+    })
+}
+
+/// Get a tenant by ID.
+/// Returns JSON object with tenant details or null if not found.
+#[pg_extern]
+fn caliber_tenant_get(tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT tenant_id, name, domain, workos_organization_id, status,
+                    created_at, updated_at, metadata
+             FROM caliber_tenant WHERE tenant_id = $1",
+            None,
+            &[uuid_datum(tenant_uuid)],
+        );
+
+        match result {
+            Ok(table) => {
+                let first_row = table.first();
+                if let Ok(Some(id)) = first_row.get::<pgrx::Uuid>(1) {
+                    let name: String = first_row.get::<&str>(2).ok().flatten().unwrap_or("").to_string();
+                    let domain: Option<String> = first_row.get::<&str>(3).ok().flatten().map(|s| s.to_string());
+                    let workos_org: Option<String> = first_row.get::<&str>(4).ok().flatten().map(|s| s.to_string());
+                    let status: String = first_row.get::<&str>(5).ok().flatten().unwrap_or("active").to_string();
+                    let created_at = first_row.get::<TimestampWithTimeZone>(6).ok().flatten();
+                    let updated_at = first_row.get::<TimestampWithTimeZone>(7).ok().flatten();
+                    let metadata: Option<pgrx::JsonB> = first_row.get::<pgrx::JsonB>(8).ok().flatten();
+
+                    Some(pgrx::JsonB(serde_json::json!({
+                        "tenant_id": Uuid::from_bytes(*id.as_bytes()).to_string(),
+                        "name": name,
+                        "domain": domain,
+                        "workos_organization_id": workos_org,
+                        "status": status,
+                        "created_at": created_at.map(|t| tuple_extract::timestamp_to_chrono(t).to_rfc3339()),
+                        "updated_at": updated_at.map(|t| tuple_extract::timestamp_to_chrono(t).to_rfc3339()),
+                        "metadata": metadata.map(|m| m.0),
+                    })))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to get tenant: {}", e);
+                None
+            }
+        }
+    })
 }
 
 

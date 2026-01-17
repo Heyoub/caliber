@@ -122,9 +122,12 @@ pub enum ErrorCode {
     
     /// Database connection pool exhausted
     ConnectionPoolExhausted,
-    
+
     /// Operation timed out
     Timeout,
+
+    /// Request rate limit exceeded
+    TooManyRequests,
 }
 
 impl ErrorCode {
@@ -168,7 +171,9 @@ impl ErrorCode {
             | ErrorCode::ConnectionPoolExhausted => StatusCode::SERVICE_UNAVAILABLE,
             
             ErrorCode::Timeout => StatusCode::GATEWAY_TIMEOUT,
-            
+
+            ErrorCode::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
+
             ErrorCode::InternalError
             | ErrorCode::DatabaseError => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -214,6 +219,7 @@ impl ErrorCode {
             ErrorCode::ServiceUnavailable => "Service temporarily unavailable",
             ErrorCode::ConnectionPoolExhausted => "Connection pool exhausted",
             ErrorCode::Timeout => "Operation timed out",
+            ErrorCode::TooManyRequests => "Rate limit exceeded",
         }
     }
 }
@@ -475,6 +481,15 @@ impl ApiError {
             ErrorCode::Timeout,
             format!("Operation '{}' timed out", operation),
         )
+    }
+
+    /// Create a TooManyRequests error.
+    pub fn too_many_requests(retry_after_secs: Option<u64>) -> Self {
+        let message = match retry_after_secs {
+            Some(secs) => format!("Rate limit exceeded. Retry after {} seconds", secs),
+            None => "Rate limit exceeded".to_string(),
+        };
+        Self::new(ErrorCode::TooManyRequests, message)
     }
 }
 
