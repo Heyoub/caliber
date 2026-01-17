@@ -20,6 +20,37 @@ use crate::{
     events::WsEvent,
     ws::WsState,
 };
+use uuid::Uuid;
+
+// ============================================================================
+// TENANT EXTRACTION HELPER
+// ============================================================================
+
+/// Extract tenant_id from gRPC request metadata or extensions.
+///
+/// This bridges the architectural gap between REST handlers (which use AuthContext)
+/// and gRPC handlers (which receive Request<T>).
+///
+/// Priority:
+/// 1. Try to get from metadata first (x-tenant-id header)
+/// 2. Fallback: try extensions (if set by interceptor)
+fn extract_tenant_id<T>(request: &Request<T>) -> Result<caliber_core::EntityId, Status> {
+    // Try to get from metadata first
+    if let Some(tenant) = request.metadata().get("x-tenant-id") {
+        let tenant_str = tenant.to_str()
+            .map_err(|_| Status::invalid_argument("Invalid tenant ID header"))?;
+        let tenant_id = tenant_str.parse::<Uuid>()
+            .map_err(|_| Status::invalid_argument("Invalid tenant ID format"))?;
+        return Ok(caliber_core::EntityId::from(tenant_id));
+    }
+
+    // Fallback: try extensions (if set by interceptor)
+    if let Some(tenant_id) = request.extensions().get::<caliber_core::EntityId>() {
+        return Ok(*tenant_id);
+    }
+
+    Err(Status::unauthenticated("Missing tenant ID"))
+}
 
 // Include the generated protobuf code
 pub mod proto {
@@ -588,6 +619,7 @@ fn turn_to_proto(t: &crate::types::TurnResponse) -> TurnResponse {
 
 fn agent_to_proto(a: &crate::types::AgentResponse) -> AgentResponse {
     AgentResponse {
+        tenant_id: a.tenant_id.to_string(),
         agent_id: a.agent_id.to_string(),
         agent_type: a.agent_type.to_string(),
         capabilities: a.capabilities.clone(),
@@ -615,6 +647,7 @@ fn agent_to_proto(a: &crate::types::AgentResponse) -> AgentResponse {
 
 fn lock_to_proto(l: &crate::types::LockResponse) -> LockResponse {
     LockResponse {
+        tenant_id: l.tenant_id.to_string(),
         lock_id: l.lock_id.to_string(),
         resource_type: l.resource_type.to_string(),
         resource_id: l.resource_id.to_string(),
@@ -627,6 +660,7 @@ fn lock_to_proto(l: &crate::types::LockResponse) -> LockResponse {
 
 fn message_to_proto(m: &crate::types::MessageResponse) -> MessageResponse {
     MessageResponse {
+        tenant_id: m.tenant_id.to_string(),
         message_id: m.message_id.to_string(),
         from_agent_id: m.from_agent_id.to_string(),
         to_agent_id: m.to_agent_id.map(|id| id.to_string()),
@@ -669,6 +703,7 @@ fn delegation_to_proto(d: &crate::types::DelegationResponse) -> DelegationRespon
 
 fn handoff_to_proto(h: &crate::types::HandoffResponse) -> HandoffResponse {
     HandoffResponse {
+        tenant_id: h.tenant_id.to_string(),
         handoff_id: h.handoff_id.to_string(),
         from_agent_id: h.from_agent_id.to_string(),
         to_agent_id: h.to_agent_id.to_string(),
@@ -756,9 +791,10 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     }
 
     async fn delete_artifact(&self, request: Request<DeleteArtifactRequest>) -> Result<Response<Empty>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id: caliber_core::EntityId = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
         self.db.artifact_delete(id).await?;
-        self.ws.broadcast(WsEvent::ArtifactDeleted { id });
+        self.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id, id });
         Ok(Response::new(Empty {}))
     }
 
@@ -930,9 +966,10 @@ impl note_service_server::NoteService for NoteServiceImpl {
     }
 
     async fn delete_note(&self, request: Request<DeleteNoteRequest>) -> Result<Response<Empty>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id: caliber_core::EntityId = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
         self.db.note_delete(id).await?;
-        self.ws.broadcast(WsEvent::NoteDeleted { id });
+        self.ws.broadcast(WsEvent::NoteDeleted { tenant_id, id });
         Ok(Response::new(Empty {}))
     }
 
@@ -1089,6 +1126,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
     }
 
     async fn update_agent(&self, request: Request<UpdateAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
         let memory_access = req.memory_access.map(|access| crate::types::MemoryAccessRequest {
@@ -1112,7 +1150,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
         };
         let agent = self.db.agent_update(id, &update_req).await?;
         let status = agent.status.clone();
-        self.ws.broadcast(WsEvent::AgentStatusChanged { agent_id: id, status });
+        self.ws.broadcast(WsEvent::AgentStatusChanged { tenant_id, agent_id: id, status });
         Ok(Response::new(agent_to_proto(&agent)))
     }
 
@@ -1123,10 +1161,11 @@ impl agent_service_server::AgentService for AgentServiceImpl {
     }
 
     async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
         self.db.agent_heartbeat(id).await?;
         let now = Utc::now();
-        self.ws.broadcast(WsEvent::AgentHeartbeat { agent_id: id, timestamp: now });
+        self.ws.broadcast(WsEvent::AgentHeartbeat { tenant_id, agent_id: id, timestamp: now });
         Ok(Response::new(HeartbeatResponse { timestamp: timestamp_to_millis(&now) }))
     }
 }
@@ -1160,9 +1199,10 @@ impl lock_service_server::LockService for LockServiceImpl {
     }
 
     async fn release_lock(&self, request: Request<ReleaseLockRequest>) -> Result<Response<Empty>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
         self.db.lock_release(id).await?;
-        self.ws.broadcast(WsEvent::LockReleased { lock_id: id });
+        self.ws.broadcast(WsEvent::LockReleased { tenant_id, lock_id: id });
         Ok(Response::new(Empty {}))
     }
 
@@ -1263,6 +1303,7 @@ impl message_service_server::MessageService for MessageServiceImpl {
     }
 
     async fn deliver_message(&self, request: Request<DeliverMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
         self.db.message_deliver(id).await?;
         let message = self
@@ -1271,11 +1312,12 @@ impl message_service_server::MessageService for MessageServiceImpl {
             .await
             ?
             .ok_or_else(|| Status::not_found("Message not found"))?;
-        self.ws.broadcast(WsEvent::MessageDelivered { message_id: id });
+        self.ws.broadcast(WsEvent::MessageDelivered { tenant_id, message_id: id });
         Ok(Response::new(message_to_proto(&message)))
     }
 
     async fn acknowledge_message(&self, request: Request<AcknowledgeMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
         self.db.message_acknowledge(id).await?;
         let message = self
@@ -1284,7 +1326,7 @@ impl message_service_server::MessageService for MessageServiceImpl {
             .await
             ?
             .ok_or_else(|| Status::not_found("Message not found"))?;
-        self.ws.broadcast(WsEvent::MessageAcknowledged { message_id: id });
+        self.ws.broadcast(WsEvent::MessageAcknowledged { tenant_id, message_id: id });
         Ok(Response::new(message_to_proto(&message)))
     }
 }
@@ -1328,21 +1370,25 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
     }
 
     async fn accept_delegation(&self, request: Request<AcceptDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
         let accepting_agent_id = req.accepting_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid accepting_agent_id"))?;
         let delegation = self.db.delegation_accept(id, accepting_agent_id).await?;
         self.ws.broadcast(WsEvent::DelegationAccepted {
+            tenant_id,
             delegation_id: id,
         });
         Ok(Response::new(delegation_to_proto(&delegation)))
     }
 
     async fn reject_delegation(&self, request: Request<RejectDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
         let delegation = self.db.delegation_reject(id, req.reason).await?;
         self.ws.broadcast(WsEvent::DelegationRejected {
+            tenant_id,
             delegation_id: id,
         });
         Ok(Response::new(delegation_to_proto(&delegation)))
@@ -1405,11 +1451,12 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
     }
 
     async fn accept_handoff(&self, request: Request<AcceptHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
         let accepting_agent_id = req.accepting_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid accepting_agent_id"))?;
         let handoff = self.db.handoff_accept(id, accepting_agent_id).await?;
-        self.ws.broadcast(WsEvent::HandoffAccepted { handoff_id: id });
+        self.ws.broadcast(WsEvent::HandoffAccepted { tenant_id, handoff_id: id });
         Ok(Response::new(handoff_to_proto(&handoff)))
     }
 

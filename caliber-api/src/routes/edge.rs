@@ -16,6 +16,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{CreateEdgeRequest, EdgeResponse, ListEdgesResponse},
     ws::WsState,
 };
@@ -59,6 +60,7 @@ impl EdgeState {
 )]
 pub async fn create_edge(
     State(state): State<Arc<EdgeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateEdgeRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate participants (must have at least 2)
@@ -80,6 +82,7 @@ pub async fn create_edge(
 
     // Broadcast EdgeCreated event
     state.ws.broadcast(WsEvent::EdgeCreated {
+        tenant_id: auth.tenant_id,
         edge_id: edge.edge_id,
         edge_type: edge.edge_type,
     });
@@ -105,6 +108,7 @@ pub async fn create_edge(
 )]
 pub async fn create_edges_batch(
     State(state): State<Arc<EdgeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(requests): Json<Vec<CreateEdgeRequest>>,
 ) -> ApiResult<impl IntoResponse> {
     let mut edges = Vec::new();
@@ -122,7 +126,7 @@ pub async fn create_edges_batch(
     }
 
     // Broadcast batch event
-    state.ws.broadcast(WsEvent::EdgesBatchCreated { count: edges.len() });
+    state.ws.broadcast(WsEvent::EdgesBatchCreated { tenant_id: auth.tenant_id, count: edges.len() });
 
     Ok((StatusCode::CREATED, Json(ListEdgesResponse { edges })))
 }

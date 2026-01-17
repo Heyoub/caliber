@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use caliber_api::auth::AuthContext;
+use caliber_api::auth::{AuthContext, AuthMethod};
 use caliber_api::db::{DbClient, DbConfig};
 use caliber_api::ws::WsState;
 use caliber_core::EntityId;
@@ -31,6 +31,7 @@ pub fn test_auth_context() -> AuthContext {
         user_id: "test-user".to_string(),
         tenant_id: EntityId::from(Uuid::now_v7()),
         roles: vec![],
+        auth_method: AuthMethod::Jwt,
     }
 }
 
@@ -40,6 +41,7 @@ pub fn test_auth_context_with_tenant(tenant_id: EntityId) -> AuthContext {
         user_id: "test-user".to_string(),
         tenant_id,
         roles: vec![],
+        auth_method: AuthMethod::Jwt,
     }
 }
 

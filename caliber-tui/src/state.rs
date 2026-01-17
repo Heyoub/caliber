@@ -156,7 +156,7 @@ impl App {
             WsEvent::TrajectoryUpdated { trajectory } => {
                 self.trajectory_view.upsert(trajectory);
             }
-            WsEvent::TrajectoryDeleted { id } => {
+            WsEvent::TrajectoryDeleted { id, .. } => {
                 self.trajectory_view.remove(id);
             }
             WsEvent::ScopeCreated { scope } => {
@@ -174,7 +174,7 @@ impl App {
             WsEvent::ArtifactUpdated { artifact } => {
                 self.artifact_view.upsert(artifact);
             }
-            WsEvent::ArtifactDeleted { id } => {
+            WsEvent::ArtifactDeleted { id, .. } => {
                 self.artifact_view.remove(id);
             }
             WsEvent::NoteCreated { note } => {
@@ -183,7 +183,7 @@ impl App {
             WsEvent::NoteUpdated { note } => {
                 self.note_view.upsert(note);
             }
-            WsEvent::NoteDeleted { id } => {
+            WsEvent::NoteDeleted { id, .. } => {
                 self.note_view.remove(id);
             }
             WsEvent::TurnCreated { turn } => {
@@ -192,31 +192,31 @@ impl App {
             WsEvent::AgentRegistered { agent } => {
                 self.agent_view.upsert(agent);
             }
-            WsEvent::AgentStatusChanged { agent_id, status } => {
+            WsEvent::AgentStatusChanged { agent_id, status, .. } => {
                 self.agent_view.update_status(agent_id, status);
             }
-            WsEvent::AgentHeartbeat { agent_id, timestamp } => {
+            WsEvent::AgentHeartbeat { agent_id, timestamp, .. } => {
                 self.agent_view.update_heartbeat(agent_id, timestamp);
             }
-            WsEvent::AgentUnregistered { id } => {
+            WsEvent::AgentUnregistered { id, .. } => {
                 self.agent_view.remove(id);
             }
             WsEvent::LockAcquired { lock } => {
                 self.lock_view.upsert(lock);
             }
-            WsEvent::LockReleased { lock_id } => {
+            WsEvent::LockReleased { lock_id, .. } => {
                 self.lock_view.remove(lock_id);
             }
-            WsEvent::LockExpired { lock_id } => {
+            WsEvent::LockExpired { lock_id, .. } => {
                 self.lock_view.remove(lock_id);
             }
             WsEvent::MessageSent { message } => {
                 self.message_view.upsert(message);
             }
-            WsEvent::MessageDelivered { message_id } => {
+            WsEvent::MessageDelivered { message_id, .. } => {
                 self.message_view.mark_delivered(message_id);
             }
-            WsEvent::MessageAcknowledged { message_id } => {
+            WsEvent::MessageAcknowledged { message_id, .. } => {
                 self.message_view.mark_acknowledged(message_id);
             }
             WsEvent::ConfigUpdated { config } => {

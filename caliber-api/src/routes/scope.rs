@@ -20,6 +20,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{
         ArtifactResponse, CheckpointResponse, CreateCheckpointRequest, CreateScopeRequest,
         ScopeResponse, TurnResponse, UpdateScopeRequest,
@@ -236,6 +237,7 @@ pub async fn create_checkpoint(
 )]
 pub async fn close_scope(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // Close scope via database client
@@ -315,6 +317,7 @@ pub async fn close_scope(
                     // Find the policy to get its details
                     if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
                         state.ws.broadcast(WsEvent::SummarizationTriggered {
+                            tenant_id: auth.tenant_id,
                             policy_id,
                             trigger,
                             scope_id: core_scope.scope_id,

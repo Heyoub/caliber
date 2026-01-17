@@ -425,17 +425,18 @@ message HeartbeatResponse {
 }
 
 message AgentResponse {
-  string agent_id = 1;
-  string agent_type = 2;
-  repeated string capabilities = 3;
-  MemoryAccess memory_access = 4;
-  string status = 5;
-  optional string current_trajectory_id = 6;
-  optional string current_scope_id = 7;
-  repeated string can_delegate_to = 8;
-  optional string reports_to = 9;
-  int64 created_at = 10;
-  int64 last_heartbeat = 11;
+  string tenant_id = 1;
+  string agent_id = 2;
+  string agent_type = 3;
+  repeated string capabilities = 4;
+  MemoryAccess memory_access = 5;
+  string status = 6;
+  optional string current_trajectory_id = 7;
+  optional string current_scope_id = 8;
+  repeated string can_delegate_to = 9;
+  optional string reports_to = 10;
+  int64 created_at = 11;
+  int64 last_heartbeat = 12;
 }
 
 message MemoryAccess {
@@ -487,13 +488,14 @@ message ListLocksRequest {
 }
 
 message LockResponse {
-  string lock_id = 1;
-  string resource_type = 2;
-  string resource_id = 3;
-  string holder_agent_id = 4;
-  int64 acquired_at = 5;
-  int64 expires_at = 6;
-  string mode = 7;
+  string tenant_id = 1;
+  string lock_id = 2;
+  string resource_type = 3;
+  string resource_id = 4;
+  string holder_agent_id = 5;
+  int64 acquired_at = 6;
+  int64 expires_at = 7;
+  string mode = 8;
 }
 
 message ListLocksResponse {
@@ -545,20 +547,21 @@ message DeliverMessageRequest {
 }
 
 message MessageResponse {
-  string message_id = 1;
-  string from_agent_id = 2;
-  optional string to_agent_id = 3;
-  optional string to_agent_type = 4;
-  string message_type = 5;
-  string payload = 6;
-  optional string trajectory_id = 7;
-  optional string scope_id = 8;
-  repeated string artifact_ids = 9;
-  int64 created_at = 10;
-  optional int64 delivered_at = 11;
-  optional int64 acknowledged_at = 12;
-  string priority = 13;
-  optional int64 expires_at = 14;
+  string tenant_id = 1;
+  string message_id = 2;
+  string from_agent_id = 3;
+  optional string to_agent_id = 4;
+  optional string to_agent_type = 5;
+  string message_type = 6;
+  string payload = 7;
+  optional string trajectory_id = 8;
+  optional string scope_id = 9;
+  repeated string artifact_ids = 10;
+  int64 created_at = 11;
+  optional int64 delivered_at = 12;
+  optional int64 acknowledged_at = 13;
+  string priority = 14;
+  optional int64 expires_at = 15;
 }
 
 message ListMessagesResponse {
@@ -663,17 +666,18 @@ message CompleteHandoffRequest {
 }
 
 message HandoffResponse {
-  string handoff_id = 1;
-  string from_agent_id = 2;
-  string to_agent_id = 3;
-  string trajectory_id = 4;
-  string scope_id = 5;
-  string reason = 6;
-  string status = 7;
-  int64 created_at = 8;
-  optional int64 accepted_at = 9;
-  optional int64 completed_at = 10;
-  bytes context_snapshot = 11;
+  string tenant_id = 1;
+  string handoff_id = 2;
+  string from_agent_id = 3;
+  string to_agent_id = 4;
+  string trajectory_id = 5;
+  string scope_id = 6;
+  string reason = 7;
+  string status = 8;
+  int64 created_at = 9;
+  optional int64 accepted_at = 10;
+  optional int64 completed_at = 11;
+  bytes context_snapshot = 12;
 }
 
 // ============================================================================

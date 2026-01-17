@@ -13,6 +13,7 @@ use axum::Json;
 use caliber_api::{
     db::DbClient,
     events::WsEvent,
+    middleware::AuthExtractor,
     routes::{
         agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn,
     },
@@ -432,7 +433,7 @@ proptest! {
                     trajectory::delete_trajectory(
                         State(trajectory_state),
                         Path(trajectory.trajectory_id),
-                        auth,
+                        AuthExtractor(auth),
                     )
                     .await?;
                     ExpectedEvent::TrajectoryDeleted(trajectory.trajectory_id)
@@ -465,7 +466,8 @@ proptest! {
                 MutationCase::ScopeClose => {
                     let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Close").await;
                     let scope = seed_scope(&db, trajectory.trajectory_id).await;
-                    scope::close_scope(State(scope_state), Path(scope.scope_id)).await?;
+                    let auth = test_support::test_auth_context();
+                    scope::close_scope(State(scope_state), AuthExtractor(auth), Path(scope.scope_id)).await?;
                     ExpectedEvent::ScopeClosed(scope.scope_id)
                 }
                 MutationCase::ArtifactCreate => {
@@ -503,6 +505,7 @@ proptest! {
                 MutationCase::TurnCreate => {
                     let trajectory = seed_trajectory(&db, "Seed Trajectory Turn").await;
                     let scope = seed_scope(&db, trajectory.trajectory_id).await;
+                    let auth = test_support::test_auth_context();
                     let req = CreateTurnRequest {
                         scope_id: scope.scope_id,
                         sequence: 1,
@@ -513,7 +516,7 @@ proptest! {
                         tool_results: None,
                         metadata: None,
                     };
-                    turn::create_turn(State(turn_state), Json(req)).await?;
+                    turn::create_turn(State(turn_state), AuthExtractor(auth), Json(req)).await?;
                     ExpectedEvent::TurnCreated
                 }
                 MutationCase::AgentRegister => {
@@ -537,13 +540,13 @@ proptest! {
                         capabilities: None,
                         memory_access: None,
                     };
-                    agent::update_agent(State(agent_state), Path(agent.agent_id), auth, Json(req)).await?;
+                    agent::update_agent(State(agent_state), Path(agent.agent_id), AuthExtractor(auth), Json(req)).await?;
                     ExpectedEvent::AgentStatusChanged(agent.agent_id, "active".to_string())
                 }
                 MutationCase::AgentUnregister => {
                     let agent = seed_agent(&db, "seed-unregister").await;
                     let auth = test_support::test_auth_context();
-                    agent::unregister_agent(State(agent_state), Path(agent.agent_id), auth).await?;
+                    agent::unregister_agent(State(agent_state), Path(agent.agent_id), AuthExtractor(auth)).await?;
                     ExpectedEvent::AgentUnregistered(agent.agent_id)
                 }
                 MutationCase::LockAcquire => {
@@ -564,7 +567,7 @@ proptest! {
                     let resource_id: EntityId = Uuid::now_v7().into();
                     let lock = seed_lock(&db, agent.agent_id, resource_id).await;
                     let auth = test_support::test_auth_context();
-                    lock::release_lock(State(lock_state), Path(lock.lock_id), auth).await?;
+                    lock::release_lock(State(lock_state), Path(lock.lock_id), AuthExtractor(auth)).await?;
                     ExpectedEvent::LockReleased(lock.lock_id)
                 }
                 MutationCase::MessageSend => {
@@ -590,7 +593,7 @@ proptest! {
                     let receiver = seed_agent(&db, "ack-receiver").await;
                     let message = seed_message(&db, sender.agent_id, receiver.agent_id, None, None).await;
                     let auth = test_support::test_auth_context();
-                    message::acknowledge_message(State(message_state), Path(message.message_id), auth).await?;
+                    message::acknowledge_message(State(message_state), Path(message.message_id), AuthExtractor(auth)).await?;
                     ExpectedEvent::MessageAcknowledged(message.message_id)
                 }
                 MutationCase::DelegationCreate => {
@@ -623,7 +626,7 @@ proptest! {
                     delegation::accept_delegation(
                         State(delegation_state),
                         Path(delegation.delegation_id),
-                        auth,
+                        AuthExtractor(auth),
                         Json(req),
                     )
                     .await?;
@@ -681,7 +684,7 @@ proptest! {
                     handoff::accept_handoff(
                         State(handoff_state),
                         Path(handoff.handoff_id),
-                        auth,
+                        AuthExtractor(auth),
                         Json(req),
                     )
                     .await?;

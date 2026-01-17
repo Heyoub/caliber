@@ -34,13 +34,15 @@ pub enum AuthProvider {
     WorkOs,
 }
 
-impl AuthProvider {
+impl std::str::FromStr for AuthProvider {
+    type Err = std::convert::Infallible;
+
     /// Parse auth provider from string (case-insensitive).
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "workos" => AuthProvider::WorkOs,
             _ => AuthProvider::Jwt,
-        }
+        })
     }
 }
 
@@ -117,9 +119,10 @@ impl AuthConfig {
             }
         }
 
-        // Determine auth provider
-        let auth_provider = std::env::var("CALIBER_AUTH_PROVIDER")
-            .map(|s| AuthProvider::from_str(&s))
+        // Determine auth provider (parse infallibly - always succeeds)
+        let auth_provider: AuthProvider = std::env::var("CALIBER_AUTH_PROVIDER")
+            .ok()
+            .and_then(|s| s.parse().ok())
             .unwrap_or_default();
 
         Self {

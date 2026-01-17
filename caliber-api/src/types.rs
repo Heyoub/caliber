@@ -553,6 +553,8 @@ pub struct UpdateAgentRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub tenant_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub agent_id: EntityId,
     pub agent_type: String,
     pub capabilities: Vec<String>,
@@ -623,6 +625,8 @@ pub struct ExtendLockRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LockResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub tenant_id: EntityId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub lock_id: EntityId,
     pub resource_type: String,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
@@ -676,6 +680,8 @@ pub struct SendMessageRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageResponse {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub tenant_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub message_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
@@ -818,6 +824,8 @@ pub struct CreateHandoffRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct HandoffResponse {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub tenant_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub handoff_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]

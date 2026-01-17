@@ -13,10 +13,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{CreateDelegationRequest, DelegationResponse, DelegationResultResponse},
     ws::WsState,
 };
@@ -141,7 +141,7 @@ pub async fn get_delegation(
 pub async fn accept_delegation(
     State(state): State<Arc<DelegationState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<AcceptDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
@@ -205,7 +205,7 @@ pub async fn accept_delegation(
 pub async fn reject_delegation(
     State(state): State<Arc<DelegationState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<RejectDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state

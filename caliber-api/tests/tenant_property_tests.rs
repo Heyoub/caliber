@@ -716,7 +716,7 @@ mod ws_tenant_isolation {
             // Events that currently return None for tenant_id should be denied
             // (Note: This tests the DENY by default behavior)
             let event_without_tenant = WsEvent::Disconnected {
-                reason: Some("test".to_string()),
+                reason: "test".to_string(),
             };
 
             let extracted = tenant_id_from_event(&event_without_tenant);

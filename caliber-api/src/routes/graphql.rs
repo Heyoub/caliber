@@ -26,6 +26,7 @@ use crate::{
     auth::AuthContext,
     db::DbClient,
     events::WsEvent,
+    middleware::AuthExtractor,
     types::*,
     ws::WsState,
 };
@@ -674,7 +675,7 @@ pub fn create_schema(db: DbClient, ws: Arc<WsState>) -> CaliberSchema {
 /// Handler for GraphQL requests.
 pub async fn graphql_handler(
     State(schema): State<CaliberSchema>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
     req: GraphQLRequest,
 ) -> GraphQLResponse {
     // Add auth context to the request so resolvers can access tenant_id

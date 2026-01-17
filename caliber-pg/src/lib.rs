@@ -21,7 +21,7 @@ use caliber_core::{
     AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
     CaliberResult, Checkpoint, Edge, EdgeType, EmbeddingVector, EntityId, EntityType,
     ExtractionMethod, MemoryCategory, Note, NoteType, Provenance, RawContent, Scope,
-    StorageError, SummarizationTrigger, TTL, Timestamp, Trajectory, TrajectoryOutcome,
+    StorageError, SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome,
     TrajectoryStatus, Turn, TurnRole, ValidationError, compute_content_hash, new_entity_id,
 };
 
@@ -36,11 +36,10 @@ use caliber_agents::{
     HandoffStatus, LockMode, MemoryAccess, MemoryRegion, MemoryRegionConfig,
     MessagePriority, MessageType, ResolutionStrategy, compute_lock_key,
 };
-use caliber_pcp::ConflictResolution;
 
 use chrono::Utc;
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use uuid::Uuid;

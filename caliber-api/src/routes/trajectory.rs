@@ -13,10 +13,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::{
         CreateTrajectoryRequest, ListTrajectoriesRequest, ListTrajectoriesResponse,
         ScopeResponse, TrajectoryResponse, UpdateTrajectoryRequest,
@@ -245,7 +245,7 @@ pub async fn update_trajectory(
 pub async fn delete_trajectory(
     State(state): State<Arc<TrajectoryState>>,
     Path(id): Path<Uuid>,
-    auth: AuthContext,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<StatusCode> {
     // First verify the trajectory exists
     let _trajectory = state
