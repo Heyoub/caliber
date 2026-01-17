@@ -39,7 +39,12 @@ cd examples/rest_api_client/python
 pip install -r requirements.txt
 python client.py
 
-# TypeScript
+# TypeScript (bun recommended)
+cd examples/rest_api_client/typescript
+bun install
+bun start
+
+# TypeScript (npm compatible)
 cd examples/rest_api_client/typescript
 npm install
 npm start

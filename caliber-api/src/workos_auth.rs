@@ -147,11 +147,14 @@ impl WorkOsClaims {
 
     /// Convert to AuthContext for use in the rest of the API.
     pub fn to_auth_context(&self, tenant_id: EntityId) -> AuthContext {
-        AuthContext::new(
+        AuthContext::with_profile(
             self.user_id.clone(),
             tenant_id,
             self.derive_roles(),
             AuthMethod::WorkOs,
+            Some(self.email.clone()),
+            self.first_name.clone(),
+            self.last_name.clone(),
         )
     }
 

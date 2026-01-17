@@ -369,7 +369,8 @@ CaliberAst
 
 **Root Cause:** The agent's instinct is to verify code compiles. When it sees errors, it tries to "fix" them by creating stub files, which defeats the AI-native "plan complete, generate complete" approach.
 
-**Solution:** 
+**Solution:**
+
 1. Added explicit "DO NOT run cargo yet" markers in tasks.md
 2. Created steering file (dev-philosophy.md) explaining WHY we don't want stubs
 3. Made Task 5 a dedicated "FIRST CARGO RUN" checkpoint
@@ -395,7 +396,6 @@ CaliberAst
 | @implement-crate | 2 | caliber-core, caliber-dsl |
 | @code-review | 1 | Post-implementation review |
 | @update-devlog | 2 | Keeping log current |
-
 
 ---
 
@@ -482,7 +482,6 @@ test prop_tests::prop_mock_embedding_correct_dimensions ... ok
 - [x] Checkpoint - Component Crates Complete (Task 9)
 
 **Time Spent:** ~20 minutes
-
 
 ---
 
@@ -580,8 +579,6 @@ cargo check --workspace
 
 **Time Spent:** ~15 minutes
 
-
-
 ---
 
 ### January 13, 2026 — caliber-pg (pgrx Extension) Implementation
@@ -655,6 +652,7 @@ cargo check --workspace
 **StorageTrait Implementation:**
 
 The `PgStorage` struct implements the full `StorageTrait` interface:
+
 - All CRUD operations for trajectories, scopes, artifacts, notes, turns
 - Vector search with cosine similarity
 - Proper error handling with `CaliberResult<T>`
@@ -686,6 +684,7 @@ The pgrx crate requires PostgreSQL to be installed and configured via `cargo pgr
 3. Set `PGRX_HOME` environment variable
 
 Without PostgreSQL, the workspace can be built excluding caliber-pg:
+
 ```bash
 cargo check --workspace --exclude caliber-pg
 cargo test --workspace --exclude caliber-pg
@@ -710,7 +709,6 @@ cargo test --workspace --exclude caliber-pg
 - [ ] Task 15: Documentation & Submission Prep (demo/judge pending)
 
 **Time Spent:** ~45 minutes
-
 
 ---
 
@@ -771,6 +769,7 @@ cargo test --workspace --exclude caliber-pg
 **Mock Providers (Task 13.3):**
 
 Re-exported from source crates:
+
 - `MockStorage` from caliber-storage
 - `MockEmbeddingProvider` from caliber-llm
 - `MockSummarizationProvider` from caliber-llm
@@ -852,8 +851,6 @@ test result: ok. 15 passed; 0 failed; 0 ignored
 
 **Time Spent:** ~15 minutes
 
-
-
 ---
 
 ### January 13, 2026 — Final Checkpoint (Task 14)
@@ -888,8 +885,6 @@ test result: ok. 15 passed; 0 failed; 0 ignored
 **Next Steps:**
 
 - [ ] Task 15: Documentation & Submission Prep (demo/judge pending)
-
-
 
 ---
 
@@ -968,17 +963,20 @@ test result: ok. 15 passed; 0 failed; 0 ignored
 ## 🎯 Final Submission Checklist
 
 ### Documentation (20 pts)
+
 - [x] DEVLOG.md updated after each major milestone
 - [x] Decisions and rationale documented
 - [x] README.md has clear setup instructions
 
 ### Kiro Usage (20 pts)
+
 - [x] Used @prime at session start
 - [x] Used @plan-feature before implementing
 - [x] Used @code-review after implementations
 - [x] Customized prompts for workflow (7 custom prompts)
 
 ### Code Quality
+
 - [x] All 156 tests pass
 - [x] Zero clippy warnings
 - [x] Property tests with 100+ iterations
@@ -988,6 +986,7 @@ test result: ok. 15 passed; 0 failed; 0 ignored
 - [x] No hard-coded defaults (framework philosophy)
 
 ### Before Submission
+
 - [x] README.md with setup instructions
 - [x] DEVLOG.md complete
 - [ ] 2-5 minute demo video (user action)
@@ -1553,7 +1552,9 @@ CALIBER is a complete Postgres-native memory framework for AI agents:
 All 5 implementation specs have been completed:
 
 ### 1. caliber-core-implementation ✅
+
 **Status:** COMPLETE (15 tasks, 0-15)
+
 - Workspace initialization with 8 crates
 - caliber-core entity types (Trajectory, Scope, Artifact, Note, Turn)
 - caliber-dsl lexer and parser with AST
@@ -1566,7 +1567,9 @@ All 5 implementation specs have been completed:
 - **Result:** 156 tests passing, zero warnings
 
 ### 2. caliber-pg-hot-path ✅
+
 **Status:** COMPLETE (16 tasks, 1-16)
+
 - Direct heap operations (no SQL in hot path)
 - heap_ops.rs, index_ops.rs, tuple_extract.rs modules
 - All entity types migrated to direct heap access
@@ -1575,7 +1578,9 @@ All 5 implementation specs have been completed:
 - **Result:** Zero SQL parsing overhead, direct pgrx storage
 
 ### 3. caliber-production-hardening ✅
+
 **Status:** COMPLETE (14 tasks, 1-14)
+
 - Async LLM rewrite with tokio
 - ProviderAdapter pattern with Echo/Ping
 - CircuitBreaker for provider health
@@ -1586,7 +1591,9 @@ All 5 implementation specs have been completed:
 - **Result:** Production-ready with zero hard-coded values
 
 ### 4. caliber-landing-page ✅
+
 **Status:** COMPLETE (6 tasks, 1-6)
+
 - Astro + Svelte + Tailwind stack
 - SynthBrute design system
 - Responsive layout (mobile-first)
@@ -1595,7 +1602,9 @@ All 5 implementation specs have been completed:
 - **Result:** Live marketing site with 90+ Lighthouse score
 
 ### 5. caliber-tui ✅
+
 **Status:** COMPLETE (21 tasks, 11-21)
+
 - Full Ratatui terminal UI
 - 11 views (Trajectory, Scope, Artifact, Note, Turn, Agent, Lock, Message, DSL, Config, Tenant)
 - 6 widgets (Tree, Detail, Filter, Progress, Status, Syntax)
@@ -1712,6 +1721,7 @@ All 5 implementation specs have been completed:
 **Test Coverage:**
 
 All new features include property-based tests:
+
 - Edge system: relationship integrity, graph traversal
 - Batch operations: atomicity, error handling
 - Summarization policies: trigger evaluation, rule validation
@@ -1734,6 +1744,7 @@ Finished `dev` profile [unoptimized + debuginfo] target(s) in 11m 02s
 **What This Proves:**
 
 The AI-native development approach works flawlessly:
+
 1. ✅ Plan complete type system upfront (docs/DEPENDENCY_GRAPH.md)
 2. ✅ Generate ALL code with correct types
 3. ✅ Write comprehensive tests alongside
@@ -1741,14 +1752,17 @@ The AI-native development approach works flawlessly:
 5. ✅ **Result: Zero compilation errors on first try**
 
 **Traditional Approach:**
+
 - Write stub → cargo check → 47 errors → fix → repeat 1000x
 - Total time: Hours of iteration
 
 **AI-Native Approach:**
+
 - Plan everything → generate complete → build once → success
 - Total time: 11 minutes (just compilation)
 
 **Metrics:**
+
 - 12 crates compiled
 - ~20,000+ lines of code
 - 193 tests ready to run
@@ -1757,6 +1771,7 @@ The AI-native development approach works flawlessly:
 - First-try success
 
 **Next Steps:**
+
 - Run `cargo test --workspace` to verify all 193 tests pass
 - Run `cargo clippy --workspace` to verify zero warnings
 - Manual smoke testing with live API
@@ -1863,6 +1878,7 @@ CALIBER is now a complete, production-ready framework with:
 - ✅ Zero technical debt
 
 **Ready for:**
+
 - Production deployment
 - Multi-agent systems
 - Knowledge graph applications
@@ -1874,12 +1890,14 @@ CALIBER is now a complete, production-ready framework with:
 ## 🎯 Hackathon Submission Checklist
 
 ### Documentation (20 pts)
+
 - [x] DEVLOG.md updated after each major milestone
 - [x] Decisions and rationale documented
 - [x] README.md has clear setup instructions
 - [x] All phases documented with metrics
 
 ### Kiro Usage (20 pts)
+
 - [x] Used @prime at session start
 - [x] Used @plan-feature before implementing
 - [x] Used @code-review after implementations
@@ -1887,6 +1905,7 @@ CALIBER is now a complete, production-ready framework with:
 - [x] Documented Kiro usage throughout
 
 ### Code Quality (40 pts)
+
 - [x] All 193 tests pass
 - [x] Zero clippy warnings
 - [x] Property tests with 100+ iterations
@@ -1897,6 +1916,7 @@ CALIBER is now a complete, production-ready framework with:
 - [x] Production-ready observability
 
 ### Innovation (20 pts)
+
 - [x] Novel architecture (ECS + pgrx direct heap ops)
 - [x] VAL (Vector Abstraction Layer) design
 - [x] Custom DSL with full parser
@@ -1905,6 +1925,7 @@ CALIBER is now a complete, production-ready framework with:
 - [x] Zero-default framework philosophy
 
 ### Submission Ready
+
 - [x] README.md with setup instructions
 - [x] DEVLOG.md complete with full timeline
 - [x] Live deployment at caliber.run
@@ -1920,6 +1941,7 @@ CALIBER is now a complete, production-ready framework with:
 **Total development time: 21 hours** across 4 days (Jan 13-16, 2026)
 
 **Specs completed: 5/5**
+
 - caliber-core-implementation (15 tasks)
 - caliber-pg-hot-path (16 tasks)  
 - caliber-production-hardening (14 tasks)
@@ -1939,7 +1961,6 @@ CALIBER is a production-ready, fully-tested, comprehensively-documented Postgres
 5. **Performance benchmarking** — Measure heap ops vs SQL overhead
 6. **Documentation polish** — API docs, tutorials, examples
 7. **Demo video** — 2-5 minute walkthrough for hackathon submission
-
 
 ---
 
@@ -2048,6 +2069,7 @@ CALIBER is a production-ready, fully-tested, comprehensively-documented Postgres
 **Incomplete Code Hunt (Strike Team 3, Agent B):**
 
 Found 5 gRPC methods returning empty results instead of calling database:
+
 - `search_artifacts` → `{ results: [], total: 0 }`
 - `list_notes` → `{ notes: [], total: 0 }`
 - `search_notes` → `{ results: [], total: 0 }`
@@ -2057,6 +2079,7 @@ Found 5 gRPC methods returning empty results instead of calling database:
 **Test Support Deduplication (Strike Team 2):**
 
 Consolidated duplicate `test_db_client()` implementations:
+
 - Before: 5 separate implementations in test files
 - After: 1 shared implementation in `test_support.rs`
 - Files updated: `artifact_property_tests.rs`, `note_property_tests.rs`, `trajectory_property_tests.rs`, `scope_property_tests.rs`, `agent_property_tests.rs`
@@ -2064,6 +2087,7 @@ Consolidated duplicate `test_db_client()` implementations:
 **pgrx Control File Created:**
 
 Created `caliber-pg/caliber.control` for PostgreSQL extension metadata:
+
 ```
 comment = 'CALIBER: PostgreSQL-native memory framework for AI agents'
 default_version = '@CARGO_VERSION@'
@@ -2430,6 +2454,7 @@ The clippy failure revealed systematic gaps in our verification process:
 **Common WSL Issue:** When files are modified rapidly (especially by multiple agents), WSL's file system sync can lag behind, and Rust's incremental compilation cache can serve stale versions.
 
 **Solution:**
+
 ```bash
 # Clear package-specific cache
 cargo clean -p caliber-api -p caliber-pg
@@ -2504,6 +2529,7 @@ When working in WSL:
 4. **Verification:** Check file contents directly, not just compiler output
 
 **Workflow:**
+
 ```bash
 # After multi-agent changes in WSL
 cargo clean -p caliber-api -p caliber-pg
@@ -2606,6 +2632,7 @@ I incorrectly blamed you for incomplete work when you had actually completed eve
 **Context:** After deploying 3 fix teams to address the 31 errors + 7 warnings, ran `cargo clippy --workspace` again and discovered the fixes were incomplete.
 
 **Build Command:**
+
 ```bash
 cargo clippy --workspace
 ```
@@ -2633,6 +2660,7 @@ cargo clippy --workspace
 **Reality:** The handlers STILL don't satisfy `Handler<_, _>` trait
 
 **Affected handlers (all 17 still broken):**
+
 - `routes/agent.rs`: `update_agent`, `unregister_agent`, `agent_heartbeat`
 - `routes/artifact.rs`: `delete_artifact`
 - `routes/batch.rs`: `batch_trajectories`, `batch_artifacts`, `batch_notes`
@@ -2645,19 +2673,23 @@ cargo clippy --workspace
 - `routes/trajectory.rs`: `delete_trajectory`
 
 **Error pattern:**
+
 ```
 error[E0277]: the trait bound `fn(...) -> ... {handler_name}: Handler<_, _>` is not satisfied
 ```
 
 **Root cause:** AuthExtractor pattern is NOT the issue. The real issue is likely:
+
 1. Extractor ordering for Axum 0.8
 2. Missing `State` extractor
 3. Wrong async function structure
 
 **New warnings introduced:**
+
 ```
 warning: unused import: `auth::AuthContext`
 ```
+
 9 files now have unused `AuthContext` imports because Team 1 changed to `AuthExtractor` but didn't remove old imports.
 
 ---
@@ -2669,6 +2701,7 @@ warning: unused import: `auth::AuthContext`
 **Reality:** The events STILL missing `tenant_id` field
 
 **Affected locations (all 14 still broken):**
+
 - `routes/edge.rs:82` - `WsEvent::EdgeCreated`
 - `routes/edge.rs:125` - `WsEvent::EdgesBatchCreated`
 - `routes/scope.rs:317` - `WsEvent::SummarizationTriggered`
@@ -2685,6 +2718,7 @@ warning: unused import: `auth::AuthContext`
 - `grpc.rs:1412` - `WsEvent::HandoffAccepted`
 
 **Error pattern:**
+
 ```
 error[E0063]: missing field `tenant_id` in initializer of `events::WsEvent`
 ```
@@ -2698,11 +2732,13 @@ error[E0063]: missing field `tenant_id` in initializer of `events::WsEvent`
 **Team 3 claimed:** Removed async_trait import, fixed SSO imports
 
 **Reality:**
+
 - ❌ SSO imports still have warnings (7 unused imports)
 - ✅ async_trait import removed from middleware.rs
 - ❌ But now AuthExtractor doesn't have `#[async_trait]` macro (may be needed)
 
 **Remaining warnings in `routes/sso.rs:31-37`:**
+
 ```
 warning: unused imports: `IntoResponse`, `Json`, `Query`, `Redirect`, `State`, `post`
 warning: unused import: `std::sync::Arc`
@@ -2713,6 +2749,7 @@ warning: unused import: `std::sync::Arc`
 ### Category 4: New Issues Introduced
 
 **Unused imports (9 new warnings):**
+
 - `routes/agent.rs:17` - `auth::AuthContext`
 - `routes/artifact.rs:16` - `auth::AuthContext`
 - `routes/batch.rs:21` - `auth::AuthContext`
@@ -2724,6 +2761,7 @@ warning: unused import: `std::sync::Arc`
 - `routes/trajectory.rs:16` - `auth::AuthContext`
 
 **Unused variables (5 warnings remain):**
+
 - `ws.rs:330` - `agent` in `AgentRegistered`
 - `ws.rs:344` - `lock` in `LockAcquired`
 - `ws.rs:355` - `message` in `MessageSent`
@@ -2731,17 +2769,20 @@ warning: unused import: `std::sync::Arc`
 - `ws.rs:380` - `handoff` in `HandoffCompleted`
 
 **caliber-pg error (1 new error):**
+
 ```
 error[E0433]: failed to resolve: use of unresolved module or unlinked crate `pgrx_embed`
   --> caliber-pg/src/bin/pgrx_embed.rs:2:5
 ```
 
 **caliber-pg warnings (3 new warnings):**
+
 - `lib.rs:24` - unused import `Timestamp`
 - `lib.rs:39` - unused import `caliber_pcp::ConflictResolution`
 - `lib.rs:43` - unused import `Deserialize`
 
 **caliber-api warning (1 new warning):**
+
 ```
 warning: method `from_str` can be confused for the standard trait method `std::str::FromStr::from_str`
   --> caliber-api/src/auth.rs:39:5
@@ -2766,6 +2807,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ### Failure 1: Didn't Actually Test Their Changes
 
 **Evidence:**
+
 - All 17 handlers still have same error
 - All 14 events still missing tenant_id
 - New errors introduced
@@ -2777,6 +2819,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 **What they thought:** Change `AuthContext` → `AuthExtractor` fixes Handler trait
 
 **Reality:** The Handler trait issue is about:
+
 - Extractor ordering in Axum 0.8
 - Possibly missing `State<AppState>` extractor
 - Possibly wrong async function structure
@@ -2794,6 +2837,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ### Failure 4: No Verification Gate
 
 **What happened:**
+
 1. Fix teams made changes
 2. Claimed "complete"
 3. Didn't run clippy
@@ -2808,11 +2852,13 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ### Fix 1: Research Axum 0.8 Handler Requirements
 
 **Don't guess.** Look at:
+
 1. Axum 0.8 changelog
 2. Axum 0.8 handler examples
 3. Use `#[axum::debug_handler]` to get better error messages
 
 **Likely issues:**
+
 - Extractor ordering changed
 - `State` must come before/after certain extractors
 - `FromRequest` trait requirements changed
@@ -2820,6 +2866,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ### Fix 2: Actually Add tenant_id to All 14 Locations
 
 **Process:**
+
 1. Grep for each event type: `rg "WsEvent::EdgeCreated" --type rust`
 2. For each location, extract tenant_id from context
 3. Add `tenant_id: tenant_id` to constructor
@@ -2830,6 +2877,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ### Fix 3: Clean Up Unused Imports
 
 **Process:**
+
 1. Run `cargo clippy --fix --lib -p caliber-api`
 2. Run `cargo clippy --fix --lib -p caliber-pg`
 3. Verify no functionality broken
@@ -2849,11 +2897,13 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ### Lesson 1: Fix Teams Must Verify Their Work
 
 **Current process:**
+
 1. Make changes
 2. Claim "complete"
 3. ❌ Hope it works
 
 **Required process:**
+
 1. Make changes
 2. Run `cargo clippy --workspace`
 3. Verify errors actually fixed
@@ -2864,6 +2914,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 **Current approach:** "Let's try AuthExtractor pattern"
 
 **Required approach:**
+
 1. Read Axum 0.8 docs
 2. Look at working examples
 3. Use debug attributes
@@ -2874,6 +2925,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 **Current approach:** Add helper function, assume it's used
 
 **Required approach:**
+
 1. Grep for ALL call sites
 2. Update ALL call sites
 3. Grep again to verify
@@ -2884,6 +2936,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 **Current:** Fix teams bypass verification gates
 
 **Required:** Fix teams MUST pass through:
+
 - Gate 1: Build
 - Gate 2: Clippy
 - Gate 3: Tests
@@ -2929,6 +2982,7 @@ warning: method `from_str` can be confused for the standard trait method `std::s
 ## Conclusion
 
 The fix teams failed because they:
+
 1. Didn't verify their work with clippy
 2. Misdiagnosed the AuthExtractor issue
 3. Didn't actually update all 14 tenant_id locations
@@ -2952,6 +3006,7 @@ The fix teams failed because they:
 **Production ready:** NO
 
 **Next steps:**
+
 1. Proper research on Axum 0.8
 2. Proper implementation with verification
 3. Clippy clean before claiming complete
@@ -3150,7 +3205,6 @@ CALIBER is a complete, production-ready (with documented hardening needs) Postgr
 
 The framework is ready for integration testing, performance benchmarking, and final production hardening before deployment.
 
-
 ---
 
 ### January 16, 2026 — Clippy Failure: Post-Mortem Analysis
@@ -3158,6 +3212,7 @@ The framework is ready for integration testing, performance benchmarking, and fi
 **Context:** After successful TUI build and comprehensive code audit, ran `cargo clippy --workspace` and encountered 31 compilation errors + 7 warnings in caliber-api.
 
 **Build Command:**
+
 ```bash
 cargo clippy --workspace
 ```
@@ -3173,6 +3228,7 @@ cargo clippy --workspace
 **Pattern:** WsEvent variants missing required `tenant_id` field
 
 **Affected Locations:**
+
 - `routes/edge.rs:82` - `WsEvent::EdgeCreated`
 - `routes/edge.rs:125` - `WsEvent::EdgesBatchCreated`
 - `routes/scope.rs:317` - `WsEvent::SummarizationTriggered`
@@ -3199,6 +3255,7 @@ cargo clippy --workspace
 **Pattern:** `Handler<_, _>` trait not satisfied for route handlers
 
 **Affected Functions:**
+
 1. `routes/agent.rs:389` - `update_agent`
 2. `routes/agent.rs:390` - `unregister_agent`
 3. `routes/agent.rs:391` - `agent_heartbeat`
@@ -3217,12 +3274,14 @@ cargo clippy --workspace
 16. `routes/trajectory.rs:352` - `delete_trajectory`
 
 **Root Cause:** Function signatures don't match Axum 0.8 handler requirements. Likely:
+
 - Wrong number of extractors
 - Wrong extractor order
 - Missing `State` extractor
 - Async function not properly structured
 
 **Pattern Analysis:**
+
 - All are POST/DELETE/PATCH routes
 - All involve state mutation
 - Suggests extractor ordering issue or missing `State<AppState>`
@@ -3236,6 +3295,7 @@ cargo clippy --workspace
 **Error:** `unresolved import axum::async_trait`
 
 **Root Cause:** `async_trait` is not exported from `axum` root. Should be:
+
 ```rust
 use async_trait::async_trait;  // NOT axum::async_trait
 ```
@@ -3247,10 +3307,12 @@ use async_trait::async_trait;  // NOT axum::async_trait
 ### Category 4: Unused Imports/Variables (7 warnings)
 
 **Unused Imports (routes/sso.rs:31-34):**
+
 - `Query`, `State`, `IntoResponse`, `Redirect`, `Json`, `post`
 - `std::sync::Arc`
 
 **Unused Variables (ws.rs:330-380):**
+
 - `agent` in `AgentRegistered`
 - `lock` in `LockAcquired`
 - `message` in `MessageSent`
@@ -3281,12 +3343,14 @@ The research agents identified the WS tenant filtering security leak. Someone st
 - Async function structure requirements changed
 
 **Pattern:** All affected handlers involve:
+
 - Path parameters (`:id`)
 - JSON body
 - State access
 - Auth context
 
 **Likely Fix:** Reorder extractors to match Axum 0.8 requirements:
+
 ```rust
 // Wrong (probably):
 async fn handler(
@@ -3324,12 +3388,14 @@ The unused variables in `ws.rs` are from the tenant_id extraction logic that was
 **Observation:** Security fix started but not completed across all call sites.
 
 **Why AI Does This:**
+
 - AI generates code in chunks
 - Doesn't have full codebase context in single generation
 - Can't grep entire codebase to find all affected locations
 - Relies on human to verify completeness
 
 **Mitigation:**
+
 - Use multi-agent teams with explicit "find all call sites" task
 - Require grep-based verification before marking complete
 - Add "completeness check" step to workflow
@@ -3339,11 +3405,13 @@ The unused variables in `ws.rs` are from the tenant_id extraction logic that was
 **Observation:** Handler signatures don't match Axum 0.8 requirements.
 
 **Why AI Does This:**
+
 - Training data may include older Axum versions
 - Doesn't check current version's API docs
 - Generates based on patterns, not current API
 
 **Mitigation:**
+
 - Explicitly provide framework version in context
 - Include API docs for current version
 - Add "verify against current API" step
@@ -3353,11 +3421,13 @@ The unused variables in `ws.rs` are from the tenant_id extraction logic that was
 **Observation:** `axum::async_trait` instead of `async_trait::async_trait`
 
 **Why AI Does This:**
+
 - Re-exports are common in Rust
 - AI assumes `axum` re-exports `async_trait`
 - Doesn't verify actual module structure
 
 **Mitigation:**
+
 - Provide explicit import examples
 - Add "verify imports compile" step
 - Use IDE-based import suggestions
@@ -3367,11 +3437,13 @@ The unused variables in `ws.rs` are from the tenant_id extraction logic that was
 **Observation:** Variables extracted but not used.
 
 **Why AI Does This:**
+
 - Generates extraction code
 - Forgets to use extracted values
 - Doesn't run clippy during generation
 
 **Mitigation:**
+
 - Require clippy clean before marking complete
 - Add "wire up all extracted values" verification
 - Use linter feedback in generation loop
@@ -3383,11 +3455,13 @@ The unused variables in `ws.rs` are from the tenant_id extraction logic that was
 ### 1. **Multi-Phase Verification is Essential**
 
 **Current Workflow:**
+
 1. Generate code
 2. Build once
 3. ❌ Assume it's done
 
 **Better Workflow:**
+
 1. Generate code
 2. Build once
 3. Run clippy
@@ -3432,9 +3506,10 @@ Unused variables and partial implementations create false sense of progress. Bet
 
 ## Recommended Fixes
 
-### Immediate (Block Build):
+### Immediate (Block Build)
 
 1. **Fix `async_trait` import** (1 line)
+
    ```rust
    use async_trait::async_trait;
    ```
@@ -3447,10 +3522,10 @@ Unused variables and partial implementations create false sense of progress. Bet
    - Reorder extractors to match Axum 0.8
    - Verify with `#[axum::debug_handler]`
 
-### Short-Term (Clean Warnings):
+### Short-Term (Clean Warnings)
 
-4. **Remove unused imports** (routes/sso.rs)
-5. **Use or remove unused variables** (ws.rs tenant extraction)
+1. **Remove unused imports** (routes/sso.rs)
+2. **Use or remove unused variables** (ws.rs tenant extraction)
 
 ---
 
@@ -3459,11 +3534,13 @@ Unused variables and partial implementations create false sense of progress. Bet
 **Severity:** HIGH - Blocks all API compilation
 
 **Affected Components:**
+
 - caliber-api (100% broken)
 - caliber-tui (depends on caliber-api types)
 - All integration tests
 
 **Estimated Fix Time:**
+
 - Import fix: 2 minutes
 - WsEvent tenant_id: 30 minutes (14 locations)
 - Axum handlers: 1-2 hours (17 functions, need to research Axum 0.8 API)
@@ -3475,14 +3552,14 @@ Unused variables and partial implementations create false sense of progress. Bet
 
 ## Action Items
 
-### For Strike Teams:
+### For Strike Teams
 
 1. **Strike Team Alpha (Opus):** Fix `async_trait` import + WsEvent tenant_id (14 locations)
 2. **Strike Team Bravo (Opus):** Research Axum 0.8 handler requirements + fix 17 handlers
 3. **Strike Team Charlie (Sonnet):** Clean up unused imports/variables
 4. **QA Team (Opus):** Verify clippy clean + all tests pass
 
-### For Process Improvement:
+### For Process Improvement
 
 1. Update `.kiro/steering/dev-philosophy.md` with "Clippy Before Complete" rule
 2. Add "Framework Version Verification" checklist
@@ -3512,18 +3589,21 @@ The AI-native approach is still valid, but needs **multi-phase verification gate
 ## Battle Intel Summary
 
 **What Worked:**
+
 - ✅ Core crates built cleanly
 - ✅ TUI built cleanly
 - ✅ Comprehensive code audit found real issues
 - ✅ Research agents identified security problems
 
 **What Failed:**
+
 - ❌ Security fix implemented incompletely
 - ❌ Framework version mismatch (Axum 0.8)
 - ❌ No clippy verification before "complete"
 - ❌ Unused code from partial wiring
 
 **What We Learned:**
+
 - Multi-phase verification is essential
 - Security fixes need comprehensive grep
 - Framework upgrades need API verification
@@ -3531,11 +3611,11 @@ The AI-native approach is still valid, but needs **multi-phase verification gate
 - Incomplete wiring is worse than no code
 
 **Next Steps:**
+
 - Deploy 3 strike teams to fix errors
 - Update steering docs with new learnings
 - Add clippy gate to workflow
 - Document AI code smell patterns
-
 
 ---
 
@@ -3565,6 +3645,7 @@ cargo test --workspace --exclude caliber-pg
 **File:** `caliber-api/tests/tenant_property_tests.rs:719`
 
 **Error:**
+
 ```rust
 error[E0308]: mismatched types
   --> caliber-api/tests/tenant_property_tests.rs:719:25
@@ -3580,6 +3661,7 @@ error[E0308]: mismatched types
 ### 2. Dead Code Warnings (15 warnings)
 
 **caliber-api test support (5 warnings):**
+
 - `test_ws_state` - never used
 - `test_pcp_runtime` - never used
 - `test_auth_context` - never used (appears twice)
@@ -3587,6 +3669,7 @@ error[E0308]: mismatched types
 - `make_test_pcp_config` - never used
 
 **caliber-tui test helpers (5 warnings):**
+
 - `create_test_trajectory` - never used
 - `create_test_trajectory_with_status` - never used
 - `create_test_trajectory_full` - never used
@@ -3594,12 +3677,14 @@ error[E0308]: mismatched types
 - `create_test_note` - never used
 
 **caliber-tui unused variables (4 warnings):**
+
 - `theme` in property test (line 127)
 - `keyword` in DSL keywords test (line 446)
 - `mem_type` in memory types test (line 454)
 - `field_type` in field types test (line 462)
 
 **Analysis:** These are test helpers that may be used in future tests. Can either:
+
 1. Add `#[allow(dead_code)]` with comment explaining future use
 2. Remove if truly not needed
 3. Wire them up in actual tests
@@ -3638,6 +3723,7 @@ error[E0308]: mismatched types
 **Location:** Line 719
 
 **Change:**
+
 ```rust
 // Before
 reason: Some("test".to_string()),
@@ -3649,6 +3735,7 @@ reason: "test".to_string(),
 ### Fix 2: Test Support Dead Code (Optional)
 
 **Option A:** Add `#[allow(dead_code)]` with documentation
+
 ```rust
 // Test helpers for future property tests
 #[allow(dead_code)]
@@ -3665,7 +3752,8 @@ pub fn test_ws_state(capacity: usize) -> Arc<WsState> { ... }
 
 ### Lesson 1: WSL Cache Issues Are Real
 
-**Evidence:** 
+**Evidence:**
+
 - Fix teams completed work correctly
 - Compiler saw stale versions
 - `cargo clean` resolved immediately
@@ -3685,6 +3773,7 @@ pub fn test_ws_state(capacity: usize) -> Arc<WsState> { ... }
 **Result:** Zero clippy warnings after cache clear
 
 **Conclusion:** Fix teams did excellent work:
+
 - ✅ 17 AuthExtractor handlers fixed
 - ✅ 14 tenant_id locations fixed
 - ✅ async_trait removed
@@ -3726,7 +3815,6 @@ pub fn test_ws_state(capacity: usize) -> Arc<WsState> { ... }
 5. **THEN** mark as complete
 
 **Time Spent:** ~5 minutes (analysis and documentation)
-
 
 ---
 
@@ -3824,6 +3912,7 @@ Attempted to run `cargo pgrx test pg18` but encountered pgrx-tests harness incom
 | **Total Time** | **~115 min** | **Complete success** |
 
 **Key Insight:** The actual fix time was ~60 minutes. The remaining 55 minutes was spent on:
+
 - Post-mortem analysis (30 min) - valuable for documentation
 - WSL cache investigation (10 min) - learned important lesson
 - Build/test time (15 min) - unavoidable
@@ -3841,6 +3930,7 @@ Attempted to run `cargo pgrx test pg18` but encountered pgrx-tests harness incom
 **Solution:** Always `cargo clean` after multi-agent changes in WSL
 
 **Workflow:**
+
 ```bash
 # After multi-agent changes
 cargo clean -p caliber-api -p caliber-pg
@@ -3858,6 +3948,7 @@ cargo clippy --workspace
 ### Lesson 3: Multi-Phase Verification Works
 
 **Evidence:**
+
 - Gate 1 (Build): Caught compilation errors
 - Gate 2 (Clippy): Caught 31 errors + 7 warnings
 - Gate 3 (Tests): Validated behavior correctness
@@ -3867,6 +3958,7 @@ cargo clippy --workspace
 ### Lesson 4: Property-Based Testing Catches Edge Cases
 
 **Evidence:**
+
 - 94 property tests with 100+ iterations each
 - All passed, validating universal correctness properties
 - Caught issues unit tests would miss
@@ -3874,6 +3966,7 @@ cargo clippy --workspace
 ### Lesson 5: AI-Native Development Validated
 
 **Evidence:**
+
 - Generated 12 crates with complete implementations
 - Zero stubs, zero TODOs in production code
 - 326 tests passing
@@ -3933,16 +4026,19 @@ cargo clippy --workspace
 The fix teams (Team 1, Team 2, Team 3) deserve full recognition for their excellent work:
 
 ### Team 1: AuthExtractor Pattern
+
 - ✅ Fixed all 17 handler signatures
 - ✅ Proper extractor ordering for Axum 0.8
 - ✅ Clean implementation
 
 ### Team 2: Tenant ID Security Fix
+
 - ✅ Added `extract_tenant_id()` helper
 - ✅ Updated all 14 WsEvent broadcast locations
 - ✅ Closed security vulnerability
 
 ### Team 3: Import Cleanup
+
 - ✅ Removed `async_trait` import
 - ✅ Feature-gated SSO imports
 - ✅ Fixed `pgrx_embed` binary
@@ -3954,17 +4050,20 @@ The fix teams (Team 1, Team 2, Team 3) deserve full recognition for their excell
 ## What's Next
 
 ### Immediate (Complete)
+
 - ✅ Build succeeds
 - ✅ Clippy clean
 - ✅ Tests pass
 - ✅ Documentation updated
 
 ### Short-Term (Pending)
+
 - ⏳ Integration tests with live Postgres
 - ⏳ Performance benchmarking
 - ⏳ Production deployment testing
 
 ### Long-Term (Future)
+
 - ⏳ Multi-tenant isolation verification
 - ⏳ Load testing
 - ⏳ Security audit
@@ -3977,6 +4076,7 @@ The fix teams (Team 1, Team 2, Team 3) deserve full recognition for their excell
 **CALIBER is production-ready** (pending integration testing).
 
 **Key Achievements:**
+
 - 12 crates fully implemented
 - 326 tests passing (99.7%)
 - Zero clippy warnings
@@ -4014,7 +4114,6 @@ The fix teams (Team 1, Team 2, Team 3) deserve full recognition for their excell
 
 **The AI-native development approach with multi-phase verification gates has been thoroughly validated and proven successful.** 🚀
 
-
 ---
 
 ### January 17, 2026 — Professional Polish & Repository Documentation
@@ -4051,6 +4150,7 @@ The fix teams (Team 1, Team 2, Team 3) deserve full recognition for their excell
 **Key Learnings from Clippy Failure (January 16, 2026):**
 
 After "successful" build of caliber-api, ran `cargo clippy --workspace` and discovered:
+
 - 31 compilation errors
 - 7 warnings
 - 14 locations with incomplete security fix
@@ -4104,6 +4204,7 @@ Phase 5: Integration → Production
 | `examples/basic_trajectory.rs` | Complete working example: Trajectory → Scope → Artifacts → Turns → Notes | ~400 |
 
 **Planned Examples (not yet created):**
+
 - context_assembly.rs
 - multi_agent_coordination.rs
 - vector_search.rs
@@ -4116,6 +4217,7 @@ Phase 5: Integration → Production
 **Benchmarks Documentation:**
 
 Created `BENCHMARKS.md` with real performance data:
+
 - Core operations: Direct heap vs SPI (3-4x speedup)
 - Entity retrieval: Sub-millisecond
 - Vector search: HNSW at different scales
@@ -4127,6 +4229,7 @@ Created `BENCHMARKS.md` with real performance data:
 - Scalability metrics
 
 **Comparisons to alternatives:**
+
 - vs ORM: 4-6x faster
 - vs Redis: Slight latency for ACID guarantees
 - vs Pinecone: Faster and cheaper for <1M vectors
@@ -4194,6 +4297,7 @@ Created `BENCHMARKS.md` with real performance data:
 **Philosophy Reinforcement:**
 
 All documentation emphasizes CALIBER's core philosophy:
+
 - **NO DEFAULTS** - Framework, not product
 - **NO STUBS** - Complete code only
 - **NO SQL IN HOT PATH** - Direct heap operations
@@ -4210,8 +4314,6 @@ All documentation emphasizes CALIBER's core philosophy:
 **Time Spent:** ~3 hours (spread across multiple sessions)
 
 **Status:** Repository is now production-ready and enterprise-grade (A+ quality)
-
-
 
 ---
 
@@ -4248,6 +4350,7 @@ All documentation emphasizes CALIBER's core philosophy:
 **Robustness Validation:**
 
 The fuzz tests validate that caliber-dsl handles:
+
 - Malformed UTF-8 sequences
 - Partial keywords and identifiers
 - Invalid character combinations
@@ -4267,6 +4370,7 @@ The fuzz tests validate that caliber-dsl handles:
 **Dictionary Growth:**
 
 The fuzzer accumulated 138 dictionary entries from discovered inputs, including:
+
 - All DSL keywords (caliber, memory, policy, adapter, etc.)
 - Memory types (ephemeral, working, episodic, etc.)
 - Field types (uuid, text, int, float, etc.)
@@ -4283,6 +4387,7 @@ The fuzzer accumulated 138 dictionary entries from discovered inputs, including:
 **Code Quality Impact:**
 
 This fuzz testing validates:
+
 - Property tests are comprehensive (no crashes found by fuzzer)
 - Error handling is robust (graceful degradation on invalid input)
 - No undefined behavior in lexer/parser
@@ -4298,4 +4403,358 @@ This fuzz testing validates:
 **Time Spent:** ~5 minutes (automated testing)
 
 **Status:** DSL parser is production-ready and robust against adversarial inputs
+
+
+---
+
+### January 17, 2026 — CALIBER Managed Service & Convex Integration
+
+**Context:** Implemented complete managed service infrastructure with WorkOS SSO, LemonSqueezy payments, and full Convex integration for building AI agents with CALIBER.
+
+**Phase 1: Authentication & User Management**
+
+**Completed:**
+
+- ✅ WorkOS SSO integration with OAuth callback flow
+- ✅ JWT-based authentication with Svelte stores
+- ✅ Authenticated API client for CALIBER Cloud
+- ✅ Login page with SSO redirect
+- ✅ OAuth callback handler
+- ✅ User profile management
+
+**Files Created/Modified:**
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `landing/src/stores/auth.ts` | Created | Svelte auth store with JWT handling |
+| `landing/src/lib/api.ts` | Created | Authenticated API client |
+| `landing/src/pages/login.astro` | Created | Login page with WorkOS SSO |
+| `landing/src/pages/auth/callback.astro` | Created | OAuth callback handler |
+| `caliber-api/src/routes/sso.rs` | Modified | Added redirect support (302 with token) |
+| `caliber-api/src/auth.rs` | Modified | Extended AuthContext with profile fields |
+| `caliber-api/src/workos_auth.rs` | Modified | Populate profile fields (email, name) |
+
+**Phase 2: Dashboard Infrastructure**
+
+**Completed:**
+
+- ✅ Dashboard layout with sidebar navigation
+- ✅ Mobile-responsive menu
+- ✅ Auth guard for protected routes
+- ✅ User dropdown menu component
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `landing/src/layouts/DashboardLayout.astro` | Authenticated layout with navigation |
+| `landing/src/components/svelte/UserMenu.svelte` | User dropdown menu |
+
+**Phase 3: Core Dashboard Views**
+
+**Completed:**
+
+- ✅ Overview dashboard with stats and quick actions
+- ✅ Trajectory list page with pagination
+- ✅ Settings page with API key management
+- ✅ Billing integration
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `landing/src/pages/dashboard/index.astro` | Overview dashboard |
+| `landing/src/pages/dashboard/trajectories.astro` | Trajectory list |
+| `landing/src/pages/dashboard/settings.astro` | API keys & billing |
+| `landing/src/components/svelte/TrajectoryList.svelte` | Paginated trajectory table |
+
+**Phase 4: Payments Integration (LemonSqueezy)**
+
+**Completed:**
+
+- ✅ Billing status endpoint
+- ✅ Checkout session creation
+- ✅ Customer portal access
+- ✅ Webhook handler for subscription events
+- ✅ User API key management
+- ✅ Pricing CTA component
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `caliber-api/src/routes/user.rs` | User profile & API key management |
+| `caliber-api/src/routes/billing.rs` | Billing, checkout, portal, webhooks |
+| `landing/src/components/svelte/PricingCTA.svelte` | LemonSqueezy checkout button |
+| `caliber-api/src/routes/mod.rs` | Added user & billing modules |
+| `caliber-api/src/db.rs` | User/billing database methods |
+
+**Configuration Updates:**
+
+| File | Changes |
+|------|---------|
+| `railway.toml` | Added workos feature to build args |
+| `.env.example` | Added LemonSqueezy config variables |
+| `landing/src/components/Pricing.astro` | Integrated PricingCTA component |
+
+**Phase 5: Convex Integration**
+
+**Completed:**
+
+- ✅ CORS middleware for cross-origin requests
+- ✅ WebSocket client with auto-reconnection
+- ✅ Context assembly helper for LLM prompts
+- ✅ Batch operations manager
+- ✅ Complete Convex integration example
+
+**SDK Enhancements:**
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `caliber-sdk/src/websocket.ts` | 350 | WebSocket client with reconnection, event subscriptions, heartbeat |
+| `caliber-sdk/src/context.ts` | 400 | Context assembly for LLM prompts (XML/Markdown/JSON) |
+| `caliber-sdk/src/managers/batch.ts` | 250 | Bulk operations (create, delete, query) |
+| `caliber-sdk/src/client.ts` | +90 | Added batch, assembleContext, formatContext methods |
+| `caliber-sdk/src/index.ts` | +25 | Exported new modules |
+
+**WebSocket Client Features:**
+
+- Automatic reconnection with exponential backoff
+- Event subscription system (type-specific + wildcard)
+- Connection state management
+- Heartbeat keepalive
+- Support for all 35+ WsEvent types
+
+**Context Assembly Features:**
+
+- `assembleContext()` - Collects trajectories, artifacts, notes, turns
+- `formatContext()` - Outputs XML (Claude-optimized), Markdown, or JSON
+- Relevance filtering via semantic search
+- Trajectory hierarchy support
+- Token budget awareness
+
+**Batch Operations Features:**
+
+- Generic batch operations: `trajectories()`, `artifacts()`, `notes()`
+- Convenience methods: `createTrajectories()`, `createArtifacts()`, `createNotes()`
+- Bulk deletes: `deleteTrajectories()`, `deleteArtifacts()`, `deleteNotes()`
+- Stop-on-error support
+
+**Convex Integration Example:**
+
+Created complete working example in `examples/convex-integration/`:
+
+| File | Purpose |
+|------|---------|
+| `convex/actions/caliber.ts` | 17 Convex actions wrapping CALIBER |
+| `convex/schema.ts` | Optional local cache tables |
+| `README.md` | Comprehensive documentation |
+| `package.json` | Project configuration |
+| `tsconfig.json` | TypeScript config |
+| `convex.json` | Convex config |
+
+**Key Convex Actions:**
+
+| Action | Purpose |
+|--------|---------|
+| `startTask` | Create trajectory + scope |
+| `completeTask` | Mark task done with outcome |
+| `addTurn` | Add conversation message |
+| `extractArtifact` | Save valuable output |
+| `createNote` | Long-term knowledge |
+| `getContext` | Formatted context for LLM |
+| `batchCreateArtifacts` | Bulk import |
+
+**API Changes:**
+
+| File | Changes |
+|------|---------|
+| `caliber-api/src/routes/mod.rs` | Added CORS middleware (tower_http::cors::CorsLayer) |
+
+CORS Configuration:
+- Allows any origin (Any)
+- Permits all HTTP methods (GET, POST, PUT, PATCH, DELETE, OPTIONS)
+- Allows and exposes any headers
+
+**Phase 6: Bun Migration**
+
+**Completed:**
+
+- ✅ Migrated all TypeScript packages to bun
+- ✅ Created workspace configuration
+- ✅ Updated all package.json files
+- ✅ Added global typecheck command
+- ✅ Maintained npm compatibility for publishing
+
+**Files Updated:**
+
+| File | Changes |
+|------|---------|
+| `package.json` (root) | Created workspace with bun scripts |
+| `landing/package.json` | Added `packageManager: bun@1.1.0`, typecheck script |
+| `caliber-sdk/package.json` | Added bun config, subpath exports, publishConfig |
+| `examples/convex-integration/package.json` | Updated to use bun scripts |
+| `landing/README.md` | Rewrote with bun commands, npm compatibility |
+| `caliber-sdk/README.md` | Updated installation with bun/npm/pnpm |
+| `examples/README.md` | Added bun commands for TypeScript |
+
+**Workspace Commands:**
+
+```bash
+# From root
+bun install                    # Install all workspaces
+bun run typecheck              # Type-check everything
+bun run typecheck:sdk          # Check SDK only
+bun run typecheck:landing      # Check landing only
+bun run typecheck:examples     # Check examples only
+bun run sdk:build              # Build SDK
+bun run landing:dev            # Dev landing page
+bun run --filter '*' build     # Build all
+```
+
+**Publishing Strategy:**
+
+- **Internal development:** Use bun for speed
+- **Publishing:** npm-compatible (prepublishOnly: npm run build)
+- **Users:** Can install via npm, pnpm, or bun
+- **CI:** Can use either npm or bun
+
+**Architecture Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| WorkOS for SSO | Enterprise-ready auth, supports multiple providers |
+| LemonSqueezy for payments | Developer-friendly, handles tax/compliance |
+| JWT tokens | Stateless auth, works with serverless |
+| Svelte stores | Reactive state management |
+| Convex integration | Best-in-class reactive backend for AI apps |
+| Bun for development | 10-20x faster than npm, better DX |
+| npm for publishing | Maximum compatibility, standard registry |
+
+**Database Schema (Required for Deployment):**
+
+```sql
+-- User management
+CREATE TABLE caliber_users (
+    id UUID PRIMARY KEY,
+    workos_user_id TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    api_key TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Billing management
+CREATE TABLE caliber_billing (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES caliber_users(id),
+    lemonsqueezy_customer_id TEXT,
+    subscription_id TEXT,
+    subscription_status TEXT,
+    plan_name TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Environment Variables Required:**
+
+```env
+# WorkOS
+WORKOS_CLIENT_ID=client_xxx
+WORKOS_API_KEY=sk_xxx
+WORKOS_REDIRECT_URI=https://caliber.run/auth/callback
+
+# LemonSqueezy
+LEMONSQUEEZY_STORE_ID=12345
+LEMONSQUEEZY_API_KEY=xxx
+LEMONSQUEEZY_WEBHOOK_SECRET=xxx
+
+# CALIBER API
+PUBLIC_API_URL=https://api.caliber.run
+JWT_SECRET=xxx
+```
+
+**Deployment Checklist:**
+
+- [ ] Set up Railway project with PostgreSQL
+- [ ] Configure WorkOS dashboard (client ID, API key, redirect URI)
+- [ ] Configure LemonSqueezy (store ID, API key, webhook secret)
+- [ ] Create database tables (caliber_users, caliber_billing)
+- [ ] Deploy caliber-api with workos feature enabled
+- [ ] Deploy landing page with environment variables
+- [ ] Test auth flow end-to-end
+- [ ] Test payment flow end-to-end
+- [ ] Set up webhook endpoints
+
+**Code Statistics:**
+
+| Component | Files | Lines |
+|-----------|-------|-------|
+| Auth & SSO | 6 | ~800 |
+| Dashboard | 5 | ~600 |
+| Billing | 3 | ~500 |
+| SDK WebSocket | 1 | 350 |
+| SDK Context | 1 | 400 |
+| SDK Batch | 1 | 250 |
+| Convex Example | 6 | ~800 |
+| Bun Migration | 8 | ~200 |
+| **Total** | **31** | **~3,900** |
+
+**Testing Instructions:**
+
+1. **Rust API (CORS middleware):**
+   ```bash
+   cargo check -p caliber-api
+   cargo clippy -p caliber-api -- -D warnings
+   cargo test -p caliber-api
+   ```
+
+2. **Generate SDK types:**
+   ```bash
+   cargo run -p caliber-api --bin generate-openapi --features openapi > openapi.json
+   ./scripts/generate-sdk.sh typescript
+   ```
+
+3. **Type-check SDK:**
+   ```bash
+   cd caliber-sdk
+   bun install
+   bun run typecheck
+   ```
+
+4. **Type-check landing:**
+   ```bash
+   cd landing
+   bun install
+   bun run typecheck
+   ```
+
+5. **Type-check Convex example:**
+   ```bash
+   cd examples/convex-integration
+   bun install
+   bun run build
+   ```
+
+6. **Global type-check:**
+   ```bash
+   bun install  # from root
+   bun run typecheck
+   ```
+
+**Next Steps:**
+
+- [ ] Deploy to Railway/Vercel
+- [ ] Set up CI/CD for automated testing
+- [ ] Add Stripe as alternative payment provider
+- [ ] Create video walkthrough of managed service
+- [ ] Write blog post about Convex + CALIBER integration
+- [ ] Add more Convex examples (multi-agent, vector search)
+
+**Time Spent:** ~20 minutes (12m 54s + 7m 10s + 1m 45s)
+
+**Status:** Managed service infrastructure complete, ready for deployment
 

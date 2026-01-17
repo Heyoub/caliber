@@ -2353,5 +2353,147 @@ impl DbClient {
 
         Ok(response)
     }
+
+    // ========================================================================
+    // USER OPERATIONS
+    // ========================================================================
+
+    /// Get API key for a user.
+    pub async fn user_get_api_key(&self, user_id: &str) -> ApiResult<Option<String>> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_opt(
+                "SELECT api_key FROM caliber_users WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await?;
+
+        Ok(row.and_then(|r| r.get::<_, Option<String>>(0)))
+    }
+
+    /// Set API key for a user (creates user if doesn't exist).
+    pub async fn user_set_api_key(&self, user_id: &str, api_key: &str) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        conn.execute(
+            "INSERT INTO caliber_users (user_id, api_key, created_at, updated_at)
+             VALUES ($1, $2, NOW(), NOW())
+             ON CONFLICT (user_id) DO UPDATE SET api_key = $2, updated_at = NOW()",
+            &[&user_id, &api_key],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // BILLING OPERATIONS
+    // ========================================================================
+
+    /// Get billing status for a tenant.
+    pub async fn billing_get_status(&self, tenant_id: EntityId) -> ApiResult<crate::routes::billing::BillingStatus> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_opt(
+                "SELECT plan, trial_ends_at, storage_used_bytes, storage_limit_bytes,
+                        hot_cache_used_bytes, hot_cache_limit_bytes
+                 FROM caliber_billing WHERE tenant_id = $1",
+                &[&tenant_id],
+            )
+            .await?;
+
+        match row {
+            Some(r) => {
+                use crate::routes::billing::{BillingPlan, BillingStatus};
+
+                let plan_str: Option<String> = r.get(0);
+                let plan = match plan_str.as_deref() {
+                    Some("pro") => BillingPlan::Pro,
+                    Some("enterprise") => BillingPlan::Enterprise,
+                    _ => BillingPlan::Trial,
+                };
+
+                Ok(BillingStatus {
+                    tenant_id,
+                    plan,
+                    trial_ends_at: r.get(1),
+                    storage_used_bytes: r.get::<_, Option<i64>>(2).unwrap_or(0),
+                    storage_limit_bytes: r.get::<_, Option<i64>>(3).unwrap_or(1024 * 1024 * 1024),
+                    hot_cache_used_bytes: r.get::<_, Option<i64>>(4).unwrap_or(0),
+                    hot_cache_limit_bytes: r.get::<_, Option<i64>>(5).unwrap_or(100 * 1024 * 1024),
+                })
+            }
+            None => {
+                // Return default billing status for new tenants
+                use crate::routes::billing::{BillingPlan, BillingStatus};
+                Ok(BillingStatus {
+                    tenant_id,
+                    plan: BillingPlan::Trial,
+                    trial_ends_at: Some(chrono::Utc::now() + chrono::Duration::days(14)),
+                    storage_used_bytes: 0,
+                    storage_limit_bytes: 1024 * 1024 * 1024, // 1 GB
+                    hot_cache_used_bytes: 0,
+                    hot_cache_limit_bytes: 100 * 1024 * 1024, // 100 MB
+                })
+            }
+        }
+    }
+
+    /// Update billing plan for a tenant.
+    pub async fn billing_update_plan(
+        &self,
+        tenant_id: EntityId,
+        plan: crate::routes::billing::BillingPlan,
+    ) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        let plan_str = match plan {
+            crate::routes::billing::BillingPlan::Trial => "trial",
+            crate::routes::billing::BillingPlan::Pro => "pro",
+            crate::routes::billing::BillingPlan::Enterprise => "enterprise",
+        };
+
+        conn.execute(
+            "INSERT INTO caliber_billing (tenant_id, plan, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (tenant_id) DO UPDATE SET plan = $2, updated_at = NOW()",
+            &[&tenant_id, &plan_str],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get LemonSqueezy customer ID for a tenant.
+    pub async fn billing_get_customer_id(&self, tenant_id: EntityId) -> ApiResult<String> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_opt(
+                "SELECT customer_id FROM caliber_billing WHERE tenant_id = $1 AND customer_id IS NOT NULL",
+                &[&tenant_id],
+            )
+            .await?;
+
+        row.and_then(|r| r.get::<_, Option<String>>(0))
+            .ok_or_else(|| ApiError::not_found("No customer ID found for tenant"))
+    }
+
+    /// Set LemonSqueezy customer ID for a tenant.
+    pub async fn billing_set_customer_id(&self, tenant_id: EntityId, customer_id: &str) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+
+        conn.execute(
+            "INSERT INTO caliber_billing (tenant_id, customer_id, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (tenant_id) DO UPDATE SET customer_id = $2, updated_at = NOW()",
+            &[&tenant_id, &customer_id],
+        )
+        .await?;
+
+        Ok(())
+    }
 }
 

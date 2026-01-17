@@ -1,0 +1,390 @@
+---
+/**
+ * Settings Page
+ * Account settings and API key management
+ */
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+---
+
+<DashboardLayout title="Settings - CALIBER">
+  <!-- Page header -->
+  <div class="mb-8">
+    <h1 class="text-2xl sm:text-3xl font-bold font-title text-text-primary">
+      Settings
+    </h1>
+    <p class="text-text-secondary mt-1">
+      Manage your account and API access
+    </p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- API Key Section -->
+    <div class="bg-bg-card border-2 border-border brutalist-box p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-neon-purple/10 border border-neon-purple/30 flex items-center justify-center">
+          <svg class="w-5 h-5 text-neon-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold font-title text-text-primary">API Key</h2>
+      </div>
+
+      <p class="text-text-secondary text-sm mb-4">
+        Use this key to authenticate your agents with CALIBER Cloud.
+      </p>
+
+      <!-- API Key display -->
+      <div class="relative">
+        <input
+          type="password"
+          id="api-key-input"
+          readonly
+          value="Loading..."
+          class="w-full px-4 py-3 bg-bg-secondary border-2 border-border text-text-primary font-mono text-sm pr-24 brutalist-box-sm"
+        />
+        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+          <button
+            id="toggle-key-btn"
+            type="button"
+            class="p-2 text-text-muted hover:text-text-primary"
+            title="Show/hide key"
+          >
+            <svg id="eye-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <svg id="eye-off-icon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+            </svg>
+          </button>
+          <button
+            id="copy-key-btn"
+            type="button"
+            class="p-2 text-text-muted hover:text-neon-cyan"
+            title="Copy to clipboard"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Copy success message -->
+      <p id="copy-success" class="hidden mt-2 text-sm text-neon-cyan">
+        Copied to clipboard!
+      </p>
+
+      <!-- Regenerate button -->
+      <button
+        id="regenerate-key-btn"
+        type="button"
+        class="mt-4 px-4 py-2 bg-bg-secondary border border-border text-text-secondary text-sm hover:border-red-500/50 hover:text-red-400 transition-colors"
+      >
+        Regenerate API Key
+      </button>
+      <p class="mt-2 text-xs text-text-muted">
+        Warning: Regenerating will invalidate your current key. All agents using the old key will need to be updated.
+      </p>
+    </div>
+
+    <!-- Account Info Section -->
+    <div class="bg-bg-card border-2 border-border brutalist-box p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-neon-cyan/10 border border-neon-cyan/30 flex items-center justify-center">
+          <svg class="w-5 h-5 text-neon-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold font-title text-text-primary">Account</h2>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1">Email</label>
+          <p id="account-email" class="text-text-primary">Loading...</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1">User ID</label>
+          <p id="account-id" class="text-text-secondary text-sm font-mono">Loading...</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1">Tenant ID</label>
+          <p id="account-tenant" class="text-text-secondary text-sm font-mono">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Billing Section -->
+    <div class="bg-bg-card border-2 border-border brutalist-box p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-neon-pink/10 border border-neon-pink/30 flex items-center justify-center">
+          <svg class="w-5 h-5 text-neon-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold font-title text-text-primary">Billing</h2>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1">Current Plan</label>
+          <p id="billing-plan" class="text-text-primary font-medium">Loading...</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1">Storage Used</label>
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-2 bg-bg-secondary border border-border">
+              <div id="storage-bar" class="h-full bg-neon-purple" style="width: 0%"></div>
+            </div>
+            <span id="storage-text" class="text-sm text-text-secondary">0 / 0 MB</span>
+          </div>
+        </div>
+        <div id="trial-info" class="hidden p-3 bg-neon-cyan/10 border border-neon-cyan/30">
+          <p class="text-sm text-neon-cyan">
+            <span id="trial-days">14</span> days remaining in your free trial
+          </p>
+        </div>
+      </div>
+
+      <button
+        id="upgrade-btn"
+        type="button"
+        class="mt-4 w-full py-3 bg-neon-purple/20 border-2 border-neon-purple text-text-primary font-semibold hover:bg-neon-purple/30 transition-colors"
+      >
+        Upgrade Plan
+      </button>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="bg-bg-card border-2 border-red-500/30 brutalist-box p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+          <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold font-title text-red-400">Danger Zone</h2>
+      </div>
+
+      <p class="text-text-secondary text-sm mb-4">
+        Irreversible actions that affect your account.
+      </p>
+
+      <button
+        type="button"
+        class="px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 text-sm hover:bg-red-500/20 transition-colors"
+        onclick="alert('Please contact support@caliber.run to delete your account.')"
+      >
+        Delete Account
+      </button>
+    </div>
+  </div>
+</DashboardLayout>
+
+<script>
+  const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.caliber.run';
+
+  let apiKey = '';
+  let isKeyVisible = false;
+
+  // Load user data
+  function loadUserData() {
+    const userJson = localStorage.getItem('caliber_user');
+    if (userJson) {
+      const user = JSON.parse(userJson);
+      const emailEl = document.getElementById('account-email');
+      const idEl = document.getElementById('account-id');
+      const tenantEl = document.getElementById('account-tenant');
+
+      if (emailEl) emailEl.textContent = user.email || 'N/A';
+      if (idEl) idEl.textContent = user.id || 'N/A';
+      if (tenantEl) tenantEl.textContent = user.tenantId || 'N/A';
+    }
+  }
+
+  // Load API key
+  async function loadApiKey() {
+    const token = localStorage.getItem('caliber_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        apiKey = data.api_key || '';
+        updateKeyDisplay();
+      }
+    } catch (e) {
+      console.error('Failed to load API key:', e);
+      const input = document.getElementById('api-key-input') as HTMLInputElement;
+      if (input) input.value = 'Failed to load';
+    }
+  }
+
+  // Load billing data
+  async function loadBillingData() {
+    const token = localStorage.getItem('caliber_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/billing/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const billing = await response.json();
+
+        // Update plan
+        const planEl = document.getElementById('billing-plan');
+        if (planEl) {
+          planEl.textContent = billing.plan
+            ? billing.plan.charAt(0).toUpperCase() + billing.plan.slice(1)
+            : 'Trial';
+        }
+
+        // Update storage
+        const usedMB = (billing.storage_used_bytes || 0) / 1024 / 1024;
+        const limitMB = (billing.storage_limit_bytes || 1024 * 1024 * 1024) / 1024 / 1024;
+        const percent = (usedMB / limitMB) * 100;
+
+        const storageBar = document.getElementById('storage-bar') as HTMLDivElement;
+        const storageText = document.getElementById('storage-text');
+
+        if (storageBar) storageBar.style.width = `${Math.min(percent, 100)}%`;
+        if (storageText) storageText.textContent = `${usedMB.toFixed(1)} / ${limitMB.toFixed(0)} MB`;
+
+        // Show trial info if on trial
+        if (billing.plan === 'trial' && billing.trial_ends_at) {
+          const trialInfo = document.getElementById('trial-info');
+          const trialDays = document.getElementById('trial-days');
+          const endDate = new Date(billing.trial_ends_at);
+          const now = new Date();
+          const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+          if (trialInfo && trialDays && daysLeft > 0) {
+            trialDays.textContent = String(daysLeft);
+            trialInfo.classList.remove('hidden');
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load billing data:', e);
+    }
+  }
+
+  // Update key display
+  function updateKeyDisplay() {
+    const input = document.getElementById('api-key-input') as HTMLInputElement;
+    const eyeIcon = document.getElementById('eye-icon');
+    const eyeOffIcon = document.getElementById('eye-off-icon');
+
+    if (input) {
+      input.type = isKeyVisible ? 'text' : 'password';
+      input.value = apiKey || 'No API key found';
+    }
+
+    if (eyeIcon && eyeOffIcon) {
+      eyeIcon.classList.toggle('hidden', isKeyVisible);
+      eyeOffIcon.classList.toggle('hidden', !isKeyVisible);
+    }
+  }
+
+  // Toggle key visibility
+  document.getElementById('toggle-key-btn')?.addEventListener('click', () => {
+    isKeyVisible = !isKeyVisible;
+    updateKeyDisplay();
+  });
+
+  // Copy key
+  document.getElementById('copy-key-btn')?.addEventListener('click', async () => {
+    if (!apiKey) return;
+
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      const success = document.getElementById('copy-success');
+      success?.classList.remove('hidden');
+      setTimeout(() => success?.classList.add('hidden'), 2000);
+    } catch (e) {
+      console.error('Failed to copy:', e);
+    }
+  });
+
+  // Regenerate key
+  document.getElementById('regenerate-key-btn')?.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to regenerate your API key? Your current key will stop working immediately.')) {
+      return;
+    }
+
+    const token = localStorage.getItem('caliber_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/users/me/api-key`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        apiKey = data.api_key;
+        isKeyVisible = true;
+        updateKeyDisplay();
+        alert('API key regenerated successfully. Make sure to update your agents.');
+      } else {
+        alert('Failed to regenerate API key. Please try again.');
+      }
+    } catch (e) {
+      console.error('Failed to regenerate key:', e);
+      alert('Failed to regenerate API key. Please try again.');
+    }
+  });
+
+  // Upgrade button
+  document.getElementById('upgrade-btn')?.addEventListener('click', async () => {
+    const token = localStorage.getItem('caliber_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/billing/checkout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          plan: 'pro',
+          successUrl: `${window.location.origin}/dashboard/settings?upgraded=true`,
+          cancelUrl: `${window.location.origin}/dashboard/settings`,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+        }
+      } else {
+        alert('Failed to create checkout session. Please try again.');
+      }
+    } catch (e) {
+      console.error('Failed to create checkout:', e);
+      alert('Failed to create checkout session. Please try again.');
+    }
+  });
+
+  // Initialize
+  loadUserData();
+  loadApiKey();
+  loadBillingData();
+
+  // Check for upgrade success
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('upgraded') === 'true') {
+    alert('Thank you for upgrading! Your plan has been updated.');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+</script>

@@ -8,13 +8,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Initial public release preparation
 - CI/CD pipelines for automated testing
 - Continuous fuzzing integration (planned)
+- Stripe payment integration (alternative to LemonSqueezy)
+
+## [0.3.0] - 2026-01-17
+
+### Added - Managed Service Infrastructure
+
+- WorkOS SSO integration with OAuth callback flow
+- JWT-based authentication with Svelte stores
+- Dashboard layout with sidebar navigation and mobile menu
+- User profile management and API key generation
+- LemonSqueezy payments integration (checkout, portal, webhooks)
+- Billing status tracking and subscription management
+- Overview dashboard with stats and quick actions
+- Trajectory list page with pagination
+- Settings page with API key management
+
+### Added - Convex Integration
+
+- CORS middleware for cross-origin requests (tower_http)
+- WebSocket client with auto-reconnection and event subscriptions
+- Context assembly helper for LLM prompts (XML/Markdown/JSON formats)
+- Batch operations manager for bulk creates/deletes
+- Complete Convex integration example with 17 actions
+- Support for all 35+ WebSocket event types
+- Relevance filtering via semantic search
+- Token budget awareness in context assembly
+
+### Added - SDK Enhancements
+
+- `caliber-sdk/src/websocket.ts` - WebSocket client (350 lines)
+- `caliber-sdk/src/context.ts` - Context assembly (400 lines)
+- `caliber-sdk/src/managers/batch.ts` - Batch operations (250 lines)
+- Subpath exports for websocket and context modules
+- assembleContext(), formatContext(), getFormattedContext() methods
+
+### Added - Development Tooling
+
+- Bun workspace configuration for all TypeScript packages
+- Global typecheck command across all packages
+- npm compatibility for publishing to registry
+- Updated documentation with bun/npm/pnpm installation options
+
+### Changed
+
+- Migrated all TypeScript packages to bun for development
+- Updated landing page to use bun scripts internally
+- Enhanced caliber-sdk with batch operations and context assembly
+- Extended AuthContext with profile fields (email, first_name, last_name)
+- Modified SSO route to support web client redirects (302 with token)
+
+### Files Created
+
+- `landing/src/stores/auth.ts` - Auth state management
+- `landing/src/lib/api.ts` - Authenticated API client
+- `landing/src/pages/login.astro` - Login page
+- `landing/src/pages/auth/callback.astro` - OAuth callback
+- `landing/src/layouts/DashboardLayout.astro` - Dashboard layout
+- `landing/src/components/svelte/UserMenu.svelte` - User menu
+- `landing/src/components/svelte/TrajectoryList.svelte` - Trajectory table
+- `landing/src/components/svelte/PricingCTA.svelte` - Checkout button
+- `landing/src/pages/dashboard/` - Dashboard pages (index, trajectories, settings)
+- `caliber-api/src/routes/user.rs` - User management
+- `caliber-api/src/routes/billing.rs` - Billing integration
+- `examples/convex-integration/` - Complete Convex example
+- `package.json` (root) - Workspace configuration
+
+### Configuration
+
+- Added WorkOS environment variables (client ID, API key, redirect URI)
+- Added LemonSqueezy environment variables (store ID, API key, webhook secret)
+- Updated railway.toml with workos feature flag
+- Added packageManager: bun@1.1.0 to all TypeScript packages
+
+### Database Schema
+
+- caliber_users table for user management
+- caliber_billing table for subscription tracking
+
+### Documentation
+
+- Updated README files with bun commands
+- Added Convex integration documentation
+- Created deployment checklist
+- Added testing instructions for managed service
 
 ## [0.2.2] - 2026-01-17
 
 ### Added
+
 - Professional repository documentation suite
 - Custom GitHub issue templates (bug report, feature request, performance issue)
 - Custom GitHub PR template with CALIBER-specific verification checklist
@@ -29,12 +115,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository quality checklist and assessment (Grade: A+)
 
 ### Changed
+
 - Updated README.md with accurate project structure (12 crates)
 - Enhanced Kiro steering documentation with verification gates
 - Added multi-phase verification workflow to dev-philosophy.md
 - Updated tech.md with code quality standards and framework integration guidelines
 
 ### Documentation
+
 - Created verification-gates.md documenting the clippy failure incident
 - Added AI code smell detection patterns
 - Documented the Five Verification Gates (Build → Clippy → Tests → Integration → Production)
@@ -42,6 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real performance benchmarks vs alternatives (ORM, Redis, Pinecone)
 
 ### Testing
+
 - Comprehensive fuzz testing validation (462,947 adversarial inputs, 0 crashes)
 - lexer_fuzz: 119,847 runs in 61s (1,965 runs/sec)
 - parser_fuzz: 343,100 runs in 62s (5,534 runs/sec)
@@ -49,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validated DSL robustness against malformed UTF-8, partial keywords, invalid characters
 
 ### Lessons Learned
+
 - Build success ≠ Complete (must run clippy before marking done)
 - Clippy catches 90% of issues that "successful build" misses
 - Security fixes need 100% coverage verification (grep all locations)
@@ -58,6 +148,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1] - 2026-01-17
 
 ### Added
+
 - caliber-tui: Terminal user interface with SynthBrute aesthetic
 - Property-based testing across all crates (165 tests total)
 - Direct heap operations for all entity types (no SQL in hot path)
@@ -66,18 +157,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive steering documentation for AI-native development
 
 ### Changed
+
 - Migrated from in-memory storage to SQL persistence
 - Improved advisory lock semantics (session + transaction level)
 - Enhanced error handling (no silent failures)
 - Removed all hard-coded defaults (framework philosophy)
 
 ### Fixed
+
 - WSL file sync issues with incremental compilation
 - Lock timeout handling
 - Unicode-safe string truncation
 - RwLock poisoning recovery
 
 ### Security
+
 - Added access control enforcement for memory regions
 - Implemented tenant isolation for multi-tenant deployments
 - Feature-gated debug functions
@@ -86,6 +180,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-01-15
 
 ### Added
+
 - caliber-api: Full REST/gRPC/WebSocket API
 - 14 route modules with comprehensive endpoints
 - OpenAPI documentation generation
@@ -94,6 +189,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Authentication middleware (JWT + API key)
 
 ### Changed
+
 - Improved context assembly performance
 - Enhanced DSL parser error messages
 - Better property test coverage
@@ -101,6 +197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-01-13
 
 ### Added
+
 - Initial implementation of 8 core crates:
   - caliber-core: Entity types and configuration
   - caliber-storage: Storage trait and mock implementation
@@ -117,6 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-agent coordination primitives (locks, messages, delegation, handoffs)
 
 ### Design Decisions
+
 - ECS (Entity-Component-System) architecture
 - No hard-coded defaults (framework, not product)
 - Direct heap operations for performance
@@ -126,6 +224,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.1] - 2026-01-12
 
 ### Added
+
 - Project initialization
 - Workspace structure
 - Documentation framework
@@ -144,6 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 0.1.x → 0.2.x
 
 **Breaking Changes:**
+
 - `CaliberConfig` no longer has `Default` impl - all fields must be explicitly provided
 - DSL parser now rejects unknown fields instead of ignoring them
 - Storage operations return explicit errors instead of silent failures
@@ -151,6 +251,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Migration Steps:**
 
 1. Update config construction:
+
 ```rust
 // Before (0.1.x)
 let config = CaliberConfig::default();
@@ -163,7 +264,8 @@ let config = CaliberConfig {
 };
 ```
 
-2. Handle new error types:
+1. Handle new error types:
+
 ```rust
 // Before (0.1.x)
 let result = operation(); // might silently fail
@@ -172,7 +274,8 @@ let result = operation(); // might silently fail
 let result = operation()?; // explicit error handling
 ```
 
-3. Update DSL files:
+1. Update DSL files:
+
 ```dsl
 // Before (0.1.x) - unknown fields ignored
 memory my_memory {

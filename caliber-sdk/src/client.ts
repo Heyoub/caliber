@@ -19,7 +19,10 @@ import {
   HandoffManager,
   SearchManager,
   DslManager,
+  BatchManager,
 } from './managers';
+import { ContextHelper } from './context';
+import type { AssembleContextOptions, ContextPackage, FormatContextOptions } from './context';
 
 /**
  * Configuration for the CALIBER client
@@ -117,6 +120,12 @@ export class CalibrClient {
   /** DSL validation and parsing operations */
   public readonly dsl: DslManager;
 
+  /** Batch operations for bulk CRUD */
+  public readonly batch: BatchManager;
+
+  /** Context assembly helper for LLM prompts */
+  private readonly contextHelper: ContextHelper;
+
   constructor(config: CalibrClientConfig) {
     const httpConfig: HttpClientConfig = {
       baseUrl: config.baseUrl ?? 'https://api.caliber.run',
@@ -141,6 +150,8 @@ export class CalibrClient {
     this.handoffs = new HandoffManager(this.http);
     this.search = new SearchManager(this.http);
     this.dsl = new DslManager(this.http);
+    this.batch = new BatchManager(this.http);
+    this.contextHelper = new ContextHelper(this.http);
   }
 
   /**
@@ -148,5 +159,84 @@ export class CalibrClient {
    */
   getTenantId(): string {
     return this.http.getTenantId();
+  }
+
+  /**
+   * Assemble context from a trajectory for use in LLM prompts.
+   *
+   * This method collects hierarchical memory from a trajectory including:
+   * - Trajectory metadata and hierarchy
+   * - Artifacts (structured outputs from previous interactions)
+   * - Notes (cross-trajectory knowledge)
+   * - Recent turns (conversation history)
+   *
+   * @param trajectoryId - The trajectory to gather context from
+   * @param options - Options for context assembly
+   * @returns Assembled context package
+   *
+   * @example
+   * ```typescript
+   * const context = await client.assembleContext('trajectory-id', {
+   *   includeNotes: true,
+   *   maxArtifacts: 5,
+   *   relevanceQuery: 'user authentication',
+   * });
+   *
+   * // Use context for prompt building
+   * const formatted = client.formatContext(context, { format: 'xml' });
+   * ```
+   */
+  async assembleContext(
+    trajectoryId: string,
+    options?: AssembleContextOptions
+  ): Promise<ContextPackage> {
+    return this.contextHelper.assembleContext(trajectoryId, options);
+  }
+
+  /**
+   * Format assembled context as a string for LLM prompts.
+   *
+   * @param context - The assembled context package
+   * @param options - Formatting options
+   * @returns Formatted context string
+   */
+  formatContext(context: ContextPackage, options?: FormatContextOptions): string {
+    return this.contextHelper.formatContext(context, options);
+  }
+
+  /**
+   * Quick method to get formatted context in one call.
+   * Combines assembleContext and formatContext.
+   *
+   * @param trajectoryId - The trajectory to gather context from
+   * @param assembleOptions - Options for context assembly
+   * @param formatOptions - Options for formatting
+   * @returns Formatted context string ready for LLM prompts
+   *
+   * @example
+   * ```typescript
+   * const contextXml = await client.getFormattedContext('trajectory-id', {
+   *   includeNotes: true,
+   *   relevanceQuery: 'authentication',
+   * });
+   *
+   * const prompt = `
+   * You have access to the following context:
+   * ${contextXml}
+   *
+   * Please help with: How should I implement the login flow?
+   * `;
+   * ```
+   */
+  async getFormattedContext(
+    trajectoryId: string,
+    assembleOptions?: AssembleContextOptions,
+    formatOptions?: FormatContextOptions
+  ): Promise<string> {
+    return this.contextHelper.getFormattedContext(
+      trajectoryId,
+      assembleOptions,
+      formatOptions
+    );
   }
 }

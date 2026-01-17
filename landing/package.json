@@ -9,7 +9,8 @@
     "preview": "astro preview",
     "astro": "astro",
     "test": "playwright test",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "typecheck": "astro check && tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/svelte": "^7.2.5",
@@ -21,8 +22,11 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.0",
     "@playwright/test": "^1.57.0",
+    "@types/bun": "latest",
     "fast-check": "^4.5.3",
     "lighthouse": "^12.8.2"
-  }
+  },
+  "packageManager": "bun@1.1.0"
 }

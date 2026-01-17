@@ -1,0 +1,112 @@
+{
+  "name": "caliber",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CALIBER - Memory for AI Agents",
+  "workspaces": [
+    "caliber-sdk",
+    "landing",
+    "examples/convex-integration"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd landing dev",
+    "dev:all": "bun run dev:sdk & bun run dev:landing",
+    "dev:sdk": "cd caliber-sdk && bun run dev",
+    "dev:landing": "cd landing && bun run dev",
+
+    "build": "bun run build:sdk && bun run build:landing",
+    "build:sdk": "cd caliber-sdk && bun run build",
+    "build:landing": "cd landing && bun run build",
+
+    "check": "bun run check:types && bun run check:lint && bun run check:format",
+    "check:types": "bun run typecheck",
+    "check:lint": "bun run lint",
+    "check:format": "bunx biome check .",
+
+    "typecheck": "bun run typecheck:sdk && bun run typecheck:landing",
+    "typecheck:sdk": "cd caliber-sdk && bun run typecheck",
+    "typecheck:landing": "cd landing && bun run typecheck",
+
+    "lint": "bunx biome lint .",
+    "lint:fix": "bunx biome lint --write .",
+
+    "format": "bunx biome format --write .",
+    "format:check": "bunx biome format .",
+
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test --coverage",
+    "test:integration": "bun run test:sdk && bun run test:landing",
+    "test:sdk": "cd caliber-sdk && bun test",
+    "test:landing": "cd landing && bun run test",
+    "test:e2e": "cd landing && bunx playwright test",
+    "test:e2e:ui": "cd landing && bunx playwright test --ui",
+    "test:component": "cd landing && bun run test:component",
+    "test:smoke": "bun run test:smoke:api && bun run test:smoke:landing",
+    "test:smoke:api": "bun test tests/smoke/api.test.ts",
+    "test:smoke:landing": "cd landing && bunx playwright test --grep @smoke",
+    "test:property": "bun test --test-name-pattern property",
+    "test:fuzz": "bun test tests/fuzz/",
+    "test:mutation": "bunx stryker run",
+    "test:chaos": "bun test tests/chaos/",
+    "test:visual": "cd landing && bunx playwright test --grep @visual",
+    "test:a11y": "cd landing && bunx playwright test --grep @a11y",
+    "test:perf": "cd landing && bunx lighthouse-ci autorun",
+    "test:coverage": "bun test --coverage && bunx c8 report --reporter=lcov",
+    "test:watch": "bun test --watch",
+    "test:ci": "bun run check && bun run test && bun run test:e2e",
+
+    "bench": "bun run bench:sdk",
+    "bench:sdk": "cd caliber-sdk && bun run bench",
+
+    "ci": "bun run check && bun run build && bun run test:ci",
+    "ci:fast": "bun run check:types && bun run test:unit",
+
+    "clean": "bun run clean:dist && bun run clean:deps && bun run clean:cache",
+    "clean:dist": "rm -rf dist */dist landing/.astro caliber-sdk/dist",
+    "clean:deps": "rm -rf node_modules */node_modules */*/node_modules",
+    "clean:cache": "rm -rf .turbo .cache .parcel-cache",
+
+    "deps:check": "bunx npm-check-updates",
+    "deps:update": "bunx npm-check-updates -u && bun install",
+    "deps:audit": "bunx better-npm-audit audit",
+
+    "release": "bun run ci && bun run release:version && bun run release:publish",
+    "release:version": "bunx changeset version",
+    "release:publish": "bun run build && bunx changeset publish",
+    "release:canary": "bun run build:sdk && cd caliber-sdk && npm publish --tag canary",
+
+    "docs": "bunx typedoc caliber-sdk/src/index.ts --out docs/sdk",
+    "docs:serve": "bunx serve docs",
+
+    "analyze": "bun run analyze:bundle && bun run analyze:deps",
+    "analyze:bundle": "cd landing && bunx vite-bundle-visualizer",
+    "analyze:deps": "bunx depcheck",
+
+    "prepare": "bunx husky install",
+    "precommit": "bun run check:types && bun run lint:fix && bun run format"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@changesets/cli": "^2.27.0",
+    "@stryker-mutator/core": "^8.2.0",
+    "@stryker-mutator/typescript-checker": "^8.2.0",
+    "@types/bun": "latest",
+    "better-npm-audit": "^3.7.0",
+    "c8": "^9.1.0",
+    "depcheck": "^1.4.0",
+    "fast-check": "^3.15.0",
+    "husky": "^9.0.0",
+    "npm-check-updates": "^16.14.0",
+    "typedoc": "^0.25.0",
+    "typescript": "^5.3.0"
+  },
+  "packageManager": "bun@1.1.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caliber-run/caliber"
+  },
+  "license": "AGPL-3.0-or-later"
+}
