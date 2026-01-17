@@ -28,22 +28,17 @@ use crate::{
 // ============================================================================
 
 /// Billing plan type.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum BillingPlan {
     /// Free trial period
+    #[default]
     Trial,
     /// Paid professional plan
     Pro,
     /// Enterprise plan
     Enterprise,
-}
-
-impl Default for BillingPlan {
-    fn default() -> Self {
-        Self::Trial
-    }
 }
 
 /// Billing status response.

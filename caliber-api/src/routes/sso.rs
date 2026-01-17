@@ -102,7 +102,9 @@ pub struct AuthorizeParams {
     pub redirect_uri: Option<String>,
 }
 
-/// Encoded state for maintaining redirect_uri across the OAuth flow
+/// Encoded state for maintaining redirect_uri across the OAuth flow.
+/// Note: Used via serde_json::from_str() which the dead_code lint can't trace.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthState {
     /// CSRF token
