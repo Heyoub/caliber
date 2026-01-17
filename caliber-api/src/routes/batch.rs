@@ -15,7 +15,10 @@ use axum::{
 };
 use std::sync::Arc;
 
+use caliber_core::EntityId;
+
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     error::ApiError,
     events::WsEvent,
@@ -67,6 +70,7 @@ impl BatchState {
 )]
 pub async fn batch_trajectories(
     State(state): State<Arc<BatchState>>,
+    auth: AuthContext,
     Json(req): Json<BatchTrajectoryRequest>,
 ) -> impl IntoResponse {
     let mut results: Vec<BatchItemResult<TrajectoryResponse>> = Vec::with_capacity(req.items.len());
@@ -74,7 +78,7 @@ pub async fn batch_trajectories(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_trajectory_item(&state, item).await;
+        let result = process_trajectory_item(&state, item, auth.tenant_id).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -101,6 +105,7 @@ pub async fn batch_trajectories(
 async fn process_trajectory_item(
     state: &BatchState,
     item: TrajectoryBatchItem,
+    tenant_id: EntityId,
 ) -> BatchItemResult<TrajectoryResponse> {
     match item.operation {
         BatchOperation::Create => {
@@ -185,7 +190,7 @@ async fn process_trajectory_item(
                 Ok(Some(trajectory)) => {
                     match state.db.trajectory_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::TrajectoryDeleted { id });
+                            state.ws.broadcast(WsEvent::TrajectoryDeleted { tenant_id, id });
                             BatchItemResult::Success { data: trajectory }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -225,6 +230,7 @@ async fn process_trajectory_item(
 )]
 pub async fn batch_artifacts(
     State(state): State<Arc<BatchState>>,
+    auth: AuthContext,
     Json(req): Json<BatchArtifactRequest>,
 ) -> impl IntoResponse {
     let mut results: Vec<BatchItemResult<ArtifactResponse>> = Vec::with_capacity(req.items.len());
@@ -232,7 +238,7 @@ pub async fn batch_artifacts(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_artifact_item(&state, item).await;
+        let result = process_artifact_item(&state, item, auth.tenant_id).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -259,6 +265,7 @@ pub async fn batch_artifacts(
 async fn process_artifact_item(
     state: &BatchState,
     item: ArtifactBatchItem,
+    tenant_id: EntityId,
 ) -> BatchItemResult<ArtifactResponse> {
     match item.operation {
         BatchOperation::Create => {
@@ -366,7 +373,7 @@ async fn process_artifact_item(
                 Ok(Some(artifact)) => {
                     match state.db.artifact_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::ArtifactDeleted { id });
+                            state.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id, id });
                             BatchItemResult::Success { data: artifact }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -406,6 +413,7 @@ async fn process_artifact_item(
 )]
 pub async fn batch_notes(
     State(state): State<Arc<BatchState>>,
+    auth: AuthContext,
     Json(req): Json<BatchNoteRequest>,
 ) -> impl IntoResponse {
     let mut results: Vec<BatchItemResult<NoteResponse>> = Vec::with_capacity(req.items.len());
@@ -413,7 +421,7 @@ pub async fn batch_notes(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_note_item(&state, item).await;
+        let result = process_note_item(&state, item, auth.tenant_id).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -440,6 +448,7 @@ pub async fn batch_notes(
 async fn process_note_item(
     state: &BatchState,
     item: NoteBatchItem,
+    tenant_id: EntityId,
 ) -> BatchItemResult<NoteResponse> {
     match item.operation {
         BatchOperation::Create => {
@@ -531,7 +540,7 @@ async fn process_note_item(
                 Ok(Some(note)) => {
                     match state.db.note_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::NoteDeleted { id });
+                            state.ws.broadcast(WsEvent::NoteDeleted { tenant_id, id });
                             BatchItemResult::Success { data: note }
                         }
                         Err(e) => BatchItemResult::Error {

@@ -156,12 +156,19 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
     - Tests notification color coding (error/warning/info)
     - **Validates: Requirements 16.1, 16.2, 16.3**
 
-- [ ] 15. Type verification pass for TUI (manual review - no cargo)
-  - [ ] 15.1 Review all API client types match caliber-api
-  - [ ] 15.2 Review all state types are complete
-  - [ ] 15.3 Review all widget types are correct
-  - [ ] 15.4 Review SynthBrute theme colors match design
-  - [ ] 15.5 Review keybinding definitions are complete
+- [x] 15. Type verification pass for TUI ✅ COMPLETE
+  - [x] 15.1 Review all API client types match caliber-api ✅
+  - [x] 15.2 Review all state types are complete ✅
+  - [x] 15.3 Review all widget types are correct ✅
+  - [x] 15.4 Review SynthBrute theme colors match design ✅
+  - [x] 15.5 Review keybinding definitions are complete ✅
+  
+  **Verification Results:**
+  - API client types align with caliber-api (REST/gRPC/WebSocket)
+  - All view states implemented with proper filters and selections
+  - All 6 widgets exist (tree, detail, filter, progress, status, syntax)
+  - SynthBrute theme matches design spec exactly
+  - Keybindings complete for all documented actions
 
 ### Phase 3: Human Checkpoint - Build TUI in WSL ✅
 
@@ -175,13 +182,13 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
 
 ### Phase 4: Human Checkpoint - Test Everything in WSL
 
-- [ ] 17. **HUMAN ACTION: Run all tests** ⏳ READY
+- [ ] 17. **HUMAN ACTION: Run all tests** ⏳ NEXT STEP
   - [ ] 17.1 Human runs `cargo test -p caliber-tui` in WSL
   - [ ] 17.2 Human reports ALL test failures with full output
   - [ ] 17.3 Agent fixes all test issues in one iteration
   - [ ] 17.4 Repeat until all tests pass
   
-  **Status:** Ready to run - build successful!
+  **Status:** Ready to run - build successful! This is the next step.
 
 - [ ] 18. **HUMAN ACTION: Run clippy** ⏳ READY
   - [ ] 18.1 Human runs `cargo clippy -p caliber-tui` in WSL
@@ -214,8 +221,9 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
 ## Notes
 
 - **Phase 1 (caliber-api):** ✅ COMPLETE - Full REST/gRPC/WebSocket API with 14 route modules, 9 property tests
-- **Phase 2 (caliber-tui):** ✅ SUBSTANTIALLY COMPLETE - All core infrastructure, widgets, and views implemented (~3000+ lines of working code)
-- **Remaining Work:** Expand property tests, run build/test verification in WSL, manual testing
+- **Phase 2 (caliber-tui):** ✅ COMPLETE - All core infrastructure, widgets, and views implemented (~3000+ lines of working code)
+- **Phase 3 (Build):** ✅ COMPLETE - Clean build in WSL (11m 02s, zero errors) 🎉
+- **Phase 4 (Test):** ⏳ NEXT - Ready to run `cargo test -p caliber-tui` in WSL
 - Each TUI task references specific requirements for traceability
 - Property tests validate universal correctness properties using proptest
 - Follow steering: NO STUBS, complete code only (✅ verified - no TODOs or stubs found)
@@ -236,10 +244,11 @@ This plan implements the CALIBER TUI terminal interface using Ratatui with the S
 - ✅ Persistence layer for state saving
 - ✅ **Comprehensive property test suite (~600 lines, 30+ property tests)**
 - ✅ **CLEAN BUILD in WSL (11m 02s, zero errors)** 🎉
+- ✅ **Type verification complete** - all types align with caliber-api
 
 **What Needs Completion:**
-- Test execution in WSL (ready to run)
-- Clippy verification in WSL (ready to run)
+- ⏳ Test execution in WSL (ready to run - NEXT STEP)
+- ⏳ Clippy verification in WSL (ready to run)
 - Manual smoke testing with live API
 - Final polish and documentation
 

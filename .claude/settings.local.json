@@ -11,7 +11,9 @@
       "Bash(sort:*)",
       "Bash(cat:*)",
       "Bash(done)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "WebFetch(domain:llvm.org)",
+      "WebFetch(domain:workos.com)"
     ],
     "deny": [
       "Bash(cargo:*)"

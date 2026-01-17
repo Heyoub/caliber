@@ -14,6 +14,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -202,6 +203,7 @@ pub async fn get_agent(
 pub async fn update_agent(
     State(state): State<Arc<AgentState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -241,6 +243,7 @@ pub async fn update_agent(
     // Broadcast AgentStatusChanged when status updates are included
     if let Some(status) = &req.status {
         state.ws.broadcast(WsEvent::AgentStatusChanged {
+            tenant_id: auth.tenant_id,
             agent_id: agent.agent_id,
             status: status.clone(),
         });
@@ -271,6 +274,7 @@ pub async fn update_agent(
 pub async fn unregister_agent(
     State(state): State<Arc<AgentState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
 ) -> ApiResult<StatusCode> {
     // First verify the agent exists
     let agent = state
@@ -289,8 +293,11 @@ pub async fn unregister_agent(
     // Unregister agent via database client
     state.db.agent_unregister(id).await?;
 
-    // Broadcast AgentUnregistered event
-    state.ws.broadcast(WsEvent::AgentUnregistered { id });
+    // Broadcast AgentUnregistered event with tenant_id for filtering
+    state.ws.broadcast(WsEvent::AgentUnregistered {
+        tenant_id: auth.tenant_id,
+        id,
+    });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -316,12 +323,14 @@ pub async fn unregister_agent(
 pub async fn agent_heartbeat(
     State(state): State<Arc<AgentState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
 ) -> ApiResult<impl IntoResponse> {
     // Update heartbeat via database client
     state.db.agent_heartbeat(id).await?;
 
-    // Broadcast AgentHeartbeat event
+    // Broadcast AgentHeartbeat event with tenant_id for filtering
     state.ws.broadcast(WsEvent::AgentHeartbeat {
+        tenant_id: auth.tenant_id,
         agent_id: id,
         timestamp: Utc::now(),
     });

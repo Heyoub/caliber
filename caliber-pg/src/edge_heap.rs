@@ -320,7 +320,12 @@ fn str_to_edge_type(s: &str) -> EdgeType {
         "synthesizedfrom" => EdgeType::SynthesizedFrom,
         "grouped" => EdgeType::Grouped,
         "compared" => EdgeType::Compared,
-        _ => EdgeType::RelatesTo, // Default fallback
+        _ => {
+            if s != "relatesto" {
+                pgrx::warning!("CALIBER: Unknown edge type '{}', defaulting to RelatesTo", s);
+            }
+            EdgeType::RelatesTo
+        }
     }
 }
 
@@ -339,7 +344,10 @@ fn str_to_extraction_method(s: &str) -> ExtractionMethod {
         "explicit" => ExtractionMethod::Explicit,
         "inferred" => ExtractionMethod::Inferred,
         "userprovided" => ExtractionMethod::UserProvided,
-        _ => ExtractionMethod::Inferred, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown extraction method '{}', defaulting to Inferred", s);
+            ExtractionMethod::Inferred
+        }
     }
 }
 
@@ -420,7 +428,6 @@ unsafe fn tuple_to_edge(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityRef;
     use proptest::prelude::*;
 
     // ========================================================================
@@ -509,6 +516,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
+        use caliber_core::EntityRef;
         use pgrx_tests::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Edge)

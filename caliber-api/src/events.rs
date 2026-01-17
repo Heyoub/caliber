@@ -31,6 +31,8 @@ pub enum WsEvent {
 
     /// A trajectory was deleted.
     TrajectoryDeleted {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the deleted trajectory
         id: EntityId,
     },
@@ -73,6 +75,8 @@ pub enum WsEvent {
 
     /// An artifact was deleted.
     ArtifactDeleted {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the deleted artifact
         id: EntityId,
     },
@@ -94,6 +98,8 @@ pub enum WsEvent {
 
     /// A note was deleted.
     NoteDeleted {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the deleted note
         id: EntityId,
     },
@@ -118,6 +124,8 @@ pub enum WsEvent {
 
     /// An agent's status changed.
     AgentStatusChanged {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the agent
         agent_id: EntityId,
         /// New status
@@ -126,6 +134,8 @@ pub enum WsEvent {
 
     /// An agent sent a heartbeat.
     AgentHeartbeat {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the agent
         agent_id: EntityId,
         /// Timestamp of the heartbeat
@@ -134,6 +144,8 @@ pub enum WsEvent {
 
     /// An agent was unregistered.
     AgentUnregistered {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the unregistered agent
         id: EntityId,
     },
@@ -149,12 +161,16 @@ pub enum WsEvent {
 
     /// A lock was released.
     LockReleased {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the released lock
         lock_id: EntityId,
     },
 
     /// A lock expired.
     LockExpired {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the expired lock
         lock_id: EntityId,
     },
@@ -170,12 +186,16 @@ pub enum WsEvent {
 
     /// A message was delivered.
     MessageDelivered {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the delivered message
         message_id: EntityId,
     },
 
     /// A message was acknowledged.
     MessageAcknowledged {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the acknowledged message
         message_id: EntityId,
     },
@@ -191,12 +211,16 @@ pub enum WsEvent {
 
     /// A delegation was accepted.
     DelegationAccepted {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the accepted delegation
         delegation_id: EntityId,
     },
 
     /// A delegation was rejected.
     DelegationRejected {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the rejected delegation
         delegation_id: EntityId,
     },
@@ -218,6 +242,8 @@ pub enum WsEvent {
 
     /// A handoff was accepted.
     HandoffAccepted {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the accepted handoff
         handoff_id: EntityId,
     },
@@ -263,6 +289,8 @@ pub enum WsEvent {
     // ========================================================================
     /// A summarization policy trigger was fired.
     SummarizationTriggered {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the policy that triggered
         policy_id: EntityId,
         /// The trigger that fired
@@ -283,6 +311,8 @@ pub enum WsEvent {
 
     /// An edge was created.
     EdgeCreated {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// ID of the created edge
         edge_id: EntityId,
         /// Type of the edge
@@ -291,6 +321,8 @@ pub enum WsEvent {
 
     /// Multiple edges were created in a batch.
     EdgesBatchCreated {
+        /// Tenant ID for filtering
+        tenant_id: EntityId,
         /// Number of edges created
         count: usize,
     },

@@ -13,7 +13,7 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
-    db::{DbClient, DbConfig},
+    db::DbClient,
     types::{
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, UpdateAgentRequest,
     },
@@ -22,14 +22,15 @@ use caliber_core::EntityId;
 use proptest::prelude::*;
 use uuid::Uuid;
 
+mod test_support;
+
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
 
-/// Create a test database client.
+/// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
-    let config = DbConfig::from_env();
-    DbClient::from_config(&config).expect("Failed to create database client")
+    test_support::test_db_client()
 }
 
 // ============================================================================
@@ -875,7 +876,7 @@ mod edge_cases {
         // Values should remain the same
         assert_eq!(updated.agent_type, registered.agent_type);
         assert_eq!(updated.capabilities, registered.capabilities);
-        assert_eq!(updated.status, registered.status);
+        assert_eq!(updated.status.as_str(), registered.status.as_str());
     }
 
     #[tokio::test]

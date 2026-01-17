@@ -103,7 +103,6 @@ pub fn create_router(db: DbClient) -> axum::Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityId;
     use crate::types::TenantStatus;
 
     #[test]

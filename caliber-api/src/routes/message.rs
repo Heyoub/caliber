@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::{DbClient, MessageListParams},
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -221,12 +222,14 @@ pub async fn get_message(
 pub async fn acknowledge_message(
     State(state): State<Arc<MessageState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
 ) -> ApiResult<StatusCode> {
     // Acknowledge message via database client
     state.db.message_acknowledge(id).await?;
 
-    // Broadcast MessageAcknowledged event
+    // Broadcast MessageAcknowledged event with tenant_id for filtering
     state.ws.broadcast(WsEvent::MessageAcknowledged {
+        tenant_id: auth.tenant_id,
         message_id: id,
     });
 
@@ -254,10 +257,12 @@ pub async fn acknowledge_message(
 pub async fn deliver_message(
     State(state): State<Arc<MessageState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
 ) -> ApiResult<StatusCode> {
     state.db.message_deliver(id).await?;
 
     state.ws.broadcast(WsEvent::MessageDelivered {
+        tenant_id: auth.tenant_id,
         message_id: id,
     });
 

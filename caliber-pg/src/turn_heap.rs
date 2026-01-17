@@ -235,7 +235,10 @@ fn str_to_role(s: &str) -> TurnRole {
         "assistant" => TurnRole::Assistant,
         "system" => TurnRole::System,
         "tool" => TurnRole::Tool,
-        _ => TurnRole::User, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown turn role '{}', defaulting to User", s);
+            TurnRole::User
+        }
     }
 }
 

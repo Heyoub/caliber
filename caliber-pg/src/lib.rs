@@ -11,6 +11,11 @@ use pgrx::prelude::*;
 use pgrx::datum::DatumWithOid;
 use pgrx::spi::Spi;
 
+// pgrx_tests is optional - only available when pg_test feature is enabled
+// Currently broken with Postgres 18 due to Pg_magic_struct field changes
+#[cfg(feature = "pg_test")]
+pub use pgrx_tests::pg_test;
+
 // Re-export core types for use in SQL functions
 use caliber_core::{
     AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
@@ -238,13 +243,13 @@ impl InMemoryStorage {
     }
 
     /// Get the current operation counts.
-    #[cfg(any(feature = "debug", feature = "pg_test"))]
+    #[cfg(any(test, feature = "debug", feature = "pg_test"))]
     fn get_ops(&self) -> &HashMap<&'static str, u64> {
         &self.ops_count
     }
 
     /// Reset all operation counters.
-    #[cfg(any(feature = "debug", feature = "pg_test"))]
+    #[cfg(any(test, feature = "debug", feature = "pg_test"))]
     fn reset_ops(&mut self) {
         self.ops_count.clear();
     }
@@ -256,7 +261,7 @@ impl InMemoryStorage {
 
 /// Safely acquire a read lock on storage, handling poisoning gracefully.
 /// Returns the guard or panics with a clear error message for PostgreSQL.
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 fn storage_read() -> std::sync::RwLockReadGuard<'static, InMemoryStorage> {
     match STORAGE.read() {
         Ok(guard) => guard,
@@ -308,13 +313,6 @@ fn safe_to_json_array<T: Serialize>(values: &[T]) -> serde_json::Value {
 // ============================================================================
 // These functions and type aliases ensure all imported types are wired into
 // the codebase. They provide utility functions for working with caliber types.
-
-/// Deserialize JSON to a specific type with error handling.
-/// Uses the Deserialize trait from serde.
-#[allow(dead_code)]
-fn safe_deserialize<'de, T: Deserialize<'de>>(json: &'de str) -> Option<T> {
-    serde_json::from_str(json).ok()
-}
 
 /// Create a CaliberConfig for the extension.
 /// NOTE: CaliberConfig has NO default - all values must be provided explicitly.
@@ -369,22 +367,11 @@ fn categorize_memory(category: &str) -> MemoryCategory {
         "episodic" => MemoryCategory::Episodic,
         "semantic" => MemoryCategory::Semantic,
         "procedural" => MemoryCategory::Procedural,
-        _ => MemoryCategory::Working,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown memory category '{}', defaulting to Working", category);
+            MemoryCategory::Working
+        }
     }
-}
-
-/// Convert string content to RawContent (Vec<u8>).
-/// RawContent is a type alias for Vec<u8>, used for binary storage.
-#[allow(dead_code)]
-fn string_to_raw_content(content: String) -> RawContent {
-    content.into_bytes()
-}
-
-/// Identity function for timestamp conversion.
-/// Timestamp is a type alias for DateTime<Utc>, so no conversion needed.
-#[allow(dead_code)]
-fn to_caliber_timestamp(dt: chrono::DateTime<chrono::Utc>) -> Timestamp {
-    dt
 }
 
 /// Create a handoff record (uses AgentHandoff type).
@@ -438,10 +425,13 @@ fn create_memory_access(access: &str, memory_type: &str) -> MemoryAccess {
             read: vec![read_perm],
             write: vec![write_perm],
         },
-        _ => MemoryAccess {
-            read: vec![],
-            write: vec![],
-        },
+        _ => {
+            pgrx::warning!("CALIBER: Unknown memory access level '{}', returning no permissions", access);
+            MemoryAccess {
+                read: vec![],
+                write: vec![],
+            }
+        }
     }
 }
 
@@ -457,7 +447,10 @@ fn create_region_config(owner_id: EntityId, region_type: &str) -> MemoryRegionCo
             // Team regions require a team_id - use owner_id as placeholder
             MemoryRegionConfig::team(owner_id, owner_id)
         }
-        _ => MemoryRegionConfig::private(owner_id),
+        _ => {
+            pgrx::warning!("CALIBER: Unknown region_type '{}', defaulting to private", region_type);
+            MemoryRegionConfig::private(owner_id)
+        }
     }
 }
 
@@ -465,28 +458,6 @@ fn create_region_config(owner_id: EntityId, region_type: &str) -> MemoryRegionCo
 #[allow(dead_code)]
 fn create_memory_region(region: MemoryRegion) -> serde_json::Value {
     safe_to_json(&region)
-}
-
-/// Convert a ConflictResolution strategy to its string representation.
-/// Used for storing resolution strategies in the database.
-#[allow(dead_code)]
-fn conflict_resolution_to_str(resolution: ConflictResolution) -> &'static str {
-    match resolution {
-        ConflictResolution::LastWriteWins => "last_write_wins",
-        ConflictResolution::HighestConfidence => "highest_confidence",
-        ConflictResolution::Escalate => "escalate",
-    }
-}
-
-/// Parse a conflict resolution string to ConflictResolution enum.
-#[allow(dead_code)]
-fn str_to_conflict_resolution(s: &str) -> ConflictResolution {
-    match s {
-        "last_write_wins" => ConflictResolution::LastWriteWins,
-        "highest_confidence" => ConflictResolution::HighestConfidence,
-        "escalate" => ConflictResolution::Escalate,
-        _ => ConflictResolution::LastWriteWins, // Default fallback
-    }
 }
 
 // ============================================================================
@@ -792,7 +763,10 @@ fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
         "completed" => TrajectoryStatus::Completed,
         "failed" => TrajectoryStatus::Failed,
         "suspended" => TrajectoryStatus::Suspended,
-        _ => return pgrx::JsonB(serde_json::json!([])),
+        _ => {
+            pgrx::warning!("CALIBER: Invalid trajectory status '{}', returning empty list", status);
+            return pgrx::JsonB(serde_json::json!([]));
+        }
     };
 
     // Use direct heap operations instead of SPI
@@ -1812,12 +1786,23 @@ fn caliber_lock_acquire(
 
     let lock_mode = match mode {
         "shared" => LockMode::Shared,
-        _ => LockMode::Exclusive,
+        _ => {
+            if mode != "exclusive" {
+                pgrx::warning!("CALIBER: Unknown lock mode '{}', defaulting to Exclusive", mode);
+            }
+            LockMode::Exclusive
+        }
     };
 
     let lock_level = match level.unwrap_or("transaction") {
         "session" => AdvisoryLockLevel::Session,
-        _ => AdvisoryLockLevel::Transaction,
+        _ => {
+            let level_str = level.unwrap_or("transaction");
+            if level_str != "transaction" {
+                pgrx::warning!("CALIBER: Unknown lock level '{}', defaulting to Transaction", level_str);
+            }
+            AdvisoryLockLevel::Transaction
+        }
     };
 
     // Try to acquire Postgres advisory lock using direct LockAcquire
@@ -2699,7 +2684,12 @@ fn caliber_handoff_create(
         "escalation" => HandoffReason::Escalation,
         "timeout" => HandoffReason::Timeout,
         "failure" => HandoffReason::Failure,
-        _ => HandoffReason::Scheduled,
+        _ => {
+            if reason != "scheduled" {
+                pgrx::warning!("CALIBER: Unknown handoff reason '{}', defaulting to Scheduled", reason);
+            }
+            HandoffReason::Scheduled
+        }
     };
 
     let handoff_id = caliber_core::new_entity_id();
@@ -2828,7 +2818,12 @@ fn caliber_conflict_create(
         "contradicting_fact" => ConflictType::ContradictingFact,
         "incompatible_decision" => ConflictType::IncompatibleDecision,
         "resource_contention" => ConflictType::ResourceContention,
-        _ => ConflictType::GoalConflict,
+        _ => {
+            if conflict_type != "goal_conflict" {
+                pgrx::warning!("CALIBER: Unknown conflict type '{}', defaulting to GoalConflict", conflict_type);
+            }
+            ConflictType::GoalConflict
+        }
     };
 
     let conflict = Conflict::new(c_type, item_a_type, a_id, item_b_type, b_id);
@@ -2921,7 +2916,10 @@ fn caliber_conflict_resolve(
         "merge" => ResolutionStrategy::Merge,
         "escalate" => ResolutionStrategy::Escalate,
         "reject_both" => ResolutionStrategy::RejectBoth,
-        _ => ResolutionStrategy::Escalate,
+        _ => {
+            pgrx::warning!("CALIBER: Unknown resolution strategy '{}', defaulting to Escalate", strategy);
+            ResolutionStrategy::Escalate
+        }
     };
     
     let resolution = ConflictResolutionRecord {
@@ -3061,7 +3059,7 @@ fn caliber_vector_search(
 // ============================================================================
 
 /// Get storage statistics for debugging.
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_stats() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_stats called");
@@ -3088,11 +3086,8 @@ fn caliber_debug_stats() -> pgrx::JsonB {
             let result = client.select(&format!("SELECT COUNT(*) FROM {}", table), None, &[]);
             let count = match result {
                 Ok(table) => {
-                    if let Some(row) = table.first() {
-                        row.get::<i64>(1).ok().flatten().unwrap_or(0)
-                    } else {
-                        0
-                    }
+                    let table = table.first();
+                    table.get_one::<i64>().ok().flatten().unwrap_or(0)
                 }
                 Err(_) => 0,
             };
@@ -3118,7 +3113,7 @@ fn caliber_debug_stats() -> pgrx::JsonB {
 }
 
 /// Clear all storage (for testing).
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_clear() -> &'static str {
     pgrx::warning!("DEBUG: caliber_debug_clear called - clearing all storage!");
@@ -3144,7 +3139,7 @@ fn caliber_debug_clear() -> &'static str {
 }
 
 /// Dump all trajectories for debugging.
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_trajectories() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_dump_trajectories called");
@@ -3156,7 +3151,7 @@ fn caliber_debug_dump_trajectories() -> pgrx::JsonB {
                     outcome, metadata 
              FROM caliber_trajectory ORDER BY created_at DESC",
             None,
-            None,
+            &[],
         );
 
         match result {
@@ -3202,7 +3197,7 @@ fn caliber_debug_dump_trajectories() -> pgrx::JsonB {
 }
 
 /// Dump all scopes for debugging.
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_scopes() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_dump_scopes called");
@@ -3213,7 +3208,7 @@ fn caliber_debug_dump_scopes() -> pgrx::JsonB {
                     created_at, closed_at, checkpoint, token_budget, tokens_used, metadata 
              FROM caliber_scope ORDER BY created_at DESC",
             None,
-            None,
+            &[],
         );
 
         match result {
@@ -3259,7 +3254,7 @@ fn caliber_debug_dump_scopes() -> pgrx::JsonB {
 }
 
 /// Dump all artifacts for debugging.
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_artifacts() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_dump_artifacts called");
@@ -3270,7 +3265,7 @@ fn caliber_debug_dump_artifacts() -> pgrx::JsonB {
                     content_hash, provenance, ttl, created_at, updated_at, superseded_by, metadata 
              FROM caliber_artifact ORDER BY created_at DESC",
             None,
-            None,
+            &[],
         );
 
         match result {
@@ -3318,7 +3313,7 @@ fn caliber_debug_dump_artifacts() -> pgrx::JsonB {
 }
 
 /// Dump all agents for debugging.
-#[cfg(any(feature = "debug", feature = "pg_test"))]
+#[cfg(any(test, feature = "debug", feature = "pg_test"))]
 #[pg_extern]
 fn caliber_debug_dump_agents() -> pgrx::JsonB {
     pgrx::warning!("DEBUG: caliber_debug_dump_agents called");
@@ -3327,7 +3322,7 @@ fn caliber_debug_dump_agents() -> pgrx::JsonB {
             "SELECT agent_id, agent_type, capabilities, status, created_at, last_heartbeat
              FROM caliber_agent ORDER BY created_at",
             None,
-            None,
+            &[],
         );
 
         match result {
@@ -3440,7 +3435,10 @@ fn enforce_access(
                 "private" => agent_id == owner_id,
                 "team" => agent_id == owner_id || readers.contains(&agent_id),
                 "public" | "collaborative" => true,
-                _ => false,
+                _ => {
+                    pgrx::warning!("CALIBER: Unknown region_type '{}' in read access check, denying access", region_type);
+                    false
+                }
             }
         }
         AccessOperation::Write => {
@@ -3449,7 +3447,10 @@ fn enforce_access(
                 "team" => agent_id == owner_id || writers.contains(&agent_id),
                 "public" => agent_id == owner_id,
                 "collaborative" => true,
-                _ => false,
+                _ => {
+                    pgrx::warning!("CALIBER: Unknown region_type '{}' in write access check, denying access", region_type);
+                    false
+                }
             };
 
             // For collaborative regions, also check if lock is held when required
@@ -3514,7 +3515,10 @@ fn caliber_check_access(
     let operation = match access_type {
         "read" => AccessOperation::Read,
         "write" => AccessOperation::Write,
-        _ => return false,
+        _ => {
+            pgrx::warning!("CALIBER: Invalid access_type '{}', must be 'read' or 'write'", access_type);
+            return false;
+        }
     };
 
     match enforce_access(aid, rid, operation) {
@@ -4387,7 +4391,10 @@ impl StorageTrait for PgStorage {
                     Some("completed") => TrajectoryStatus::Completed,
                     Some("failed") => TrajectoryStatus::Failed,
                     Some("suspended") => TrajectoryStatus::Suspended,
-                    _ => TrajectoryStatus::Active,
+                    _ => {
+                        pgrx::warning!("CALIBER: Unknown trajectory status '{:?}', defaulting to Active", status_str);
+                        TrajectoryStatus::Active
+                    }
                 };
 
                 // Convert pgrx::Uuid to uuid::Uuid
@@ -4507,7 +4514,10 @@ impl StorageTrait for PgStorage {
                     Some("completed") => TrajectoryStatus::Completed,
                     Some("failed") => TrajectoryStatus::Failed,
                     Some("suspended") => TrajectoryStatus::Suspended,
-                    _ => TrajectoryStatus::Active,
+                    _ => {
+                        pgrx::warning!("CALIBER: Unknown trajectory status '{:?}', defaulting to Active", status_str_val);
+                        TrajectoryStatus::Active
+                    }
                 };
 
                 if let Some(tid) = trajectory_id {
@@ -4929,7 +4939,7 @@ mod tests {
 
         // Update status
         let updated = crate::caliber_trajectory_set_status(traj_id, "completed");
-        assert!(updated);
+        assert_eq!(updated, Some(true));
 
         // Verify status change
         let traj = crate::caliber_trajectory_get(traj_id);
@@ -5018,7 +5028,8 @@ mod tests {
             "fact",
             "Test Artifact",
             "Test content",
-        );
+        )
+        .expect("artifact should be created");
 
         // Get artifact
         let artifact = crate::caliber_artifact_get(artifact_id);
@@ -5042,7 +5053,8 @@ mod tests {
             "Test Note",
             "Test content",
             Some(traj_id),
-        );
+        )
+        .expect("note should be created");
 
         // Get note
         let note = crate::caliber_note_get(note_id);
@@ -5101,9 +5113,9 @@ mod tests {
     fn test_message_lifecycle() {
         crate::caliber_debug_clear();
 
-        let caps = pgrx::JsonB(serde_json::json!([]));
-        let agent1 = crate::caliber_agent_register("sender", caps.clone());
-        let agent2 = crate::caliber_agent_register("receiver", caps);
+        let caps_value = serde_json::json!([]);
+        let agent1 = crate::caliber_agent_register("sender", pgrx::JsonB(caps_value.clone()));
+        let agent2 = crate::caliber_agent_register("receiver", pgrx::JsonB(caps_value));
 
         // Send message
         let msg_id = crate::caliber_message_send(
@@ -5113,7 +5125,8 @@ mod tests {
             "heartbeat",
             "{}",
             "normal",
-        );
+        )
+        .expect("message should be sent");
 
         // Get message
         let msg = crate::caliber_message_get(msg_id);
@@ -5132,9 +5145,9 @@ mod tests {
     fn test_delegation_lifecycle() {
         crate::caliber_debug_clear();
 
-        let caps = pgrx::JsonB(serde_json::json!([]));
-        let delegator = crate::caliber_agent_register("planner", caps.clone());
-        let delegatee = crate::caliber_agent_register("coder", caps);
+        let caps_value = serde_json::json!([]);
+        let delegator = crate::caliber_agent_register("planner", pgrx::JsonB(caps_value.clone()));
+        let delegatee = crate::caliber_agent_register("coder", pgrx::JsonB(caps_value));
         let traj_id = crate::caliber_trajectory_create("Parent Task", None, None);
 
         // Create delegation
@@ -5164,9 +5177,9 @@ mod tests {
     fn test_handoff_lifecycle() {
         crate::caliber_debug_clear();
 
-        let caps = pgrx::JsonB(serde_json::json!([]));
-        let agent1 = crate::caliber_agent_register("generalist", caps.clone());
-        let agent2 = crate::caliber_agent_register("specialist", caps);
+        let caps_value = serde_json::json!([]);
+        let agent1 = crate::caliber_agent_register("generalist", pgrx::JsonB(caps_value.clone()));
+        let agent2 = crate::caliber_agent_register("specialist", pgrx::JsonB(caps_value));
         let traj_id = crate::caliber_trajectory_create("Task", None, None);
         let scope_id = crate::caliber_scope_create(traj_id, "Scope", None, 8000);
         let snapshot_id = crate::caliber_new_id();
@@ -5243,8 +5256,8 @@ mod tests {
         let stats = crate::caliber_debug_stats();
         let obj: serde_json::Value = stats.0;
         
-        assert_eq!(obj["trajectories"], 1);
-        assert_eq!(obj["agents"], 1);
+        assert_eq!(obj["entity_counts"]["trajectories"], 1);
+        assert_eq!(obj["entity_counts"]["agents"], 1);
     }
 }
 

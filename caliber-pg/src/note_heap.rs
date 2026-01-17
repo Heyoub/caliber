@@ -478,7 +478,12 @@ fn str_to_note_type(s: &str) -> NoteType {
         "correction" => NoteType::Correction,
         "summary" => NoteType::Summary,
         // Default fallback - use Meta for unknown types
-        _ => NoteType::Meta,
+        _ => {
+            if s != "meta" {
+                pgrx::warning!("CALIBER: Unknown note type '{}', defaulting to Meta", s);
+            }
+            NoteType::Meta
+        }
     }
 }
 
@@ -518,7 +523,10 @@ fn str_to_ttl(s: &str) -> TTL {
             let ms_str = &s[9..];
             ms_str.parse::<i64>().map(TTL::Duration).unwrap_or(TTL::Session)
         }
-        _ => TTL::Session, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown TTL value '{}', defaulting to Session", s);
+            TTL::Session
+        }
     }
 }
 
@@ -541,7 +549,10 @@ fn str_to_abstraction_level(s: &str) -> AbstractionLevel {
         "raw" => AbstractionLevel::Raw,
         "summary" => AbstractionLevel::Summary,
         "principle" => AbstractionLevel::Principle,
-        _ => AbstractionLevel::Raw, // Default fallback
+        _ => {
+            pgrx::warning!("CALIBER: Unknown abstraction level '{}', defaulting to Raw", s);
+            AbstractionLevel::Raw
+        }
     }
 }
 

@@ -288,18 +288,18 @@ pub struct WebhookState {
 }
 
 impl WebhookState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
+    pub fn new(db: DbClient, ws: Arc<WsState>) -> Result<Self, String> {
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        Self {
+        Ok(Self {
             db,
             ws,
             store: Arc::new(WebhookStore::new()),
             http_client,
-        }
+        })
     }
 }
 
@@ -461,15 +461,18 @@ pub async fn delete_webhook(
 // ============================================================================
 
 /// Generate HMAC-SHA256 signature for webhook payload.
-fn sign_payload(payload: &[u8], secret: &str) -> String {
+///
+/// This function should never fail as HMAC-SHA256 accepts keys of any size.
+/// However, we handle the error case defensively.
+fn sign_payload(payload: &[u8], secret: &str) -> Result<String, String> {
     type HmacSha256 = Hmac<Sha256>;
 
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC can take key of any size");
+        .map_err(|e| format!("Failed to initialize HMAC: {}", e))?;
     mac.update(payload);
     let result = mac.finalize();
 
-    hex::encode(result.into_bytes())
+    Ok(hex::encode(result.into_bytes()))
 }
 
 /// Deliver a webhook with retry logic.
@@ -480,11 +483,23 @@ pub async fn deliver_webhook(
     store: &WebhookStore,
 ) {
     let delivery_id = Uuid::new_v4();
+
+    // Serialize event data, with logging if serialization fails
+    let event_data = serde_json::to_value(event).unwrap_or_else(|e| {
+        tracing::warn!(
+            webhook_id = %webhook.id,
+            delivery_id = %delivery_id,
+            error = %e,
+            "Failed to serialize event data, using empty object"
+        );
+        serde_json::json!({})
+    });
+
     let payload = WebhookPayload {
         delivery_id,
         event_type: event.event_type().to_string(),
         timestamp: chrono::Utc::now(),
-        data: serde_json::to_value(event).unwrap_or_default(),
+        data: event_data,
     };
 
     let payload_bytes = match serde_json::to_vec(&payload) {
@@ -495,7 +510,13 @@ pub async fn deliver_webhook(
         }
     };
 
-    let signature = sign_payload(&payload_bytes, &webhook.secret);
+    let signature = match sign_payload(&payload_bytes, &webhook.secret) {
+        Ok(sig) => sig,
+        Err(e) => {
+            tracing::error!(error = %e, webhook_id = %webhook.id, "Failed to sign webhook payload");
+            return;
+        }
+    };
 
     // Retry with exponential backoff: 1s, 2s, 4s (3 attempts)
     let mut delay = Duration::from_secs(1);
@@ -617,8 +638,17 @@ pub fn start_webhook_delivery_task(state: Arc<WebhookState>) {
 // ============================================================================
 
 /// Create the webhook routes router and start the delivery task.
+///
+/// # Panics
+///
+/// Panics if the HTTP client cannot be created. This should only happen
+/// if the system's TLS configuration is invalid, which is a fatal error
+/// that should be caught at startup.
 pub fn create_router(db: DbClient, ws: Arc<WsState>) -> Router {
-    let state = Arc::new(WebhookState::new(db, ws));
+    let state = Arc::new(
+        WebhookState::new(db, ws)
+            .unwrap_or_else(|e| panic!("Failed to initialize webhook state: {}", e))
+    );
 
     // Start the webhook delivery background task
     start_webhook_delivery_task(state.clone());
@@ -697,7 +727,7 @@ mod tests {
         let payload = b"test payload";
         let secret = "supersecretkey123";
 
-        let signature = sign_payload(payload, secret);
+        let signature = sign_payload(payload, secret).expect("Failed to sign payload");
 
         // Signature should be a hex string
         assert!(!signature.is_empty());

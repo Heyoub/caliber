@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::AuthContext,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -287,6 +288,7 @@ pub async fn update_note(
 pub async fn delete_note(
     State(state): State<Arc<NoteState>>,
     Path(id): Path<Uuid>,
+    auth: AuthContext,
 ) -> ApiResult<StatusCode> {
     // First verify the note exists
     let _note = state
@@ -296,7 +298,10 @@ pub async fn delete_note(
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
     state.db.note_delete(id).await?;
-    state.ws.broadcast(WsEvent::NoteDeleted { id });
+    state.ws.broadcast(WsEvent::NoteDeleted {
+        tenant_id: auth.tenant_id,
+        id,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
