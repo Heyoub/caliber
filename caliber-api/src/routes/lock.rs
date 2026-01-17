@@ -17,7 +17,7 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
-    types::{AcquireLockRequest, ExtendLockRequest, LockResponse},
+    types::{AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse},
     ws::WsState,
 };
 
@@ -215,20 +215,6 @@ pub async fn get_lock(
         .ok_or_else(|| ApiError::lock_not_found(id))?;
 
     Ok(Json(lock))
-}
-
-// ============================================================================
-// REQUEST/RESPONSE TYPES
-// ============================================================================
-
-/// Response containing a list of locks.
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ListLocksResponse {
-    /// List of locks
-    pub locks: Vec<LockResponse>,
-    /// Total count
-    pub total: i32,
 }
 
 // ============================================================================

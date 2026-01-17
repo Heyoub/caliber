@@ -1,6 +1,6 @@
 //! CALIBER TUI entry point.
 
-use caliber_tui::api_client::{ApiClient, ListAgentsQuery, ListMessagesQuery};
+use caliber_tui::api_client::ApiClient;
 use caliber_tui::config::TuiConfig;
 use caliber_tui::error::TuiError;
 use caliber_tui::events::TuiEvent;
@@ -8,7 +8,7 @@ use caliber_tui::keys::{map_key, Action};
 use caliber_tui::persistence::{self, PersistedState};
 use caliber_tui::state::App;
 use caliber_tui::views::render_view;
-use caliber_api::types::{ListArtifactsRequest, ListNotesRequest, ListTrajectoriesRequest};
+use caliber_api::types::{ListAgentsRequest, ListArtifactsRequest, ListMessagesRequest, ListNotesRequest, ListTrajectoriesRequest};
 use crossterm::{
     event::{self, Event as CrosstermEvent},
     execute,
@@ -248,7 +248,7 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
             }
         }
         caliber_tui::nav::View::AgentDashboard => {
-            let response = app.api.rest().list_agents(tenant_id, &ListAgentsQuery {
+            let response = app.api.rest().list_agents(tenant_id, &ListAgentsRequest {
                 agent_type: app.agent_view.filter.agent_type.clone(),
                 status: app.agent_view.filter.status.clone(),
                 trajectory_id: None,
@@ -261,7 +261,7 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
             app.lock_view.locks = response.locks;
         }
         caliber_tui::nav::View::MessageQueue => {
-            let response = app.api.rest().list_messages(tenant_id, &ListMessagesQuery {
+            let response = app.api.rest().list_messages(tenant_id, &ListMessagesRequest {
                 message_type: app.message_view.filter.message_type.clone(),
                 from_agent_id: app.message_view.filter.from_agent_id,
                 to_agent_id: app.message_view.filter.to_agent_id,

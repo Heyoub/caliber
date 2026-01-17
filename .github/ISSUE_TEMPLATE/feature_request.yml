@@ -1,0 +1,254 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for CALIBER
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please provide as much detail as possible to help us understand your use case.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Target Component
+      description: Which CALIBER component would this feature affect?
+      options:
+        - caliber-core (Entity types, config)
+        - caliber-storage (Storage trait, new backends)
+        - caliber-context (Context assembly, token management)
+        - caliber-pcp (Validation, checkpoints, recovery)
+        - caliber-llm (VAL, new providers, embeddings)
+        - caliber-agents (Locks, messages, coordination)
+        - caliber-dsl (DSL syntax, parser)
+        - caliber-pg (PostgreSQL extension, heap operations)
+        - caliber-api (REST/gRPC/WebSocket endpoints)
+        - caliber-tui (Terminal UI, views)
+        - Build system / CI/CD
+        - Documentation
+        - New component
+        - Multiple components
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature_type
+    attributes:
+      label: Feature Type
+      description: What kind of feature is this?
+      options:
+        - New entity type
+        - New API endpoint
+        - New storage backend
+        - New LLM provider
+        - New DSL syntax
+        - Performance optimization
+        - Developer experience improvement
+        - Documentation improvement
+        - Testing improvement
+        - Security enhancement
+        - Multi-agent coordination feature
+        - Memory management feature
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What's the use case?
+      placeholder: |
+        Example: When building multi-agent systems with CALIBER, I need agents to negotiate resource allocation dynamically. Currently, locks are binary (acquired/not acquired), but I need priority-based lock queuing where higher-priority agents can preempt lower-priority ones.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_limitations
+    attributes:
+      label: Current Limitations
+      description: Why can't you achieve this with existing CALIBER features?
+      placeholder: |
+        Example: The current DistributedLock type only supports timeout-based acquisition. There's no way to:
+        - Specify agent priority
+        - Queue lock requests
+        - Preempt existing lock holders
+        - Notify agents when locks become available
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work? Be specific about API design, types, and behavior.
+      placeholder: |
+        Example:
+        
+        Add a new `PriorityLock` type to caliber-agents:
+        
+        ```rust
+        pub struct PriorityLock {
+            pub lock_id: EntityId,
+            pub resource_id: EntityId,
+            pub holder: Option<EntityId>,
+            pub priority: i32,
+            pub queue: Vec<LockRequest>,
+        }
+        
+        pub struct LockRequest {
+            pub agent_id: EntityId,
+            pub priority: i32,
+            pub requested_at: Timestamp,
+        }
+        ```
+        
+        New functions:
+        - `caliber_priority_lock_acquire(resource_id, agent_id, priority, timeout)`
+        - `caliber_priority_lock_preempt(lock_id, agent_id, priority)`
+        - `caliber_priority_lock_queue_status(resource_id)`
+      render: rust
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches have you considered? Why aren't they suitable?
+      placeholder: |
+        Example:
+        1. Using message passing to coordinate lock access - too slow, requires polling
+        2. External lock service (Redis, etcd) - defeats purpose of Postgres-native design
+        3. Application-level priority queue - loses ACID guarantees
+    validations:
+      required: false
+
+  - type: textarea
+    id: api_design
+    attributes:
+      label: API Design (if applicable)
+      description: If this affects the API, show example usage
+      placeholder: |
+        ```rust
+        // Rust API
+        let lock = priority_lock_acquire(
+            resource_id,
+            agent_id,
+            priority: 10,
+            timeout: Duration::from_secs(30),
+        )?;
+        
+        // SQL API
+        SELECT caliber_priority_lock_acquire(
+            'resource-uuid'::uuid,
+            'agent-uuid'::uuid,
+            10,  -- priority
+            30000  -- timeout_ms
+        );
+        
+        // REST API
+        POST /api/v1/locks/priority
+        {
+          "resource_id": "...",
+          "agent_id": "...",
+          "priority": 10,
+          "timeout_ms": 30000
+        }
+        ```
+      render: rust
+
+  - type: textarea
+    id: dsl_syntax
+    attributes:
+      label: DSL Syntax (if applicable)
+      description: If this affects the DSL, show example syntax
+      placeholder: |
+        ```
+        lock priority_resource_lock {
+            resource: "shared_memory"
+            mode: priority
+            preemption: enabled
+            max_queue_size: 100
+        }
+        ```
+      render: text
+
+  - type: dropdown
+    id: breaking_change
+    attributes:
+      label: Breaking Change?
+      description: Would this require breaking changes to existing APIs?
+      options:
+        - "No - Fully backward compatible"
+        - "Yes - Minor breaking changes"
+        - "Yes - Major breaking changes"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: framework_philosophy
+    attributes:
+      label: Framework Philosophy Alignment
+      description: Does this align with CALIBER's "no defaults, user configures everything" philosophy?
+      options:
+        - "Yes - Requires explicit configuration"
+        - "Partially - Some sensible defaults needed"
+        - "No - Would add implicit behavior"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation Notes
+      description: Any thoughts on how this could be implemented? (Optional but helpful)
+      placeholder: |
+        - Would need new heap operations in caliber-pg for priority queue
+        - Requires index on (resource_id, priority, requested_at)
+        - Preemption needs transaction isolation to prevent race conditions
+        - Should emit WebSocket events when lock status changes
+
+  - type: textarea
+    id: testing_strategy
+    attributes:
+      label: Testing Strategy
+      description: How should this feature be tested?
+      placeholder: |
+        Property tests:
+        - Higher priority always preempts lower priority
+        - Queue maintains priority order
+        - No lock starvation (bounded wait time)
+        
+        Integration tests:
+        - Multiple agents competing for same resource
+        - Preemption during active lock hold
+        - Queue overflow handling
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Are you willing to contribute this feature?
+      options:
+        - label: I'm willing to implement this feature
+        - label: I'm willing to write tests for this feature
+        - label: I'm willing to write documentation for this feature
+        - label: I need help implementing this feature
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm you've done the following
+      options:
+        - label: I've searched existing issues and PRs to avoid duplicates
+          required: true
+        - label: I've checked the documentation to ensure this doesn't already exist
+          required: true
+        - label: I've described a specific use case, not just a vague idea
+          required: true
+        - label: I've considered how this fits with CALIBER's architecture
+          required: false

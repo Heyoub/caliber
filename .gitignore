@@ -1,4 +1,92 @@
-# Rust stuff
-target/*
-target/debug/*
-target/release/* 
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# pgrx
+.pgrx/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test artifacts
+*.profraw
+*.profdata
+lcov.info
+coverage/
+
+# Build artifacts
+dist/
+build/
+*.so
+*.dylib
+*.dll
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node (for landing page and SDKs)
+node_modules/
+.npm
+.yarn/
+landing/dist/
+landing/.astro/
+
+# Generated SDKs
+sdks/
+caliber-sdk/generated/
+caliber-sdk/dist/
+caliber-sdk/node_modules/
+openapi.json
+
+# Python (for potential SDK)
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Fuzz artifacts
+fuzz/corpus/
+fuzz/artifacts/
+
+# Documentation build
+docs/_build/
+site/
+
+# Release artifacts
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+
+# Secrets (just in case)
+*.pem
+*.key
+secrets.yaml

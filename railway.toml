@@ -1,0 +1,41 @@
+# CALIBER Railway Deployment Configuration
+#
+# This file configures deployment on Railway.app
+#
+# Setup:
+#   1. Create Railway project: railway init caliber-cloud
+#   2. Add PostgreSQL: Railway Dashboard → Add Service → PostgreSQL
+#   3. Add Redis: Railway Dashboard → Add Service → Redis
+#   4. Deploy: railway up
+#   5. Set custom domain: Railway Dashboard → Settings → Domains → api.caliber.run
+#
+# Environment variables are configured in Railway Dashboard or via CLI:
+#   railway variables set CALIBER_JWT_SECRET=$(openssl rand -base64 32)
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "docker/Dockerfile.api"
+
+# Build arguments for the Docker build
+[build.args]
+FEATURES = "openapi,swagger-ui"
+
+[deploy]
+# Health check endpoint
+healthcheckPath = "/health/ready"
+healthcheckTimeout = 30
+
+# Restart policy
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Number of replicas (adjust based on plan)
+numReplicas = 1
+
+[service]
+# Internal port the container listens on
+internalPort = 3000
+
+# Environment variables referenced from Railway services
+# These are set automatically when you add PostgreSQL/Redis plugins
+# Manual variables should be set in Railway Dashboard

@@ -1,0 +1,173 @@
+# Dependabot configuration for CALIBER
+# Automatically creates PRs for dependency updates
+
+version: 2
+updates:
+  # Rust dependencies (Cargo.toml)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    # Group updates by type
+    groups:
+      # Core CALIBER crates (internal)
+      caliber-internal:
+        patterns:
+          - "caliber-*"
+      # pgrx ecosystem
+      pgrx:
+        patterns:
+          - "pgrx*"
+      # Web framework (Axum + Tower)
+      web-framework:
+        patterns:
+          - "axum"
+          - "tower*"
+          - "hyper"
+      # gRPC (Tonic + Prost)
+      grpc:
+        patterns:
+          - "tonic*"
+          - "prost*"
+      # Database
+      database:
+        patterns:
+          - "deadpool-postgres"
+          - "tokio-postgres"
+          - "postgres*"
+      # Serialization
+      serialization:
+        patterns:
+          - "serde*"
+          - "serde_json"
+          - "serde_yaml"
+      # Async runtime
+      async-runtime:
+        patterns:
+          - "tokio*"
+          - "futures*"
+      # OpenAPI
+      openapi:
+        patterns:
+          - "utoipa*"
+      # Testing
+      testing:
+        patterns:
+          - "proptest"
+          - "criterion"
+      # TUI
+      tui:
+        patterns:
+          - "ratatui"
+          - "crossterm"
+          - "tui-*"
+      # Observability
+      observability:
+        patterns:
+          - "opentelemetry*"
+          - "tracing*"
+          - "prometheus"
+    # Ignore specific updates
+    ignore:
+      # Pin pgrx to 0.16 (breaking changes in 0.17+)
+      - dependency-name: "pgrx"
+        update-types: ["version-update:semver-major"]
+      # Pin Axum to 0.8 (we use 0.8, tonic uses 0.7 internally)
+      - dependency-name: "axum"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+
+  # Docker (for landing page and other Node.js dependencies)
+  - package-ecosystem: "npm"
+    directory: "/landing"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    labels:
+      - "dependencies"
+      - "npm"
+      - "landing-page"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Astro ecosystem
+      astro:
+        patterns:
+          - "@astrojs/*"
+          - "astro"
+      # Svelte
+      svelte:
+        patterns:
+          - "svelte*"
+          - "@sveltejs/*"
+      # Testing
+      testing:
+        patterns:
+          - "@playwright/*"
+          - "playwright"
+          - "fast-check"
+      # Build tools
+      build-tools:
+        patterns:
+          - "vite*"
+          - "typescript"
+          - "tailwindcss"
+    # Ignore major version updates for stable dependencies
+    ignore:
+      - dependency-name: "astro"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "svelte"
+        update-types: ["version-update:semver-major"]
+
+  # Docker base images (if you add Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "your-username"  # Replace with actual GitHub username
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"
+      include: "scope"

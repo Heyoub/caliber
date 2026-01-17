@@ -17,7 +17,7 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
-    types::{MessageResponse, SendMessageRequest},
+    types::{ListMessagesRequest, ListMessagesResponse, MessageResponse, SendMessageRequest},
     ws::WsState,
 };
 use caliber_core::EntityId;
@@ -267,49 +267,6 @@ pub async fn deliver_message(
     });
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-// ============================================================================
-// REQUEST/RESPONSE TYPES
-// ============================================================================
-
-/// Request to list messages with filters.
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ListMessagesRequest {
-    /// Filter by message type
-    pub message_type: Option<String>,
-    /// Filter by sender agent
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub from_agent_id: Option<EntityId>,
-    /// Filter by recipient agent
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub to_agent_id: Option<EntityId>,
-    /// Filter by recipient agent type
-    pub to_agent_type: Option<String>,
-    /// Filter by trajectory
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
-    /// Filter by priority
-    pub priority: Option<String>,
-    /// Only return undelivered messages
-    pub undelivered_only: Option<bool>,
-    /// Only return unacknowledged messages
-    pub unacknowledged_only: Option<bool>,
-    /// Maximum number of results
-    pub limit: Option<i32>,
-    /// Offset for pagination
-    pub offset: Option<i32>,
-}
-
-/// Response containing a list of messages.
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ListMessagesResponse {
-    /// List of messages
-    pub messages: Vec<MessageResponse>,
-    /// Total count
-    pub total: i32,
 }
 
 // ============================================================================

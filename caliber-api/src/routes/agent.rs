@@ -18,7 +18,7 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
-    types::{AgentResponse, RegisterAgentRequest, UpdateAgentRequest},
+    types::{AgentResponse, ListAgentsRequest, ListAgentsResponse, RegisterAgentRequest, UpdateAgentRequest},
     ws::WsState,
 };
 
@@ -343,35 +343,6 @@ pub async fn agent_heartbeat(
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 
     Ok(Json(agent))
-}
-
-// ============================================================================
-// REQUEST/RESPONSE TYPES
-// ============================================================================
-
-/// Request to list agents with filters.
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ListAgentsRequest {
-    /// Filter by agent type
-    pub agent_type: Option<String>,
-    /// Filter by status
-    pub status: Option<String>,
-    /// Filter by current trajectory
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<caliber_core::EntityId>,
-    /// Only return active agents
-    pub active_only: Option<bool>,
-}
-
-/// Response containing a list of agents.
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ListAgentsResponse {
-    /// List of agents
-    pub agents: Vec<AgentResponse>,
-    /// Total count
-    pub total: i32,
 }
 
 // ============================================================================

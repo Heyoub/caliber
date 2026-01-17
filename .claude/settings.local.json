@@ -13,7 +13,15 @@
       "Bash(done)",
       "Bash(wc:*)",
       "WebFetch(domain:llvm.org)",
-      "WebFetch(domain:workos.com)"
+      "WebFetch(domain:workos.com)",
+      "Bash(cloc:*)",
+      "Bash(git -C /mnt/c/Users/eayou/.projects/fs.crm log --oneline --all --since=\"2024-01-01\")",
+      "Bash(tokei:*)",
+      "Bash(git -C /mnt/c/Users/eayou/.projects/fs.crm diff --stat HEAD~10..HEAD)",
+      "Bash(git -C /mnt/c/Users/eayou/.projects/fs.crm log --all --format=\"%ai\")",
+      "WebFetch(domain:docs.convex.dev)",
+      "WebFetch(domain:stack.convex.dev)",
+      "WebFetch(domain:news.convex.dev)"
     ],
     "deny": [
       "Bash(cargo:*)"
