@@ -23,7 +23,10 @@
       "WebFetch(domain:stack.convex.dev)",
       "WebFetch(domain:news.convex.dev)",
       "Bash(tree:*)",
-      "Bash(bun test:*)"
+      "Bash(bun test:*)",
+      "Bash(bun run test:fuzz:*)",
+      "Bash(bun run test:chaos:*)",
+      "Bash(bun run:*)"
     ],
     "deny": [
       "Bash(cargo:*)"
