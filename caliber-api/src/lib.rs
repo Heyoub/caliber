@@ -44,7 +44,7 @@ pub use workos_auth::{
     WorkOsClaims, WorkOsConfig,
 };
 pub use config::ApiConfig;
-pub use db::{DbClient, DbConfig, TenantInfo};
+pub use db::{DbClient, DbConfig};
 pub use error::{ApiError, ApiResult, ErrorCode};
 pub use events::WsEvent;
 pub use grpc::{create_services, proto};

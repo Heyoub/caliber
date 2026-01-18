@@ -2610,24 +2610,26 @@ impl DbClient {
     }
 
     /// Parse tenant JSON into TenantInfo struct.
-    fn parse_tenant_json(&self, json: &JsonValue) -> ApiResult<TenantInfo> {
-        Ok(TenantInfo {
+    fn parse_tenant_json(&self, json: &JsonValue) -> ApiResult<crate::types::TenantInfo> {
+        let status_str = self.parse_string(json, "status")?;
+        let status = status_str.parse::<crate::types::TenantStatus>()
+            .map_err(|_| ApiError::internal_error(format!("Invalid tenant status: {}", status_str)))?;
+
+        // Parse created_at, default to now if not present
+        let created_at = json.get("created_at")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now);
+
+        Ok(crate::types::TenantInfo {
             tenant_id: self.parse_uuid(json, "tenant_id")?,
             name: self.parse_string(json, "name")?,
             domain: self.parse_optional_string(json, "domain"),
             workos_organization_id: self.parse_optional_string(json, "workos_organization_id"),
-            status: self.parse_string(json, "status")?,
+            status,
+            created_at,
         })
     }
-}
-
-/// Information about a tenant (used for SSO auto-provisioning).
-#[derive(Debug, Clone)]
-pub struct TenantInfo {
-    pub tenant_id: EntityId,
-    pub name: String,
-    pub domain: Option<String>,
-    pub workos_organization_id: Option<String>,
-    pub status: String,
 }
 

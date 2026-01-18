@@ -5140,3 +5140,140 @@ Exit code: 0
 **Time Spent:** ~45 minutes
 
 **Status:** SDK codegen pipeline complete, `bun check` passes with zero warnings
+
+---
+
+### January 17, 2026 — Production Hardening (v0.4.0)
+
+**Objective:** Implement 6 production hardening items for launch readiness.
+
+**Completed:**
+
+#### Phase 1: Database Schema (caliber-pg)
+- ✅ Added `caliber_schema_version` table for migration tracking
+- ✅ Added `caliber_tenant` table for multi-tenant management
+- ✅ Added `caliber_tenant_member` table for user-tenant relationships
+- ✅ Added `caliber_public_email_domain` table with seeded common domains
+- ✅ Added indexes for domain, WorkOS org, status, member lookups
+- ✅ Added `tenant_updated_at` trigger
+
+#### Phase 2: pgrx Tenant Functions
+- ✅ `caliber_is_public_email_domain(domain)` - Check if email domain is public
+- ✅ `caliber_tenant_create(name, domain, workos_org_id)` - Create new tenant
+- ✅ `caliber_tenant_get_by_domain(domain)` - Lookup tenant by email domain
+- ✅ `caliber_tenant_get_by_workos_org(org_id)` - Lookup by WorkOS organization
+- ✅ `caliber_tenant_member_upsert(...)` - Add/update tenant member
+- ✅ `caliber_tenant_member_count(tenant_id)` - Count members in tenant
+- ✅ `caliber_tenant_get(tenant_id)` - Get tenant by ID
+- ✅ Added migration runner in `_PG_init()`
+
+#### Phase 3: API Production Hardening
+- ✅ Added `TooManyRequests` error code (HTTP 429)
+- ✅ Created `ApiConfig` struct for CORS and rate limiting configuration
+- ✅ Implemented config-based CORS with `build_cors_layer()`
+- ✅ Added rate limiting middleware using `governor` crate
+- ✅ Implemented tenant auto-creation in SSO callback
+- ✅ Added tenant DB functions to `DbClient`
+
+#### Phase 4: PostgreSQL 18+ Only
+- ✅ Removed pg13-17 features from Cargo.toml (BREAKING CHANGE)
+- ✅ Updated Dockerfile.pg to PostgreSQL 18
+- ✅ Added PGXN META.json for distribution
+- ✅ Created Makefile for PGXN build/install
+
+**User Decisions (from MCQ session):**
+
+| Decision | Choice |
+|----------|--------|
+| Auth | WorkOS SSO only (no email+password) |
+| Tenant naming | Auto from email domain (user@acme.com → "acme") |
+| Multi-user | Same domain users join same tenant |
+| CORS | caliber.run only (env-configurable) |
+| Rate limits | Per-IP (100/min) + Per-Tenant (1000/min) |
+| PostgreSQL | PG18+ only (breaking, drop 13-17) |
+| PGXN | Must have for launch |
+| Migrations | Built-in with auto-run on load |
+
+**Tenant Auto-Creation Logic:**
+
+```
+1. If WorkOS org_id present → lookup/create tenant by org_id
+2. Extract email domain from user email
+3. If public domain (gmail, outlook, etc.) → create personal tenant
+4. If corporate domain exists → join existing tenant
+5. If new corporate domain → create new tenant
+6. First member becomes admin, subsequent members get "member" role
+```
+
+**Rate Limiting Implementation:**
+
+| Key Type | Limit | Scope |
+|----------|-------|-------|
+| IP address | 100/min | Unauthenticated requests |
+| Tenant ID | 1000/min | Authenticated requests |
+| Burst | 10 | Both types |
+
+**CORS Configuration:**
+
+| Mode | Behavior |
+|------|----------|
+| Development | Empty `CALIBER_CORS_ORIGINS` → allow all |
+| Production | Specified origins only (strict) |
+| Wildcard | `*.caliber.run` matches subdomains |
+
+**New Environment Variables:**
+
+```env
+# CORS
+CALIBER_CORS_ORIGINS=https://caliber.run,https://app.caliber.run
+CALIBER_CORS_ALLOW_CREDENTIALS=false
+CALIBER_CORS_MAX_AGE_SECS=86400
+
+# Rate Limiting
+CALIBER_RATE_LIMIT_ENABLED=true
+CALIBER_RATE_LIMIT_UNAUTHENTICATED=100
+CALIBER_RATE_LIMIT_AUTHENTICATED=1000
+CALIBER_RATE_LIMIT_BURST=10
+```
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `caliber-api/src/config.rs` | ApiConfig struct with from_env() |
+| `caliber-pg/META.json` | PGXN distribution metadata |
+| `caliber-pg/Makefile` | PGXN build/install wrapper |
+
+**Files Modified:**
+
+| File | Changes |
+|------|---------|
+| `caliber-pg/sql/caliber_init.sql` | +80 lines (tenant tables, schema version) |
+| `caliber-pg/src/lib.rs` | +220 lines (tenant functions, migrations) |
+| `caliber-pg/Cargo.toml` | Removed pg13-17 features |
+| `caliber-api/src/error.rs` | Added TooManyRequests |
+| `caliber-api/src/routes/mod.rs` | Updated CORS, added build_cors_layer() |
+| `caliber-api/src/middleware.rs` | +180 lines (rate limiting) |
+| `caliber-api/src/routes/sso.rs` | +90 lines (tenant auto-creation) |
+| `caliber-api/src/db.rs` | +100 lines (tenant DB functions) |
+| `caliber-api/Cargo.toml` | Added governor dependency |
+| `caliber-api/src/lib.rs` | Added config module and exports |
+| `docker/Dockerfile.pg` | Updated to PostgreSQL 18 |
+| `.env.example` | Added CORS and rate limit vars |
+
+**Breaking Changes:**
+
+1. **PostgreSQL 18+ Required** - Dropped support for pg13-17
+2. **API Router Signature** - `create_api_router()` now requires `&ApiConfig`
+
+**SDK Updates Required:**
+
+- Need to regenerate TypeScript SDK to include `TooManyRequests` error code
+- Run: `./scripts/generate-sdk.sh typescript`
+
+**Commits:**
+- `3fd81f3` - feat: Implement tenant management and rate limiting features
+
+**Time Spent:** ~2 hours
+
+**Status:** Production hardening complete. SDK regeneration pending.

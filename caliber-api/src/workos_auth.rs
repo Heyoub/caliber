@@ -26,8 +26,13 @@ use crate::error::{ApiError, ApiResult};
 use caliber_core::EntityId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use workos::sso::{AuthorizationCode, ClientId, GetProfileAndToken, Sso};
-use workos::{ApiKey, WorkOs};
+use workos::organizations::OrganizationId;
+use workos::sso::{
+    AuthorizationCode, ClientId, ConnectionId, ConnectionSelector, GetAuthorizationUrl,
+    GetAuthorizationUrlParams, GetProfileAndToken, GetProfileAndTokenParams,
+    GetProfileAndTokenResponse, Provider,
+};
+use workos::{ApiKey, KnownOrUnknown, WorkOs};
 
 // ============================================================================
 // CONFIGURATION
@@ -225,12 +230,13 @@ pub async fn exchange_code_for_profile(
     let workos = config.create_client();
     let sso = workos.sso();
 
-    let params = GetProfileAndToken::builder()
-        .client_id(&config.client_id)
-        .code(&AuthorizationCode::from(code.to_string()))
-        .build();
+    let auth_code = AuthorizationCode::from(code.to_string());
+    let params = GetProfileAndTokenParams {
+        client_id: &config.client_id,
+        code: &auth_code,
+    };
 
-    let response = sso
+    let response: GetProfileAndTokenResponse = sso
         .get_profile_and_token(&params)
         .await
         .map_err(|e| ApiError::unauthorized(format!("WorkOS SSO error: {}", e)))?;
@@ -238,17 +244,21 @@ pub async fn exchange_code_for_profile(
     // Extract profile information
     let profile = response.profile;
 
+    // Extract connection type as string
+    let connection_type_str = match &profile.connection_type {
+        KnownOrUnknown::Known(ct) => format!("{:?}", ct),
+        KnownOrUnknown::Unknown(s) => s.clone(),
+    };
+
     let claims = WorkOsClaims {
         user_id: profile.id.to_string(),
-        email: profile.email.to_string(),
-        first_name: profile.first_name.map(|s| s.to_string()),
-        last_name: profile.last_name.map(|s| s.to_string()),
-        organization_id: profile.organization_id.map(|id| id.to_string()),
-        connection_type: profile.connection_type.to_string(),
-        idp_id: profile.idp_id.map(|s| s.to_string()),
-        raw_attributes: profile.raw_attributes.map(|attrs| {
-            serde_json::to_value(attrs).unwrap_or(serde_json::Value::Null)
-        }),
+        email: profile.email.clone(),
+        first_name: profile.first_name.clone(),
+        last_name: profile.last_name.clone(),
+        organization_id: profile.organization_id.as_ref().map(|id| id.to_string()),
+        connection_type: connection_type_str,
+        idp_id: Some(profile.idp_id.clone()),
+        raw_attributes: None, // raw_attributes not available in workos 0.8
     };
 
     Ok((response.access_token.to_string(), claims))
@@ -272,7 +282,7 @@ pub async fn exchange_code_for_profile(
 /// # Returns
 /// AuthContext on successful validation
 pub async fn validate_workos_token(
-    config: &WorkOsConfig,
+    _config: &WorkOsConfig,
     token: &str,
     tenant_id_header: Option<&str>,
 ) -> ApiResult<AuthContext> {
@@ -402,36 +412,38 @@ pub struct SsoAuthorizationParams {
 /// After authentication, WorkOS will redirect back to the callback URL
 /// with an authorization code.
 pub fn generate_authorization_url(config: &WorkOsConfig, params: &SsoAuthorizationParams) -> String {
-    use workos::sso::{GetAuthorizationUrl, ConnectionSelector};
-
     let workos = config.create_client();
     let sso = workos.sso();
 
-    let mut builder = GetAuthorizationUrl::builder()
-        .client_id(&config.client_id)
-        .redirect_uri(&config.redirect_uri);
+    // Build connection IDs from strings - need to hold them so references are valid
+    let connection_id = params
+        .connection
+        .as_ref()
+        .map(|c| ConnectionId::from(c.clone()));
+    let organization_id = params
+        .organization
+        .as_ref()
+        .map(|o| OrganizationId::from(o.clone()));
 
-    // Set connection selector based on params
-    if let Some(ref conn) = params.connection {
-        builder = builder.connection(&ConnectionSelector::Connection(
-            workos::sso::ConnectionId::from(conn.clone())
-        ));
-    } else if let Some(ref org) = params.organization {
-        builder = builder.connection(&ConnectionSelector::Organization(
-            workos::organizations::OrganizationId::from(org.clone())
-        ));
-    }
+    // Determine connection selector based on params
+    // Default to GoogleOAuth if no connection or organization specified
+    let connection_selector = if let Some(ref conn_id) = connection_id {
+        ConnectionSelector::Connection(conn_id)
+    } else if let Some(ref org_id) = organization_id {
+        ConnectionSelector::Organization(org_id)
+    } else {
+        // Default to Google OAuth provider for demo purposes
+        ConnectionSelector::Provider(&Provider::GoogleOauth)
+    };
 
-    // Add optional parameters
-    if let Some(ref state) = params.state {
-        builder = builder.state(state);
-    }
+    let url_params = GetAuthorizationUrlParams {
+        client_id: &config.client_id,
+        redirect_uri: &config.redirect_uri,
+        connection_selector,
+        state: params.state.as_deref(),
+    };
 
-    if let Some(ref hint) = params.login_hint {
-        builder = builder.login_hint(hint);
-    }
-
-    sso.get_authorization_url(&builder.build())
+    sso.get_authorization_url(&url_params)
         .map(|url| url.to_string())
         .unwrap_or_else(|_| String::new())
 }
