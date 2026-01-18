@@ -36,6 +36,18 @@ use crate::tuple_extract::{
     json_to_datum, timestamp_to_chrono,
 };
 
+/// Scope row with tenant ownership metadata.
+pub struct ScopeRow {
+    pub scope: Scope,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<ScopeRow> for Scope {
+    fn from(row: ScopeRow) -> Self {
+        row.scope
+    }
+}
+
 /// Create a new scope using direct heap operations.
 ///
 /// This bypasses SQL parsing entirely for hot-path performance.
@@ -60,6 +72,7 @@ pub fn scope_create_heap(
     name: &str,
     purpose: Option<&str>,
     token_budget: i32,
+    tenant_id: EntityId,
 ) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
@@ -118,6 +131,9 @@ pub fn scope_create_heap(
     
     // Column 12: metadata (JSONB, nullable)
     nulls[scope::METADATA as usize - 1] = true;
+
+    // Column 13: tenant_id (UUID, NOT NULL)
+    values[scope::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -146,7 +162,7 @@ pub fn scope_create_heap(
 ///
 /// # Requirements
 /// - 2.2: Uses index_beginscan for O(log n) lookup instead of SPI SELECT
-pub fn scope_get_heap(id: EntityId) -> CaliberResult<Option<Scope>> {
+pub fn scope_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<ScopeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(scope::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -178,8 +194,12 @@ pub fn scope_get_heap(id: EntityId) -> CaliberResult<Option<Scope>> {
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let scope = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
-        Ok(Some(scope))
+        let row = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
@@ -199,7 +219,7 @@ pub fn scope_get_heap(id: EntityId) -> CaliberResult<Option<Scope>> {
 ///
 /// # Requirements
 /// - 2.3: Uses simple_heap_update instead of SPI UPDATE
-pub fn scope_close_heap(id: EntityId) -> CaliberResult<bool> {
+pub fn scope_close_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
     
@@ -242,6 +262,10 @@ pub fn scope_close_heap(id: EntityId) -> CaliberResult<bool> {
         }))?;
     
     let tuple_desc = rel.tuple_desc();
+    let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, scope::TENANT_ID)? };
+    if existing_tenant != Some(tenant_id) {
+        return Ok(false);
+    }
     
     // Extract current values and nulls
     let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -281,7 +305,8 @@ pub fn scope_close_heap(id: EntityId) -> CaliberResult<bool> {
 /// - 2.4: Uses index scan on trajectory_id instead of SPI SELECT
 pub fn scope_list_by_trajectory_heap(
     trajectory_id: EntityId,
-) -> CaliberResult<Vec<Scope>> {
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<ScopeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(scope::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -315,8 +340,10 @@ pub fn scope_list_by_trajectory_heap(
     
     // Collect all matching tuples
     for tuple in &mut scanner {
-        let scope = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
-        results.push(scope);
+        let row = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
     
     Ok(results)
@@ -338,6 +365,7 @@ pub fn scope_list_by_trajectory_heap(
 pub fn scope_update_tokens_heap(
     id: EntityId,
     tokens_used: i32,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
@@ -381,6 +409,10 @@ pub fn scope_update_tokens_heap(
         }))?;
     
     let tuple_desc = rel.tuple_desc();
+    let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, scope::TENANT_ID)? };
+    if existing_tenant != Some(tenant_id) {
+        return Ok(false);
+    }
     
     // Extract current values and nulls
     let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -426,6 +458,7 @@ fn validate_scope_relation(rel: &HeapRelation) -> CaliberResult<()> {
 pub fn scope_update_checkpoint_heap(
     id: EntityId,
     checkpoint: Option<&Checkpoint>,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
     validate_scope_relation(&rel)?;
@@ -457,6 +490,10 @@ pub fn scope_update_checkpoint_heap(
         }))?;
 
     let tuple_desc = rel.tuple_desc();
+    let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, scope::TENANT_ID)? };
+    if existing_tenant != Some(tenant_id) {
+        return Ok(false);
+    }
     let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
     // Update checkpoint using json_to_datum
@@ -488,7 +525,7 @@ pub fn scope_update_checkpoint_heap(
 unsafe fn tuple_to_scope(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Scope> {
+) -> CaliberResult<ScopeRow> {
     // Extract all fields from the tuple
     let scope_id = extract_uuid(tuple, tuple_desc, scope::SCOPE_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
@@ -538,20 +575,24 @@ unsafe fn tuple_to_scope(
         }))?;
     
     let metadata = extract_jsonb(tuple, tuple_desc, scope::METADATA)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, scope::TENANT_ID)?;
     
-    Ok(Scope {
-        scope_id,
-        trajectory_id,
-        parent_scope_id,
-        name,
-        purpose,
-        is_active,
-        created_at,
-        closed_at,
-        checkpoint,
-        token_budget,
-        tokens_used,
-        metadata,
+    Ok(ScopeRow {
+        scope: Scope {
+            scope_id,
+            trajectory_id,
+            parent_scope_id,
+            name,
+            purpose,
+            is_active,
+            created_at,
+            closed_at,
+            checkpoint,
+            token_budget,
+            tokens_used,
+            metadata,
+        },
+        tenant_id,
     })
 }
 
@@ -626,11 +667,13 @@ mod tests {
             runner.run(&strategy, |(name, purpose, token_budget)| {
                 // First create a trajectory to be the parent
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let traj_result = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
                 prop_assert!(traj_result.is_ok(), "Trajectory creation should succeed");
 
@@ -644,18 +687,20 @@ mod tests {
                     &name,
                     purpose.as_deref(),
                     token_budget,
+                    tenant_id,
                 );
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), scope_id);
 
                 // Get via heap
-                let get_result = scope_get_heap(scope_id);
+                let get_result = scope_get_heap(scope_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed");
                 
                 let scope = get_result.unwrap();
                 prop_assert!(scope.is_some(), "Scope should be found");
                 
-                let s = scope.unwrap();
+                let row = scope.unwrap();
+                let s = row.scope;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(s.scope_id, scope_id);
@@ -669,6 +714,7 @@ mod tests {
                 prop_assert!(s.closed_at.is_none());
                 prop_assert!(s.checkpoint.is_none());
                 prop_assert!(s.metadata.is_none());
+                prop_assert_eq!(row.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -688,7 +734,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = scope_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = scope_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent scope should return None");
 
@@ -730,11 +777,13 @@ mod tests {
             runner.run(&strategy, |(name, token_budget)| {
                 // Create trajectory first
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 // Create scope
@@ -745,22 +794,25 @@ mod tests {
                     &name,
                     None,
                     token_budget,
+                    tenant_id,
                 );
 
                 // Verify initially active
-                let before = scope_get_heap(scope_id).unwrap().unwrap();
-                prop_assert!(before.is_active, "Scope should be active initially");
-                prop_assert!(before.closed_at.is_none(), "closed_at should be None initially");
+                let before = scope_get_heap(scope_id, tenant_id).unwrap().unwrap();
+                prop_assert!(before.scope.is_active, "Scope should be active initially");
+                prop_assert!(before.scope.closed_at.is_none(), "closed_at should be None initially");
+                prop_assert_eq!(before.tenant_id, Some(tenant_id));
 
                 // Close the scope
-                let close_result = scope_close_heap(scope_id);
+                let close_result = scope_close_heap(scope_id, tenant_id);
                 prop_assert!(close_result.is_ok());
                 prop_assert!(close_result.unwrap(), "Close should find the scope");
 
                 // Verify closed
-                let after = scope_get_heap(scope_id).unwrap().unwrap();
-                prop_assert!(!after.is_active, "Scope should be inactive after close");
-                prop_assert!(after.closed_at.is_some(), "closed_at should be set after close");
+                let after = scope_get_heap(scope_id, tenant_id).unwrap().unwrap();
+                prop_assert!(!after.scope.is_active, "Scope should be inactive after close");
+                prop_assert!(after.scope.closed_at.is_some(), "closed_at should be set after close");
+                prop_assert_eq!(after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -788,11 +840,13 @@ mod tests {
             runner.run(&strategy, |(name, token_budget, new_tokens_used)| {
                 // Create trajectory first
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 // Create scope
@@ -803,16 +857,18 @@ mod tests {
                     &name,
                     None,
                     token_budget,
+                    tenant_id,
                 );
 
                 // Update tokens_used
-                let update_result = scope_update_tokens_heap(scope_id, new_tokens_used);
+                let update_result = scope_update_tokens_heap(scope_id, new_tokens_used, tenant_id);
                 prop_assert!(update_result.is_ok());
                 prop_assert!(update_result.unwrap(), "Update should find the scope");
 
                 // Verify updated
-                let after = scope_get_heap(scope_id).unwrap().unwrap();
-                prop_assert_eq!(after.tokens_used, new_tokens_used, "tokens_used should be updated");
+                let after = scope_get_heap(scope_id, tenant_id).unwrap().unwrap();
+                prop_assert_eq!(after.scope.tokens_used, new_tokens_used, "tokens_used should be updated");
+                prop_assert_eq!(after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -829,7 +885,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = scope_close_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = scope_close_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Close should not error");
                 prop_assert!(!result.unwrap(), "Close of non-existent scope should return false");
 
@@ -850,7 +907,8 @@ mod tests {
             runner.run(&strategy, |(bytes, tokens)| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = scope_update_tokens_heap(random_id, tokens);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = scope_update_tokens_heap(random_id, tokens, tenant_id);
                 prop_assert!(result.is_ok(), "Update should not error");
                 prop_assert!(!result.unwrap(), "Update of non-existent scope should return false");
 
@@ -888,11 +946,13 @@ mod tests {
             runner.run(&strategy, |(num_scopes, token_budget)| {
                 // Create trajectory
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 // Create multiple scopes
@@ -905,26 +965,28 @@ mod tests {
                         &format!("scope_{}", i),
                         None,
                         token_budget,
+                        tenant_id,
                     );
                     scope_ids.push(scope_id);
                 }
 
                 // List by trajectory
-                let list_result = scope_list_by_trajectory_heap(trajectory_id);
+                let list_result = scope_list_by_trajectory_heap(trajectory_id, tenant_id);
                 prop_assert!(list_result.is_ok(), "List should succeed");
                 
                 let scopes = list_result.unwrap();
                 prop_assert_eq!(scopes.len(), num_scopes, "Should return all scopes");
 
                 // Verify all scopes have correct trajectory_id
-                for scope in &scopes {
-                    prop_assert_eq!(scope.trajectory_id, trajectory_id);
+                for row in &scopes {
+                    prop_assert_eq!(row.scope.trajectory_id, trajectory_id);
+                    prop_assert_eq!(row.tenant_id, Some(tenant_id));
                 }
 
                 // Verify all created scope_ids are in the result
                 for scope_id in &scope_ids {
                     prop_assert!(
-                        scopes.iter().any(|s| s.scope_id == *scope_id),
+                        scopes.iter().any(|s| s.scope.scope_id == *scope_id),
                         "All created scopes should be in result"
                     );
                 }
@@ -944,7 +1006,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = scope_list_by_trajectory_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = scope_list_by_trajectory_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "List should not error");
                 prop_assert!(result.unwrap().is_empty(), "List for non-existent trajectory should be empty");
 

@@ -27,6 +27,18 @@ use crate::tuple_extract::{
     timestamp_to_chrono, json_to_datum, option_uuid_to_datum,
 };
 
+/// Conflict row with tenant ownership metadata.
+pub struct ConflictRow {
+    pub conflict: Conflict,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<ConflictRow> for Conflict {
+    fn from(row: ConflictRow) -> Self {
+        row.conflict
+    }
+}
+
 /// Create a new conflict by inserting a conflict record using direct heap operations.
 pub struct ConflictCreateParams<'a> {
     pub conflict_id: EntityId,
@@ -38,6 +50,7 @@ pub struct ConflictCreateParams<'a> {
     pub agent_a_id: Option<EntityId>,
     pub agent_b_id: Option<EntityId>,
     pub trajectory_id: Option<EntityId>,
+    pub tenant_id: EntityId,
 }
 
 pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<EntityId> {
@@ -51,6 +64,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<E
         agent_a_id,
         agent_b_id,
         trajectory_id,
+        tenant_id,
     } = params;
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_conflict_relation(&rel)?;
@@ -111,6 +125,8 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<E
     // Set timestamps
     values[conflict::DETECTED_AT as usize - 1] = now_datum;
     nulls[conflict::RESOLVED_AT as usize - 1] = true;
+
+    values[conflict::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -120,7 +136,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<E
 }
 
 /// Get a conflict by ID using direct heap operations.
-pub fn conflict_get_heap(conflict_id: EntityId) -> CaliberResult<Option<Conflict>> {
+pub fn conflict_get_heap(conflict_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<ConflictRow>> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -138,8 +154,12 @@ pub fn conflict_get_heap(conflict_id: EntityId) -> CaliberResult<Option<Conflict
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
-        Ok(Some(conflict))
+        let row = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
@@ -149,6 +169,7 @@ pub fn conflict_get_heap(conflict_id: EntityId) -> CaliberResult<Option<Conflict
 pub fn conflict_resolve_heap(
     conflict_id: EntityId,
     resolution: &ConflictResolutionRecord,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
@@ -167,6 +188,10 @@ pub fn conflict_resolve_heap(
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
+        let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, conflict::TENANT_ID)? };
+        if existing_tenant != Some(tenant_id) {
+            return Ok(false);
+        }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status to "resolved"
@@ -209,7 +234,7 @@ pub fn conflict_resolve_heap(
 }
 
 /// List pending conflicts (detected or resolving) using direct heap operations.
-pub fn conflict_list_pending_heap() -> CaliberResult<Vec<Conflict>> {
+pub fn conflict_list_pending_heap(tenant_id: EntityId) -> CaliberResult<Vec<ConflictRow>> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::STATUS_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -230,8 +255,10 @@ pub fn conflict_list_pending_heap() -> CaliberResult<Vec<Conflict>> {
     let mut scanner_detected = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_detected) };
     
     for tuple in &mut scanner_detected {
-        let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
-        results.push(conflict);
+        let row = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
     
     // Scan for "resolving" status
@@ -248,7 +275,9 @@ pub fn conflict_list_pending_heap() -> CaliberResult<Vec<Conflict>> {
     
     for tuple in &mut scanner_resolving {
         let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
-        results.push(conflict);
+        if conflict.tenant_id == Some(tenant_id) {
+            results.push(conflict);
+        }
     }
     
     Ok(results)
@@ -293,7 +322,7 @@ fn build_optional_conflict_agents(
 unsafe fn tuple_to_conflict(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Conflict> {
+) -> CaliberResult<ConflictRow> {
     let conflict_id = extract_uuid(tuple, tuple_desc, conflict::CONFLICT_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "conflict_id is NULL".to_string(),
@@ -365,21 +394,26 @@ unsafe fn tuple_to_conflict(
     
     let resolved_at = extract_timestamp(tuple, tuple_desc, conflict::RESOLVED_AT)?
         .map(timestamp_to_chrono);
+
+    let tenant_id = extract_uuid(tuple, tuple_desc, conflict::TENANT_ID)?;
     
-    Ok(Conflict {
-        conflict_id,
-        conflict_type,
-        item_a_type,
-        item_a_id,
-        item_b_type,
-        item_b_id,
-        agent_a_id,
-        agent_b_id,
-        trajectory_id,
-        status,
-        resolution,
-        detected_at,
-        resolved_at,
+    Ok(ConflictRow {
+        conflict: Conflict {
+            conflict_id,
+            conflict_type,
+            item_a_type,
+            item_a_id,
+            item_b_type,
+            item_b_id,
+            agent_a_id,
+            agent_b_id,
+            trajectory_id,
+            status,
+            resolution,
+            detected_at,
+            resolved_at,
+        },
+        tenant_id,
     })
 }
 
@@ -529,7 +563,7 @@ mod tests {
                 prop_assert_eq!(result.unwrap(), conflict_id);
 
                 // Get via heap
-                let get_result = conflict_get_heap(conflict_id);
+                let get_result = conflict_get_heap(conflict_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result.err());
                 
                 let conflict = get_result.unwrap();
@@ -574,7 +608,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = conflict_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = conflict_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent conflict should return None");
 
@@ -636,7 +671,7 @@ mod tests {
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial status is Detected
-                let get_before = conflict_get_heap(conflict_id);
+                let get_before = conflict_get_heap(conflict_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before resolve should succeed");
                 let conflict_before = get_before.unwrap().unwrap();
                 prop_assert_eq!(conflict_before.status, ConflictStatus::Detected);
@@ -644,12 +679,12 @@ mod tests {
                 prop_assert!(conflict_before.resolution.is_none(), "resolution should be None before resolve");
 
                 // Resolve the conflict
-                let resolve_result = conflict_resolve_heap(conflict_id, &resolution);
+                let resolve_result = conflict_resolve_heap(conflict_id, &resolution, tenant_id);
                 prop_assert!(resolve_result.is_ok(), "Resolve should succeed: {:?}", resolve_result.err());
                 prop_assert!(resolve_result.unwrap(), "Resolve should return true for existing conflict");
 
                 // Verify status, resolution, and resolved_at were updated
-                let get_after = conflict_get_heap(conflict_id);
+                let get_after = conflict_get_heap(conflict_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after resolve should succeed");
                 let conflict_after = get_after.unwrap().unwrap();
                 prop_assert_eq!(conflict_after.status, ConflictStatus::Resolved, "Status should be Resolved");
@@ -686,7 +721,8 @@ mod tests {
             runner.run(&strategy, |(bytes, resolution)| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = conflict_resolve_heap(random_id, &resolution);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = conflict_resolve_heap(random_id, &resolution, tenant_id);
                 prop_assert!(result.is_ok(), "Resolve should not error: {:?}", result.err());
                 prop_assert!(!result.unwrap(), "Resolve of non-existent conflict should return false");
 
@@ -746,7 +782,7 @@ mod tests {
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via list_pending
-                let list_result = conflict_list_pending_heap();
+                let list_result = conflict_list_pending_heap(tenant_id);
                 prop_assert!(list_result.is_ok(), "List pending should succeed: {:?}", list_result.err());
                 
                 let conflicts = list_result.unwrap();
@@ -822,7 +858,7 @@ mod tests {
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify it appears in pending list
-                let list_before = conflict_list_pending_heap();
+                let list_before = conflict_list_pending_heap(tenant_id);
                 prop_assert!(list_before.is_ok(), "List pending before resolve should succeed");
                 prop_assert!(
                     list_before.unwrap().iter().any(|c| c.conflict_id == conflict_id),
@@ -830,11 +866,11 @@ mod tests {
                 );
 
                 // Resolve the conflict
-                let resolve_result = conflict_resolve_heap(conflict_id, &resolution);
+                let resolve_result = conflict_resolve_heap(conflict_id, &resolution, tenant_id);
                 prop_assert!(resolve_result.is_ok(), "Resolve should succeed");
 
                 // Verify it no longer appears in pending list
-                let list_after = conflict_list_pending_heap();
+                let list_after = conflict_list_pending_heap(tenant_id);
                 prop_assert!(list_after.is_ok(), "List pending after resolve should succeed");
                 prop_assert!(
                     !list_after.unwrap().iter().any(|c| c.conflict_id == conflict_id),

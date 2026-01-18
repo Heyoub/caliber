@@ -28,6 +28,18 @@ use crate::tuple_extract::{
     text_array_to_datum, option_uuid_to_datum,
 };
 
+/// Agent row with tenant ownership metadata.
+pub struct AgentRow {
+    pub agent: Agent,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<AgentRow> for Agent {
+    fn from(row: AgentRow) -> Self {
+        row.agent
+    }
+}
+
 /// Register a new agent by inserting an agent record using direct heap operations.
 pub fn agent_register_heap(
     agent_id: EntityId,
@@ -36,6 +48,7 @@ pub fn agent_register_heap(
     memory_access: &MemoryAccess,
     can_delegate_to: &[String],
     reports_to: Option<EntityId>,
+    tenant_id: EntityId,
 ) -> CaliberResult<EntityId> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_agent_relation(&rel)?;
@@ -95,6 +108,9 @@ pub fn agent_register_heap(
     // Set timestamps
     values[agent::CREATED_AT as usize - 1] = now_datum;
     values[agent::LAST_HEARTBEAT as usize - 1] = now_datum;
+
+    // Set tenant_id
+    values[agent::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -104,7 +120,7 @@ pub fn agent_register_heap(
 }
 
 /// Get an agent by ID using direct heap operations.
-pub fn agent_get_heap(agent_id: EntityId) -> CaliberResult<Option<Agent>> {
+pub fn agent_get_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<AgentRow>> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(agent::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -122,15 +138,19 @@ pub fn agent_get_heap(agent_id: EntityId) -> CaliberResult<Option<Agent>> {
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let agent = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
-        Ok(Some(agent))
+        let row = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
 }
 
 /// Update agent heartbeat timestamp using direct heap operations.
-pub fn agent_heartbeat_heap(agent_id: EntityId) -> CaliberResult<bool> {
+pub fn agent_heartbeat_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(agent::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -148,6 +168,10 @@ pub fn agent_heartbeat_heap(agent_id: EntityId) -> CaliberResult<bool> {
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
+        let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, agent::TENANT_ID)? };
+        if existing_tenant != Some(tenant_id) {
+            return Ok(false);
+        }
         let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update last_heartbeat to current timestamp
@@ -175,7 +199,11 @@ pub fn agent_heartbeat_heap(agent_id: EntityId) -> CaliberResult<bool> {
 }
 
 /// Update agent status using direct heap operations.
-pub fn agent_set_status_heap(agent_id: EntityId, status: AgentStatus) -> CaliberResult<bool> {
+pub fn agent_set_status_heap(
+    agent_id: EntityId,
+    status: AgentStatus,
+    tenant_id: EntityId,
+) -> CaliberResult<bool> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(agent::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -193,6 +221,10 @@ pub fn agent_set_status_heap(agent_id: EntityId, status: AgentStatus) -> Caliber
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
+        let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, agent::TENANT_ID)? };
+        if existing_tenant != Some(tenant_id) {
+            return Ok(false);
+        }
         let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status field
@@ -218,7 +250,7 @@ pub fn agent_set_status_heap(agent_id: EntityId, status: AgentStatus) -> Caliber
 }
 
 /// List agents by type using direct heap operations.
-pub fn agent_list_by_type_heap(agent_type: &str) -> CaliberResult<Vec<Agent>> {
+pub fn agent_list_by_type_heap(agent_type: &str, tenant_id: EntityId) -> CaliberResult<Vec<AgentRow>> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(agent::TYPE_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -238,8 +270,10 @@ pub fn agent_list_by_type_heap(agent_type: &str) -> CaliberResult<Vec<Agent>> {
     let mut results = Vec::new();
     
     for tuple in &mut scanner {
-        let agent = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
-        results.push(agent);
+        let row = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
     
     Ok(results)
@@ -271,7 +305,7 @@ fn build_optional_agent_uuid(reports_to: Option<EntityId>) -> (pg_sys::Datum, bo
 unsafe fn tuple_to_agent(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Agent> {
+) -> CaliberResult<AgentRow> {
     let agent_id = extract_uuid(tuple, tuple_desc, agent::AGENT_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "agent_id is NULL".to_string(),
@@ -328,19 +362,24 @@ unsafe fn tuple_to_agent(
             reason: "last_heartbeat is NULL".to_string(),
         }))?;
     let last_heartbeat = timestamp_to_chrono(last_heartbeat_ts);
+
+    let tenant_id = extract_uuid(tuple, tuple_desc, agent::TENANT_ID)?;
     
-    Ok(Agent {
-        agent_id,
-        agent_type,
-        capabilities,
-        memory_access,
-        status,
-        current_trajectory_id,
-        current_scope_id,
-        can_delegate_to,
-        reports_to,
-        created_at,
-        last_heartbeat,
+    Ok(AgentRow {
+        agent: Agent {
+            agent_id,
+            agent_type,
+            capabilities,
+            memory_access,
+            status,
+            current_trajectory_id,
+            current_scope_id,
+            can_delegate_to,
+            reports_to,
+            created_at,
+            last_heartbeat,
+        },
+        tenant_id,
     })
 }
 
@@ -475,6 +514,8 @@ mod tests {
             )| {
                 // Generate a new agent ID
                 let agent_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let result = agent_register_heap(
@@ -484,18 +525,20 @@ mod tests {
                     &memory_access,
                     &can_delegate_to,
                     reports_to,
+                    tenant_id,
                 );
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), agent_id);
 
                 // Get via heap
-                let get_result = agent_get_heap(agent_id);
+                let get_result = agent_get_heap(agent_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result.err());
                 
                 let agent = get_result.unwrap();
                 prop_assert!(agent.is_some(), "Agent should be found");
                 
-                let a = agent.unwrap();
+                let row = agent.unwrap();
+                let a = row.agent;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(a.agent_id, agent_id);
@@ -510,6 +553,7 @@ mod tests {
                 prop_assert!(a.last_heartbeat <= chrono::Utc::now());
                 prop_assert!(a.current_trajectory_id.is_none(), "current_trajectory_id should be None initially");
                 prop_assert!(a.current_scope_id.is_none(), "current_scope_id should be None initially");
+                prop_assert_eq!(row.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -531,7 +575,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = agent_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = agent_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent agent should return None");
 
@@ -571,6 +616,7 @@ mod tests {
             )| {
                 // Generate a new agent ID
                 let agent_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = agent_register_heap(
@@ -580,33 +626,36 @@ mod tests {
                     &memory_access,
                     &can_delegate_to,
                     reports_to,
+                    tenant_id,
                 );
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Get initial heartbeat
-                let get_before = agent_get_heap(agent_id);
+                let get_before = agent_get_heap(agent_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before heartbeat should succeed");
                 let agent_before = get_before.unwrap().unwrap();
-                let heartbeat_before = agent_before.last_heartbeat;
+                let heartbeat_before = agent_before.agent.last_heartbeat;
+                prop_assert_eq!(agent_before.tenant_id, Some(tenant_id));
 
                 // Small delay to ensure timestamp difference
                 thread::sleep(Duration::from_millis(10));
 
                 // Update heartbeat
-                let heartbeat_result = agent_heartbeat_heap(agent_id);
+                let heartbeat_result = agent_heartbeat_heap(agent_id, tenant_id);
                 prop_assert!(heartbeat_result.is_ok(), "Heartbeat should succeed: {:?}", heartbeat_result.err());
                 prop_assert!(heartbeat_result.unwrap(), "Heartbeat should return true for existing agent");
 
                 // Verify heartbeat was updated
-                let get_after = agent_get_heap(agent_id);
+                let get_after = agent_get_heap(agent_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after heartbeat should succeed");
                 let agent_after = get_after.unwrap().unwrap();
                 prop_assert!(
-                    agent_after.last_heartbeat >= heartbeat_before,
+                    agent_after.agent.last_heartbeat >= heartbeat_before,
                     "last_heartbeat should be updated (before: {:?}, after: {:?})",
                     heartbeat_before,
-                    agent_after.last_heartbeat
+                    agent_after.agent.last_heartbeat
                 );
+                prop_assert_eq!(agent_after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -644,6 +693,7 @@ mod tests {
             )| {
                 // Generate a new agent ID
                 let agent_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = agent_register_heap(
@@ -653,25 +703,28 @@ mod tests {
                     &memory_access,
                     &can_delegate_to,
                     reports_to,
+                    tenant_id,
                 );
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial status is Idle
-                let get_before = agent_get_heap(agent_id);
+                let get_before = agent_get_heap(agent_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before status update should succeed");
                 let agent_before = get_before.unwrap().unwrap();
-                prop_assert_eq!(agent_before.status, AgentStatus::Idle, "Initial status should be Idle");
+                prop_assert_eq!(agent_before.agent.status, AgentStatus::Idle, "Initial status should be Idle");
+                prop_assert_eq!(agent_before.tenant_id, Some(tenant_id));
 
                 // Update status
-                let status_result = agent_set_status_heap(agent_id, new_status);
+                let status_result = agent_set_status_heap(agent_id, new_status, tenant_id);
                 prop_assert!(status_result.is_ok(), "Set status should succeed: {:?}", status_result.err());
                 prop_assert!(status_result.unwrap(), "Set status should return true for existing agent");
 
                 // Verify status was updated
-                let get_after = agent_get_heap(agent_id);
+                let get_after = agent_get_heap(agent_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after status update should succeed");
                 let agent_after = get_after.unwrap().unwrap();
-                prop_assert_eq!(agent_after.status, new_status, "Status should be updated");
+                prop_assert_eq!(agent_after.agent.status, new_status, "Status should be updated");
+                prop_assert_eq!(agent_after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -696,12 +749,14 @@ mod tests {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
                 // Try heartbeat
-                let heartbeat_result = agent_heartbeat_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let heartbeat_result = agent_heartbeat_heap(random_id, tenant_id);
                 prop_assert!(heartbeat_result.is_ok(), "Heartbeat should not error");
                 prop_assert!(!heartbeat_result.unwrap(), "Heartbeat of non-existent agent should return false");
 
                 // Try set status
-                let status_result = agent_set_status_heap(random_id, status);
+                let tenant_id = caliber_core::new_entity_id();
+                let status_result = agent_set_status_heap(random_id, status, tenant_id);
                 prop_assert!(status_result.is_ok(), "Set status should not error");
                 prop_assert!(!status_result.unwrap(), "Set status of non-existent agent should return false");
 
@@ -748,25 +803,27 @@ mod tests {
                     &memory_access,
                     &can_delegate_to,
                     reports_to,
+                    tenant_id,
                 );
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via type index
-                let list_result = agent_list_by_type_heap(&agent_type);
+                let list_result = agent_list_by_type_heap(&agent_type, tenant_id);
                 prop_assert!(list_result.is_ok(), "List by type should succeed: {:?}", list_result.err());
                 
                 let agents = list_result.unwrap();
                 prop_assert!(
-                    agents.iter().any(|a| a.agent_id == agent_id),
+                    agents.iter().any(|a| a.agent.agent_id == agent_id),
                     "Inserted agent should be found via type index"
                 );
 
                 // Verify the found agent has correct data
-                let found_agent = agents.iter().find(|a| a.agent_id == agent_id).unwrap();
-                prop_assert_eq!(found_agent.agent_type, agent_type);
-                prop_assert_eq!(found_agent.capabilities, capabilities);
-                prop_assert_eq!(found_agent.can_delegate_to, can_delegate_to);
-                prop_assert_eq!(found_agent.reports_to, reports_to);
+                let found_agent = agents.iter().find(|a| a.agent.agent_id == agent_id).unwrap();
+                prop_assert_eq!(found_agent.agent.agent_type, agent_type);
+                prop_assert_eq!(found_agent.agent.capabilities, capabilities);
+                prop_assert_eq!(found_agent.agent.can_delegate_to, can_delegate_to);
+                prop_assert_eq!(found_agent.agent.reports_to, reports_to);
+                prop_assert_eq!(found_agent.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();

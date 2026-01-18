@@ -175,18 +175,22 @@ impl DbClient {
         let trajectory_id: Uuid = row.get(0);
 
         // Get the full trajectory details
-        self.trajectory_get(trajectory_id).await?
+        self.trajectory_get(trajectory_id, tenant_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created trajectory"))
     }
 
     /// Get a trajectory by ID by calling caliber_trajectory_get.
-    pub async fn trajectory_get(&self, id: EntityId) -> ApiResult<Option<TrajectoryResponse>> {
+    pub async fn trajectory_get(
+        &self,
+        id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Option<TrajectoryResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
-                "SELECT caliber_trajectory_get($1)",
-                &[&id],
+                "SELECT caliber_trajectory_get($1, $2)",
+                &[&id, &tenant_id],
             )
             .await?;
 
@@ -206,6 +210,7 @@ impl DbClient {
         &self,
         id: EntityId,
         req: &UpdateTrajectoryRequest,
+        tenant_id: EntityId,
     ) -> ApiResult<TrajectoryResponse> {
         let conn = self.get_conn().await?;
 
@@ -234,8 +239,8 @@ impl DbClient {
 
         let updated: bool = conn
             .query_one(
-                "SELECT caliber_trajectory_update($1, $2)",
-                &[&id, &updates_json],
+                "SELECT caliber_trajectory_update($1, $2, $3)",
+                &[&id, &updates_json, &tenant_id],
             )
             .await?
             .get(0);
@@ -244,7 +249,7 @@ impl DbClient {
             return Err(ApiError::trajectory_not_found(id));
         }
 
-        self.trajectory_get(id).await?
+        self.trajectory_get(id, tenant_id).await?
             .ok_or_else(|| ApiError::trajectory_not_found(id))
     }
 
@@ -252,6 +257,7 @@ impl DbClient {
     pub async fn trajectory_list_by_status(
         &self,
         status: caliber_core::TrajectoryStatus,
+        tenant_id: EntityId,
     ) -> ApiResult<Vec<TrajectoryResponse>> {
         let conn = self.get_conn().await?;
 
@@ -264,8 +270,8 @@ impl DbClient {
 
         let row = conn
             .query_one(
-                "SELECT caliber_trajectory_list_by_status($1)",
-                &[&status_str],
+                "SELECT caliber_trajectory_list_by_status($1, $2)",
+                &[&status_str, &tenant_id],
             )
             .await?;
 
@@ -387,16 +393,20 @@ impl DbClient {
 
         let scope_id: Uuid = row.get(0);
 
-        self.scope_get(scope_id).await?
+        self.scope_get(scope_id, tenant_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created scope"))
     }
 
     /// Get a scope by ID by calling caliber_scope_get.
-    pub async fn scope_get(&self, id: EntityId) -> ApiResult<Option<ScopeResponse>> {
+    pub async fn scope_get(
+        &self,
+        id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Option<ScopeResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_scope_get($1)", &[&id])
+            .query_one("SELECT caliber_scope_get($1, $2)", &[&id, &tenant_id])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -415,6 +425,7 @@ impl DbClient {
         &self,
         id: EntityId,
         req: &UpdateScopeRequest,
+        tenant_id: EntityId,
     ) -> ApiResult<ScopeResponse> {
         let conn = self.get_conn().await?;
 
@@ -436,8 +447,8 @@ impl DbClient {
 
         let updated: bool = conn
             .query_one(
-                "SELECT caliber_scope_update($1, $2)",
-                &[&id, &updates_json],
+                "SELECT caliber_scope_update($1, $2, $3)",
+                &[&id, &updates_json, &tenant_id],
             )
             .await?
             .get(0);
@@ -446,16 +457,16 @@ impl DbClient {
             return Err(ApiError::scope_not_found(id));
         }
 
-        self.scope_get(id).await?
+        self.scope_get(id, tenant_id).await?
             .ok_or_else(|| ApiError::scope_not_found(id))
     }
 
     /// Close a scope by calling caliber_scope_close.
-    pub async fn scope_close(&self, id: EntityId) -> ApiResult<ScopeResponse> {
+    pub async fn scope_close(&self, id: EntityId, tenant_id: EntityId) -> ApiResult<ScopeResponse> {
         let conn = self.get_conn().await?;
 
         let closed: bool = conn
-            .query_one("SELECT caliber_scope_close($1)", &[&id])
+            .query_one("SELECT caliber_scope_close($1, $2)", &[&id, &tenant_id])
             .await?
             .get(0);
 
@@ -463,7 +474,7 @@ impl DbClient {
             return Err(ApiError::scope_not_found(id));
         }
 
-        self.scope_get(id).await?
+        self.scope_get(id, tenant_id).await?
             .ok_or_else(|| ApiError::scope_not_found(id))
     }
 
@@ -472,6 +483,7 @@ impl DbClient {
         &self,
         id: EntityId,
         req: &CreateCheckpointRequest,
+        tenant_id: EntityId,
     ) -> ApiResult<CheckpointResponse> {
         let conn = self.get_conn().await?;
 
@@ -483,8 +495,8 @@ impl DbClient {
 
         let updated: bool = conn
             .query_one(
-                "SELECT caliber_scope_update($1, $2)",
-                &[&id, &serde_json::json!({ "checkpoint": checkpoint_json })],
+                "SELECT caliber_scope_update($1, $2, $3)",
+                &[&id, &serde_json::json!({ "checkpoint": checkpoint_json }), &tenant_id],
             )
             .await?
             .get(0);
@@ -557,16 +569,20 @@ impl DbClient {
 
         let artifact_id: Uuid = row.get(0);
 
-        self.artifact_get(artifact_id).await?
+        self.artifact_get(artifact_id, tenant_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created artifact"))
     }
 
     /// Get an artifact by ID by calling caliber_artifact_get.
-    pub async fn artifact_get(&self, id: EntityId) -> ApiResult<Option<ArtifactResponse>> {
+    pub async fn artifact_get(
+        &self,
+        id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Option<ArtifactResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_artifact_get($1)", &[&id])
+            .query_one("SELECT caliber_artifact_get($1, $2)", &[&id, &tenant_id])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -581,13 +597,17 @@ impl DbClient {
     }
 
     /// Query artifacts by scope by calling caliber_artifact_query_by_scope.
-    pub async fn artifact_list_by_scope(&self, scope_id: EntityId) -> ApiResult<Vec<ArtifactResponse>> {
+    pub async fn artifact_list_by_scope(
+        &self,
+        scope_id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Vec<ArtifactResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
-                "SELECT caliber_artifact_query_by_scope($1)",
-                &[&scope_id],
+                "SELECT caliber_artifact_query_by_scope($1, $2)",
+                &[&scope_id, &tenant_id],
             )
             .await?;
 
@@ -604,13 +624,17 @@ impl DbClient {
     }
 
     /// Query artifacts by trajectory by calling caliber_artifact_query_by_trajectory.
-    pub async fn artifact_list_by_trajectory(&self, trajectory_id: EntityId) -> ApiResult<Vec<ArtifactResponse>> {
+    pub async fn artifact_list_by_trajectory(
+        &self,
+        trajectory_id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Vec<ArtifactResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
-                "SELECT caliber_artifact_query_by_trajectory($1)",
-                &[&trajectory_id],
+                "SELECT caliber_artifact_query_by_trajectory($1, $2)",
+                &[&trajectory_id, &tenant_id],
             )
             .await?;
 
@@ -734,16 +758,20 @@ impl DbClient {
 
         let note_id: Uuid = row.get(0);
 
-        self.note_get(note_id).await?
+        self.note_get(note_id, tenant_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created note"))
     }
 
     /// Get a note by ID by calling caliber_note_get.
-    pub async fn note_get(&self, id: EntityId) -> ApiResult<Option<NoteResponse>> {
+    pub async fn note_get(
+        &self,
+        id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Option<NoteResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_note_get($1)", &[&id])
+            .query_one("SELECT caliber_note_get($1, $2)", &[&id, &tenant_id])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -758,13 +786,17 @@ impl DbClient {
     }
 
     /// Query notes by trajectory by calling caliber_note_query_by_trajectory.
-    pub async fn note_list_by_trajectory(&self, trajectory_id: EntityId) -> ApiResult<Vec<NoteResponse>> {
+    pub async fn note_list_by_trajectory(
+        &self,
+        trajectory_id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Vec<NoteResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
-                "SELECT caliber_note_query_by_trajectory($1)",
-                &[&trajectory_id],
+                "SELECT caliber_note_query_by_trajectory($1, $2)",
+                &[&trajectory_id, &tenant_id],
             )
             .await?;
 
@@ -955,13 +987,17 @@ impl DbClient {
     }
 
     /// Get turns by scope by calling caliber_turn_get_by_scope.
-    pub async fn turn_list_by_scope(&self, scope_id: EntityId) -> ApiResult<Vec<TurnResponse>> {
+    pub async fn turn_list_by_scope(
+        &self,
+        scope_id: EntityId,
+        tenant_id: EntityId,
+    ) -> ApiResult<Vec<TurnResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
-                "SELECT caliber_turn_get_by_scope($1)",
-                &[&scope_id],
+                "SELECT caliber_turn_get_by_scope($1, $2)",
+                &[&scope_id, &tenant_id],
             )
             .await?;
 
@@ -2268,7 +2304,7 @@ impl DbClient {
             return Err(ApiError::artifact_not_found(id));
         }
 
-        self.artifact_get(id).await?
+        self.artifact_get(id, tenant_id).await?
             .ok_or_else(|| ApiError::artifact_not_found(id))
     }
 
@@ -2324,7 +2360,7 @@ impl DbClient {
             return Err(ApiError::note_not_found(id));
         }
 
-        self.note_get(id).await?
+        self.note_get(id, tenant_id).await?
             .ok_or_else(|| ApiError::note_not_found(id))
     }
 

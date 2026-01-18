@@ -41,7 +41,8 @@
 ///     updated_at TIMESTAMPTZ NOT NULL,          -- 9
 ///     completed_at TIMESTAMPTZ,                 -- 10
 ///     outcome JSONB,                            -- 11
-///     metadata JSONB                            -- 12
+///     metadata JSONB,                           -- 12
+///     tenant_id UUID                            -- 13
 /// );
 /// ```
 pub mod trajectory {
@@ -69,9 +70,11 @@ pub mod trajectory {
     pub const OUTCOME: i16 = 11;
     /// metadata JSONB
     pub const METADATA: i16 = 12;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 13;
 
     /// Total number of columns in the trajectory table
-    pub const NUM_COLS: usize = 12;
+    pub const NUM_COLS: usize = 13;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_trajectory";
@@ -102,7 +105,8 @@ pub mod trajectory {
 ///     checkpoint JSONB,                         -- 9
 ///     token_budget INTEGER NOT NULL,            -- 10
 ///     tokens_used INTEGER NOT NULL,             -- 11
-///     metadata JSONB                            -- 12
+///     metadata JSONB,                           -- 12
+///     tenant_id UUID                            -- 13
 /// );
 /// ```
 pub mod scope {
@@ -130,9 +134,11 @@ pub mod scope {
     pub const TOKENS_USED: i16 = 11;
     /// metadata JSONB
     pub const METADATA: i16 = 12;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 13;
 
     /// Total number of columns in the scope table
-    pub const NUM_COLS: usize = 12;
+    pub const NUM_COLS: usize = 13;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_scope";
@@ -164,7 +170,8 @@ pub mod scope {
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 11
 ///     updated_at TIMESTAMPTZ NOT NULL,          -- 12
 ///     superseded_by UUID,                       -- 13
-///     metadata JSONB                            -- 14
+///     metadata JSONB,                           -- 14
+///     tenant_id UUID                            -- 15
 /// );
 /// ```
 pub mod artifact {
@@ -196,9 +203,11 @@ pub mod artifact {
     pub const SUPERSEDED_BY: i16 = 13;
     /// metadata JSONB
     pub const METADATA: i16 = 14;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 15;
 
     /// Total number of columns in the artifact table
-    pub const NUM_COLS: usize = 14;
+    pub const NUM_COLS: usize = 15;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_artifact";
@@ -238,7 +247,8 @@ pub mod artifact {
 ///     superseded_by UUID,                       -- 14
 ///     metadata JSONB,                           -- 15
 ///     abstraction_level TEXT NOT NULL,          -- 16 (Battle Intel Feature 2)
-///     source_note_ids UUID[]                    -- 17 (Battle Intel Feature 2)
+///     source_note_ids UUID[],                   -- 17 (Battle Intel Feature 2)
+///     tenant_id UUID                            -- 18
 /// );
 /// ```
 pub mod note {
@@ -276,9 +286,11 @@ pub mod note {
     pub const ABSTRACTION_LEVEL: i16 = 16;
     /// source_note_ids UUID[] (Battle Intel Feature 2: derivation chain)
     pub const SOURCE_NOTE_IDS: i16 = 17;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 18;
 
     /// Total number of columns in the note table
-    pub const NUM_COLS: usize = 17;
+    pub const NUM_COLS: usize = 18;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_note";
@@ -312,7 +324,8 @@ pub mod note {
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 7
 ///     tool_calls JSONB,                         -- 8
 ///     tool_results JSONB,                       -- 9
-///     metadata JSONB                            -- 10
+///     metadata JSONB,                           -- 10
+///     tenant_id UUID                            -- 11
 /// );
 /// ```
 pub mod turn {
@@ -336,9 +349,11 @@ pub mod turn {
     pub const TOOL_RESULTS: i16 = 9;
     /// metadata JSONB
     pub const METADATA: i16 = 10;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 11;
 
     /// Total number of columns in the turn table
-    pub const NUM_COLS: usize = 10;
+    pub const NUM_COLS: usize = 11;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_turn";
@@ -370,7 +385,8 @@ pub mod turn {
 ///     can_delegate_to TEXT[],                   -- 8
 ///     reports_to UUID,                          -- 9
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 10
-///     last_heartbeat TIMESTAMPTZ NOT NULL       -- 11
+///     last_heartbeat TIMESTAMPTZ NOT NULL,      -- 11
+///     tenant_id UUID                            -- 12
 /// );
 /// ```
 pub mod agent {
@@ -396,9 +412,11 @@ pub mod agent {
     pub const CREATED_AT: i16 = 10;
     /// last_heartbeat TIMESTAMPTZ NOT NULL
     pub const LAST_HEARTBEAT: i16 = 11;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 12;
 
     /// Total number of columns in the agent table
-    pub const NUM_COLS: usize = 11;
+    pub const NUM_COLS: usize = 12;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_agent";
@@ -425,7 +443,8 @@ pub mod agent {
 ///     holder_agent_id UUID NOT NULL,            -- 4
 ///     acquired_at TIMESTAMPTZ NOT NULL,         -- 5
 ///     expires_at TIMESTAMPTZ NOT NULL,          -- 6
-///     mode TEXT NOT NULL                        -- 7
+///     mode TEXT NOT NULL,                       -- 7
+///     tenant_id UUID                            -- 8
 /// );
 /// ```
 pub mod lock {
@@ -443,9 +462,11 @@ pub mod lock {
     pub const EXPIRES_AT: i16 = 6;
     /// mode TEXT NOT NULL ('exclusive', 'shared')
     pub const MODE: i16 = 7;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 8;
 
     /// Total number of columns in the lock table
-    pub const NUM_COLS: usize = 7;
+    pub const NUM_COLS: usize = 8;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_lock";
@@ -480,7 +501,8 @@ pub mod lock {
 ///     delivered_at TIMESTAMPTZ,                 -- 11
 ///     acknowledged_at TIMESTAMPTZ,              -- 12
 ///     priority TEXT NOT NULL,                   -- 13
-///     expires_at TIMESTAMPTZ                    -- 14
+///     expires_at TIMESTAMPTZ,                   -- 14
+///     tenant_id UUID                            -- 15
 /// );
 /// ```
 pub mod message {
@@ -512,9 +534,11 @@ pub mod message {
     pub const PRIORITY: i16 = 13;
     /// expires_at TIMESTAMPTZ
     pub const EXPIRES_AT: i16 = 14;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 15;
 
     /// Total number of columns in the message table
-    pub const NUM_COLS: usize = 14;
+    pub const NUM_COLS: usize = 15;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_message";
@@ -551,7 +575,8 @@ pub mod message {
 ///     result JSONB,                             -- 14
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 15
 ///     accepted_at TIMESTAMPTZ,                  -- 16
-///     completed_at TIMESTAMPTZ                  -- 17
+///     completed_at TIMESTAMPTZ,                 -- 17
+///     tenant_id UUID                            -- 18
 /// );
 /// ```
 pub mod delegation {
@@ -589,9 +614,11 @@ pub mod delegation {
     pub const ACCEPTED_AT: i16 = 16;
     /// completed_at TIMESTAMPTZ
     pub const COMPLETED_AT: i16 = 17;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 18;
 
     /// Total number of columns in the delegation table
-    pub const NUM_COLS: usize = 17;
+    pub const NUM_COLS: usize = 18;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_delegation";
@@ -630,7 +657,8 @@ pub mod delegation {
 ///     initiated_at TIMESTAMPTZ NOT NULL,        -- 13
 ///     accepted_at TIMESTAMPTZ,                  -- 14
 ///     completed_at TIMESTAMPTZ,                 -- 15
-///     reason TEXT NOT NULL                      -- 16
+///     reason TEXT NOT NULL,                     -- 16
+///     tenant_id UUID                            -- 17
 /// );
 /// ```
 pub mod handoff {
@@ -666,9 +694,11 @@ pub mod handoff {
     pub const COMPLETED_AT: i16 = 15;
     /// reason TEXT NOT NULL
     pub const REASON: i16 = 16;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 17;
 
     /// Total number of columns in the handoff table
-    pub const NUM_COLS: usize = 16;
+    pub const NUM_COLS: usize = 17;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_handoff";
@@ -703,7 +733,8 @@ pub mod handoff {
 ///     status TEXT NOT NULL,                     -- 10
 ///     resolution JSONB,                         -- 11
 ///     detected_at TIMESTAMPTZ NOT NULL,         -- 12
-///     resolved_at TIMESTAMPTZ                   -- 13
+///     resolved_at TIMESTAMPTZ,                  -- 13
+///     tenant_id UUID                            -- 14
 /// );
 /// ```
 pub mod conflict {
@@ -733,9 +764,11 @@ pub mod conflict {
     pub const DETECTED_AT: i16 = 12;
     /// resolved_at TIMESTAMPTZ
     pub const RESOLVED_AT: i16 = 13;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 14;
 
     /// Total number of columns in the conflict table
-    pub const NUM_COLS: usize = 13;
+    pub const NUM_COLS: usize = 14;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_conflict";
@@ -766,7 +799,8 @@ pub mod conflict {
 ///     conflict_resolution TEXT NOT NULL,        -- 8
 ///     version_tracking BOOLEAN NOT NULL,        -- 9
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 10
-///     updated_at TIMESTAMPTZ NOT NULL           -- 11
+///     updated_at TIMESTAMPTZ NOT NULL,          -- 11
+///     tenant_id UUID                            -- 12
 /// );
 /// ```
 pub mod region {
@@ -792,9 +826,11 @@ pub mod region {
     pub const CREATED_AT: i16 = 10;
     /// updated_at TIMESTAMPTZ NOT NULL
     pub const UPDATED_AT: i16 = 11;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 12;
 
     /// Total number of columns in the region table
-    pub const NUM_COLS: usize = 11;
+    pub const NUM_COLS: usize = 12;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_region";
@@ -824,7 +860,8 @@ pub mod region {
 ///     extraction_method TEXT NOT NULL,          -- 7
 ///     confidence REAL,                          -- 8
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 9
-///     metadata JSONB                            -- 10
+///     metadata JSONB,                           -- 10
+///     tenant_id UUID                            -- 11
 /// );
 /// ```
 pub mod edge {
@@ -848,9 +885,11 @@ pub mod edge {
     pub const CREATED_AT: i16 = 9;
     /// metadata JSONB
     pub const METADATA: i16 = 10;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 11;
 
     /// Total number of columns in the edge table
-    pub const NUM_COLS: usize = 10;
+    pub const NUM_COLS: usize = 11;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_edge";
@@ -944,7 +983,8 @@ pub mod evolution_snapshot {
 ///     max_sources INTEGER NOT NULL,             -- 6
 ///     create_edges BOOLEAN NOT NULL,            -- 7
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 8
-///     metadata JSONB                            -- 9
+///     metadata JSONB,                           -- 9
+///     tenant_id UUID                            -- 10
 /// );
 /// ```
 pub mod summarization_policy {
@@ -966,9 +1006,11 @@ pub mod summarization_policy {
     pub const CREATED_AT: i16 = 8;
     /// metadata JSONB
     pub const METADATA: i16 = 9;
+    /// tenant_id UUID (FK)
+    pub const TENANT_ID: i16 = 10;
 
     /// Total number of columns in the summarization_policy table
-    pub const NUM_COLS: usize = 9;
+    pub const NUM_COLS: usize = 10;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_summarization_policy";
@@ -990,68 +1032,68 @@ mod tests {
 
     #[test]
     fn test_trajectory_column_count() {
-        assert_eq!(trajectory::NUM_COLS, 12);
+        assert_eq!(trajectory::NUM_COLS, 13);
     }
 
     #[test]
     fn test_scope_column_count() {
-        assert_eq!(scope::NUM_COLS, 12);
+        assert_eq!(scope::NUM_COLS, 13);
     }
 
     #[test]
     fn test_artifact_column_count() {
-        assert_eq!(artifact::NUM_COLS, 14);
+        assert_eq!(artifact::NUM_COLS, 15);
     }
 
     #[test]
     fn test_note_column_count() {
-        assert_eq!(note::NUM_COLS, 17); // Updated for Battle Intel Feature 2
+        assert_eq!(note::NUM_COLS, 18); // Updated for Battle Intel Feature 2
     }
 
     #[test]
     fn test_turn_column_count() {
-        assert_eq!(turn::NUM_COLS, 10);
+        assert_eq!(turn::NUM_COLS, 11);
     }
 
     #[test]
     fn test_agent_column_count() {
-        assert_eq!(agent::NUM_COLS, 11);
+        assert_eq!(agent::NUM_COLS, 12);
     }
 
     #[test]
     fn test_lock_column_count() {
-        assert_eq!(lock::NUM_COLS, 7);
+        assert_eq!(lock::NUM_COLS, 8);
     }
 
     #[test]
     fn test_message_column_count() {
-        assert_eq!(message::NUM_COLS, 14);
+        assert_eq!(message::NUM_COLS, 15);
     }
 
     #[test]
     fn test_delegation_column_count() {
-        assert_eq!(delegation::NUM_COLS, 17);
+        assert_eq!(delegation::NUM_COLS, 18);
     }
 
     #[test]
     fn test_handoff_column_count() {
-        assert_eq!(handoff::NUM_COLS, 16);
+        assert_eq!(handoff::NUM_COLS, 17);
     }
 
     #[test]
     fn test_conflict_column_count() {
-        assert_eq!(conflict::NUM_COLS, 13);
+        assert_eq!(conflict::NUM_COLS, 14);
     }
 
     #[test]
     fn test_region_column_count() {
-        assert_eq!(region::NUM_COLS, 11);
+        assert_eq!(region::NUM_COLS, 12);
     }
 
     // Battle Intel Feature 1: Graph Edges
     #[test]
     fn test_edge_column_count() {
-        assert_eq!(edge::NUM_COLS, 10);
+        assert_eq!(edge::NUM_COLS, 11);
     }
 
     // Battle Intel Feature 3: Evolution Snapshots
@@ -1063,6 +1105,6 @@ mod tests {
     // Battle Intel Feature 4: Summarization Policies
     #[test]
     fn test_summarization_policy_column_count() {
-        assert_eq!(summarization_policy::NUM_COLS, 9);
+        assert_eq!(summarization_policy::NUM_COLS, 10);
     }
 }

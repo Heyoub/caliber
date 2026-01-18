@@ -28,6 +28,18 @@ use crate::tuple_extract::{
     option_string_to_datum, option_datetime_to_datum,
 };
 
+/// Message row with tenant ownership metadata.
+pub struct MessageRow {
+    pub message: AgentMessage,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<MessageRow> for AgentMessage {
+    fn from(row: MessageRow) -> Self {
+        row.message
+    }
+}
+
 /// Send a message by inserting a message record using direct heap operations.
 pub struct MessageSendParams<'a> {
     pub message_id: EntityId,
@@ -41,6 +53,7 @@ pub struct MessageSendParams<'a> {
     pub artifact_ids: &'a [EntityId],
     pub priority: MessagePriority,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub tenant_id: EntityId,
 }
 
 pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityId> {
@@ -56,6 +69,7 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
         artifact_ids,
         priority,
         expires_at,
+        tenant_id,
     } = params;
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_message_relation(&rel)?;
@@ -135,6 +149,9 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
     // Set optional expires_at
     values[message::EXPIRES_AT as usize - 1] = expires_datum;
     nulls[message::EXPIRES_AT as usize - 1] = expires_null;
+
+    // Set tenant_id
+    values[message::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -144,7 +161,7 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
 }
 
 /// Get a message by ID using direct heap operations.
-pub fn message_get_heap(message_id: EntityId) -> CaliberResult<Option<AgentMessage>> {
+pub fn message_get_heap(message_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<MessageRow>> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(message::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -162,15 +179,22 @@ pub fn message_get_heap(message_id: EntityId) -> CaliberResult<Option<AgentMessa
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let message = unsafe { tuple_to_message(tuple, tuple_desc) }?;
-        Ok(Some(message))
+        let row = unsafe { tuple_to_message(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
 }
 
 /// List messages for a specific agent using direct heap operations.
-pub fn message_list_for_agent_heap(to_agent_id: EntityId) -> CaliberResult<Vec<AgentMessage>> {
+pub fn message_list_for_agent_heap(
+    to_agent_id: EntityId,
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<MessageRow>> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(message::TO_AGENT_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -190,15 +214,17 @@ pub fn message_list_for_agent_heap(to_agent_id: EntityId) -> CaliberResult<Vec<A
     let mut results = Vec::new();
     
     for tuple in &mut scanner {
-        let message = unsafe { tuple_to_message(tuple, tuple_desc) }?;
-        results.push(message);
+        let row = unsafe { tuple_to_message(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
     
     Ok(results)
 }
 
 /// Acknowledge a message by updating its acknowledged_at field using direct heap operations.
-pub fn message_acknowledge_heap(message_id: EntityId) -> CaliberResult<bool> {
+pub fn message_acknowledge_heap(message_id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(message::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -216,6 +242,10 @@ pub fn message_acknowledge_heap(message_id: EntityId) -> CaliberResult<bool> {
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
+        let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, message::TENANT_ID)? };
+        if existing_tenant != Some(tenant_id) {
+            return Ok(false);
+        }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update acknowledged_at to current timestamp
@@ -299,7 +329,7 @@ fn build_optional_message_datums(
 unsafe fn tuple_to_message(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<AgentMessage> {
+) -> CaliberResult<MessageRow> {
     let message_id = extract_uuid(tuple, tuple_desc, message::MESSAGE_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "message_id is NULL".to_string(),
@@ -372,22 +402,27 @@ unsafe fn tuple_to_message(
     
     let expires_at = extract_timestamp(tuple, tuple_desc, message::EXPIRES_AT)?
         .map(timestamp_to_chrono);
+
+    let tenant_id = extract_uuid(tuple, tuple_desc, message::TENANT_ID)?;
     
-    Ok(AgentMessage {
-        message_id,
-        from_agent_id,
-        to_agent_id,
-        to_agent_type,
-        message_type,
-        payload,
-        trajectory_id,
-        scope_id,
-        artifact_ids,
-        created_at,
-        delivered_at,
-        acknowledged_at,
-        priority,
-        expires_at,
+    Ok(MessageRow {
+        message: AgentMessage {
+            message_id,
+            from_agent_id,
+            to_agent_id,
+            to_agent_type,
+            message_type,
+            payload,
+            trajectory_id,
+            scope_id,
+            artifact_ids,
+            created_at,
+            delivered_at,
+            acknowledged_at,
+            priority,
+            expires_at,
+        },
+        tenant_id,
     })
 }
 
@@ -532,6 +567,8 @@ mod tests {
             )| {
                 // Generate a new message ID
                 let message_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let result = message_send_heap(MessageSendParams {
@@ -546,18 +583,20 @@ mod tests {
                     artifact_ids: &artifact_ids,
                     priority,
                     expires_at,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), message_id);
 
                 // Get via heap
-                let get_result = message_get_heap(message_id);
+                let get_result = message_get_heap(message_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result.err());
                 
                 let message = get_result.unwrap();
                 prop_assert!(message.is_some(), "Message should be found");
                 
-                let m = message.unwrap();
+                let row = message.unwrap();
+                let m = row.message;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(m.message_id, message_id);
@@ -575,6 +614,7 @@ mod tests {
                 prop_assert!(m.created_at <= chrono::Utc::now());
                 prop_assert!(m.delivered_at.is_none(), "delivered_at should be None initially");
                 prop_assert!(m.acknowledged_at.is_none(), "acknowledged_at should be None initially");
+                prop_assert_eq!(row.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -596,7 +636,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = message_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = message_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent message should return None");
 
@@ -660,26 +701,29 @@ mod tests {
                     artifact_ids: &artifact_ids,
                     priority,
                     expires_at,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify acknowledged_at is None initially
-                let get_before = message_get_heap(message_id);
+                let get_before = message_get_heap(message_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before acknowledge should succeed");
                 let msg_before = get_before.unwrap().unwrap();
-                prop_assert!(msg_before.acknowledged_at.is_none(), "acknowledged_at should be None before acknowledge");
+                prop_assert!(msg_before.message.acknowledged_at.is_none(), "acknowledged_at should be None before acknowledge");
+                prop_assert_eq!(msg_before.tenant_id, Some(tenant_id));
 
                 // Acknowledge the message
-                let ack_result = message_acknowledge_heap(message_id);
+                let ack_result = message_acknowledge_heap(message_id, tenant_id);
                 prop_assert!(ack_result.is_ok(), "Acknowledge should succeed: {:?}", ack_result.err());
                 prop_assert!(ack_result.unwrap(), "Acknowledge should return true for existing message");
 
                 // Verify acknowledged_at is now set
-                let get_after = message_get_heap(message_id);
+                let get_after = message_get_heap(message_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after acknowledge should succeed");
                 let msg_after = get_after.unwrap().unwrap();
-                prop_assert!(msg_after.acknowledged_at.is_some(), "acknowledged_at should be set after acknowledge");
-                prop_assert!(msg_after.acknowledged_at.unwrap() <= chrono::Utc::now(), "acknowledged_at should be <= now");
+                prop_assert!(msg_after.message.acknowledged_at.is_some(), "acknowledged_at should be set after acknowledge");
+                prop_assert!(msg_after.message.acknowledged_at.unwrap() <= chrono::Utc::now(), "acknowledged_at should be <= now");
+                prop_assert_eq!(msg_after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -727,6 +771,7 @@ mod tests {
             )| {
                 // Generate a new message ID
                 let message_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap with to_agent_id
                 let insert_result = message_send_heap(MessageSendParams {
@@ -741,25 +786,27 @@ mod tests {
                     artifact_ids: &artifact_ids,
                     priority,
                     expires_at,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via to_agent index
-                let list_result = message_list_for_agent_heap(to_agent_id);
+                let list_result = message_list_for_agent_heap(to_agent_id, tenant_id);
                 prop_assert!(list_result.is_ok(), "List for agent should succeed: {:?}", list_result.err());
                 
                 let messages = list_result.unwrap();
                 prop_assert!(
-                    messages.iter().any(|m| m.message_id == message_id),
+                    messages.iter().any(|m| m.message.message_id == message_id),
                     "Inserted message should be found via to_agent index"
                 );
 
                 // Verify the found message has correct data
-                let found_message = messages.iter().find(|m| m.message_id == message_id).unwrap();
-                prop_assert_eq!(found_message.from_agent_id, from_agent_id);
-                prop_assert_eq!(found_message.to_agent_id, Some(to_agent_id));
-                prop_assert_eq!(found_message.message_type, message_type);
-                prop_assert_eq!(found_message.priority, priority);
+                let found_message = messages.iter().find(|m| m.message.message_id == message_id).unwrap();
+                prop_assert_eq!(found_message.message.from_agent_id, from_agent_id);
+                prop_assert_eq!(found_message.message.to_agent_id, Some(to_agent_id));
+                prop_assert_eq!(found_message.message.message_type, message_type);
+                prop_assert_eq!(found_message.message.priority, priority);
+                prop_assert_eq!(found_message.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
