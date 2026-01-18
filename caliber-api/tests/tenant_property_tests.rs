@@ -60,6 +60,7 @@ impl TestStorage {
 
         let trajectory = TrajectoryResponse {
             trajectory_id,
+            tenant_id: Some(tenant_id),
             name: req.name.clone(),
             description: req.description.clone(),
             status: TrajectoryStatus::Active,

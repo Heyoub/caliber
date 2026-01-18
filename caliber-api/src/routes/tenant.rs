@@ -110,6 +110,8 @@ mod tests {
         let tenant = TenantInfo {
             tenant_id: Uuid::new_v4(),
             name: "Test Tenant".to_string(),
+            domain: None,
+            workos_organization_id: None,
             status: TenantStatus::Active,
             created_at: chrono::Utc::now(),
         };
@@ -136,12 +138,16 @@ mod tests {
                 TenantInfo {
                     tenant_id: Uuid::new_v4(),
                     name: "Tenant 1".to_string(),
+                    domain: None,
+                    workos_organization_id: None,
                     status: TenantStatus::Active,
                     created_at: chrono::Utc::now(),
                 },
                 TenantInfo {
                     tenant_id: Uuid::new_v4(),
                     name: "Tenant 2".to_string(),
+                    domain: None,
+                    workos_organization_id: None,
                     status: TenantStatus::Suspended,
                     created_at: chrono::Utc::now(),
                 },

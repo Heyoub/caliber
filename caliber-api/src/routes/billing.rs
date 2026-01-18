@@ -188,19 +188,20 @@ pub async fn get_billing_status(
     AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Get billing status from database
-    // For now, return mock data - in production, query the database
-    let billing = state.db.billing_get_status(auth.tenant_id).await.unwrap_or_else(|_| {
-        // Default billing status for new tenants
-        BillingStatus {
-            tenant_id: auth.tenant_id,
-            plan: BillingPlan::Trial,
-            trial_ends_at: Some(chrono::Utc::now() + chrono::Duration::days(14)),
-            storage_used_bytes: 0,
-            storage_limit_bytes: 1024 * 1024 * 1024, // 1 GB
-            hot_cache_used_bytes: 0,
-            hot_cache_limit_bytes: 100 * 1024 * 1024, // 100 MB
+    // The db function handles "not found" by returning a default trial status.
+    // We must NOT mask database errors - they indicate real problems.
+    let billing = match state.db.billing_get_status(auth.tenant_id).await {
+        Ok(status) => status,
+        Err(e) => {
+            // Database error - propagate, don't mask as trial
+            tracing::error!(
+                tenant_id = %auth.tenant_id,
+                error = %e,
+                "Failed to fetch billing status"
+            );
+            return Err(ApiError::database_error("Unable to retrieve billing status"));
         }
-    });
+    };
 
     Ok(Json(billing))
 }

@@ -556,6 +556,43 @@ pub fn check_tenant_access(auth_context: &AuthContext, requested_tenant_id: Enti
     }
 }
 
+/// Validate that a resource belongs to the authenticated user's tenant.
+///
+/// This is used by handlers to enforce tenant isolation on read/update/delete operations.
+///
+/// # Arguments
+/// * `auth` - The authentication context from the request
+/// * `resource_tenant_id` - The tenant_id of the resource being accessed (may be None for legacy data)
+///
+/// # Returns
+/// * `Ok(())` if the resource belongs to the user's tenant
+/// * `Err(ApiError::forbidden)` if tenant mismatch or resource has no tenant (legacy data)
+pub fn validate_tenant_ownership(
+    auth: &AuthContext,
+    resource_tenant_id: Option<EntityId>,
+) -> ApiResult<()> {
+    match resource_tenant_id {
+        Some(tenant_id) if tenant_id == auth.tenant_id => Ok(()),
+        Some(tenant_id) => Err(ApiError::forbidden(format!(
+            "Access denied: resource belongs to different tenant (expected {}, got {})",
+            auth.tenant_id, tenant_id
+        ))),
+        None => {
+            // Resource has no tenant_id - this is legacy data from before tenant isolation
+            // In strict mode, we deny access; in permissive mode, we allow access
+            // Default to strict mode for security
+            tracing::warn!(
+                user_id = %auth.user_id,
+                tenant_id = %auth.tenant_id,
+                "Attempted access to resource without tenant_id (legacy data)"
+            );
+            Err(ApiError::forbidden(
+                "Access denied: resource has no tenant association (legacy data)"
+            ))
+        }
+    }
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================

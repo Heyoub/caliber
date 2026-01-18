@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -77,8 +78,8 @@ pub async fn create_edge(
         }
     }
 
-    // Create edge via database client
-    let edge = state.db.edge_create(&req).await?;
+    // Create edge via database client with tenant_id for isolation
+    let edge = state.db.edge_create(&req, auth.tenant_id).await?;
 
     // Broadcast EdgeCreated event
     state.ws.broadcast(WsEvent::EdgeCreated {
@@ -119,7 +120,7 @@ pub async fn create_edges_batch(
             continue;
         }
 
-        match state.db.edge_create(&req).await {
+        match state.db.edge_create(&req, auth.tenant_id).await {
             Ok(edge) => edges.push(edge),
             Err(_) => continue, // Skip failed creations
         }
@@ -151,14 +152,19 @@ pub async fn create_edges_batch(
 )]
 pub async fn get_edge(
     State(state): State<Arc<EdgeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let edge = state.db.edge_get(id).await?;
+    let edge = state
+        .db
+        .edge_get(id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found("Edge", id))?;
 
-    match edge {
-        Some(e) => Ok(Json(e)),
-        None => Err(ApiError::entity_not_found("Edge", id)),
-    }
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, edge.tenant_id)?;
+
+    Ok(Json(edge))
 }
 
 /// GET /api/v1/edges/by-participant/{entity_id} - Get edges by participant entity
@@ -180,9 +186,11 @@ pub async fn get_edge(
 )]
 pub async fn list_edges_by_participant(
     State(state): State<Arc<EdgeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(entity_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let edges = state.db.edge_list_by_participant(entity_id).await?;
+    // List edges filtered by tenant for isolation
+    let edges = state.db.edge_list_by_participant_and_tenant(entity_id, auth.tenant_id).await?;
 
     Ok(Json(ListEdgesResponse { edges }))
 }

@@ -12,6 +12,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use caliber_api::{
     grpc::{self, proto},
+    middleware::AuthExtractor,
     routes::{scope, trajectory},
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse},
 };
@@ -24,6 +25,7 @@ use std::sync::Arc;
 use tonic::Request;
 use uuid::Uuid;
 mod test_support;
+use test_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -114,6 +116,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_support::test_db_client();
+            let auth = test_auth_context();
             let ws = test_support::test_ws_state(64);
             let rest_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
             let grpc_service = grpc::TrajectoryServiceImpl::new(db.clone(), ws.clone());
@@ -127,7 +130,7 @@ proptest! {
                 metadata: None,
             };
             let rest_created: TrajectoryResponse = extract_json(
-                trajectory::create_trajectory(State(rest_state.clone()), Json(rest_req)).await?
+                trajectory::create_trajectory(State(rest_state.clone()), AuthExtractor(auth.clone()), Json(rest_req)).await?
             ).await;
 
             let grpc_get = grpc_service
@@ -157,6 +160,7 @@ proptest! {
                 trajectory::get_trajectory(
                     State(rest_state),
                     Path(Uuid::parse_str(&grpc_created.trajectory_id).expect("invalid uuid")),
+                    AuthExtractor(auth.clone()),
                 )
                 .await?
             )
@@ -178,6 +182,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_support::test_db_client();
+            let auth = test_auth_context();
             let ws = test_support::test_ws_state(64);
             let pcp = test_support::test_pcp_runtime();
             let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
@@ -193,7 +198,7 @@ proptest! {
                 metadata: None,
             };
             let trajectory: TrajectoryResponse = extract_json(
-                trajectory::create_trajectory(State(trajectory_state), Json(trajectory_req)).await?
+                trajectory::create_trajectory(State(trajectory_state), AuthExtractor(auth.clone()), Json(trajectory_req)).await?
             ).await;
 
             // REST create → gRPC get
@@ -206,7 +211,7 @@ proptest! {
                 metadata: None,
             };
             let rest_created: ScopeResponse = extract_json(
-                scope::create_scope(State(scope_state.clone()), Json(rest_scope_req)).await?
+                scope::create_scope(State(scope_state.clone()), AuthExtractor(auth.clone()), Json(rest_scope_req)).await?
             ).await;
 
             let grpc_get = grpc_service
@@ -237,6 +242,7 @@ proptest! {
                 scope::get_scope(
                     State(scope_state),
                     Path(Uuid::parse_str(&grpc_created.scope_id).expect("invalid uuid")),
+                    AuthExtractor(auth.clone()),
                 )
                 .await?
             )

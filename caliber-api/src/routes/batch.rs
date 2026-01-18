@@ -15,9 +15,8 @@ use axum::{
 };
 use std::sync::Arc;
 
-use caliber_core::EntityId;
-
 use crate::{
+    auth::{validate_tenant_ownership, AuthContext},
     db::DbClient,
     error::ApiError,
     events::WsEvent,
@@ -78,7 +77,7 @@ pub async fn batch_trajectories(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_trajectory_item(&state, item, auth.tenant_id).await;
+        let result = process_trajectory_item(&state, item, &auth).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -105,7 +104,7 @@ pub async fn batch_trajectories(
 async fn process_trajectory_item(
     state: &BatchState,
     item: TrajectoryBatchItem,
-    tenant_id: EntityId,
+    auth: &AuthContext,
 ) -> BatchItemResult<TrajectoryResponse> {
     match item.operation {
         BatchOperation::Create => {
@@ -123,7 +122,7 @@ async fn process_trajectory_item(
                 };
             }
 
-            match state.db.trajectory_create(&create_req).await {
+            match state.db.trajectory_create(&create_req, auth.tenant_id).await {
                 Ok(trajectory) => {
                     state.ws.broadcast(WsEvent::TrajectoryCreated {
                         trajectory: trajectory.clone(),
@@ -144,6 +143,30 @@ async fn process_trajectory_item(
                     code: "MISSING_ID".to_string(),
                 };
             };
+
+            // Validate tenant ownership before update
+            match state.db.trajectory_get(id).await {
+                Ok(Some(existing)) => {
+                    if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
+                        return BatchItemResult::Error {
+                            message: "Access denied: resource belongs to different tenant".to_string(),
+                            code: "FORBIDDEN".to_string(),
+                        };
+                    }
+                }
+                Ok(None) => {
+                    return BatchItemResult::Error {
+                        message: format!("trajectory {} not found", id),
+                        code: "NOT_FOUND".to_string(),
+                    };
+                }
+                Err(e) => {
+                    return BatchItemResult::Error {
+                        message: e.message.clone(),
+                        code: e.code.to_string(),
+                    };
+                }
+            }
 
             let Some(update_req) = item.update else {
                 return BatchItemResult::Error {
@@ -185,12 +208,20 @@ async fn process_trajectory_item(
                 };
             };
 
-            // First get the trajectory to return in response
+            // First get the trajectory to validate ownership and return in response
             match state.db.trajectory_get(id).await {
                 Ok(Some(trajectory)) => {
+                    // Validate tenant ownership before delete
+                    if validate_tenant_ownership(auth, trajectory.tenant_id).is_err() {
+                        return BatchItemResult::Error {
+                            message: "Access denied: resource belongs to different tenant".to_string(),
+                            code: "FORBIDDEN".to_string(),
+                        };
+                    }
+
                     match state.db.trajectory_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::TrajectoryDeleted { tenant_id, id });
+                            state.ws.broadcast(WsEvent::TrajectoryDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: trajectory }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -211,6 +242,7 @@ async fn process_trajectory_item(
         }
     }
 }
+
 
 /// POST /api/v1/batch/artifacts - Batch artifact operations
 #[utoipa::path(
@@ -238,7 +270,7 @@ pub async fn batch_artifacts(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_artifact_item(&state, item, auth.tenant_id).await;
+        let result = process_artifact_item(&state, item, &auth).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -265,7 +297,7 @@ pub async fn batch_artifacts(
 async fn process_artifact_item(
     state: &BatchState,
     item: ArtifactBatchItem,
-    tenant_id: EntityId,
+    auth: &AuthContext,
 ) -> BatchItemResult<ArtifactResponse> {
     match item.operation {
         BatchOperation::Create => {
@@ -306,7 +338,7 @@ async fn process_artifact_item(
                 }
             }
 
-            match state.db.artifact_create(&create_req).await {
+            match state.db.artifact_create(&create_req, auth.tenant_id).await {
                 Ok(artifact) => {
                     state.ws.broadcast(WsEvent::ArtifactCreated {
                         artifact: artifact.clone(),
@@ -327,6 +359,30 @@ async fn process_artifact_item(
                     code: "MISSING_ID".to_string(),
                 };
             };
+
+            // Validate tenant ownership before update
+            match state.db.artifact_get(id).await {
+                Ok(Some(existing)) => {
+                    if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
+                        return BatchItemResult::Error {
+                            message: "Access denied: resource belongs to different tenant".to_string(),
+                            code: "FORBIDDEN".to_string(),
+                        };
+                    }
+                }
+                Ok(None) => {
+                    return BatchItemResult::Error {
+                        message: format!("artifact {} not found", id),
+                        code: "NOT_FOUND".to_string(),
+                    };
+                }
+                Err(e) => {
+                    return BatchItemResult::Error {
+                        message: e.message.clone(),
+                        code: e.code.to_string(),
+                    };
+                }
+            }
 
             let Some(update_req) = item.update else {
                 return BatchItemResult::Error {
@@ -371,9 +427,17 @@ async fn process_artifact_item(
 
             match state.db.artifact_get(id).await {
                 Ok(Some(artifact)) => {
+                    // Validate tenant ownership before delete
+                    if validate_tenant_ownership(auth, artifact.tenant_id).is_err() {
+                        return BatchItemResult::Error {
+                            message: "Access denied: resource belongs to different tenant".to_string(),
+                            code: "FORBIDDEN".to_string(),
+                        };
+                    }
+
                     match state.db.artifact_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id, id });
+                            state.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: artifact }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -421,7 +485,7 @@ pub async fn batch_notes(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_note_item(&state, item, auth.tenant_id).await;
+        let result = process_note_item(&state, item, &auth).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -448,7 +512,7 @@ pub async fn batch_notes(
 async fn process_note_item(
     state: &BatchState,
     item: NoteBatchItem,
-    tenant_id: EntityId,
+    auth: &AuthContext,
 ) -> BatchItemResult<NoteResponse> {
     match item.operation {
         BatchOperation::Create => {
@@ -473,7 +537,7 @@ async fn process_note_item(
                 };
             }
 
-            match state.db.note_create(&create_req).await {
+            match state.db.note_create(&create_req, auth.tenant_id).await {
                 Ok(note) => {
                     state.ws.broadcast(WsEvent::NoteCreated {
                         note: note.clone(),
@@ -494,6 +558,30 @@ async fn process_note_item(
                     code: "MISSING_ID".to_string(),
                 };
             };
+
+            // Validate tenant ownership before update
+            match state.db.note_get(id).await {
+                Ok(Some(existing)) => {
+                    if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
+                        return BatchItemResult::Error {
+                            message: "Access denied: resource belongs to different tenant".to_string(),
+                            code: "FORBIDDEN".to_string(),
+                        };
+                    }
+                }
+                Ok(None) => {
+                    return BatchItemResult::Error {
+                        message: format!("note {} not found", id),
+                        code: "NOT_FOUND".to_string(),
+                    };
+                }
+                Err(e) => {
+                    return BatchItemResult::Error {
+                        message: e.message.clone(),
+                        code: e.code.to_string(),
+                    };
+                }
+            }
 
             let Some(update_req) = item.update else {
                 return BatchItemResult::Error {
@@ -538,9 +626,17 @@ async fn process_note_item(
 
             match state.db.note_get(id).await {
                 Ok(Some(note)) => {
+                    // Validate tenant ownership before delete
+                    if validate_tenant_ownership(auth, note.tenant_id).is_err() {
+                        return BatchItemResult::Error {
+                            message: "Access denied: resource belongs to different tenant".to_string(),
+                            code: "FORBIDDEN".to_string(),
+                        };
+                    }
+
                     match state.db.note_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::NoteDeleted { tenant_id, id });
+                            state.ws.broadcast(WsEvent::NoteDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: note }
                         }
                         Err(e) => BatchItemResult::Error {

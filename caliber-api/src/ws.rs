@@ -445,6 +445,7 @@ mod tests {
         let trajectory_created = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: caliber_core::new_entity_id(),
+                tenant_id: Some(tenant_id),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -464,6 +465,7 @@ mod tests {
         let other_tenant_event = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: caliber_core::new_entity_id(),
+                tenant_id: Some(other_tenant),
                 name: "other".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,

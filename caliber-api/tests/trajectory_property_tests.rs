@@ -21,6 +21,7 @@ use proptest::prelude::*;
 use uuid::Uuid;
 
 mod test_support;
+use test_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -186,11 +187,12 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // ================================================================
             // STEP 1: CREATE - Create a new trajectory
             // ================================================================
-            let created = db.trajectory_create(&create_req).await?;
+            let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created trajectory has an ID
             let nil_id: EntityId = Uuid::nil().into();
@@ -303,10 +305,11 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Create two trajectories with the same data
-            let trajectory1 = db.trajectory_create(&create_req).await?;
-            let trajectory2 = db.trajectory_create(&create_req).await?;
+            let trajectory1 = db.trajectory_create(&create_req, auth.tenant_id).await?;
+            let trajectory2 = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -388,9 +391,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Create a trajectory
-            let created = db.trajectory_create(&create_req).await?;
+            let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
             prop_assert_eq!(created.status, TrajectoryStatus::Active);
 
             // Update to new status
@@ -428,6 +432,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             let create_req = CreateTrajectoryRequest {
                 name: name.clone(),
@@ -437,7 +442,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.trajectory_create(&create_req).await?;
+            let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Property: Name should be preserved exactly
             prop_assert_eq!(&created.name, &name);
@@ -464,6 +469,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             let create_req = CreateTrajectoryRequest {
                 name,
@@ -473,7 +479,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.trajectory_create(&create_req).await?;
+            let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -499,6 +505,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_trajectory_with_empty_name_fails() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         let create_req = CreateTrajectoryRequest {
             name: "".to_string(),
@@ -511,7 +518,7 @@ mod edge_cases {
         // This should fail validation at the route handler level
         // (The route handler checks for empty names)
         // Here we're testing the database layer, which may or may not enforce this
-        let result = db.trajectory_create(&create_req).await;
+        let result = db.trajectory_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -521,6 +528,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_trajectory_with_very_long_name() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Create a very long name (but within reasonable limits)
         let long_name = "A".repeat(500);
@@ -533,7 +541,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.trajectory_create(&create_req).await;
+        let result = db.trajectory_create(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -549,6 +557,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_trajectory_with_unicode_name() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         let unicode_name = "测试任务 🚀 Тест";
 
@@ -560,7 +569,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.trajectory_create(&create_req).await
+        let created = db.trajectory_create(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode names");
 
         assert_eq!(created.name, unicode_name);
@@ -576,6 +585,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_trajectory_update_with_no_changes() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Create a trajectory
         let create_req = CreateTrajectoryRequest {
@@ -586,7 +596,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.trajectory_create(&create_req).await
+        let created = db.trajectory_create(&create_req, auth.tenant_id).await
             .expect("Should create trajectory");
 
         // Update with the same values
@@ -609,6 +619,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_trajectory_list_by_status() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Create trajectories with different statuses
         let create_req = CreateTrajectoryRequest {
@@ -619,7 +630,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let active_traj = db.trajectory_create(&create_req).await
+        let active_traj = db.trajectory_create(&create_req, auth.tenant_id).await
             .expect("Should create trajectory");
 
         // List active trajectories

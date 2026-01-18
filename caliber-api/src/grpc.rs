@@ -143,8 +143,9 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<CreateTrajectoryRequest>,
     ) -> Result<Response<TrajectoryResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        
+
         // Convert proto request to internal type
         let create_req = crate::types::CreateTrajectoryRequest {
             name: req.name,
@@ -153,9 +154,9 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
             agent_id: req.agent_id.and_then(|id| id.parse().ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        
+
         // Reuse REST handler logic
-        let trajectory = self.db.trajectory_create(&create_req).await?;
+        let trajectory = self.db.trajectory_create(&create_req, tenant_id).await?;
         
         // Broadcast event
         self.ws.broadcast(WsEvent::TrajectoryCreated {
@@ -309,8 +310,9 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<CreateScopeRequest>,
     ) -> Result<Response<ScopeResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        
+
         let create_req = crate::types::CreateScopeRequest {
             trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
             parent_scope_id: req.parent_scope_id.and_then(|id| id.parse().ok()),
@@ -319,8 +321,8 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
             token_budget: req.token_budget,
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        
-        let scope = self.db.scope_create(&create_req).await?;
+
+        let scope = self.db.scope_create(&create_req, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::ScopeCreated {
             scope: scope.clone(),
@@ -741,6 +743,7 @@ impl ArtifactServiceImpl {
 #[tonic::async_trait]
 impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     async fn create_artifact(&self, request: Request<CreateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let create_req = crate::types::CreateArtifactRequest {
             trajectory_id: req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?,
@@ -754,7 +757,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
             ttl: serde_json::from_str(&req.ttl).map_err(|_| Status::invalid_argument("Invalid TTL"))?,
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let artifact = self.db.artifact_create(&create_req).await?;
+        let artifact = self.db.artifact_create(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::ArtifactCreated { artifact: artifact.clone() });
         Ok(Response::new(artifact_to_proto(&artifact)))
     }
@@ -800,6 +803,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     }
 
     async fn search_artifacts(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
 
         // Validate search query
@@ -826,8 +830,8 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
             ));
         }
 
-        // Perform the search
-        let result = self.db.search(&search_req).await?;
+        // Perform tenant-isolated search
+        let result = self.db.search(&search_req, tenant_id).await?;
 
         Ok(Response::new(SearchResponse {
             results: result.results.into_iter().map(|r| SearchResult {
@@ -857,6 +861,7 @@ impl NoteServiceImpl {
 #[tonic::async_trait]
 impl note_service_server::NoteService for NoteServiceImpl {
     async fn create_note(&self, request: Request<CreateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let create_req = crate::types::CreateNoteRequest {
             note_type: req.note_type.parse().map_err(|_| Status::invalid_argument("Invalid note_type"))?,
@@ -867,7 +872,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
             ttl: serde_json::from_str(&req.ttl).map_err(|_| Status::invalid_argument("Invalid TTL"))?,
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let note = self.db.note_create(&create_req).await?;
+        let note = self.db.note_create(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
         Ok(Response::new(note_to_proto(&note)))
     }
@@ -975,6 +980,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
     }
 
     async fn search_notes(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
 
         // Validate search query
@@ -1001,8 +1007,8 @@ impl note_service_server::NoteService for NoteServiceImpl {
             ));
         }
 
-        // Perform the search
-        let result = self.db.search(&search_req).await?;
+        // Perform tenant-isolated search
+        let result = self.db.search(&search_req, tenant_id).await?;
 
         Ok(Response::new(SearchResponse {
             results: result.results.into_iter().map(|r| SearchResult {
@@ -1032,6 +1038,7 @@ impl TurnServiceImpl {
 #[tonic::async_trait]
 impl turn_service_server::TurnService for TurnServiceImpl {
     async fn create_turn(&self, request: Request<CreateTurnRequest>) -> Result<Response<TurnResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let create_req = crate::types::CreateTurnRequest {
             scope_id: req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?,
@@ -1043,7 +1050,7 @@ impl turn_service_server::TurnService for TurnServiceImpl {
             tool_results: req.tool_results.and_then(|s| serde_json::from_str(&s).ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let turn = self.db.turn_create(&create_req).await?;
+        let turn = self.db.turn_create(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::TurnCreated { turn: turn.clone() });
         Ok(Response::new(turn_to_proto(&turn)))
     }
@@ -1070,6 +1077,7 @@ impl AgentServiceImpl {
 #[tonic::async_trait]
 impl agent_service_server::AgentService for AgentServiceImpl {
     async fn register_agent(&self, request: Request<RegisterAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let memory_access = req.memory_access.ok_or_else(|| Status::invalid_argument("memory_access required"))?;
         let register_req = crate::types::RegisterAgentRequest {
@@ -1090,7 +1098,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
             can_delegate_to: req.can_delegate_to.into_iter().filter_map(|s| s.parse().ok()).collect(),
             reports_to: req.reports_to.and_then(|s| s.parse().ok()),
         };
-        let agent = self.db.agent_register(&register_req).await?;
+        let agent = self.db.agent_register(&register_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::AgentRegistered { agent: agent.clone() });
         Ok(Response::new(agent_to_proto(&agent)))
     }
@@ -1186,6 +1194,7 @@ impl LockServiceImpl {
 #[tonic::async_trait]
 impl lock_service_server::LockService for LockServiceImpl {
     async fn acquire_lock(&self, request: Request<AcquireLockRequest>) -> Result<Response<LockResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let acquire_req = crate::types::AcquireLockRequest {
             resource_type: req.resource_type.parse().map_err(|_| Status::invalid_argument("Invalid resource_type"))?,
@@ -1194,7 +1203,7 @@ impl lock_service_server::LockService for LockServiceImpl {
             timeout_ms: req.timeout_ms,
             mode: req.mode.parse().map_err(|_| Status::invalid_argument("Invalid mode"))?,
         };
-        let lock = self.db.lock_acquire(&acquire_req).await?;
+        let lock = self.db.lock_acquire(&acquire_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::LockAcquired { lock: lock.clone() });
         Ok(Response::new(lock_to_proto(&lock)))
     }
@@ -1255,6 +1264,7 @@ impl MessageServiceImpl {
 #[tonic::async_trait]
 impl message_service_server::MessageService for MessageServiceImpl {
     async fn send_message(&self, request: Request<SendMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let send_req = crate::types::SendMessageRequest {
             from_agent_id: req.from_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid from_agent_id"))?,
@@ -1268,7 +1278,7 @@ impl message_service_server::MessageService for MessageServiceImpl {
             priority: req.priority.parse().map_err(|_| Status::invalid_argument("Invalid priority"))?,
             expires_at: parse_optional_timestamp_millis(req.expires_at, "expires_at")?,
         };
-        let message = self.db.message_send(&send_req).await?;
+        let message = self.db.message_send(&send_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::MessageSent { message: message.clone() });
         Ok(Response::new(message_to_proto(&message)))
     }
@@ -1347,6 +1357,7 @@ impl DelegationServiceImpl {
 #[tonic::async_trait]
 impl delegation_service_server::DelegationService for DelegationServiceImpl {
     async fn create_delegation(&self, request: Request<CreateDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let create_req = crate::types::CreateDelegationRequest {
             from_agent_id: req.from_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid from_agent_id"))?,
@@ -1357,7 +1368,7 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
             expected_completion: parse_optional_timestamp_millis(req.expected_completion, "expected_completion")?,
             context: req.context.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let delegation = self.db.delegation_create(&create_req).await?;
+        let delegation = self.db.delegation_create(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::DelegationCreated {
             delegation: delegation.clone(),
         });
@@ -1429,6 +1440,7 @@ impl HandoffServiceImpl {
 #[tonic::async_trait]
 impl handoff_service_server::HandoffService for HandoffServiceImpl {
     async fn create_handoff(&self, request: Request<CreateHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let create_req = crate::types::CreateHandoffRequest {
             from_agent_id: req.from_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid from_agent_id"))?,
@@ -1438,7 +1450,7 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
             reason: req.reason,
             context_snapshot: req.context_snapshot,
         };
-        let handoff = self.db.handoff_create(&create_req).await?;
+        let handoff = self.db.handoff_create(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::HandoffCreated {
             handoff: handoff.clone(),
         });
@@ -1616,6 +1628,7 @@ impl SearchServiceImpl {
 #[tonic::async_trait]
 impl search_service_server::SearchService for SearchServiceImpl {
     async fn search(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let search_req = crate::types::SearchRequest {
             query: req.query,
@@ -1627,7 +1640,7 @@ impl search_service_server::SearchService for SearchServiceImpl {
             }).collect(),
             limit: req.limit,
         };
-        let result = self.db.search(&search_req).await?;
+        let result = self.db.search(&search_req, tenant_id).await?;
         Ok(Response::new(SearchResponse {
             results: result.results.into_iter().map(|r| SearchResult {
                 entity_type: r.entity_type.to_string(),

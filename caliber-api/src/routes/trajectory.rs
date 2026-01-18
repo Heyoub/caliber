@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -63,6 +64,7 @@ impl TrajectoryState {
 )]
 pub async fn create_trajectory(
     State(state): State<Arc<TrajectoryState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateTrajectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -70,8 +72,8 @@ pub async fn create_trajectory(
         return Err(ApiError::missing_field("name"));
     }
 
-    // Create trajectory via database client
-    let trajectory = state.db.trajectory_create(&req).await?;
+    // Create trajectory via database client with tenant_id for isolation
+    let trajectory = state.db.trajectory_create(&req, auth.tenant_id).await?;
 
     // Broadcast TrajectoryCreated event
     state.ws.broadcast(WsEvent::TrajectoryCreated {
@@ -105,11 +107,12 @@ pub async fn create_trajectory(
 )]
 pub async fn list_trajectories(
     State(state): State<Arc<TrajectoryState>>,
+    AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListTrajectoriesRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if let Some(status) = params.status {
-        // Filter by status
-        let trajectories = state.db.trajectory_list_by_status(status).await?;
+        // Filter by status and tenant (tenant isolation enforced at DB level)
+        let trajectories = state.db.trajectory_list_by_status_and_tenant(status, auth.tenant_id).await?;
 
         // Apply additional filters if needed
         let mut filtered = trajectories;
@@ -166,6 +169,7 @@ pub async fn list_trajectories(
 )]
 pub async fn get_trajectory(
     State(state): State<Arc<TrajectoryState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let trajectory = state
@@ -173,6 +177,9 @@ pub async fn get_trajectory(
         .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     Ok(Json(trajectory))
 }
@@ -199,6 +206,7 @@ pub async fn get_trajectory(
 )]
 pub async fn update_trajectory(
     State(state): State<Arc<TrajectoryState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTrajectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -212,6 +220,14 @@ pub async fn update_trajectory(
             "At least one field must be provided for update",
         ));
     }
+
+    // First verify the trajectory exists and belongs to this tenant
+    let existing = state
+        .db
+        .trajectory_get(id)
+        .await?
+        .ok_or_else(|| ApiError::trajectory_not_found(id))?;
+    validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update trajectory via database client
     let trajectory = state.db.trajectory_update(id, &req).await?;
@@ -244,15 +260,16 @@ pub async fn update_trajectory(
 )]
 pub async fn delete_trajectory(
     State(state): State<Arc<TrajectoryState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // First verify the trajectory exists
-    let _trajectory = state
+    // First verify the trajectory exists and belongs to this tenant
+    let trajectory = state
         .db
         .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
+    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     // Delete trajectory via database client
     state.db.trajectory_delete(id).await?;
@@ -286,14 +303,16 @@ pub async fn delete_trajectory(
 )]
 pub async fn list_trajectory_scopes(
     State(state): State<Arc<TrajectoryState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // First verify the trajectory exists
-    let _trajectory = state
+    // First verify the trajectory exists and belongs to this tenant
+    let trajectory = state
         .db
         .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
+    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     // Get scopes for this trajectory
     let scopes = state.db.scope_list_by_trajectory(id).await?;
@@ -321,17 +340,19 @@ pub async fn list_trajectory_scopes(
 )]
 pub async fn list_trajectory_children(
     State(state): State<Arc<TrajectoryState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // First verify the trajectory exists
-    let _trajectory = state
+    // First verify the trajectory exists and belongs to this tenant
+    let trajectory = state
         .db
         .trajectory_get(id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
+    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
-    // Get child trajectories
-    let children = state.db.trajectory_list_children(id).await?;
+    // Get child trajectories (only those belonging to this tenant)
+    let children = state.db.trajectory_list_children_by_tenant(id, auth.tenant_id).await?;
 
     Ok(Json(children))
 }
