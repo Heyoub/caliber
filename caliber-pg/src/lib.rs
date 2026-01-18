@@ -297,7 +297,7 @@ fn run_migration(client: &pgrx::spi::SpiClient<'_>, version: i32) -> Result<(), 
     let start = std::time::Instant::now();
 
     // Migration SQL based on version
-    let (description, migration_sql) = match version {
+    let (description, migration_sql): (&str, Option<&str>) = match version {
         1 => (
             "Initial schema - CALIBER 0.4.0",
             // Version 1 is the base schema, no migration needed
@@ -314,14 +314,29 @@ fn run_migration(client: &pgrx::spi::SpiClient<'_>, version: i32) -> Result<(), 
     // Run migration SQL if present
     if let Some(sql) = migration_sql {
         pgrx::log!("CALIBER: Running migration v{}: {}", version, description);
-        // Note: We can't run migrations from SpiClient without mut access
-        // In a real implementation, this would use Spi::connect_mut
-        pgrx::log!("CALIBER: Migration SQL: {}", sql);
+        client
+            .update(sql, None, &[])
+            .map_err(|e| format!("Migration v{} failed: {:?}", version, e))?;
     }
 
     let elapsed = start.elapsed().as_millis() as i32;
 
-    // Record migration in schema_version table (also needs mut access)
+    // Record migration in schema_version table
+    let checksum = format!("v{}-{:x}", version, elapsed);
+    client
+        .update(
+            "INSERT INTO caliber_schema_version (version, description, checksum, execution_time_ms) \
+             VALUES ($1, $2, $3, $4) ON CONFLICT (version) DO NOTHING",
+            None,
+            &[
+                (pgrx::PgBuiltInOids::INT4OID.oid(), version.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), description.into_datum()),
+                (pgrx::PgBuiltInOids::TEXTOID.oid(), checksum.into_datum()),
+                (pgrx::PgBuiltInOids::INT4OID.oid(), elapsed.into_datum()),
+            ],
+        )
+        .map_err(|e| format!("Failed to record migration v{}: {:?}", version, e))?;
+
     pgrx::log!(
         "CALIBER: Migration v{} complete: {} ({}ms)",
         version,
@@ -3490,7 +3505,7 @@ fn enforce_access(
             unsafe { DatumWithOid::new(pg_region_id, pgrx::pg_sys::UUIDOID) },
         ];
         let result = client.select(
-            "SELECT region_id, region_type, owner_agent_id, team_id, readers, writers, require_lock
+            "SELECT region_id, region_type, owner_agent_id, readers, writers, require_lock
              FROM caliber_region WHERE region_id = $1",
             None,
             params,
@@ -3501,10 +3516,11 @@ fn enforce_access(
                 if let Some(row) = table.next() {
                     let region_type: Option<String> = row.get(2).ok().flatten();
                     let owner_agent_id: Option<pgrx::Uuid> = row.get(3).ok().flatten();
-                    let _team_id: Option<pgrx::Uuid> = row.get(4).ok().flatten();
-                    let readers: Option<Vec<pgrx::Uuid>> = row.get(5).ok().flatten();
-                    let writers: Option<Vec<pgrx::Uuid>> = row.get(6).ok().flatten();
-                    let require_lock: Option<bool> = row.get(7).ok().flatten();
+                    // Note: team_id exists in schema but team membership lookup not yet implemented
+                    // For now, use explicit readers/writers arrays
+                    let readers: Option<Vec<pgrx::Uuid>> = row.get(4).ok().flatten();
+                    let writers: Option<Vec<pgrx::Uuid>> = row.get(5).ok().flatten();
+                    let require_lock: Option<bool> = row.get(6).ok().flatten();
 
                     // Convert pgrx::Uuid to uuid::Uuid with explicit type annotations
                     let owner_id = owner_agent_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()));
