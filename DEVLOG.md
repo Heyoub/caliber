@@ -5325,3 +5325,37 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 **Time Spent:** ~30 minutes
 
 **Status:** All compilation errors fixed. `cargo check -p caliber-api --features openapi,workos` passes.
+
+---
+
+### January 18, 2026 — Heap Row Conversion Hardening
+
+**Objective:** Eliminate storage trait type mismatches by standardizing row-to-domain conversions.
+
+**Completed:**
+
+- Added `From<*Row> for *` conversions across all heap modules
+- Standardized storage and SPI boundaries to use `.map(Into::into)`
+- Added unit tests to validate each row-to-domain conversion without DB dependencies
+
+**Files Updated:**
+
+| File | Changes |
+|------|---------|
+| `caliber-pg/src/*_heap.rs` | Added `From<*Row>` conversions for all row types |
+| `caliber-pg/src/lib.rs` | Switched conversions to `.map(Into::into)` and registered tests |
+| `caliber-pg/src/row_conversion_tests.rs` | New unit tests covering all row conversions |
+
+**Coverage Notes:**
+
+- Tests validate row-to-domain mapping for Scope, Artifact, Note, Turn, Edge, Trajectory
+- Tests validate row-to-domain mapping for Agent, Lock, Message, Delegation, Handoff, Conflict
+- Tenant metadata remains available in row types; conversions are one-way by design
+
+**Commits:**
+
+- Pending (local changes not yet committed)
+
+**Time Spent:** ~1 hour
+
+**Status:** Conversions standardized and tests in place.

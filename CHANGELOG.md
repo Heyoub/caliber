@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mutation testing (planned)
 - Test coverage reporting (planned)
 
+### Fixed
+
+- Hardened heap row-to-domain conversions and added unit tests to prevent
+  storage trait type mismatches across heap modules
+
 ## [0.4.0] - 2026-01-17
 
 ### BREAKING CHANGES
