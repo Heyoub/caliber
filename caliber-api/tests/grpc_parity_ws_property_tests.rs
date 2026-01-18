@@ -28,12 +28,12 @@ mod test_ws_support;
 
 async fn recv_trajectory_event(
     rx: &mut broadcast::Receiver<caliber_api::events::WsEvent>,
-) -> caliber_api::types::TrajectoryResponse {
+) -> Result<caliber_api::types::TrajectoryResponse, String> {
     match timeout(Duration::from_millis(200), rx.recv()).await {
-        Ok(Ok(caliber_api::events::WsEvent::TrajectoryCreated { trajectory })) => trajectory,
-        Ok(Ok(other)) => panic!("Expected TrajectoryCreated, got {:?}", other),
-        Ok(Err(err)) => panic!("Broadcast recv error: {:?}", err),
-        Err(_) => panic!("Timed out waiting for TrajectoryCreated event"),
+        Ok(Ok(caliber_api::events::WsEvent::TrajectoryCreated { trajectory })) => Ok(trajectory),
+        Ok(Ok(other)) => Err(format!("Expected TrajectoryCreated, got {:?}", other)),
+        Ok(Err(err)) => Err(format!("Broadcast recv error: {:?}", err)),
+        Err(_) => Err("Timed out waiting for TrajectoryCreated event".to_string()),
     }
 }
 
@@ -57,7 +57,8 @@ proptest! {
         name in trajectory_name_strategy(),
         description in description_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
 
@@ -79,7 +80,9 @@ proptest! {
                 metadata: None,
             };
             let _ = trajectory::create_trajectory(State(rest_state), Json(rest_req)).await?;
-            let rest_trajectory = recv_trajectory_event(&mut rx_rest).await;
+            let rest_trajectory = recv_trajectory_event(&mut rx_rest)
+                .await
+                .map_err(TestCaseError::fail)?;
 
             // gRPC create
             let grpc_req = proto::CreateTrajectoryRequest {
@@ -92,7 +95,7 @@ proptest! {
             let grpc_resp = grpc_service
                 .create_trajectory(Request::new(grpc_req))
                 .await
-                .expect("gRPC create should succeed")
+                .map_err(|e| TestCaseError::fail(format!("gRPC create failed: {}", e)))?
                 .into_inner();
 
             // Parity checks: core fields align across REST and gRPC

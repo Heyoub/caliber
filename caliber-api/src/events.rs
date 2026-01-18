@@ -439,17 +439,17 @@ mod tests {
     }
 
     #[test]
-    fn test_event_serialization() {
+    fn test_event_serialization() -> Result<(), serde_json::Error> {
         let event = WsEvent::AgentStatusChanged {
             tenant_id: caliber_core::new_entity_id(),
             agent_id: caliber_core::new_entity_id(),
             status: "Active".to_string(),
         };
 
-        let json = serde_json::to_string(&event).expect("Failed to serialize");
-        let deserialized: WsEvent =
-            serde_json::from_str(&json).expect("Failed to deserialize");
+        let json = serde_json::to_string(&event)?;
+        let deserialized: WsEvent = serde_json::from_str(&json)?;
 
         assert_eq!(event, deserialized);
+        Ok(())
     }
 }

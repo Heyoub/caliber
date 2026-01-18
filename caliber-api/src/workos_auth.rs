@@ -458,7 +458,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_workos_claims_tenant_id_uuid() {
+    fn test_workos_claims_tenant_id_uuid() -> Result<(), &'static str> {
         let claims = WorkOsClaims {
             user_id: "user_123".to_string(),
             email: "test@example.com".to_string(),
@@ -470,15 +470,16 @@ mod tests {
             raw_attributes: None,
         };
 
-        let tenant_id = claims.tenant_id().unwrap();
+        let tenant_id = claims.tenant_id().ok_or("tenant_id should exist")?;
         assert_eq!(
             tenant_id.to_string(),
             "550e8400-e29b-41d4-a716-446655440000"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_workos_claims_tenant_id_non_uuid() {
+    fn test_workos_claims_tenant_id_non_uuid() -> Result<(), &'static str> {
         let claims = WorkOsClaims {
             user_id: "user_123".to_string(),
             email: "test@example.com".to_string(),
@@ -490,9 +491,10 @@ mod tests {
             raw_attributes: None,
         };
 
-        let tenant_id = claims.tenant_id().unwrap();
+        let tenant_id = claims.tenant_id().ok_or("tenant_id should exist")?;
         // Should be a deterministic UUID v5
         assert!(!tenant_id.is_nil());
+        Ok(())
     }
 
     #[test]

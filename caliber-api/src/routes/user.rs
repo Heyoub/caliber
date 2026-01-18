@@ -159,15 +159,11 @@ fn generate_api_key() -> String {
     const KEY_LENGTH: usize = 32;
 
     let mut rng = rand::thread_rng();
+    const CHARSET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let key: String = (0..KEY_LENGTH)
         .map(|_| {
-            let idx = rng.gen_range(0..62);
-            match idx {
-                0..=9 => (b'0' + idx) as char,
-                10..=35 => (b'a' + idx - 10) as char,
-                36..=61 => (b'A' + idx - 36) as char,
-                _ => unreachable!(),
-            }
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
         })
         .collect();
 
@@ -215,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn test_user_profile_serialization() {
+    fn test_user_profile_serialization() -> Result<(), serde_json::Error> {
         let profile = UserProfile {
             id: "user_123".to_string(),
             email: "test@example.com".to_string(),
@@ -226,15 +222,16 @@ mod tests {
             created_at: chrono::Utc::now(),
         };
 
-        let json = serde_json::to_string(&profile).expect("Failed to serialize");
+        let json = serde_json::to_string(&profile)?;
 
         assert!(json.contains("user_123"));
         assert!(json.contains("test@example.com"));
         assert!(json.contains("cal_abcdef123456"));
+        Ok(())
     }
 
     #[test]
-    fn test_user_profile_optional_fields() {
+    fn test_user_profile_optional_fields() -> Result<(), serde_json::Error> {
         let profile = UserProfile {
             id: "user_123".to_string(),
             email: "test@example.com".to_string(),
@@ -245,11 +242,12 @@ mod tests {
             created_at: chrono::Utc::now(),
         };
 
-        let json = serde_json::to_string(&profile).expect("Failed to serialize");
+        let json = serde_json::to_string(&profile)?;
 
         // Optional fields should be skipped
         assert!(!json.contains("first_name"));
         assert!(!json.contains("last_name"));
         assert!(!json.contains("api_key"));
+        Ok(())
     }
 }

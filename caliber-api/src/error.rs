@@ -625,15 +625,16 @@ mod tests {
     }
     
     #[test]
-    fn test_error_serialization() {
+    fn test_error_serialization() -> Result<(), serde_json::Error> {
         let err = ApiError::unauthorized("Invalid token");
-        let json = serde_json::to_string(&err).unwrap();
+        let json = serde_json::to_string(&err)?;
         
         assert!(json.contains("UNAUTHORIZED"));
         assert!(json.contains("Invalid token"));
         
-        let deserialized: ApiError = serde_json::from_str(&json).unwrap();
+        let deserialized: ApiError = serde_json::from_str(&json)?;
         assert_eq!(deserialized, err);
+        Ok(())
     }
     
     #[test]

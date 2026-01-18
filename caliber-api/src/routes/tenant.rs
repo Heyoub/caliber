@@ -169,12 +169,13 @@ mod tests {
     }
 
     #[test]
-    fn test_tenant_status_serialization() {
+    fn test_tenant_status_serialization() -> Result<(), serde_json::Error> {
         // Test that TenantStatus can be serialized/deserialized
         let status = TenantStatus::Active;
-        let json = serde_json::to_string(&status).unwrap();
-        let deserialized: TenantStatus = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&status)?;
+        let deserialized: TenantStatus = serde_json::from_str(&json)?;
 
         assert_eq!(status, deserialized);
+        Ok(())
     }
 }

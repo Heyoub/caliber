@@ -18,6 +18,7 @@ use caliber_api::{
 };
 use caliber_core::{EntityId, TrajectoryStatus};
 use proptest::prelude::*;
+use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 #[path = "support/auth.rs"]
@@ -37,6 +38,10 @@ use test_db_support::test_db_client;
 /// The database should be set up with the CALIBER schema.
 fn test_db_client() -> DbClient {
     test_db_support::test_db_client()
+}
+
+fn test_runtime() -> Result<Runtime, TestCaseError> {
+    Runtime::new().map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))
 }
 
 // ============================================================================
@@ -188,7 +193,7 @@ proptest! {
         create_req in create_trajectory_request_strategy(),
         update_req in update_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -220,7 +225,9 @@ proptest! {
             let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?;
             prop_assert!(retrieved.is_some(), "Trajectory should exist after creation");
 
-            let retrieved = retrieved.unwrap();
+            let retrieved = retrieved.ok_or_else(|| {
+                TestCaseError::fail("Trajectory should exist after creation".to_string())
+            })?;
 
             // Verify all fields match the created trajectory
             prop_assert_eq!(retrieved.trajectory_id, created.trajectory_id);
@@ -271,7 +278,9 @@ proptest! {
             let retrieved_after_update = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?;
             prop_assert!(retrieved_after_update.is_some(), "Trajectory should still exist after update");
 
-            let retrieved_after_update = retrieved_after_update.unwrap();
+            let retrieved_after_update = retrieved_after_update.ok_or_else(|| {
+                TestCaseError::fail("Trajectory should exist after update".to_string())
+            })?;
 
             // Verify the retrieved trajectory matches the updated trajectory
             prop_assert_eq!(retrieved_after_update.trajectory_id, updated.trajectory_id);
@@ -306,7 +315,7 @@ proptest! {
     fn prop_trajectory_create_generates_unique_ids(
         create_req in create_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -340,7 +349,7 @@ proptest! {
     fn prop_trajectory_get_nonexistent_returns_none(
         random_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
@@ -367,7 +376,7 @@ proptest! {
         random_id_bytes in any::<[u8; 16]>(),
         update_req in update_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
@@ -392,7 +401,7 @@ proptest! {
         create_req in create_trajectory_request_strategy(),
         new_status in trajectory_status_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -415,8 +424,10 @@ proptest! {
             prop_assert_eq!(updated.status, new_status);
 
             // Verify persistence by retrieving again
-            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?
-                .expect("Trajectory should exist");
+            let retrieved = db
+                .trajectory_get(created.trajectory_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Trajectory should exist".to_string()))?;
             prop_assert_eq!(retrieved.status, new_status);
 
             Ok(())
@@ -433,7 +444,7 @@ proptest! {
     fn prop_trajectory_name_preservation(
         name in trajectory_name_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -452,8 +463,10 @@ proptest! {
             prop_assert_eq!(&created.name, &name);
 
             // Verify persistence
-            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?
-                .expect("Trajectory should exist");
+            let retrieved = db
+                .trajectory_get(created.trajectory_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Trajectory should exist".to_string()))?;
             prop_assert_eq!(&retrieved.name, &name);
 
             Ok(())
@@ -470,7 +483,7 @@ proptest! {
         name in trajectory_name_strategy(),
         metadata in optional_metadata_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -489,8 +502,10 @@ proptest! {
             prop_assert_eq!(&created.metadata, &metadata);
 
             // Verify persistence
-            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?
-                .expect("Trajectory should exist");
+            let retrieved = db
+                .trajectory_get(created.trajectory_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Trajectory should exist".to_string()))?;
             prop_assert_eq!(&retrieved.metadata, &metadata);
 
             Ok(())
@@ -507,7 +522,7 @@ mod edge_cases {
     use super::*;
 
     #[tokio::test]
-    async fn test_trajectory_with_empty_name_fails() {
+    async fn test_trajectory_with_empty_name_fails() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -527,10 +542,11 @@ mod edge_cases {
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
         assert!(result.is_ok() || result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_trajectory_with_very_long_name() {
+    async fn test_trajectory_with_very_long_name() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -556,10 +572,11 @@ mod edge_cases {
                 // Database may have length limits - that's acceptable
             }
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_trajectory_with_unicode_name() {
+    async fn test_trajectory_with_unicode_name() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -573,21 +590,26 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.trajectory_create(&create_req, auth.tenant_id).await
-            .expect("Should handle Unicode names");
+        let created = db
+            .trajectory_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         assert_eq!(created.name, unicode_name);
 
         // Verify persistence
-        let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await
-            .expect("Should retrieve trajectory")
-            .expect("Trajectory should exist");
+        let retrieved = db
+            .trajectory_get(created.trajectory_id, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Trajectory should exist".to_string())?;
 
         assert_eq!(retrieved.name, unicode_name);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_trajectory_update_with_no_changes() {
+    async fn test_trajectory_update_with_no_changes() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -600,8 +622,10 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.trajectory_create(&create_req, auth.tenant_id).await
-            .expect("Should create trajectory");
+        let created = db
+            .trajectory_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Update with the same values
         let update_req = UpdateTrajectoryRequest {
@@ -611,17 +635,20 @@ mod edge_cases {
             metadata: created.metadata.clone(),
         };
 
-        let updated = db.trajectory_update(created.trajectory_id, &update_req, auth.tenant_id).await
-            .expect("Should update trajectory");
+        let updated = db
+            .trajectory_update(created.trajectory_id, &update_req, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Values should remain the same
         assert_eq!(updated.name, created.name);
         assert_eq!(updated.description, created.description);
         assert_eq!(updated.status, created.status);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_trajectory_list_by_status() {
+    async fn test_trajectory_list_by_status() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -634,12 +661,16 @@ mod edge_cases {
             metadata: None,
         };
 
-        let active_traj = db.trajectory_create(&create_req, auth.tenant_id).await
-            .expect("Should create trajectory");
+        let active_traj = db
+            .trajectory_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // List active trajectories
-        let active_list = db.trajectory_list_by_status(TrajectoryStatus::Active, auth.tenant_id).await
-            .expect("Should list trajectories");
+        let active_list = db
+            .trajectory_list_by_status(TrajectoryStatus::Active, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Should contain our trajectory
         assert!(active_list.iter().any(|t| t.trajectory_id == active_traj.trajectory_id));
@@ -652,14 +683,18 @@ mod edge_cases {
             metadata: None,
         };
 
-        db.trajectory_update(active_traj.trajectory_id, &update_req, auth.tenant_id).await
-            .expect("Should update trajectory");
+        db.trajectory_update(active_traj.trajectory_id, &update_req, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // List completed trajectories
-        let completed_list = db.trajectory_list_by_status(TrajectoryStatus::Completed, auth.tenant_id).await
-            .expect("Should list trajectories");
+        let completed_list = db
+            .trajectory_list_by_status(TrajectoryStatus::Completed, auth.tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Should contain our trajectory
         assert!(completed_list.iter().any(|t| t.trajectory_id == active_traj.trajectory_id));
+        Ok(())
     }
 }

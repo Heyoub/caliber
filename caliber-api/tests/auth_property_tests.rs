@@ -21,6 +21,7 @@ use caliber_api::{
 };
 use proptest::prelude::*;
 use tower::ServiceExt;
+use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 // ============================================================================
@@ -45,6 +46,10 @@ fn test_app() -> Router {
     Router::new()
         .route("/api/v1/test", get(|| async { "Success" }))
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
+}
+
+fn test_runtime() -> Result<Runtime, TestCaseError> {
+    Runtime::new().map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))
 }
 
 // ============================================================================
@@ -149,7 +154,7 @@ proptest! {
         (auth_header, tenant_header) in request_strategy()
     ) {
         // Run async test in tokio runtime
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let app = test_app();
             let auth_config = test_auth_config();
@@ -175,7 +180,7 @@ proptest! {
                         Some((*tenant_id).into()),
                         vec![],
                     )
-                    .unwrap();
+                    .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
                     request_builder = request_builder
                         .header("authorization", format!("Bearer {}", token));
                     (true, true) // JWT has tenant in claims
@@ -215,10 +220,15 @@ proptest! {
                 has_valid_tenant_header || jwt_has_tenant
             };
 
-            let request = request_builder.body(Body::empty()).unwrap();
+            let request = request_builder
+                .body(Body::empty())
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
             // Execute the request
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
             let status = response.status();
 
             // Verify the response matches expected behavior
@@ -266,7 +276,7 @@ proptest! {
         user_id in "[a-z0-9]{5,20}",
         tenant_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let tenant_id = Uuid::from_bytes(tenant_id_bytes);
             let auth_config = test_auth_config();
@@ -278,7 +288,7 @@ proptest! {
                 Some(tenant_id.into()),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // Create app with a handler that extracts AuthContext
             let auth_state = AuthMiddlewareState::new(auth_config);
@@ -287,8 +297,10 @@ proptest! {
                     "/api/v1/test",
                     get(|request: Request<Body>| async move {
                         let auth_context = caliber_api::middleware::extract_auth_context(&request)
-                            .expect("AuthContext should be present for authenticated request");
-                        format!("{}", auth_context.tenant_id)
+                            .map_err(|e| (StatusCode::UNAUTHORIZED, Json(e)))?;
+                        Ok::<_, (StatusCode, Json<caliber_api::error::ApiError>)>(
+                            format!("{}", auth_context.tenant_id),
+                        )
                     }),
                 )
                 .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
@@ -298,9 +310,12 @@ proptest! {
                 .uri("/api/v1/test")
                 .header("authorization", format!("Bearer {}", token))
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Verify successful authentication
             prop_assert_eq!(response.status(), StatusCode::OK);
@@ -308,8 +323,9 @@ proptest! {
             // Verify tenant ID was correctly extracted
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                 .await
-                .unwrap();
-            let body_str = String::from_utf8(body.to_vec()).unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
+            let body_str = String::from_utf8(body.to_vec())
+                .map_err(|e| TestCaseError::fail(format!("Invalid UTF-8 body: {}", e)))?;
             prop_assert_eq!(body_str, tenant_id.to_string());
 
             Ok(())
@@ -327,7 +343,7 @@ proptest! {
     fn prop_api_key_authentication(
         tenant_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let tenant_id = Uuid::from_bytes(tenant_id_bytes);
             let auth_config = test_auth_config();
@@ -339,8 +355,10 @@ proptest! {
                     "/api/v1/test",
                     get(|request: Request<Body>| async move {
                         let auth_context = caliber_api::middleware::extract_auth_context(&request)
-                            .expect("AuthContext should be present for authenticated request");
-                        format!("{:?}", auth_context.auth_method)
+                            .map_err(|e| (StatusCode::UNAUTHORIZED, Json(e)))?;
+                        Ok::<_, (StatusCode, Json<caliber_api::error::ApiError>)>(
+                            format!("{:?}", auth_context.auth_method),
+                        )
                     }),
                 )
                 .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
@@ -351,9 +369,12 @@ proptest! {
                 .header("x-api-key", "valid_api_key_123")
                 .header("x-tenant-id", tenant_id.to_string())
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Verify successful authentication
             prop_assert_eq!(response.status(), StatusCode::OK);
@@ -361,8 +382,9 @@ proptest! {
             // Verify API key auth method was used
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                 .await
-                .unwrap();
-            let body_str = String::from_utf8(body.to_vec()).unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
+            let body_str = String::from_utf8(body.to_vec())
+                .map_err(|e| TestCaseError::fail(format!("Invalid UTF-8 body: {}", e)))?;
             prop_assert_eq!(body_str, "ApiKey");
 
             Ok(())
@@ -382,7 +404,7 @@ proptest! {
         user_id in "[a-z0-9]{5,20}",
         tenant_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let tenant_id = Uuid::from_bytes(tenant_id_bytes);
             let auth_config = test_auth_config();
@@ -394,7 +416,7 @@ proptest! {
                 Some(tenant_id.into()),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // Create app with handler that checks auth method and user ID
             let auth_state = AuthMiddlewareState::new(auth_config);
@@ -403,8 +425,10 @@ proptest! {
                     "/api/v1/test",
                     get(|request: Request<Body>| async move {
                         let auth_context = caliber_api::middleware::extract_auth_context(&request)
-                            .expect("AuthContext should be present for authenticated request");
-                        format!("{:?}:{}", auth_context.auth_method, auth_context.user_id)
+                            .map_err(|e| (StatusCode::UNAUTHORIZED, Json(e)))?;
+                        Ok::<_, (StatusCode, Json<caliber_api::error::ApiError>)>(
+                            format!("{:?}:{}", auth_context.auth_method, auth_context.user_id),
+                        )
                     }),
                 )
                 .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
@@ -414,9 +438,12 @@ proptest! {
                 .uri("/api/v1/test")
                 .header("authorization", format!("Bearer {}", token))
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Verify successful authentication
             prop_assert_eq!(response.status(), StatusCode::OK);
@@ -424,8 +451,9 @@ proptest! {
             // Verify JWT auth method and user ID
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                 .await
-                .unwrap();
-            let body_str = String::from_utf8(body.to_vec()).unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
+            let body_str = String::from_utf8(body.to_vec())
+                .map_err(|e| TestCaseError::fail(format!("Invalid UTF-8 body: {}", e)))?;
             prop_assert_eq!(body_str, format!("Jwt:{}", user_id));
 
             Ok(())
@@ -442,7 +470,7 @@ proptest! {
     fn prop_missing_auth_returns_401(
         _dummy in any::<u8>(), // Just to make proptest run multiple times
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let app = test_app();
 
@@ -450,9 +478,12 @@ proptest! {
             let request = Request::builder()
                 .uri("/api/v1/test")
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Property: No authentication → 401 Unauthorized
             prop_assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -472,7 +503,7 @@ proptest! {
         invalid_key in "[a-z0-9_]{10,30}",
         tenant_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             // Filter out accidentally valid keys
             prop_assume!(invalid_key != "valid_api_key_123");
@@ -487,9 +518,12 @@ proptest! {
                 .header("x-api-key", invalid_key)
                 .header("x-tenant-id", tenant_id.to_string())
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Property: Invalid authentication → 401 Unauthorized
             prop_assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -508,7 +542,7 @@ mod edge_cases {
     use super::*;
 
     #[tokio::test]
-    async fn test_expired_jwt_returns_401() {
+    async fn test_expired_jwt_returns_401() -> Result<(), String> {
         let mut auth_config = test_auth_config();
         auth_config.jwt_expiration_secs = -1; // Already expired
 
@@ -518,7 +552,7 @@ mod edge_cases {
             Some(Uuid::now_v7().into()),
             vec![],
         )
-        .unwrap();
+        .map_err(|e| e.message)?;
 
         // Reset expiration for middleware
         auth_config.jwt_expiration_secs = 3600;
@@ -532,30 +566,38 @@ mod edge_cases {
             .uri("/api/v1/test")
             .header("authorization", format!("Bearer {}", token))
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_malformed_bearer_token_returns_401() {
+    async fn test_malformed_bearer_token_returns_401() -> Result<(), String> {
         let app = test_app();
 
         let request = Request::builder()
             .uri("/api/v1/test")
             .header("authorization", "NotBearer token123")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_invalid_tenant_uuid_returns_400() {
+    async fn test_invalid_tenant_uuid_returns_400() -> Result<(), String> {
         let app = test_app();
 
         let request = Request::builder()
@@ -563,15 +605,19 @@ mod edge_cases {
             .header("x-api-key", "valid_api_key_123")
             .header("x-tenant-id", "not-a-valid-uuid")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_empty_api_key_returns_401() {
+    async fn test_empty_api_key_returns_401() -> Result<(), String> {
         let app = test_app();
         let tenant_id = Uuid::now_v7();
 
@@ -580,25 +626,33 @@ mod edge_cases {
             .header("x-api-key", "")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_empty_bearer_token_returns_401() {
+    async fn test_empty_bearer_token_returns_401() -> Result<(), String> {
         let app = test_app();
 
         let request = Request::builder()
             .uri("/api/v1/test")
             .header("authorization", "Bearer ")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
 }

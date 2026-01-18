@@ -189,15 +189,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_health_response_serialization() {
+    fn test_health_response_serialization() -> Result<(), serde_json::Error> {
         let response = HealthResponse {
             status: HealthStatus::Healthy,
             message: Some("All systems operational".to_string()),
             details: None,
         };
 
-        let json = serde_json::to_string(&response).unwrap();
+        let json = serde_json::to_string(&response)?;
         assert!(json.contains("\"status\":\"healthy\""));
+        Ok(())
     }
 
     #[test]
@@ -208,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn test_health_details_structure() {
+    fn test_health_details_structure() -> Result<(), serde_json::Error> {
         let details = HealthDetails {
             database: ComponentHealth {
                 status: HealthStatus::Healthy,
@@ -219,21 +220,23 @@ mod tests {
             uptime_seconds: 3600,
         };
 
-        let json = serde_json::to_string(&details).unwrap();
+        let json = serde_json::to_string(&details)?;
         assert!(json.contains("\"version\":\"0.1.0\""));
         assert!(json.contains("\"uptime_seconds\":3600"));
+        Ok(())
     }
 
     #[test]
-    fn test_component_health_with_error() {
+    fn test_component_health_with_error() -> Result<(), serde_json::Error> {
         let component = ComponentHealth {
             status: HealthStatus::Unhealthy,
             latency_ms: None,
             error: Some("Connection refused".to_string()),
         };
 
-        let json = serde_json::to_string(&component).unwrap();
+        let json = serde_json::to_string(&component)?;
         assert!(json.contains("\"status\":\"unhealthy\""));
         assert!(json.contains("Connection refused"));
+        Ok(())
     }
 }

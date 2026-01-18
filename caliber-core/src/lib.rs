@@ -1461,19 +1461,21 @@ mod tests {
     }
 
     #[test]
-    fn test_embedding_vector_cosine_similarity() {
+    fn test_embedding_vector_cosine_similarity() -> Result<(), CaliberError> {
         let v1 = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "test".to_string());
         let v2 = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "test".to_string());
-        let similarity = v1.cosine_similarity(&v2).unwrap();
+        let similarity = v1.cosine_similarity(&v2)?;
         assert!((similarity - 1.0).abs() < 0.0001);
+        Ok(())
     }
 
     #[test]
-    fn test_embedding_vector_orthogonal() {
+    fn test_embedding_vector_orthogonal() -> Result<(), CaliberError> {
         let v1 = EmbeddingVector::new(vec![1.0, 0.0], "test".to_string());
         let v2 = EmbeddingVector::new(vec![0.0, 1.0], "test".to_string());
-        let similarity = v1.cosine_similarity(&v2).unwrap();
+        let similarity = v1.cosine_similarity(&v2)?;
         assert!((similarity - 0.0).abs() < 0.0001);
+        Ok(())
     }
 
     #[test]
@@ -1829,7 +1831,7 @@ mod prop_tests {
 
             // Cosine similarity should be in [-1, 1]
             if let Ok(sim) = result {
-                prop_assert!(sim >= -1.0 && sim <= 1.0);
+                prop_assert!((-1.0..=1.0).contains(&sim));
             }
         }
     }

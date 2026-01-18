@@ -26,12 +26,13 @@ mod test_db_support;
 // TEST CONFIGURATION
 // ============================================================================
 
-async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> T {
+async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> Result<T, String> {
     let response = response.into_response();
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
-        .expect("Failed to read response body");
-    serde_json::from_slice(&body).expect("Failed to parse JSON response")
+        .map_err(|e| format!("Failed to read response body: {:?}", e))?;
+    serde_json::from_slice(&body)
+        .map_err(|e| format!("Failed to parse JSON response: {}", e))
 }
 
 // ============================================================================
@@ -94,7 +95,8 @@ proptest! {
     /// **Property 12: DSL Validation Round-Trip**
     #[test]
     fn prop_dsl_round_trip(source in valid_dsl_strategy()) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
             let state = Arc::new(dsl::DslState::new(db));
@@ -107,7 +109,8 @@ proptest! {
                 )
                 .await?
             )
-            .await;
+            .await
+            .map_err(TestCaseError::fail)?;
 
             prop_assert!(parsed.valid, "DSL source should be valid");
             let ast_value = parsed.ast.ok_or_else(|| TestCaseError::fail("AST missing for valid DSL"))?;
@@ -123,7 +126,8 @@ proptest! {
                 )
                 .await?
             )
-            .await;
+            .await
+            .map_err(TestCaseError::fail)?;
 
             prop_assert!(reparsed.valid, "Pretty-printed DSL should be valid");
             let ast_value = reparsed.ast.ok_or_else(|| TestCaseError::fail("AST missing after round-trip"))?;

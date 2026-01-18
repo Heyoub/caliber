@@ -514,18 +514,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_billing_plan_serialization() {
+    fn test_billing_plan_serialization() -> Result<(), serde_json::Error> {
         let trial = BillingPlan::Trial;
-        let json = serde_json::to_string(&trial).expect("Failed to serialize");
+        let json = serde_json::to_string(&trial)?;
         assert_eq!(json, "\"trial\"");
 
         let pro = BillingPlan::Pro;
-        let json = serde_json::to_string(&pro).expect("Failed to serialize");
+        let json = serde_json::to_string(&pro)?;
         assert_eq!(json, "\"pro\"");
+        Ok(())
     }
 
     #[test]
-    fn test_billing_status_serialization() {
+    fn test_billing_status_serialization() -> Result<(), serde_json::Error> {
         let status = BillingStatus {
             tenant_id: Uuid::new_v4(),
             plan: BillingPlan::Trial,
@@ -536,36 +537,39 @@ mod tests {
             hot_cache_limit_bytes: 1024 * 100,
         };
 
-        let json = serde_json::to_string(&status).expect("Failed to serialize");
+        let json = serde_json::to_string(&status)?;
         assert!(json.contains("\"plan\":\"trial\""));
         assert!(json.contains("storage_used_bytes"));
+        Ok(())
     }
 
     #[test]
-    fn test_checkout_request_deserialization() {
+    fn test_checkout_request_deserialization() -> Result<(), serde_json::Error> {
         let json = r#"{
             "plan": "pro",
             "success_url": "https://example.com/success"
         }"#;
 
-        let req: CreateCheckoutRequest = serde_json::from_str(json).expect("Failed to deserialize");
+        let req: CreateCheckoutRequest = serde_json::from_str(json)?;
         assert_eq!(req.plan, "pro");
         assert_eq!(req.success_url, Some("https://example.com/success".to_string()));
         assert!(req.variant_id.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_webhook_signature_verification() {
+    fn test_webhook_signature_verification() -> Result<(), Box<dyn std::error::Error>> {
         let payload = b"test payload";
         let secret = "supersecret123";
 
         // Generate expected signature
         type HmacSha256 = Hmac<Sha256>;
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())?;
         mac.update(payload);
         let expected = hex::encode(mac.finalize().into_bytes());
 
         assert!(verify_webhook_signature(payload, &expected, secret));
         assert!(!verify_webhook_signature(payload, "invalid", secret));
+        Ok(())
     }
 }

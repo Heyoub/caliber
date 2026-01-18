@@ -610,26 +610,26 @@ mod tests {
     }
     
     #[test]
-    fn test_jwt_generation_and_validation() {
+    fn test_jwt_generation_and_validation() -> ApiResult<()> {
         let config = test_config();
         let user_id = "user123".to_string();
         let tenant_id = Some(Uuid::now_v7());
         let roles = vec!["admin".to_string()];
         
         // Generate token
-        let token = generate_jwt_token(&config, user_id.clone(), tenant_id, roles.clone())
-            .expect("Failed to generate token");
+        let token = generate_jwt_token(&config, user_id.clone(), tenant_id, roles.clone())?;
         
         // Validate token
-        let claims = validate_jwt_token(&config, &token).expect("Failed to validate token");
+        let claims = validate_jwt_token(&config, &token)?;
         
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.roles, roles);
         assert!(!claims.is_expired());
+        Ok(())
     }
     
     #[test]
-    fn test_expired_token() {
+    fn test_expired_token() -> ApiResult<()> {
         let mut config = test_config();
         config.jwt_expiration_secs = -1; // Already expired
         
@@ -638,8 +638,7 @@ mod tests {
             "user123".to_string(),
             None,
             vec![],
-        )
-        .expect("Failed to generate token");
+        )?;
         
         // Reset expiration for validation
         config.jwt_expiration_secs = 3600;
@@ -650,23 +649,25 @@ mod tests {
         if let Err(e) = result {
             assert_eq!(e.code, crate::error::ErrorCode::TokenExpired);
         }
+        Ok(())
     }
     
     #[test]
-    fn test_tenant_id_extraction() {
+    fn test_tenant_id_extraction() -> ApiResult<()> {
         let tenant_id = Uuid::now_v7();
         let tenant_id_str = tenant_id.to_string();
         
-        let extracted = extract_tenant_id(&tenant_id_str).expect("Failed to extract tenant ID");
+        let extracted = extract_tenant_id(&tenant_id_str)?;
         let expected: EntityId = tenant_id;
         assert_eq!(extracted, expected);
         
         // Invalid UUID
         assert!(extract_tenant_id("not-a-uuid").is_err());
+        Ok(())
     }
     
     #[test]
-    fn test_authenticate_api_key() {
+    fn test_authenticate_api_key() -> ApiResult<()> {
         let config = test_config();
         let tenant_id = Uuid::now_v7();
         
@@ -674,17 +675,17 @@ mod tests {
             &config,
             "test_key_123",
             Some(&tenant_id.to_string()),
-        )
-        .expect("Failed to authenticate");
+        )?;
         
         let expected_tenant: EntityId = tenant_id;
         assert_eq!(auth_context.tenant_id, expected_tenant);
         assert_eq!(auth_context.auth_method, AuthMethod::ApiKey);
         assert!(auth_context.has_role("api_user"));
+        Ok(())
     }
     
     #[test]
-    fn test_authenticate_jwt() {
+    fn test_authenticate_jwt() -> ApiResult<()> {
         let config = test_config();
         let user_id = "user123".to_string();
         let tenant_id = Uuid::now_v7();
@@ -695,21 +696,20 @@ mod tests {
             user_id.clone(),
             Some(tenant_id),
             roles.clone(),
-        )
-        .expect("Failed to generate token");
+        )?;
         
-        let auth_context = authenticate_jwt(&config, &token, None)
-            .expect("Failed to authenticate");
+        let auth_context = authenticate_jwt(&config, &token, None)?;
         
         let expected_tenant: EntityId = tenant_id;
         assert_eq!(auth_context.user_id, user_id);
         assert_eq!(auth_context.tenant_id, expected_tenant);
         assert_eq!(auth_context.roles, roles);
         assert_eq!(auth_context.auth_method, AuthMethod::Jwt);
+        Ok(())
     }
     
     #[test]
-    fn test_authenticate_with_api_key() {
+    fn test_authenticate_with_api_key() -> ApiResult<()> {
         let config = test_config();
         let tenant_id = Uuid::now_v7();
         
@@ -718,28 +718,27 @@ mod tests {
             Some("test_key_123"),
             None,
             Some(&tenant_id.to_string()),
-        )
-        .expect("Failed to authenticate");
+        )?;
         
         assert_eq!(auth_context.auth_method, AuthMethod::ApiKey);
+        Ok(())
     }
     
     #[test]
-    fn test_authenticate_with_jwt() {
+    fn test_authenticate_with_jwt() -> ApiResult<()> {
         let config = test_config();
         let user_id = "user123".to_string();
         let tenant_id = Uuid::now_v7();
         
-        let token = generate_jwt_token(&config, user_id.clone(), Some(tenant_id), vec![])
-            .expect("Failed to generate token");
+        let token = generate_jwt_token(&config, user_id.clone(), Some(tenant_id), vec![])?;
         
         let auth_header = format!("Bearer {}", token);
         
-        let auth_context = authenticate(&config, None, Some(&auth_header), None)
-            .expect("Failed to authenticate");
+        let auth_context = authenticate(&config, None, Some(&auth_header), None)?;
         
         assert_eq!(auth_context.auth_method, AuthMethod::Jwt);
         assert_eq!(auth_context.user_id, user_id);
+        Ok(())
     }
     
     #[test]

@@ -20,6 +20,7 @@ use caliber_api::{
 };
 use caliber_core::EntityId;
 use proptest::prelude::*;
+use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 #[path = "support/auth.rs"]
@@ -35,6 +36,10 @@ use test_auth_support::test_auth_context;
 /// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
     test_db_support::test_db_client()
+}
+
+fn test_runtime() -> Result<Runtime, TestCaseError> {
+    Runtime::new().map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))
 }
 
 // ============================================================================
@@ -217,7 +222,7 @@ proptest! {
         register_req in register_agent_request_strategy(),
         update_req in update_agent_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -258,7 +263,9 @@ proptest! {
             let retrieved = db.agent_get(registered.agent_id).await?;
             prop_assert!(retrieved.is_some(), "Agent should exist after registration");
 
-            let retrieved = retrieved.unwrap();
+            let retrieved = retrieved.ok_or_else(|| {
+                TestCaseError::fail("Agent should exist after registration".to_string())
+            })?;
 
             // Verify all fields match the registered agent
             prop_assert_eq!(retrieved.agent_id, registered.agent_id);
@@ -313,7 +320,9 @@ proptest! {
             let retrieved_after_update = db.agent_get(registered.agent_id).await?;
             prop_assert!(retrieved_after_update.is_some(), "Agent should still exist after update");
 
-            let retrieved_after_update = retrieved_after_update.unwrap();
+            let retrieved_after_update = retrieved_after_update.ok_or_else(|| {
+                TestCaseError::fail("Agent should exist after update".to_string())
+            })?;
 
             // Verify the retrieved agent matches the updated agent
             prop_assert_eq!(retrieved_after_update.agent_id, updated.agent_id);
@@ -364,7 +373,7 @@ proptest! {
     fn prop_agent_register_generates_unique_ids(
         register_req in register_agent_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -398,7 +407,7 @@ proptest! {
     fn prop_agent_get_nonexistent_returns_none(
         random_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let _auth = test_auth_context();
@@ -424,7 +433,7 @@ proptest! {
         random_id_bytes in any::<[u8; 16]>(),
         update_req in update_agent_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let _auth = test_auth_context();
@@ -450,7 +459,7 @@ proptest! {
         register_req in register_agent_request_strategy(),
         new_status in agent_status_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -474,8 +483,10 @@ proptest! {
             prop_assert_eq!(updated.status.as_str(), new_status.as_str());
 
             // Verify persistence by retrieving again
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
             prop_assert_eq!(retrieved.status.as_str(), new_status.as_str());
 
             Ok(())
@@ -492,7 +503,7 @@ proptest! {
     fn prop_agent_type_preservation(
         agent_type in agent_type_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -518,8 +529,10 @@ proptest! {
             prop_assert_eq!(&registered.agent_type, &agent_type);
 
             // Verify persistence
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
             prop_assert_eq!(&retrieved.agent_type, &agent_type);
 
             Ok(())
@@ -535,7 +548,7 @@ proptest! {
     fn prop_agent_capabilities_preservation(
         capabilities in capabilities_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -561,8 +574,10 @@ proptest! {
             prop_assert_eq!(&registered.capabilities, &capabilities);
 
             // Verify persistence
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
             prop_assert_eq!(&retrieved.capabilities, &capabilities);
 
             Ok(())
@@ -578,7 +593,7 @@ proptest! {
     fn prop_agent_heartbeat_updates_timestamp(
         register_req in register_agent_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -594,8 +609,10 @@ proptest! {
             db.agent_heartbeat(registered.agent_id).await?;
 
             // Retrieve agent and check heartbeat was updated
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
 
             // Property: Heartbeat timestamp should be updated (greater than or equal)
             prop_assert!(
@@ -616,7 +633,7 @@ proptest! {
     fn prop_agent_memory_access_preservation(
         memory_access in memory_access_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -636,8 +653,10 @@ proptest! {
             prop_assert_eq!(registered.memory_access.write.len(), memory_access.write.len());
 
             // Verify persistence
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
             prop_assert_eq!(retrieved.memory_access.read.len(), memory_access.read.len());
             prop_assert_eq!(retrieved.memory_access.write.len(), memory_access.write.len());
 
@@ -654,7 +673,7 @@ proptest! {
     fn prop_agent_delegation_targets_preservation(
         delegation_targets in delegation_targets_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -680,8 +699,10 @@ proptest! {
             prop_assert_eq!(&registered.can_delegate_to, &delegation_targets);
 
             // Verify persistence
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
             prop_assert_eq!(&retrieved.can_delegate_to, &delegation_targets);
 
             Ok(())
@@ -700,7 +721,7 @@ proptest! {
     fn prop_agent_initial_state(
         register_req in register_agent_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -713,8 +734,10 @@ proptest! {
             prop_assert!(registered.current_scope_id.is_none());
 
             // Verify persistence
-            let retrieved = db.agent_get(registered.agent_id).await?
-                .expect("Agent should exist");
+            let retrieved = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
             prop_assert_eq!(retrieved.status.to_lowercase(), "idle");
             prop_assert!(retrieved.current_trajectory_id.is_none());
             prop_assert!(retrieved.current_scope_id.is_none());
@@ -811,7 +834,7 @@ mod edge_cases {
     }
 
     #[tokio::test]
-    async fn test_agent_with_unicode_type() {
+    async fn test_agent_with_unicode_type() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -835,7 +858,7 @@ mod edge_cases {
         let registered = db
             .agent_register(&register_req, auth.tenant_id)
             .await
-            .expect("Should handle Unicode agent types");
+            .map_err(|e| e.to_string())?;
 
         assert_eq!(registered.agent_type, unicode_type);
 
@@ -843,14 +866,15 @@ mod edge_cases {
         let retrieved = db
             .agent_get(registered.agent_id)
             .await
-            .expect("Should retrieve agent")
-            .expect("Agent should exist");
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Agent should exist".to_string())?;
 
         assert_eq!(retrieved.agent_type, unicode_type);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_agent_update_with_no_changes() {
+    async fn test_agent_update_with_no_changes() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -877,7 +901,7 @@ mod edge_cases {
         let registered = db
             .agent_register(&register_req, auth.tenant_id)
             .await
-            .expect("Should register agent");
+            .map_err(|e| e.to_string())?;
 
         // Update with the same values
         let update_req = UpdateAgentRequest {
@@ -891,16 +915,17 @@ mod edge_cases {
         let updated = db
             .agent_update(registered.agent_id, &update_req)
             .await
-            .expect("Should update agent");
+            .map_err(|e| e.to_string())?;
 
         // Values should remain the same
         assert_eq!(updated.agent_type, registered.agent_type);
         assert_eq!(updated.capabilities, registered.capabilities);
         assert_eq!(updated.status.as_str(), registered.status.as_str());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_agent_list_by_type() {
+    async fn test_agent_list_by_type() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -923,22 +948,23 @@ mod edge_cases {
         let coder_agent = db
             .agent_register(&coder_req, auth.tenant_id)
             .await
-            .expect("Should register coder agent");
+            .map_err(|e| e.to_string())?;
 
         // List agents by type
         let coder_list = db
             .agent_list_by_type("coder")
             .await
-            .expect("Should list agents");
+            .map_err(|e| e.to_string())?;
 
         // Should contain our agent
         assert!(coder_list
             .iter()
             .any(|a| a.agent_id == coder_agent.agent_id));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_agent_list_active() {
+    async fn test_agent_list_active() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -961,7 +987,7 @@ mod edge_cases {
         let registered = db
             .agent_register(&register_req, auth.tenant_id)
             .await
-            .expect("Should register agent");
+            .map_err(|e| e.to_string())?;
 
         // Update to active status
         let update_req = UpdateAgentRequest {
@@ -974,19 +1000,20 @@ mod edge_cases {
 
         db.agent_update(registered.agent_id, &update_req)
             .await
-            .expect("Should update agent");
+            .map_err(|e| e.to_string())?;
 
         // List active agents
-        let active_list = db.agent_list_active().await.expect("Should list agents");
+        let active_list = db.agent_list_active().await.map_err(|e| e.to_string())?;
 
         // Should contain our agent
         assert!(active_list
             .iter()
             .any(|a| a.agent_id == registered.agent_id));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_agent_unregister_active_fails() {
+    async fn test_agent_unregister_active_fails() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -1009,7 +1036,7 @@ mod edge_cases {
         let registered = db
             .agent_register(&register_req, auth.tenant_id)
             .await
-            .expect("Should register agent");
+            .map_err(|e| e.to_string())?;
 
         // Update to active status
         let update_req = UpdateAgentRequest {
@@ -1022,17 +1049,18 @@ mod edge_cases {
 
         db.agent_update(registered.agent_id, &update_req)
             .await
-            .expect("Should update agent");
+            .map_err(|e| e.to_string())?;
 
         // Try to unregister active agent
         let result = db.agent_unregister(registered.agent_id).await;
 
         // Should fail (cannot unregister active agent)
         assert!(result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_agent_heartbeat_idempotent() {
+    async fn test_agent_heartbeat_idempotent() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -1055,33 +1083,34 @@ mod edge_cases {
         let registered = db
             .agent_register(&register_req, auth.tenant_id)
             .await
-            .expect("Should register agent");
+            .map_err(|e| e.to_string())?;
 
         // Send multiple heartbeats
         db.agent_heartbeat(registered.agent_id)
             .await
-            .expect("First heartbeat should succeed");
+            .map_err(|e| e.to_string())?;
 
         db.agent_heartbeat(registered.agent_id)
             .await
-            .expect("Second heartbeat should succeed");
+            .map_err(|e| e.to_string())?;
 
         db.agent_heartbeat(registered.agent_id)
             .await
-            .expect("Third heartbeat should succeed");
+            .map_err(|e| e.to_string())?;
 
         // Agent should still exist
         let retrieved = db
             .agent_get(registered.agent_id)
             .await
-            .expect("Should retrieve agent")
-            .expect("Agent should exist");
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Agent should exist".to_string())?;
 
         assert_eq!(retrieved.agent_id, registered.agent_id);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_agent_with_supervisor() {
+    async fn test_agent_with_supervisor() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
 
@@ -1104,7 +1133,7 @@ mod edge_cases {
         let supervisor = db
             .agent_register(&supervisor_req, auth.tenant_id)
             .await
-            .expect("Should register supervisor");
+            .map_err(|e| e.to_string())?;
 
         // Register a subordinate agent
         let subordinate_req = RegisterAgentRequest {
@@ -1125,7 +1154,7 @@ mod edge_cases {
         let subordinate = db
             .agent_register(&subordinate_req, auth.tenant_id)
             .await
-            .expect("Should register subordinate");
+            .map_err(|e| e.to_string())?;
 
         // Verify the relationship
         assert_eq!(subordinate.reports_to, Some(supervisor.agent_id));
@@ -1134,9 +1163,10 @@ mod edge_cases {
         let retrieved = db
             .agent_get(subordinate.agent_id)
             .await
-            .expect("Should retrieve agent")
-            .expect("Agent should exist");
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Agent should exist".to_string())?;
 
         assert_eq!(retrieved.reports_to, Some(supervisor.agent_id));
+        Ok(())
     }
 }
