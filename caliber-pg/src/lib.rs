@@ -112,17 +112,17 @@ fn int8_datum(n: i64) -> DatumWithOid<'static> {
 
 /// Convert a chrono DateTime<Utc> to DatumWithOid for SPI calls.
 #[inline]
-fn timestamp_datum(dt: chrono::DateTime<chrono::Utc>) -> DatumWithOid<'static> {
-    let pg_ts = tuple_extract::chrono_to_timestamp(dt);
-    unsafe { DatumWithOid::new(pg_ts, pgrx::pg_sys::TIMESTAMPTZOID) }
+fn timestamp_datum(dt: chrono::DateTime<chrono::Utc>) -> CaliberResult<DatumWithOid<'static>> {
+    let pg_ts = tuple_extract::chrono_to_timestamp(dt)?;
+    Ok(unsafe { DatumWithOid::new(pg_ts, pgrx::pg_sys::TIMESTAMPTZOID) })
 }
 
 /// Convert an optional chrono DateTime<Utc> to DatumWithOid for SPI calls.
 #[inline]
-fn opt_timestamp_datum(dt: Option<chrono::DateTime<chrono::Utc>>) -> DatumWithOid<'static> {
+fn opt_timestamp_datum(dt: Option<chrono::DateTime<chrono::Utc>>) -> CaliberResult<DatumWithOid<'static>> {
     match dt {
         Some(dt) => timestamp_datum(dt),
-        None => DatumWithOid::null_oid(pgrx::pg_sys::TIMESTAMPTZOID),
+        None => Ok(DatumWithOid::null_oid(pgrx::pg_sys::TIMESTAMPTZOID)),
     }
 }
 
@@ -1112,15 +1112,32 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB, tenant_id: pgrx::U
         if v.is_null() { None } else { v.as_str().map(|s| s.to_string()) }
     });
     let is_active_val: Option<bool> = update_obj.get("is_active").and_then(|v| v.as_bool());
-    let closed_at_val: Option<Option<TimestampWithTimeZone>> = update_obj.get("closed_at").map(|v| {
-        if v.is_null() {
-            None
+    let closed_at_val: Option<Option<TimestampWithTimeZone>> = if let Some(value) = update_obj.get("closed_at") {
+        if value.is_null() {
+            Some(None)
         } else {
-            v.as_str()
+            let parsed = match value
+                .as_str()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                .map(|dt| chrono_to_timestamp(dt.with_timezone(&Utc)))
+            {
+                Some(dt) => dt,
+                None => {
+                    pgrx::warning!("CALIBER: Failed to parse closed_at timestamp");
+                    return false;
+                }
+            };
+
+            match chrono_to_timestamp(parsed.with_timezone(&Utc)) {
+                Ok(ts) => Some(Some(ts)),
+                Err(e) => {
+                    pgrx::warning!("CALIBER: Failed to convert closed_at timestamp: {}", e);
+                    return false;
+                }
+            }
         }
-    });
+    } else {
+        None
+    };
     let checkpoint_val: Option<Option<pgrx::JsonB>> = update_obj.get("checkpoint").map(|v| {
         if v.is_null() { None } else { Some(pgrx::JsonB(v.clone())) }
     });
@@ -2854,7 +2871,13 @@ fn caliber_message_mark_delivered(message_id: pgrx::Uuid, tenant_id: pgrx::Uuid)
     use tuple_extract::chrono_to_timestamp;
 
     let mid = Uuid::from_bytes(*message_id.as_bytes());
-    let now = chrono_to_timestamp(Utc::now());
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return false;
+        }
+    };
     let pg_mid = pgrx::Uuid::from_bytes(*mid.as_bytes());
 
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
@@ -2925,8 +2948,8 @@ fn caliber_message_get_pending(
             let mut pending: Vec<_> = messages
                 .into_iter()
                 .filter(|row| {
-                    row.message.delivered_at.is_none() && 
-                    (row.message.expires_at.is_none() || row.message.expires_at.unwrap() > now)
+                    row.message.delivered_at.is_none()
+                        && row.message.expires_at.map_or(true, |expires_at| expires_at > now)
                 })
                 .collect();
             
@@ -4763,7 +4786,13 @@ fn caliber_region_create(
     let pg_owner = owner_agent_id;
     let region_id = new_entity_id();
     let pg_region_id = pgrx::Uuid::from_bytes(*region_id.as_bytes());
-    let now = chrono_to_timestamp(Utc::now());
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return None;
+        }
+    };
 
     // Validate region_type
     let valid_region_type = match region_type {
@@ -4911,7 +4940,13 @@ fn caliber_region_add_reader(
 
     let pg_rid = region_id;
     let pg_aid = agent_id;
-    let now = chrono_to_timestamp(Utc::now());
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return false;
+        }
+    };
 
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         let params: &[DatumWithOid<'_>] = &[
@@ -4951,7 +4986,13 @@ fn caliber_region_add_writer(
 
     let pg_rid = region_id;
     let pg_aid = agent_id;
-    let now = chrono_to_timestamp(Utc::now());
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return false;
+        }
+    };
 
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         let params: &[DatumWithOid<'_>] = &[
@@ -4991,7 +5032,13 @@ fn caliber_region_remove_reader(
 
     let pg_rid = region_id;
     let pg_aid = agent_id;
-    let now = chrono_to_timestamp(Utc::now());
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return false;
+        }
+    };
 
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         let params: &[DatumWithOid<'_>] = &[
@@ -5031,7 +5078,13 @@ fn caliber_region_remove_writer(
 
     let pg_rid = region_id;
     let pg_aid = agent_id;
-    let now = chrono_to_timestamp(Utc::now());
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return false;
+        }
+    };
 
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         let params: &[DatumWithOid<'_>] = &[
@@ -5438,11 +5491,16 @@ fn caliber_summarization_policy_create(
     let traj_id = trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
     let triggers_json = serde_json::to_value(&triggers_vec).unwrap_or(serde_json::Value::Null);
 
+    let now = match chrono_to_timestamp(Utc::now()) {
+        Ok(ts) => ts,
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
+            return None;
+        }
+    };
+
     let result: Result<(), pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         use pgrx::datum::DatumWithOid;
-        use tuple_extract::chrono_to_timestamp;
-
-        let now = chrono_to_timestamp(Utc::now());
         let pg_id = pgrx::Uuid::from_bytes(*policy_id.as_bytes());
         let pg_traj_id = traj_id.map(|id| pgrx::Uuid::from_bytes(*id.as_bytes()));
         let pg_tenant_id = pgrx::Uuid::from_bytes(*tenant_id.as_bytes());
@@ -5658,6 +5716,10 @@ impl StorageTrait for PgStorage {
             let metadata_json = t.metadata.as_ref()
                 .map(|m| serde_json::to_value(m).unwrap_or(serde_json::Value::Null));
 
+            let created_at_datum = timestamp_datum(t.created_at)?;
+            let updated_at_datum = timestamp_datum(t.updated_at)?;
+            let completed_at_datum = opt_timestamp_datum(t.completed_at)?;
+
             client.update(
                 "INSERT INTO caliber_trajectory (trajectory_id, name, description, status,
                  parent_trajectory_id, root_trajectory_id, agent_id, created_at, updated_at,
@@ -5672,9 +5734,9 @@ impl StorageTrait for PgStorage {
                     opt_uuid_datum(t.parent_trajectory_id),
                     opt_uuid_datum(t.root_trajectory_id),
                     opt_uuid_datum(t.agent_id),
-                    timestamp_datum(t.created_at),
-                    timestamp_datum(t.updated_at),
-                    opt_timestamp_datum(t.completed_at),
+                    created_at_datum,
+                    updated_at_datum,
+                    completed_at_datum,
                     opt_jsonb_datum(outcome_json.as_ref()),
                     opt_jsonb_datum(metadata_json.as_ref()),
                 ],
@@ -5772,12 +5834,13 @@ impl StorageTrait for PgStorage {
                     TrajectoryStatus::Failed => "failed",
                     TrajectoryStatus::Suspended => "suspended",
                 };
+                let updated_at_datum = timestamp_datum(now)?;
                 client.update(
                     "UPDATE caliber_trajectory SET status = $1, updated_at = $2 WHERE trajectory_id = $3",
                     None,
                     &[
                         text_datum(status_str),
-                        timestamp_datum(now),
+                        updated_at_datum,
                         uuid_datum(id),
                     ],
                 ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;
@@ -5785,12 +5848,13 @@ impl StorageTrait for PgStorage {
 
             if let Some(metadata) = update.metadata {
                 let metadata_json = serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null);
+                let updated_at_datum = timestamp_datum(now)?;
                 client.update(
                     "UPDATE caliber_trajectory SET metadata = $1, updated_at = $2 WHERE trajectory_id = $3",
                     None,
                     &[
                         jsonb_datum(&metadata_json),
-                        timestamp_datum(now),
+                        updated_at_datum,
                         uuid_datum(id),
                     ],
                 ).map_err(|e| CaliberError::Storage(StorageError::SpiError { reason: e.to_string() }))?;

@@ -149,12 +149,7 @@ impl AuthConfig {
     ///
     /// This function should be called at server startup to ensure that
     /// insecure defaults are not being used in production environments.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the JWT secret is set to the insecure default value
-    /// when running in a production environment.
-    pub fn validate_for_production(&self) {
+    pub fn validate_for_production(&self) -> ApiResult<()> {
         // Check if running in production environment
         let environment = std::env::var("CALIBER_ENVIRONMENT")
             .unwrap_or_else(|_| "development".to_string())
@@ -163,31 +158,25 @@ impl AuthConfig {
         if environment == "production" || environment == "prod" {
             // Verify JWT secret is not the insecure default
             if self.jwt_secret == "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION" {
-                panic!(
-                    "CRITICAL SECURITY ERROR: Cannot start server in production with insecure JWT secret!\n\
-                     Please set the CALIBER_JWT_SECRET environment variable to a secure random value.\n\
-                     Current environment: CALIBER_ENVIRONMENT={}\n\
-                     \n\
-                     To fix this:\n\
-                     1. Generate a secure secret: openssl rand -base64 32\n\
-                     2. Set it in your environment: export CALIBER_JWT_SECRET=\"your-secure-secret\"\n\
-                     3. Restart the server",
+                return Err(ApiError::invalid_input(format!(
+                    "Cannot start server in production with insecure JWT secret. \
+                     Set CALIBER_JWT_SECRET to a secure value. \
+                     CALIBER_ENVIRONMENT={}",
                     environment
-                );
+                )));
             }
 
             // Additional production checks
             if self.jwt_secret.len() < 32 {
-                panic!(
-                    "CRITICAL SECURITY ERROR: JWT secret is too short for production use!\n\
-                     The JWT secret must be at least 32 characters long in production.\n\
-                     Current length: {} characters\n\
-                     \n\
-                     Generate a secure secret with: openssl rand -base64 32",
+                return Err(ApiError::invalid_input(format!(
+                    "JWT secret is too short for production use ({} chars). \
+                     It must be at least 32 characters long.",
                     self.jwt_secret.len()
-                );
+                )));
             }
         }
+
+        Ok(())
     }
     
     /// Add an API key to the valid set.
@@ -831,33 +820,31 @@ mod tests {
         let mut config = AuthConfig::default();
         config.jwt_secret = "this-is-a-very-secure-secret-that-is-at-least-32-characters-long".to_string();
 
-        // Should not panic
-        config.validate_for_production();
+        // Should succeed
+        assert!(config.validate_for_production().is_ok());
 
         std::env::remove_var("CALIBER_ENVIRONMENT");
     }
 
     #[test]
-    #[should_panic(expected = "CRITICAL SECURITY ERROR: Cannot start server in production with insecure JWT secret")]
     fn test_production_validation_rejects_insecure_default() {
         std::env::set_var("CALIBER_ENVIRONMENT", "production");
         let config = AuthConfig::default(); // Uses insecure default
 
-        // Should panic
-        config.validate_for_production();
+        // Should fail
+        assert!(config.validate_for_production().is_err());
 
         std::env::remove_var("CALIBER_ENVIRONMENT");
     }
 
     #[test]
-    #[should_panic(expected = "CRITICAL SECURITY ERROR: JWT secret is too short")]
     fn test_production_validation_rejects_short_secret() {
         std::env::set_var("CALIBER_ENVIRONMENT", "production");
         let mut config = AuthConfig::default();
         config.jwt_secret = "short".to_string(); // Too short
 
-        // Should panic
-        config.validate_for_production();
+        // Should fail
+        assert!(config.validate_for_production().is_err());
 
         std::env::remove_var("CALIBER_ENVIRONMENT");
     }
@@ -867,8 +854,8 @@ mod tests {
         std::env::set_var("CALIBER_ENVIRONMENT", "development");
         let config = AuthConfig::default(); // Uses insecure default
 
-        // Should not panic in development
-        config.validate_for_production();
+        // Should not fail in development
+        assert!(config.validate_for_production().is_ok());
 
         std::env::remove_var("CALIBER_ENVIRONMENT");
     }
@@ -878,7 +865,7 @@ mod tests {
         std::env::remove_var("CALIBER_ENVIRONMENT");
         let config = AuthConfig::default(); // Uses insecure default
 
-        // Should not panic when no environment is set (defaults to development)
-        config.validate_for_production();
+        // Should not fail when no environment is set (defaults to development)
+        assert!(config.validate_for_production().is_ok());
     }
 }

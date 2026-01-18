@@ -145,7 +145,7 @@ async fn process_trajectory_item(
             };
 
             // Validate tenant ownership before update
-            match state.db.trajectory_get(id).await {
+            match state.db.trajectory_get(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -186,7 +186,7 @@ async fn process_trajectory_item(
                 };
             }
 
-            match state.db.trajectory_update(id, &update_req).await {
+            match state.db.trajectory_update(id, &update_req, auth.tenant_id).await {
                 Ok(trajectory) => {
                     state.ws.broadcast(WsEvent::TrajectoryUpdated {
                         trajectory: trajectory.clone(),
@@ -209,7 +209,7 @@ async fn process_trajectory_item(
             };
 
             // First get the trajectory to validate ownership and return in response
-            match state.db.trajectory_get(id).await {
+            match state.db.trajectory_get(id, auth.tenant_id).await {
                 Ok(Some(trajectory)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, trajectory.tenant_id).is_err() {
@@ -361,7 +361,7 @@ async fn process_artifact_item(
             };
 
             // Validate tenant ownership before update
-            match state.db.artifact_get(id).await {
+            match state.db.artifact_get(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -403,7 +403,7 @@ async fn process_artifact_item(
                 };
             }
 
-            match state.db.artifact_update(id, &update_req).await {
+            match state.db.artifact_update(id, &update_req, auth.tenant_id).await {
                 Ok(artifact) => {
                     state.ws.broadcast(WsEvent::ArtifactUpdated {
                         artifact: artifact.clone(),
@@ -425,7 +425,7 @@ async fn process_artifact_item(
                 };
             };
 
-            match state.db.artifact_get(id).await {
+            match state.db.artifact_get(id, auth.tenant_id).await {
                 Ok(Some(artifact)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, artifact.tenant_id).is_err() {
@@ -560,7 +560,7 @@ async fn process_note_item(
             };
 
             // Validate tenant ownership before update
-            match state.db.note_get(id).await {
+            match state.db.note_get(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -602,7 +602,7 @@ async fn process_note_item(
                 };
             }
 
-            match state.db.note_update(id, &update_req).await {
+            match state.db.note_update(id, &update_req, auth.tenant_id).await {
                 Ok(note) => {
                     state.ws.broadcast(WsEvent::NoteUpdated {
                         note: note.clone(),
@@ -624,7 +624,7 @@ async fn process_note_item(
                 };
             };
 
-            match state.db.note_get(id).await {
+            match state.db.note_get(id, auth.tenant_id).await {
                 Ok(Some(note)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, note.tenant_id).is_err() {

@@ -30,8 +30,15 @@ use proptest::test_runner::TestCaseError;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 use uuid::Uuid;
-mod test_support;
-use test_support::test_auth_context;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
+#[path = "support/pcp.rs"]
+mod test_pcp_support;
+use test_auth_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -39,7 +46,7 @@ use test_support::test_auth_context;
 
 /// Create a WebSocket state for testing broadcasts.
 fn test_ws_state() -> Arc<caliber_api::ws::WsState> {
-    test_support::test_ws_state(128)
+    test_ws_support::test_ws_state(128)
 }
 // ============================================================================
 // MUTATION CASES
@@ -388,10 +395,10 @@ proptest! {
     fn prop_mutation_broadcast(case in mutation_case_strategy()) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
             let auth = test_auth_context();
             let ws = test_ws_state();
-            let pcp = test_support::test_pcp_runtime();
+            let pcp = test_pcp_support::test_pcp_runtime();
             let mut rx = ws.subscribe();
 
             let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));

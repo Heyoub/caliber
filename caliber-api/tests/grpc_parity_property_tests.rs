@@ -22,10 +22,18 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
+use tonic::metadata::MetadataValue;
 use tonic::Request;
 use uuid::Uuid;
-mod test_support;
-use test_support::test_auth_context;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
+#[path = "support/pcp.rs"]
+mod test_pcp_support;
+use test_auth_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -37,6 +45,14 @@ async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> T {
         .await
         .expect("Failed to read response body");
     serde_json::from_slice(&body).expect("Failed to parse JSON response")
+}
+
+fn request_with_tenant<T>(payload: T, tenant_id: caliber_core::EntityId) -> Request<T> {
+    let mut request = Request::new(payload);
+    let tenant_header = MetadataValue::try_from(tenant_id.to_string())
+        .expect("Failed to build tenant metadata header");
+    request.metadata_mut().insert("x-tenant-id", tenant_header);
+    request
 }
 
 fn assert_trajectory_parity(
@@ -115,9 +131,9 @@ proptest! {
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
             let auth = test_auth_context();
-            let ws = test_support::test_ws_state(64);
+            let ws = test_ws_support::test_ws_state(64);
             let rest_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
             let grpc_service = grpc::TrajectoryServiceImpl::new(db.clone(), ws.clone());
 
@@ -134,9 +150,12 @@ proptest! {
             ).await;
 
             let grpc_get = grpc_service
-                .get_trajectory(Request::new(proto::GetTrajectoryRequest {
+                .get_trajectory(request_with_tenant(
+                    proto::GetTrajectoryRequest {
                     trajectory_id: rest_created.trajectory_id.to_string(),
-                }))
+                },
+                    auth.tenant_id,
+                ))
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC get failed: {}", e)))?
                 .into_inner();
@@ -145,13 +164,16 @@ proptest! {
 
             // gRPC create → REST get
             let grpc_created = grpc_service
-                .create_trajectory(Request::new(proto::CreateTrajectoryRequest {
+                .create_trajectory(request_with_tenant(
+                    proto::CreateTrajectoryRequest {
                     name: format!("grpc-{}", name),
                     description,
                     parent_trajectory_id: None,
                     agent_id: None,
                     metadata: None,
-                }))
+                },
+                    auth.tenant_id,
+                ))
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC create failed: {}", e)))?
                 .into_inner();
@@ -159,8 +181,8 @@ proptest! {
             let rest_get: TrajectoryResponse = extract_json(
                 trajectory::get_trajectory(
                     State(rest_state),
-                    Path(Uuid::parse_str(&grpc_created.trajectory_id).expect("invalid uuid")),
                     AuthExtractor(auth.clone()),
+                    Path(Uuid::parse_str(&grpc_created.trajectory_id).expect("invalid uuid")),
                 )
                 .await?
             )
@@ -181,10 +203,10 @@ proptest! {
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
             let auth = test_auth_context();
-            let ws = test_support::test_ws_state(64);
-            let pcp = test_support::test_pcp_runtime();
+            let ws = test_ws_support::test_ws_state(64);
+            let pcp = test_pcp_support::test_pcp_runtime();
             let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
             let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone(), pcp));
             let grpc_service = grpc::ScopeServiceImpl::new(db.clone(), ws.clone());
@@ -215,9 +237,12 @@ proptest! {
             ).await;
 
             let grpc_get = grpc_service
-                .get_scope(Request::new(proto::GetScopeRequest {
+                .get_scope(request_with_tenant(
+                    proto::GetScopeRequest {
                     scope_id: rest_created.scope_id.to_string(),
-                }))
+                },
+                    auth.tenant_id,
+                ))
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC get failed: {}", e)))?
                 .into_inner();
@@ -226,14 +251,17 @@ proptest! {
 
             // gRPC create → REST get
             let grpc_created = grpc_service
-                .create_scope(Request::new(proto::CreateScopeRequest {
+                .create_scope(request_with_tenant(
+                    proto::CreateScopeRequest {
                     trajectory_id: trajectory.trajectory_id.to_string(),
                     parent_scope_id: None,
                     name: format!("grpc-{}", name),
                     purpose,
                     token_budget,
                     metadata: None,
-                }))
+                },
+                    auth.tenant_id,
+                ))
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC create failed: {}", e)))?
                 .into_inner();
@@ -241,8 +269,8 @@ proptest! {
             let rest_get: ScopeResponse = extract_json(
                 scope::get_scope(
                     State(scope_state),
-                    Path(Uuid::parse_str(&grpc_created.scope_id).expect("invalid uuid")),
                     AuthExtractor(auth.clone()),
+                    Path(Uuid::parse_str(&grpc_created.scope_id).expect("invalid uuid")),
                 )
                 .await?
             )

@@ -172,10 +172,11 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<GetTrajectoryRequest>,
     ) -> Result<Response<TrajectoryResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
         
-        let trajectory = self.db.trajectory_get(id).await?
+        let trajectory = self.db.trajectory_get(id, tenant_id).await?
             .ok_or_else(|| Status::not_found("Trajectory not found"))?;
         
         let response = trajectory_to_proto(&trajectory);
@@ -186,6 +187,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<ListTrajectoriesRequest>,
     ) -> Result<Response<ListTrajectoriesResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         
         // Convert proto request to internal type
@@ -199,7 +201,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         
         // For now, require status filter
         let status = list_req.status.ok_or_else(|| Status::invalid_argument("status filter required"))?;
-        let mut trajectories = self.db.trajectory_list_by_status(status).await?;
+        let mut trajectories = self.db.trajectory_list_by_status(status, tenant_id).await?;
         
         // Apply filters
         if let Some(agent_id) = list_req.agent_id {
@@ -228,6 +230,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<UpdateTrajectoryRequest>,
     ) -> Result<Response<TrajectoryResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
         
@@ -238,7 +241,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
         
-        let trajectory = self.db.trajectory_update(id, &update_req).await?;
+        let trajectory = self.db.trajectory_update(id, &update_req, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::TrajectoryUpdated {
             trajectory: trajectory.clone(),
@@ -336,10 +339,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<GetScopeRequest>,
     ) -> Result<Response<ScopeResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let scope = self.db.scope_get(id).await?
+        let scope = self.db.scope_get(id, tenant_id).await?
             .ok_or_else(|| Status::not_found("Scope not found"))?;
         
         let response = scope_to_proto(&scope);
@@ -350,6 +354,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<UpdateScopeRequest>,
     ) -> Result<Response<ScopeResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
@@ -360,7 +365,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
         
-        let scope = self.db.scope_update(id, &update_req).await?;
+        let scope = self.db.scope_update(id, &update_req, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::ScopeUpdated {
             scope: scope.clone(),
@@ -374,6 +379,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<CreateCheckpointRequest>,
     ) -> Result<Response<CheckpointResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
@@ -382,7 +388,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
             recoverable: req.recoverable,
         };
         
-        let checkpoint = self.db.scope_create_checkpoint(id, &checkpoint_req).await?;
+        let checkpoint = self.db.scope_create_checkpoint(id, &checkpoint_req, tenant_id).await?;
         
         let response = CheckpointResponse {
             context_state: checkpoint.context_state,
@@ -396,10 +402,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<CloseScopeRequest>,
     ) -> Result<Response<ScopeResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let scope = self.db.scope_close(id).await?;
+        let scope = self.db.scope_close(id, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::ScopeClosed {
             scope: scope.clone(),
@@ -413,10 +420,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<ListScopeTurnsRequest>,
     ) -> Result<Response<ListTurnsResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let turns = self.db.turn_list_by_scope(id).await?;
+        let turns = self.db.turn_list_by_scope(id, tenant_id).await?;
         
         let response = ListTurnsResponse {
             turns: turns.into_iter().map(|t| turn_to_proto(&t)).collect(),
@@ -429,10 +437,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         &self,
         request: Request<ListScopeArtifactsRequest>,
     ) -> Result<Response<ListArtifactsResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let artifacts = self.db.artifact_list_by_scope(id).await?;
+        let artifacts = self.db.artifact_list_by_scope(id, tenant_id).await?;
         let total = artifacts.len() as i32;
         
         let response = ListArtifactsResponse {
@@ -763,15 +772,17 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     }
 
     async fn get_artifact(&self, request: Request<GetArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
-        let artifact = self.db.artifact_get(id).await?.ok_or_else(|| Status::not_found("Artifact not found"))?;
+        let artifact = self.db.artifact_get(id, tenant_id).await?.ok_or_else(|| Status::not_found("Artifact not found"))?;
         Ok(Response::new(artifact_to_proto(&artifact)))
     }
 
     async fn list_artifacts(&self, request: Request<ListArtifactsRequest>) -> Result<Response<ListArtifactsResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let scope_id = req.scope_id.ok_or_else(|| Status::invalid_argument("scope_id required"))?.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
-        let artifacts = self.db.artifact_list_by_scope(scope_id).await?;
+        let artifacts = self.db.artifact_list_by_scope(scope_id, tenant_id).await?;
         let total = artifacts.len() as i32;
         Ok(Response::new(ListArtifactsResponse {
             artifacts: artifacts.into_iter().map(|a| artifact_to_proto(&a)).collect(),
@@ -780,6 +791,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     }
 
     async fn update_artifact(&self, request: Request<UpdateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
         let update_req = crate::types::UpdateArtifactRequest {
@@ -789,7 +801,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
             ttl: req.ttl.and_then(|s| serde_json::from_str(&s).ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let artifact = self.db.artifact_update(id, &update_req).await?;
+        let artifact = self.db.artifact_update(id, &update_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
         Ok(Response::new(artifact_to_proto(&artifact)))
     }
@@ -878,18 +890,20 @@ impl note_service_server::NoteService for NoteServiceImpl {
     }
 
     async fn get_note(&self, request: Request<GetNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
-        let note = self.db.note_get(id).await?.ok_or_else(|| Status::not_found("Note not found"))?;
+        let note = self.db.note_get(id, tenant_id).await?.ok_or_else(|| Status::not_found("Note not found"))?;
         Ok(Response::new(note_to_proto(&note)))
     }
 
     async fn list_notes(&self, request: Request<ListNotesRequest>) -> Result<Response<ListNotesResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
 
         if let Some(source_trajectory_id) = req.source_trajectory_id {
             // Filter by source trajectory
             let trajectory_id = source_trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid source_trajectory_id"))?;
-            let notes = self.db.note_list_by_trajectory(trajectory_id).await?;
+            let notes = self.db.note_list_by_trajectory(trajectory_id, tenant_id).await?;
 
             // Apply additional filters if needed
             let mut filtered = notes;
@@ -926,7 +940,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
             let limit = req.limit.unwrap_or(100);
             let offset = req.offset.unwrap_or(0);
 
-            let notes = self.db.note_list_all(limit, offset).await?;
+            let notes = self.db.note_list_all_by_tenant(limit, offset, tenant_id).await?;
 
             // Apply additional filters if needed
             let mut filtered = notes;
@@ -957,6 +971,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
     }
 
     async fn update_note(&self, request: Request<UpdateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
         let update_req = crate::types::UpdateNoteRequest {
@@ -966,7 +981,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
             ttl: req.ttl.and_then(|s| serde_json::from_str(&s).ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let note = self.db.note_update(id, &update_req).await?;
+        let note = self.db.note_update(id, &update_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
         Ok(Response::new(note_to_proto(&note)))
     }

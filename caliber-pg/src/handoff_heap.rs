@@ -76,7 +76,7 @@ pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<Ent
     validate_handoff_relation(&rel)?;
 
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Handoff,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -236,7 +236,7 @@ pub fn handoff_accept_heap(
 
         // Update accepted_at to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now).into_datum()
+        let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Handoff,
                 id: handoff_id,
@@ -289,7 +289,7 @@ pub fn handoff_complete_heap(handoff_id: EntityId, tenant_id: EntityId) -> Calib
         
         // Update completed_at to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now).into_datum()
+        let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Handoff,
                 id: handoff_id,

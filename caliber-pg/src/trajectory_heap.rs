@@ -80,7 +80,7 @@ pub fn trajectory_create_heap(
 
     // Get current transaction timestamp for created_at/updated_at
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Trajectory,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -329,8 +329,13 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
         // If status is completed or failed, set completed_at
         if new_status == TrajectoryStatus::Completed || new_status == TrajectoryStatus::Failed {
             let now = current_timestamp();
-            values[trajectory::COMPLETED_AT as usize - 1] = timestamp_to_pgrx(now).into_datum()
-                .unwrap_or(pg_sys::Datum::from(0));
+            values[trajectory::COMPLETED_AT as usize - 1] = timestamp_to_pgrx(now)?
+                .into_datum()
+                .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+                    entity_type: EntityType::Trajectory,
+                    id: trajectory_id,
+                    reason: "Failed to convert timestamp to datum".to_string(),
+                }))?;
             nulls[trajectory::COMPLETED_AT as usize - 1] = false;
         }
     }
@@ -403,8 +408,13 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
     
     // Always update updated_at
     let now = current_timestamp();
-    values[trajectory::UPDATED_AT as usize - 1] = timestamp_to_pgrx(now).into_datum()
-        .unwrap_or(pg_sys::Datum::from(0));
+    values[trajectory::UPDATED_AT as usize - 1] = timestamp_to_pgrx(now)?
+        .into_datum()
+        .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+            entity_type: EntityType::Trajectory,
+            id: trajectory_id,
+            reason: "Failed to convert timestamp to datum".to_string(),
+        }))?;
     
     // Form new tuple
     let new_tuple = form_tuple(&rel, &values, &nulls)?;

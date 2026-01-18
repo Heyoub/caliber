@@ -21,7 +21,10 @@ use tonic::Request;
 use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
 
-mod test_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
 
 async fn recv_trajectory_event(
     rx: &mut broadcast::Receiver<caliber_api::events::WsEvent>,
@@ -56,10 +59,10 @@ proptest! {
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
 
             // REST handler setup
-            let ws_rest = test_support::test_ws_state(50);
+            let ws_rest = test_ws_support::test_ws_state(50);
             let mut rx_rest = ws_rest.subscribe();
             let rest_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws_rest.clone()));
 

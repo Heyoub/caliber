@@ -22,8 +22,11 @@ use caliber_core::EntityId;
 use proptest::prelude::*;
 use uuid::Uuid;
 
-mod test_support;
-use test_support::test_auth_context;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+use test_auth_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -31,7 +34,7 @@ use test_support::test_auth_context;
 
 /// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
-    test_support::test_db_client()
+    test_db_support::test_db_client()
 }
 
 // ============================================================================

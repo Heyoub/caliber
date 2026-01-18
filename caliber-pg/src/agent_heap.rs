@@ -54,7 +54,7 @@ pub fn agent_register_heap(
     validate_agent_relation(&rel)?;
 
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Agent,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -176,7 +176,7 @@ pub fn agent_heartbeat_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberR
         
         // Update last_heartbeat to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now).into_datum()
+        let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Agent,
                 id: agent_id,

@@ -94,7 +94,7 @@ pub fn turn_create_heap(params: TurnCreateParams<'_>) -> CaliberResult<EntityId>
 
     // Get current transaction timestamp for created_at
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Turn,
             reason: "Failed to convert timestamp to datum".to_string(),

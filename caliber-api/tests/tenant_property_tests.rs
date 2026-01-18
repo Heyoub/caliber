@@ -29,6 +29,10 @@ use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[path = "support/auth_with_tenant.rs"]
+mod test_auth_with_tenant_support;
+use test_auth_with_tenant_support::test_auth_context_with_tenant;
+
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
@@ -142,7 +146,8 @@ fn test_app(storage: TestStorage) -> Router {
         State(storage): State<TestStorage>,
         request: Request<Body>,
     ) -> impl IntoResponse {
-        let auth_context = extract_auth_context(&request);
+        let auth_context = extract_auth_context(&request)
+            .expect("AuthContext should be present for authenticated request");
         let tenant_id = auth_context.tenant_id;
 
         // Parse request body
@@ -162,7 +167,8 @@ fn test_app(storage: TestStorage) -> Router {
         State(storage): State<TestStorage>,
         request: Request<Body>,
     ) -> impl IntoResponse {
-        let auth_context = extract_auth_context(&request);
+        let auth_context = extract_auth_context(&request)
+            .expect("AuthContext should be present for authenticated request");
         let tenant_id = auth_context.tenant_id;
 
         // List only trajectories for this tenant
@@ -181,7 +187,8 @@ fn test_app(storage: TestStorage) -> Router {
         State(storage): State<TestStorage>,
         request: Request<Body>,
     ) -> impl IntoResponse {
-        let auth_context = extract_auth_context(&request);
+        let auth_context = extract_auth_context(&request)
+            .expect("AuthContext should be present for authenticated request");
         let tenant_id = auth_context.tenant_id;
 
         // Extract trajectory ID from path (simplified - in real app would use Path extractor)
@@ -584,16 +591,12 @@ mod ws_tenant_isolation {
         /// **Validates: Requirements 1.6, 2.5**
         #[test]
         fn prop_ws_tenant_filtered_events_match_tenant(
-            tenant_a_bytes in any::<[u8; 16]>(),
-            tenant_b_bytes in any::<[u8; 16]>(),
-            event_id_bytes in any::<[u8; 16]>(),
+            tenant_a in entity_id_strategy(),
+            tenant_b in entity_id_strategy(),
+            event_id in entity_id_strategy(),
         ) {
             // Ensure different tenants
-            prop_assume!(tenant_a_bytes != tenant_b_bytes);
-
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes).into();
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes).into();
-            let event_id: EntityId = Uuid::from_bytes(event_id_bytes).into();
+            prop_assume!(tenant_a != tenant_b);
 
             // Test TrajectoryDeleted event (has tenant_id field)
             let event = WsEvent::TrajectoryDeleted {
@@ -622,12 +625,9 @@ mod ws_tenant_isolation {
         /// **Validates: Requirements 1.6, 2.5**
         #[test]
         fn prop_ws_delete_events_include_tenant_id(
-            tenant_id_bytes in any::<[u8; 16]>(),
-            entity_id_bytes in any::<[u8; 16]>(),
+            tenant_id in entity_id_strategy(),
+            entity_id in entity_id_strategy(),
         ) {
-            let tenant_id: EntityId = Uuid::from_bytes(tenant_id_bytes).into();
-            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes).into();
-
             // Test all delete event types
             let delete_events = vec![
                 WsEvent::TrajectoryDeleted { tenant_id, id: entity_id },
@@ -727,9 +727,11 @@ mod ws_tenant_isolation {
             );
 
             let should_deliver = should_deliver_event(&event_without_tenant, client_tenant_id);
-            // Should be denied (false) because we can't determine tenant and it's not whitelisted
-            // OR it might be whitelisted as non-tenant-specific
-            // The point is: events that ARE tenant-specific but lack tenant_id are denied
+            prop_assert_eq!(
+                should_deliver,
+                !event_without_tenant.is_tenant_specific(),
+                "Non-tenant-specific events should deliver; tenant-specific without tenant should not"
+            );
         }
 
         /// **Property 5.9: WebSocket Cross-Tenant Isolation**
@@ -795,11 +797,12 @@ mod edge_cases {
         let auth_config = test_auth_config();
         let tenant_id: EntityId = Uuid::now_v7();
 
+        let auth_context = test_auth_context_with_tenant(tenant_id);
         let token = generate_jwt_token(
             &auth_config,
-            "user123".to_string(),
-            Some(tenant_id),
-            vec![],
+            auth_context.user_id.clone(),
+            Some(auth_context.tenant_id),
+            auth_context.roles.clone(),
         )
         .unwrap();
 

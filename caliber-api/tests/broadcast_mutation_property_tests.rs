@@ -22,8 +22,15 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
 
-mod test_support;
-use test_support::test_auth_context;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
+#[path = "support/pcp.rs"]
+mod test_pcp_support;
+use test_auth_support::test_auth_context;
 
 async fn recv_event(rx: &mut broadcast::Receiver<WsEvent>, label: &str) -> WsEvent {
     match timeout(Duration::from_millis(200), rx.recv()).await {
@@ -63,11 +70,11 @@ proptest! {
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
             let auth = test_auth_context();
-            let ws = test_support::test_ws_state(100);
+            let ws = test_ws_support::test_ws_state(100);
             let mut rx = ws.subscribe();
-            let pcp = test_support::test_pcp_runtime();
+            let pcp = test_pcp_support::test_pcp_runtime();
 
             // ------------------------------------------------------------
             // Trajectory Created

@@ -207,7 +207,7 @@ pub async fn get_note(
 ) -> ApiResult<impl IntoResponse> {
     let note = state
         .db
-        .note_get(id)
+        .note_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
@@ -272,12 +272,12 @@ pub async fn update_note(
     // First verify the note exists and belongs to this tenant
     let existing = state
         .db
-        .note_get(id)
+        .note_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    let note = state.db.note_update(id, &req).await?;
+    let note = state.db.note_update(id, &req, auth.tenant_id).await?;
     state.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
     Ok(Json(note))
 }
@@ -308,7 +308,7 @@ pub async fn delete_note(
     // First verify the note exists and belongs to this tenant
     let note = state
         .db
-        .note_get(id)
+        .note_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
     validate_tenant_ownership(&auth, note.tenant_id)?;

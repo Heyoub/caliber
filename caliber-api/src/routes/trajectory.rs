@@ -174,7 +174,7 @@ pub async fn get_trajectory(
 ) -> ApiResult<impl IntoResponse> {
     let trajectory = state
         .db
-        .trajectory_get(id)
+        .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -224,13 +224,13 @@ pub async fn update_trajectory(
     // First verify the trajectory exists and belongs to this tenant
     let existing = state
         .db
-        .trajectory_get(id)
+        .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update trajectory via database client
-    let trajectory = state.db.trajectory_update(id, &req).await?;
+    let trajectory = state.db.trajectory_update(id, &req, auth.tenant_id).await?;
 
     // Broadcast TrajectoryUpdated event
     state.ws.broadcast(WsEvent::TrajectoryUpdated {
@@ -266,7 +266,7 @@ pub async fn delete_trajectory(
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = state
         .db
-        .trajectory_get(id)
+        .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
@@ -309,7 +309,7 @@ pub async fn list_trajectory_scopes(
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = state
         .db
-        .trajectory_get(id)
+        .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
@@ -346,7 +346,7 @@ pub async fn list_trajectory_children(
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = state
         .db
-        .trajectory_get(id)
+        .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;

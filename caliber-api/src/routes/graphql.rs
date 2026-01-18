@@ -341,10 +341,11 @@ impl QueryRoot {
     /// Get a trajectory by ID.
     async fn trajectory(&self, ctx: &Context<'_>, id: ID) -> GqlResult<Option<GqlTrajectory>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.trajectory_get(uuid).await {
+        match db.trajectory_get(uuid, auth.tenant_id).await {
             Ok(Some(t)) => Ok(Some(t.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -358,8 +359,9 @@ impl QueryRoot {
         status: GqlTrajectoryStatus,
     ) -> GqlResult<Vec<GqlTrajectory>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
-        match db.trajectory_list_by_status(status.into()).await {
+        match db.trajectory_list_by_status(status.into(), auth.tenant_id).await {
             Ok(trajectories) => Ok(trajectories.into_iter().map(|t| t.into()).collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
@@ -368,10 +370,11 @@ impl QueryRoot {
     /// Get a scope by ID.
     async fn scope(&self, ctx: &Context<'_>, id: ID) -> GqlResult<Option<GqlScope>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.scope_get(uuid).await {
+        match db.scope_get(uuid, auth.tenant_id).await {
             Ok(Some(s)) => Ok(Some(s.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -393,10 +396,11 @@ impl QueryRoot {
     /// Get an artifact by ID.
     async fn artifact(&self, ctx: &Context<'_>, id: ID) -> GqlResult<Option<GqlArtifact>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.artifact_get(uuid).await {
+        match db.artifact_get(uuid, auth.tenant_id).await {
             Ok(Some(a)) => Ok(Some(a.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -406,10 +410,11 @@ impl QueryRoot {
     /// List artifacts for a scope.
     async fn artifacts(&self, ctx: &Context<'_>, scope_id: ID) -> GqlResult<Vec<GqlArtifact>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&scope_id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.artifact_list_by_scope(uuid).await {
+        match db.artifact_list_by_scope(uuid, auth.tenant_id).await {
             Ok(artifacts) => Ok(artifacts.into_iter().map(|a| a.into()).collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
@@ -418,10 +423,11 @@ impl QueryRoot {
     /// Get a note by ID.
     async fn note(&self, ctx: &Context<'_>, id: ID) -> GqlResult<Option<GqlNote>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.note_get(uuid).await {
+        match db.note_get(uuid, auth.tenant_id).await {
             Ok(Some(n)) => Ok(Some(n.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -431,10 +437,11 @@ impl QueryRoot {
     /// List notes for a trajectory.
     async fn notes(&self, ctx: &Context<'_>, trajectory_id: ID) -> GqlResult<Vec<GqlNote>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&trajectory_id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.note_list_by_trajectory(uuid).await {
+        match db.note_list_by_trajectory(uuid, auth.tenant_id).await {
             Ok(notes) => Ok(notes.into_iter().map(|n| n.into()).collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
@@ -528,6 +535,7 @@ impl MutationRoot {
     ) -> GqlResult<GqlTrajectory> {
         let db = ctx.data::<DbClient>()?;
         let ws = ctx.data::<Arc<WsState>>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
@@ -539,7 +547,7 @@ impl MutationRoot {
             metadata: None,
         };
 
-        match db.trajectory_update(uuid, &req).await {
+        match db.trajectory_update(uuid, &req, auth.tenant_id).await {
             Ok(trajectory) => {
                 ws.broadcast(WsEvent::TrajectoryUpdated {
                     trajectory: trajectory.clone(),
@@ -602,11 +610,12 @@ impl MutationRoot {
     async fn close_scope(&self, ctx: &Context<'_>, id: ID) -> GqlResult<GqlScope> {
         let db = ctx.data::<DbClient>()?;
         let ws = ctx.data::<Arc<WsState>>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.scope_close(uuid).await {
+        match db.scope_close(uuid, auth.tenant_id).await {
             Ok(scope) => {
                 ws.broadcast(WsEvent::ScopeClosed { scope: scope.clone() });
                 Ok(scope.into())

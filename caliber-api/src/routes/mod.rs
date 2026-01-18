@@ -52,6 +52,7 @@ use utoipa::OpenApi;
 use crate::auth::AuthConfig;
 use crate::config::ApiConfig;
 use crate::db::DbClient;
+use crate::error::{ApiError, ApiResult};
 use crate::middleware::{auth_middleware, rate_limit_middleware, AuthMiddlewareState, RateLimitState};
 use crate::openapi::ApiDoc;
 use crate::ws::WsState;
@@ -125,16 +126,11 @@ fn is_production_environment() -> bool {
 }
 
 /// Validate API configuration for production use.
-///
-/// # Panics
-/// Panics if critical security settings are not configured.
-fn validate_api_config_for_production(config: &ApiConfig) {
+fn validate_api_config_for_production(config: &ApiConfig) -> ApiResult<()> {
     if config.cors_origins.is_empty() {
-        panic!(
-            "CRITICAL: CORS origins not configured for production!\n\
-             Set CALIBER_CORS_ORIGINS environment variable to allowed origins.\n\
-             Example: CALIBER_CORS_ORIGINS=https://app.caliber.run,https://caliber.run"
-        );
+        return Err(ApiError::invalid_input(
+            "CORS origins not configured for production. Set CALIBER_CORS_ORIGINS.",
+        ));
     }
     if !config.rate_limit_enabled {
         tracing::warn!(
@@ -142,6 +138,7 @@ fn validate_api_config_for_production(config: &ApiConfig) {
              Set CALIBER_RATE_LIMIT_ENABLED=true to enable rate limiting."
         );
     }
+    Ok(())
 }
 
 // ============================================================================
@@ -170,36 +167,36 @@ impl SecureRouterBuilder {
     /// Create a new SecureRouterBuilder.
     ///
     /// In production environments, this validates that security configurations
-    /// are properly set up and will panic if critical settings are missing.
+    /// are properly set up and returns an error if critical settings are missing.
     pub fn new(
         db: DbClient,
         ws: Arc<WsState>,
         pcp: Arc<PCPRuntime>,
         api_config: ApiConfig,
         auth_config: AuthConfig,
-    ) -> Self {
+    ) -> ApiResult<Self> {
         // Validate configurations in production
         if is_production_environment() {
-            auth_config.validate_for_production();
-            validate_api_config_for_production(&api_config);
+            auth_config.validate_for_production()?;
+            validate_api_config_for_production(&api_config)?;
         }
 
         let auth_state = AuthMiddlewareState::new(auth_config);
         let rate_limit_state = RateLimitState::new(api_config.clone());
 
-        Self {
+        Ok(Self {
             db,
             ws,
             pcp,
             api_config,
             auth_state,
             rate_limit_state,
-        }
+        })
     }
 
     /// Build the entity CRUD routes (require authentication).
-    fn build_entity_routes(&self) -> Router {
-        Router::new()
+    fn build_entity_routes(&self) -> ApiResult<Router> {
+        Ok(Router::new()
             .nest("/trajectories", trajectory::create_router(self.db.clone(), self.ws.clone()))
             .nest("/scopes", scope::create_router(self.db.clone(), self.ws.clone(), self.pcp.clone()))
             .nest("/artifacts", artifact::create_router(self.db.clone(), self.ws.clone()))
@@ -216,10 +213,10 @@ impl SecureRouterBuilder {
             .nest("/users", user::create_router(self.db.clone()))
             .nest("/billing", billing::create_router(self.db.clone()))
             .nest("/batch", batch::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/webhooks", webhooks::create_router(self.db.clone(), self.ws.clone()))
+            .nest("/webhooks", webhooks::create_router(self.db.clone(), self.ws.clone())?)
             .nest("/graphql", graphql::create_router(self.db.clone(), self.ws.clone()))
             .nest("/edges", edge::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/summarization-policies", summarization_policy::create_router(self.db.clone(), self.ws.clone()))
+            .nest("/summarization-policies", summarization_policy::create_router(self.db.clone(), self.ws.clone())))
     }
 
     /// Build the complete router with full security stack.
@@ -229,13 +226,13 @@ impl SecureRouterBuilder {
     /// 2. Observability - tracing and metrics
     /// 3. Rate Limiting - rejects floods before expensive auth
     /// 4. Auth (innermost, only on /api/v1/*) - validates credentials
-    pub fn build(self) -> Router {
+    pub fn build(self) -> ApiResult<Router> {
         use crate::telemetry::{middleware::observability_middleware, metrics_handler};
         use axum::middleware::from_fn;
 
         // Protected API routes (auth required)
         let api_routes = self
-            .build_entity_routes()
+            .build_entity_routes()?
             .layer(from_fn_with_state(self.auth_state.clone(), auth_middleware));
 
         // Build the main router
@@ -280,10 +277,10 @@ impl SecureRouterBuilder {
 
         // Apply security layers (order matters: outer to inner in code = inner to outer in execution)
         // Execution order: CORS -> Observability -> Rate Limiting -> Handler
-        router
+        Ok(router
             .layer(from_fn_with_state(self.rate_limit_state, rate_limit_middleware))
             .layer(from_fn(observability_middleware))
-            .layer(cors)
+            .layer(cors))
     }
 }
 
@@ -375,8 +372,9 @@ pub fn create_api_router(
     pcp: Arc<PCPRuntime>,
     api_config: &ApiConfig,
     auth_config: AuthConfig,
-) -> Router {
-    SecureRouterBuilder::new(db, ws, pcp, api_config.clone(), auth_config).build()
+) -> ApiResult<Router> {
+    SecureRouterBuilder::new(db, ws, pcp, api_config.clone(), auth_config)
+        .and_then(|builder| builder.build())
 }
 
 /// Create an API router without authentication middleware.
@@ -396,7 +394,7 @@ pub fn create_api_router_unauthenticated(
     ws: Arc<WsState>,
     pcp: Arc<PCPRuntime>,
     api_config: &ApiConfig,
-) -> Router {
+) -> ApiResult<Router> {
     use crate::telemetry::{middleware::observability_middleware, metrics_handler};
     use axum::middleware::from_fn;
 
@@ -418,7 +416,7 @@ pub fn create_api_router_unauthenticated(
         .nest("/users", user::create_router(db.clone()))
         .nest("/billing", billing::create_router(db.clone()))
         .nest("/batch", batch::create_router(db.clone(), ws.clone()))
-        .nest("/webhooks", webhooks::create_router(db.clone(), ws.clone()))
+        .nest("/webhooks", webhooks::create_router(db.clone(), ws.clone())?)
         .nest("/graphql", graphql::create_router(db.clone(), ws.clone()))
         .nest("/edges", edge::create_router(db.clone(), ws.clone()))
         .nest("/summarization-policies", summarization_policy::create_router(db.clone(), ws.clone()));
@@ -454,9 +452,9 @@ pub fn create_api_router_unauthenticated(
 
     let cors = build_cors_layer(api_config);
 
-    router
+    Ok(router
         .layer(from_fn(observability_middleware))
-        .layer(cors)
+        .layer(cors))
 }
 
 /// Create a minimal router for testing without WebSocket support.

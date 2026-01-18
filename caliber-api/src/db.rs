@@ -2273,6 +2273,7 @@ impl DbClient {
         &self,
         id: EntityId,
         req: &UpdateArtifactRequest,
+        tenant_id: EntityId,
     ) -> ApiResult<ArtifactResponse> {
         let conn = self.get_conn().await?;
 
@@ -2329,6 +2330,7 @@ impl DbClient {
         &self,
         id: EntityId,
         req: &UpdateNoteRequest,
+        tenant_id: EntityId,
     ) -> ApiResult<NoteResponse> {
         let conn = self.get_conn().await?;
 

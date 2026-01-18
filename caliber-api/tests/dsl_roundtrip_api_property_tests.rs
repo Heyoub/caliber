@@ -15,7 +15,8 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::sync::Arc;
 
-mod test_support;
+#[path = "support/db.rs"]
+mod test_db_support;
 
 async fn call_parse_endpoint(
     state: Arc<dsl::DslState>,
@@ -90,7 +91,7 @@ proptest! {
     fn prop_dsl_round_trip_via_api(source in dsl_source_strategy()) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
             let state = Arc::new(dsl::DslState::new(db));
 
             let response = call_parse_endpoint(state, source.clone()).await;
