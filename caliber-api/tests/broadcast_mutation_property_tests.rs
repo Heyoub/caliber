@@ -68,7 +68,8 @@ proptest! {
         turn_content in content_strategy(),
         token_budget in token_budget_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();

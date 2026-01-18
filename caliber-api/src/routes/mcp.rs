@@ -644,7 +644,11 @@ pub async fn call_tool(
     #[cfg(feature = "openapi")]
     {
         use crate::telemetry::METRICS;
-        METRICS.record_mcp_tool_call(&req.name, true);
+        if let Ok(metrics) = METRICS.as_ref() {
+            metrics.record_mcp_tool_call(&req.name, true);
+        } else {
+            tracing::error!("Metrics registry unavailable; skipping MCP metrics");
+        }
     }
 
     let result = execute_tool(&state, &req.name, req.arguments, auth.tenant_id).await;
@@ -1097,7 +1101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_initialize_response() {
+    fn test_initialize_response() -> Result<(), serde_json::Error> {
         let response = InitializeResponse {
             protocol_version: MCP_PROTOCOL_VERSION.to_string(),
             capabilities: ServerCapabilities {
@@ -1114,9 +1118,10 @@ mod tests {
             },
         };
 
-        let json = serde_json::to_string(&response).expect("Failed to serialize");
+        let json = serde_json::to_string(&response)?;
         assert!(json.contains("CALIBER MCP Server"));
         assert!(json.contains(MCP_PROTOCOL_VERSION));
+        Ok(())
     }
 
     #[test]
@@ -1145,18 +1150,19 @@ mod tests {
     }
 
     #[test]
-    fn test_content_block_serialization() {
+    fn test_content_block_serialization() -> Result<(), serde_json::Error> {
         let text_block = ContentBlock::Text {
             text: "Hello, world!".to_string(),
         };
 
-        let json = serde_json::to_string(&text_block).expect("Failed to serialize");
+        let json = serde_json::to_string(&text_block)?;
         assert!(json.contains("\"type\":\"text\""));
         assert!(json.contains("Hello, world!"));
+        Ok(())
     }
 
     #[test]
-    fn test_call_tool_request_parsing() {
+    fn test_call_tool_request_parsing() -> Result<(), serde_json::Error> {
         let json = r#"{
             "name": "trajectory_create",
             "arguments": {
@@ -1165,8 +1171,9 @@ mod tests {
             }
         }"#;
 
-        let req: CallToolRequest = serde_json::from_str(json).expect("Failed to parse");
+        let req: CallToolRequest = serde_json::from_str(json)?;
         assert_eq!(req.name, "trajectory_create");
         assert_eq!(req.arguments["name"], "Test Trajectory");
+        Ok(())
     }
 }

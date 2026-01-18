@@ -2807,7 +2807,7 @@ mod tests {
         let tokens = lexer.tokenize();
 
         assert_eq!(tokens[0].kind, TokenKind::Number(42.0));
-        assert_eq!(tokens[1].kind, TokenKind::Number(3.14));
+        assert_eq!(tokens[1].kind, TokenKind::Number(314.0 / 100.0));
         assert_eq!(tokens[2].kind, TokenKind::Number(-10.0));
     }
 
@@ -2859,17 +2859,26 @@ mod tests {
     // Parser Tests
     // ========================================================================
 
-    #[test]
-    fn test_parse_minimal_config() {
-        let source = r#"caliber: "1.0" {}"#;
-        let ast = parse(source).unwrap();
-
-        assert_eq!(ast.version, "1.0");
-        assert!(ast.definitions.is_empty());
+    fn test_parse_error(message: &str) -> ParseError {
+        ParseError {
+            message: message.to_string(),
+            line: 0,
+            column: 0,
+        }
     }
 
     #[test]
-    fn test_parse_adapter() {
+    fn test_parse_minimal_config() -> Result<(), ParseError> {
+        let source = r#"caliber: "1.0" {}"#;
+        let ast = parse(source)?;
+
+        assert_eq!(ast.version, "1.0");
+        assert!(ast.definitions.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_adapter() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 adapter main_db {
@@ -2878,7 +2887,7 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         assert_eq!(ast.definitions.len(), 1);
         if let Definition::Adapter(adapter) = &ast.definitions[0] {
@@ -2886,12 +2895,13 @@ mod tests {
             assert_eq!(adapter.adapter_type, AdapterType::Postgres);
             assert_eq!(adapter.connection, "postgresql://localhost/caliber");
         } else {
-            panic!("Expected adapter definition");
+            return Err(test_parse_error("Expected adapter definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_memory() {
+    fn test_parse_memory() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 memory turns {
@@ -2906,7 +2916,7 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         assert_eq!(ast.definitions.len(), 1);
         if let Definition::Memory(memory) = &ast.definitions[0] {
@@ -2916,12 +2926,13 @@ mod tests {
             assert_eq!(memory.retention, Retention::Scope);
             assert_eq!(memory.lifecycle, Lifecycle::Explicit);
         } else {
-            panic!("Expected memory definition");
+            return Err(test_parse_error("Expected memory definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_policy() {
+    fn test_parse_policy() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 policy cleanup {
@@ -2932,7 +2943,7 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         assert_eq!(ast.definitions.len(), 1);
         if let Definition::Policy(policy) = &ast.definitions[0] {
@@ -2941,12 +2952,13 @@ mod tests {
             assert_eq!(policy.rules[0].trigger, Trigger::ScopeClose);
             assert_eq!(policy.rules[0].actions.len(), 2);
         } else {
-            panic!("Expected policy definition");
+            return Err(test_parse_error("Expected policy definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_injection() {
+    fn test_parse_injection() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 inject notes into context {
@@ -2957,7 +2969,7 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         assert_eq!(ast.definitions.len(), 1);
         if let Definition::Injection(injection) = &ast.definitions[0] {
@@ -2968,12 +2980,13 @@ mod tests {
             assert_eq!(injection.max_tokens, Some(2000));
             assert!(injection.filter.is_some());
         } else {
-            panic!("Expected injection definition");
+            return Err(test_parse_error("Expected injection definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_filter_expressions() {
+    fn test_parse_filter_expressions() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 inject notes into context {
@@ -2983,7 +2996,7 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         if let Definition::Injection(injection) = &ast.definitions[0] {
             assert!(injection.filter.is_some());
@@ -2991,15 +3004,16 @@ mod tests {
             if let Some(FilterExpr::Or(_)) = &injection.filter {
                 // OK
             } else {
-                panic!("Expected Or filter expression");
+                return Err(test_parse_error("Expected Or filter expression"));
             }
         } else {
-            panic!("Expected injection definition");
+            return Err(test_parse_error("Expected injection definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_schedule_trigger() {
+    fn test_parse_schedule_trigger() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 policy scheduled_cleanup {
@@ -3009,17 +3023,18 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         if let Definition::Policy(policy) = &ast.definitions[0] {
             assert_eq!(policy.rules[0].trigger, Trigger::Schedule("0 0 * * *".to_string()));
         } else {
-            panic!("Expected policy definition");
+            return Err(test_parse_error("Expected policy definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_prune_action() {
+    fn test_parse_prune_action() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 policy cleanup {
@@ -3029,7 +3044,7 @@ mod tests {
                 }
             }
         "#;
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
 
         if let Definition::Policy(policy) = &ast.definitions[0] {
             if let Action::Prune { target, criteria } = &policy.rules[0].actions[0] {
@@ -3038,18 +3053,19 @@ mod tests {
                     assert_eq!(field, "age");
                     assert_eq!(*op, CompareOp::Gt);
                 } else {
-                    panic!("Expected comparison filter");
+                    return Err(test_parse_error("Expected comparison filter"));
                 }
             } else {
-                panic!("Expected prune action");
+                return Err(test_parse_error("Expected prune action"));
             }
         } else {
-            panic!("Expected policy definition");
+            return Err(test_parse_error("Expected policy definition"));
         }
+        Ok(())
     }
 
     #[test]
-    fn test_parse_error_line_column() {
+    fn test_parse_error_line_column() -> Result<(), ParseError> {
         let source = "caliber: \"1.0\" { invalid_keyword }";
         let result = parse(source);
 
@@ -3057,6 +3073,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.line >= 1);
         assert!(err.column >= 1);
+        Ok(())
     }
 
     // ========================================================================
@@ -3124,18 +3141,19 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_round_trip_minimal() {
+    fn test_round_trip_minimal() -> Result<(), ParseError> {
         let source = r#"caliber: "1.0" {}"#;
-        let ast1 = parse(source).unwrap();
+        let ast1 = parse(source)?;
         let printed = pretty_print(&ast1);
-        let ast2 = parse(&printed).unwrap();
+        let ast2 = parse(&printed)?;
 
         assert_eq!(ast1.version, ast2.version);
         assert_eq!(ast1.definitions.len(), ast2.definitions.len());
+        Ok(())
     }
 
     #[test]
-    fn test_round_trip_adapter() {
+    fn test_round_trip_adapter() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 adapter main_db {
@@ -3144,15 +3162,16 @@ mod tests {
                 }
             }
         "#;
-        let ast1 = parse(source).unwrap();
+        let ast1 = parse(source)?;
         let printed = pretty_print(&ast1);
-        let ast2 = parse(&printed).unwrap();
+        let ast2 = parse(&printed)?;
 
         assert_eq!(ast1, ast2);
+        Ok(())
     }
 
     #[test]
-    fn test_round_trip_memory() {
+    fn test_round_trip_memory() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 memory turns {
@@ -3166,15 +3185,16 @@ mod tests {
                 }
             }
         "#;
-        let ast1 = parse(source).unwrap();
+        let ast1 = parse(source)?;
         let printed = pretty_print(&ast1);
-        let ast2 = parse(&printed).unwrap();
+        let ast2 = parse(&printed)?;
 
         assert_eq!(ast1, ast2);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_defaults_and_index_options() {
+    fn test_parse_defaults_and_index_options() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 memory notes {
@@ -3197,10 +3217,10 @@ mod tests {
             }
         "#;
 
-        let ast = parse(source).unwrap();
+        let ast = parse(source)?;
         let memory = match &ast.definitions[0] {
             Definition::Memory(def) => def,
-            _ => panic!("Expected memory definition"),
+            _ => return Err(test_parse_error("Expected memory definition")),
         };
 
         let title = &memory.schema[1];
@@ -3222,10 +3242,11 @@ mod tests {
         assert!(printed.contains("optional"));
         assert!(printed.contains("= \"untitled\""));
         assert!(printed.contains("options: {"));
+        Ok(())
     }
 
     #[test]
-    fn test_round_trip_policy() {
+    fn test_round_trip_policy() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 policy cleanup {
@@ -3236,15 +3257,16 @@ mod tests {
                 }
             }
         "#;
-        let ast1 = parse(source).unwrap();
+        let ast1 = parse(source)?;
         let printed = pretty_print(&ast1);
-        let ast2 = parse(&printed).unwrap();
+        let ast2 = parse(&printed)?;
 
         assert_eq!(ast1, ast2);
+        Ok(())
     }
 
     #[test]
-    fn test_round_trip_injection() {
+    fn test_round_trip_injection() -> Result<(), ParseError> {
         let source = r#"
             caliber: "1.0" {
                 inject notes into context {
@@ -3253,11 +3275,12 @@ mod tests {
                 }
             }
         "#;
-        let ast1 = parse(source).unwrap();
+        let ast1 = parse(source)?;
         let printed = pretty_print(&ast1);
-        let ast2 = parse(&printed).unwrap();
+        let ast2 = parse(&printed)?;
 
         assert_eq!(ast1, ast2);
+        Ok(())
     }
 }
 
@@ -3508,10 +3531,14 @@ mod prop_tests {
             let printed = pretty_print(&ast);
             let parsed = parse(&printed);
 
-            prop_assert!(parsed.is_ok(), "Failed to parse pretty-printed AST: {:?}\nPrinted:\n{}", parsed.err(), printed);
-
-            let parsed_ast = parsed.unwrap();
-            prop_assert_eq!(ast, parsed_ast, "Round-trip did not preserve AST semantics");
+            match parsed {
+                Ok(parsed_ast) => {
+                    prop_assert_eq!(ast, parsed_ast, "Round-trip did not preserve AST semantics");
+                }
+                Err(err) => {
+                    prop_assert!(false, "Failed to parse pretty-printed AST: {:?}\nPrinted:\n{}", err, printed);
+                }
+            }
         }
 
         /// Property 4: For any input containing invalid characters,
@@ -3541,7 +3568,7 @@ mod prop_tests {
 
             prop_assert!(!tokens.is_empty(), "Token list should not be empty");
             prop_assert!(
-                matches!(tokens.last().unwrap().kind, TokenKind::Eof),
+                matches!(tokens.last().map(|t| &t.kind), Some(TokenKind::Eof)),
                 "Last token should be Eof"
             );
         }

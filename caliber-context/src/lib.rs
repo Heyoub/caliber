@@ -800,22 +800,23 @@ mod tests {
     }
 
     #[test]
-    fn test_context_assembler_basic() {
+    fn test_context_assembler_basic() -> CaliberResult<()> {
         let config = make_test_config(10000);
-        let assembler = ContextAssembler::new(config).unwrap();
+        let assembler = ContextAssembler::new(config)?;
 
         let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
             .with_user_input("What is the weather?".to_string());
 
-        let window = assembler.assemble(pkg).unwrap();
+        let window = assembler.assemble(pkg)?;
         assert!(window.used_tokens > 0);
         assert!(window.used_tokens <= window.max_tokens);
+        Ok(())
     }
 
     #[test]
-    fn test_context_assembler_with_notes() {
+    fn test_context_assembler_with_notes() -> CaliberResult<()> {
         let config = make_test_config(10000);
-        let assembler = ContextAssembler::new(config).unwrap();
+        let assembler = ContextAssembler::new(config)?;
 
         let notes = vec![
             make_test_note("Note 1", "Content of note 1"),
@@ -826,22 +827,24 @@ mod tests {
             .with_user_input("Query".to_string())
             .with_notes(notes);
 
-        let window = assembler.assemble(pkg).unwrap();
+        let window = assembler.assemble(pkg)?;
         assert!(window.sections.len() >= 2); // User + Notes
+        Ok(())
     }
 
     #[test]
-    fn test_context_assembler_respects_budget() {
+    fn test_context_assembler_respects_budget() -> CaliberResult<()> {
         // Very small budget
         let config = make_test_config(10);
-        let assembler = ContextAssembler::new(config).unwrap();
+        let assembler = ContextAssembler::new(config)?;
 
         let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
             .with_user_input("This is a very long user input that should exceed the token budget".to_string());
 
-        let window = assembler.assemble(pkg).unwrap();
+        let window = assembler.assemble(pkg)?;
         // Should respect budget
         assert!(window.used_tokens <= window.max_tokens);
+        Ok(())
     }
 }
 
@@ -956,14 +959,26 @@ mod prop_tests {
             artifacts in prop::collection::vec(arb_artifact(), 0..5),
         ) {
             let config = make_test_config(token_budget);
-            let assembler = ContextAssembler::new(config).unwrap();
+            let assembler = match ContextAssembler::new(config) {
+                Ok(assembler) => assembler,
+                Err(err) => {
+                    prop_assert!(false, "Failed to build ContextAssembler: {:?}", err);
+                    return;
+                }
+            };
 
             let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
                 .with_user_input(user_input)
                 .with_notes(notes)
                 .with_artifacts(artifacts);
 
-            let window = assembler.assemble(pkg).unwrap();
+            let window = match assembler.assemble(pkg) {
+                Ok(window) => window,
+                Err(err) => {
+                    prop_assert!(false, "Failed to assemble context: {:?}", err);
+                    return;
+                }
+            };
 
             prop_assert!(
                 window.used_tokens <= window.max_tokens,
@@ -993,14 +1008,26 @@ mod prop_tests {
             artifacts in prop::collection::vec(arb_artifact(), 1..3),
         ) {
             let config = make_test_config(token_budget);
-            let assembler = ContextAssembler::new(config).unwrap();
+            let assembler = match ContextAssembler::new(config) {
+                Ok(assembler) => assembler,
+                Err(err) => {
+                    prop_assert!(false, "Failed to build ContextAssembler: {:?}", err);
+                    return;
+                }
+            };
 
             let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
                 .with_user_input(user_input)
                 .with_notes(notes)
                 .with_artifacts(artifacts);
 
-            let window = assembler.assemble(pkg).unwrap();
+            let window = match assembler.assemble(pkg) {
+                Ok(window) => window,
+                Err(err) => {
+                    prop_assert!(false, "Failed to assemble context: {:?}", err);
+                    return;
+                }
+            };
 
             // Check that sections are in descending priority order
             for i in 1..window.sections.len() {

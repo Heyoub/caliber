@@ -13,6 +13,7 @@ use axum::Json;
 use caliber_api::{
     db::DbClient,
     events::WsEvent,
+    error::ApiResult,
     middleware::AuthExtractor,
     routes::{
         agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn,
@@ -124,7 +125,11 @@ fn default_memory_access() -> MemoryAccessRequest {
     }
 }
 
-async fn seed_trajectory(db: &DbClient, name: &str, tenant_id: EntityId) -> caliber_api::types::TrajectoryResponse {
+async fn seed_trajectory(
+    db: &DbClient,
+    name: &str,
+    tenant_id: EntityId,
+) -> Result<caliber_api::types::TrajectoryResponse, TestCaseError> {
     let req = CreateTrajectoryRequest {
         name: name.to_string(),
         description: Some("Seed trajectory".to_string()),
@@ -134,10 +139,14 @@ async fn seed_trajectory(db: &DbClient, name: &str, tenant_id: EntityId) -> cali
     };
     db.trajectory_create(&req, tenant_id)
         .await
-        .expect("Failed to seed trajectory")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed trajectory: {}", e.message)))
 }
 
-async fn seed_scope(db: &DbClient, trajectory_id: EntityId, tenant_id: EntityId) -> caliber_api::types::ScopeResponse {
+async fn seed_scope(
+    db: &DbClient,
+    trajectory_id: EntityId,
+    tenant_id: EntityId,
+) -> Result<caliber_api::types::ScopeResponse, TestCaseError> {
     let req = CreateScopeRequest {
         trajectory_id,
         parent_scope_id: None,
@@ -148,10 +157,14 @@ async fn seed_scope(db: &DbClient, trajectory_id: EntityId, tenant_id: EntityId)
     };
     db.scope_create(&req, tenant_id)
         .await
-        .expect("Failed to seed scope")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed scope: {}", e.message)))
 }
 
-async fn seed_agent(db: &DbClient, agent_type: &str, tenant_id: EntityId) -> caliber_api::types::AgentResponse {
+async fn seed_agent(
+    db: &DbClient,
+    agent_type: &str,
+    tenant_id: EntityId,
+) -> Result<caliber_api::types::AgentResponse, TestCaseError> {
     let req = RegisterAgentRequest {
         agent_type: agent_type.to_string(),
         capabilities: vec!["coordination".to_string()],
@@ -161,7 +174,7 @@ async fn seed_agent(db: &DbClient, agent_type: &str, tenant_id: EntityId) -> cal
     };
     db.agent_register(&req, tenant_id)
         .await
-        .expect("Failed to seed agent")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed agent: {}", e.message)))
 }
 
 async fn seed_lock(
@@ -169,7 +182,7 @@ async fn seed_lock(
     holder_agent_id: EntityId,
     resource_id: EntityId,
     tenant_id: EntityId,
-) -> caliber_api::types::LockResponse {
+) -> Result<caliber_api::types::LockResponse, TestCaseError> {
     let req = AcquireLockRequest {
         resource_type: "trajectory".to_string(),
         resource_id,
@@ -179,7 +192,7 @@ async fn seed_lock(
     };
     db.lock_acquire(&req, tenant_id)
         .await
-        .expect("Failed to seed lock")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed lock: {}", e.message)))
 }
 
 async fn seed_message(
@@ -189,7 +202,7 @@ async fn seed_message(
     trajectory_id: Option<EntityId>,
     scope_id: Option<EntityId>,
     tenant_id: EntityId,
-) -> caliber_api::types::MessageResponse {
+) -> Result<caliber_api::types::MessageResponse, TestCaseError> {
     let req = SendMessageRequest {
         from_agent_id,
         to_agent_id: Some(to_agent_id),
@@ -204,7 +217,7 @@ async fn seed_message(
     };
     db.message_send(&req, tenant_id)
         .await
-        .expect("Failed to seed message")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed message: {}", e.message)))
 }
 
 async fn seed_delegation(
@@ -214,7 +227,7 @@ async fn seed_delegation(
     trajectory_id: EntityId,
     scope_id: EntityId,
     tenant_id: EntityId,
-) -> caliber_api::types::DelegationResponse {
+) -> Result<caliber_api::types::DelegationResponse, TestCaseError> {
     let req = CreateDelegationRequest {
         from_agent_id,
         to_agent_id,
@@ -226,7 +239,7 @@ async fn seed_delegation(
     };
     db.delegation_create(&req, tenant_id)
         .await
-        .expect("Failed to seed delegation")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed delegation: {}", e.message)))
 }
 
 async fn seed_handoff(
@@ -236,7 +249,7 @@ async fn seed_handoff(
     trajectory_id: EntityId,
     scope_id: EntityId,
     tenant_id: EntityId,
-) -> caliber_api::types::HandoffResponse {
+) -> Result<caliber_api::types::HandoffResponse, TestCaseError> {
     let req = CreateHandoffRequest {
         from_agent_id,
         to_agent_id,
@@ -247,7 +260,7 @@ async fn seed_handoff(
     };
     db.handoff_create(&req, tenant_id)
         .await
-        .expect("Failed to seed handoff")
+        .map_err(|e| TestCaseError::fail(format!("Failed to seed handoff: {}", e.message)))
 }
 
 // ============================================================================
@@ -393,7 +406,8 @@ proptest! {
     /// broadcast within 100ms.
     #[test]
     fn prop_mutation_broadcast(case in mutation_case_strategy()) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
@@ -425,7 +439,7 @@ proptest! {
                     ExpectedEvent::TrajectoryCreated
                 }
                 MutationCase::TrajectoryUpdate => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Update", auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Update", auth.tenant_id).await?;
                     let req = UpdateTrajectoryRequest {
                         name: Some("Updated".to_string()),
                         description: None,
@@ -442,7 +456,7 @@ proptest! {
                     ExpectedEvent::TrajectoryUpdated(trajectory.trajectory_id)
                 }
                 MutationCase::TrajectoryDelete => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Delete", auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Delete", auth.tenant_id).await?;
                     trajectory::delete_trajectory(
                         State(trajectory_state),
                         Path(trajectory.trajectory_id),
@@ -452,7 +466,7 @@ proptest! {
                     ExpectedEvent::TrajectoryDeleted(trajectory.trajectory_id)
                 }
                 MutationCase::ScopeCreate => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Create", auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Create", auth.tenant_id).await?;
                     let req = CreateScopeRequest {
                         trajectory_id: trajectory.trajectory_id,
                         parent_scope_id: None,
@@ -465,8 +479,8 @@ proptest! {
                     ExpectedEvent::ScopeCreated
                 }
                 MutationCase::ScopeUpdate => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Update", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Update", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let req = UpdateScopeRequest {
                         name: Some("Scope Updated".to_string()),
                         purpose: Some("Updated purpose".to_string()),
@@ -477,14 +491,14 @@ proptest! {
                     ExpectedEvent::ScopeUpdated(scope.scope_id)
                 }
                 MutationCase::ScopeClose => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Close", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Close", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     scope::close_scope(State(scope_state), AuthExtractor(auth.clone()), Path(scope.scope_id)).await?;
                     ExpectedEvent::ScopeClosed(scope.scope_id)
                 }
                 MutationCase::ArtifactCreate => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Artifact", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Artifact", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let req = CreateArtifactRequest {
                         trajectory_id: trajectory.trajectory_id,
                         scope_id: scope.scope_id,
@@ -501,7 +515,7 @@ proptest! {
                     ExpectedEvent::ArtifactCreated
                 }
                 MutationCase::NoteCreate => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Note", auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Note", auth.tenant_id).await?;
                     let req = CreateNoteRequest {
                         note_type: NoteType::Fact,
                         title: "Broadcast Note".to_string(),
@@ -515,8 +529,8 @@ proptest! {
                     ExpectedEvent::NoteCreated
                 }
                 MutationCase::TurnCreate => {
-                    let trajectory = seed_trajectory(&db, "Seed Trajectory Turn", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
+                    let trajectory = seed_trajectory(&db, "Seed Trajectory Turn", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let req = CreateTurnRequest {
                         scope_id: scope.scope_id,
                         sequence: 1,
@@ -542,7 +556,7 @@ proptest! {
                     ExpectedEvent::AgentRegistered
                 }
                 MutationCase::AgentUpdate => {
-                    let agent = seed_agent(&db, "seed-updater", auth.tenant_id).await;
+                    let agent = seed_agent(&db, "seed-updater", auth.tenant_id).await?;
                     let req = UpdateAgentRequest {
                         status: Some("active".to_string()),
                         current_trajectory_id: None,
@@ -554,12 +568,12 @@ proptest! {
                     ExpectedEvent::AgentStatusChanged(agent.agent_id, "active".to_string())
                 }
                 MutationCase::AgentUnregister => {
-                    let agent = seed_agent(&db, "seed-unregister", auth.tenant_id).await;
+                    let agent = seed_agent(&db, "seed-unregister", auth.tenant_id).await?;
                     agent::unregister_agent(State(agent_state), Path(agent.agent_id), AuthExtractor(auth.clone())).await?;
                     ExpectedEvent::AgentUnregistered(agent.agent_id)
                 }
                 MutationCase::LockAcquire => {
-                    let agent = seed_agent(&db, "lock-holder", auth.tenant_id).await;
+                    let agent = seed_agent(&db, "lock-holder", auth.tenant_id).await?;
                     let resource_id: EntityId = Uuid::now_v7().into();
                     let req = AcquireLockRequest {
                         resource_type: "trajectory".to_string(),
@@ -572,15 +586,15 @@ proptest! {
                     ExpectedEvent::LockAcquired
                 }
                 MutationCase::LockRelease => {
-                    let agent = seed_agent(&db, "lock-releaser", auth.tenant_id).await;
+                    let agent = seed_agent(&db, "lock-releaser", auth.tenant_id).await?;
                     let resource_id: EntityId = Uuid::now_v7().into();
-                    let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await;
+                    let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await?;
                     lock::release_lock(State(lock_state), Path(lock.lock_id), AuthExtractor(auth.clone())).await?;
                     ExpectedEvent::LockReleased(lock.lock_id)
                 }
                 MutationCase::MessageSend => {
-                    let sender = seed_agent(&db, "sender", auth.tenant_id).await;
-                    let receiver = seed_agent(&db, "receiver", auth.tenant_id).await;
+                    let sender = seed_agent(&db, "sender", auth.tenant_id).await?;
+                    let receiver = seed_agent(&db, "receiver", auth.tenant_id).await?;
                     let req = SendMessageRequest {
                         from_agent_id: sender.agent_id,
                         to_agent_id: Some(receiver.agent_id),
@@ -597,17 +611,17 @@ proptest! {
                     ExpectedEvent::MessageSent
                 }
                 MutationCase::MessageAcknowledge => {
-                    let sender = seed_agent(&db, "ack-sender", auth.tenant_id).await;
-                    let receiver = seed_agent(&db, "ack-receiver", auth.tenant_id).await;
-                    let message = seed_message(&db, sender.agent_id, receiver.agent_id, None, None, auth.tenant_id).await;
+                    let sender = seed_agent(&db, "ack-sender", auth.tenant_id).await?;
+                    let receiver = seed_agent(&db, "ack-receiver", auth.tenant_id).await?;
+                    let message = seed_message(&db, sender.agent_id, receiver.agent_id, None, None, auth.tenant_id).await?;
                     message::acknowledge_message(State(message_state), Path(message.message_id), AuthExtractor(auth.clone())).await?;
                     ExpectedEvent::MessageAcknowledged(message.message_id)
                 }
                 MutationCase::DelegationCreate => {
-                    let from_agent = seed_agent(&db, "delegator", auth.tenant_id).await;
-                    let to_agent = seed_agent(&db, "delegatee", auth.tenant_id).await;
-                    let trajectory = seed_trajectory(&db, "Delegation Trajectory", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
+                    let from_agent = seed_agent(&db, "delegator", auth.tenant_id).await?;
+                    let to_agent = seed_agent(&db, "delegatee", auth.tenant_id).await?;
+                    let trajectory = seed_trajectory(&db, "Delegation Trajectory", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let req = CreateDelegationRequest {
                         from_agent_id: from_agent.agent_id,
                         to_agent_id: to_agent.agent_id,
@@ -621,11 +635,11 @@ proptest! {
                     ExpectedEvent::DelegationCreated
                 }
                 MutationCase::DelegationAccept => {
-                    let from_agent = seed_agent(&db, "delegator-accept", auth.tenant_id).await;
-                    let to_agent = seed_agent(&db, "delegatee-accept", auth.tenant_id).await;
-                    let trajectory = seed_trajectory(&db, "Delegation Accept Trajectory", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
-                    let delegation = seed_delegation(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await;
+                    let from_agent = seed_agent(&db, "delegator-accept", auth.tenant_id).await?;
+                    let to_agent = seed_agent(&db, "delegatee-accept", auth.tenant_id).await?;
+                    let trajectory = seed_trajectory(&db, "Delegation Accept Trajectory", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
+                    let delegation = seed_delegation(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
                     let req = delegation::AcceptDelegationRequest {
                         accepting_agent_id: to_agent.agent_id,
                     };
@@ -639,11 +653,11 @@ proptest! {
                     ExpectedEvent::DelegationAccepted(delegation.delegation_id)
                 }
                 MutationCase::DelegationComplete => {
-                    let from_agent = seed_agent(&db, "delegator-complete", auth.tenant_id).await;
-                    let to_agent = seed_agent(&db, "delegatee-complete", auth.tenant_id).await;
-                    let trajectory = seed_trajectory(&db, "Delegation Complete Trajectory", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
-                    let delegation = seed_delegation(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await;
+                    let from_agent = seed_agent(&db, "delegator-complete", auth.tenant_id).await?;
+                    let to_agent = seed_agent(&db, "delegatee-complete", auth.tenant_id).await?;
+                    let trajectory = seed_trajectory(&db, "Delegation Complete Trajectory", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
+                    let delegation = seed_delegation(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
                     db.delegation_accept(delegation.delegation_id, to_agent.agent_id).await?;
                     let req = delegation::CompleteDelegationRequest {
                         result: caliber_api::types::DelegationResultResponse {
@@ -663,10 +677,10 @@ proptest! {
                     ExpectedEvent::DelegationCompleted(delegation.delegation_id)
                 }
                 MutationCase::HandoffCreate => {
-                    let from_agent = seed_agent(&db, "handoff-from", auth.tenant_id).await;
-                    let to_agent = seed_agent(&db, "handoff-to", auth.tenant_id).await;
-                    let trajectory = seed_trajectory(&db, "Handoff Trajectory", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
+                    let from_agent = seed_agent(&db, "handoff-from", auth.tenant_id).await?;
+                    let to_agent = seed_agent(&db, "handoff-to", auth.tenant_id).await?;
+                    let trajectory = seed_trajectory(&db, "Handoff Trajectory", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let req = CreateHandoffRequest {
                         from_agent_id: from_agent.agent_id,
                         to_agent_id: to_agent.agent_id,
@@ -679,11 +693,11 @@ proptest! {
                     ExpectedEvent::HandoffCreated
                 }
                 MutationCase::HandoffAccept => {
-                    let from_agent = seed_agent(&db, "handoff-accept-from", auth.tenant_id).await;
-                    let to_agent = seed_agent(&db, "handoff-accept-to", auth.tenant_id).await;
-                    let trajectory = seed_trajectory(&db, "Handoff Accept Trajectory", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
-                    let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await;
+                    let from_agent = seed_agent(&db, "handoff-accept-from", auth.tenant_id).await?;
+                    let to_agent = seed_agent(&db, "handoff-accept-to", auth.tenant_id).await?;
+                    let trajectory = seed_trajectory(&db, "Handoff Accept Trajectory", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
+                    let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
                     let req = handoff::AcceptHandoffRequest {
                         accepting_agent_id: to_agent.agent_id,
                     };
@@ -697,22 +711,21 @@ proptest! {
                     ExpectedEvent::HandoffAccepted(handoff.handoff_id)
                 }
                 MutationCase::HandoffComplete => {
-                    let from_agent = seed_agent(&db, "handoff-complete-from", auth.tenant_id).await;
-                    let to_agent = seed_agent(&db, "handoff-complete-to", auth.tenant_id).await;
-                    let trajectory = seed_trajectory(&db, "Handoff Complete Trajectory", auth.tenant_id).await;
-                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await;
-                    let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await;
+                    let from_agent = seed_agent(&db, "handoff-complete-from", auth.tenant_id).await?;
+                    let to_agent = seed_agent(&db, "handoff-complete-to", auth.tenant_id).await?;
+                    let trajectory = seed_trajectory(&db, "Handoff Complete Trajectory", auth.tenant_id).await?;
+                    let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
+                    let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
                     db.handoff_accept(handoff.handoff_id, to_agent.agent_id).await?;
                     handoff::complete_handoff(State(handoff_state), AuthExtractor(auth.clone()), Path(handoff.handoff_id)).await?;
                     ExpectedEvent::HandoffCompleted(handoff.handoff_id)
                 }
             };
 
-            let event = timeout(Duration::from_millis(100), rx.recv()).await;
-            prop_assert!(event.is_ok(), "Timed out waiting for broadcast event");
-            let event = event.unwrap();
-            prop_assert!(event.is_ok(), "Broadcast channel error: {:?}", event.err());
-            let event = event.unwrap();
+            let event = timeout(Duration::from_millis(100), rx.recv()).await
+                .map_err(|_| TestCaseError::fail("Timed out waiting for broadcast event"))?;
+            let event = event
+                .map_err(|err| TestCaseError::fail(format!("Broadcast channel error: {:?}", err)))?;
 
             assert_event(expected, event)?;
 

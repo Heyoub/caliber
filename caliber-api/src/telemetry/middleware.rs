@@ -13,6 +13,7 @@ use opentelemetry::{
     trace::{Status, TraceContextExt},
     Context, KeyValue,
 };
+use std::sync::OnceLock;
 use std::time::Instant;
 use tracing::{info_span, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -44,18 +45,36 @@ impl<'a> Extractor for HeaderMapExtractor<'a> {
 ///
 /// This prevents high-cardinality label explosion in Prometheus.
 fn normalize_path(path: &str) -> String {
-    // UUID pattern: 8-4-4-4-12 hex chars
-    let uuid_pattern = regex::Regex::new(
-        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-    )
-    .expect("Invalid UUID regex");
+    static UUID_REGEX: OnceLock<Result<regex::Regex, regex::Error>> = OnceLock::new();
+    static ID_REGEX: OnceLock<Result<regex::Regex, regex::Error>> = OnceLock::new();
 
-    // Numeric ID pattern
-    let id_pattern = regex::Regex::new(r"/\d+(/|$)").expect("Invalid ID regex");
+    let uuid_regex = UUID_REGEX.get_or_init(|| {
+        regex::Regex::new(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        )
+    });
+    let id_regex = ID_REGEX.get_or_init(|| regex::Regex::new(r"/\d+(/|$)"));
 
-    let result = uuid_pattern.replace_all(path, "{id}");
-    let result = id_pattern.replace_all(&result, "/{id}$1");
-    result.to_string()
+    let mut result = path.to_string();
+    match uuid_regex {
+        Ok(regex) => {
+            result = regex.replace_all(&result, "{id}").to_string();
+        }
+        Err(err) => {
+            tracing::error!(error = %err, "Failed to compile UUID regex");
+        }
+    }
+
+    match id_regex {
+        Ok(regex) => {
+            result = regex.replace_all(&result, "/{id}$1").to_string();
+        }
+        Err(err) => {
+            tracing::error!(error = %err, "Failed to compile numeric ID regex");
+        }
+    }
+
+    result
 }
 
 /// Observability middleware for Axum.
@@ -99,7 +118,11 @@ pub async fn observability_middleware(
     let duration_secs = duration.as_secs_f64();
 
     // Record Prometheus metrics
-    METRICS.record_http_request(method.as_str(), &normalized_path, status.as_u16(), duration_secs);
+    if let Ok(metrics) = METRICS.as_ref() {
+        metrics.record_http_request(method.as_str(), &normalized_path, status.as_u16(), duration_secs);
+    } else {
+        tracing::error!("Metrics registry unavailable; skipping HTTP request metrics");
+    }
 
     // Update span with response status
     let cx = span.context();

@@ -434,7 +434,7 @@ mod tests {
         assert!(req.name.trim().is_empty());
         assert!(req.content.trim().is_empty());
         assert!(req.source_turn < 0);
-        assert!(req.confidence.unwrap() > 1.0);
+        assert!(req.confidence.unwrap_or(0.0) > 1.0);
     }
 
     #[test]

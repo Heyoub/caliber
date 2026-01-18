@@ -1485,24 +1485,25 @@ mod tests {
     }
 
     #[test]
-    fn test_lock_manager_acquire_release() {
+    fn test_lock_manager_acquire_release() -> CaliberResult<()> {
         let mut manager = LockManager::new();
         let agent_id = Uuid::now_v7();
         let resource_id = Uuid::now_v7();
 
         let lock = manager
             .acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)
-            .unwrap();
+            ?;
 
         assert!(manager.get(lock.lock_id).is_some());
 
-        let released = manager.release(lock.lock_id).unwrap();
+        let released = manager.release(lock.lock_id)?;
         assert!(released);
         assert!(manager.get(lock.lock_id).is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_lock_manager_conflict() {
+    fn test_lock_manager_conflict() -> CaliberResult<()> {
         let mut manager = LockManager::new();
         let agent1 = Uuid::now_v7();
         let agent2 = Uuid::now_v7();
@@ -1511,15 +1512,16 @@ mod tests {
         // First agent acquires lock
         let _lock1 = manager
             .acquire(agent1, "artifact", resource_id, LockMode::Exclusive, 30000)
-            .unwrap();
+            ?;
 
         // Second agent tries to acquire - should fail
         let result = manager.acquire(agent2, "artifact", resource_id, LockMode::Exclusive, 30000);
         assert!(result.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_lock_manager_cleanup_expired() {
+    fn test_lock_manager_cleanup_expired() -> CaliberResult<()> {
         let mut manager = LockManager::new();
         let agent_id = Uuid::now_v7();
         let resource_id = Uuid::now_v7();
@@ -1529,11 +1531,12 @@ mod tests {
         // Instead, test that cleanup returns 0 when no locks are expired.
         let _lock = manager
             .acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)
-            .unwrap();
+            ?;
 
         // Fresh lock should not be expired
         let cleaned = manager.cleanup_expired();
         assert_eq!(cleaned, 0);
+        Ok(())
     }
 
     // ========================================================================
@@ -1721,9 +1724,15 @@ mod prop_tests {
             let agent_id = Uuid::now_v7();
             let resource_id = Uuid::now_v7();
 
-            let lock = manager
+            let lock = match manager
                 .acquire(agent_id, &agent_type, resource_id, LockMode::Exclusive, 30000)
-                .unwrap();
+            {
+                Ok(lock) => lock,
+                Err(err) => {
+                    prop_assert!(false, "Expected lock acquisition to succeed: {:?}", err);
+                    return;
+                }
+            };
 
             prop_assert_eq!(lock.holder_agent_id, agent_id, "Lock holder should be the acquiring agent");
             prop_assert_eq!(lock.resource_id, resource_id, "Lock resource should match");

@@ -10,6 +10,8 @@ use prometheus::{
     HistogramVec, TextEncoder,
 };
 
+use crate::error::{ApiError, ApiResult};
+
 /// HTTP request latency buckets (seconds)
 /// Covers: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s
 const HTTP_LATENCY_BUCKETS: &[f64] = &[
@@ -21,7 +23,7 @@ const DB_LATENCY_BUCKETS: &[f64] =
     &[0.001, 0.005, 0.010, 0.025, 0.050, 0.100, 0.250, 0.500, 1.0, 2.5, 5.0];
 
 /// Global metrics instance - initialized once at startup
-pub static METRICS: Lazy<CaliberMetrics> = Lazy::new(CaliberMetrics::new);
+pub static METRICS: Lazy<ApiResult<CaliberMetrics>> = Lazy::new(CaliberMetrics::new);
 
 /// Container for all CALIBER metrics.
 #[derive(Clone)]
@@ -56,14 +58,14 @@ pub struct CaliberMetrics {
 
 impl CaliberMetrics {
     /// Create and register all metrics with Prometheus.
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> ApiResult<Self> {
+        Ok(Self {
             http_requests_total: register_counter_vec!(
                 "caliber_http_requests_total",
                 "Total number of HTTP requests",
                 &["method", "path", "status"]
             )
-            .expect("Failed to register http_requests_total"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register http_requests_total: {}", e)))?,
 
             http_request_duration_seconds: register_histogram_vec!(
                 "caliber_http_request_duration_seconds",
@@ -71,14 +73,14 @@ impl CaliberMetrics {
                 &["method", "path"],
                 HTTP_LATENCY_BUCKETS.to_vec()
             )
-            .expect("Failed to register http_request_duration_seconds"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register http_request_duration_seconds: {}", e)))?,
 
             db_operations_total: register_counter_vec!(
                 "caliber_db_operations_total",
                 "Total number of database operations",
                 &["operation", "entity", "status"]
             )
-            .expect("Failed to register db_operations_total"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register db_operations_total: {}", e)))?,
 
             db_operation_duration_seconds: register_histogram_vec!(
                 "caliber_db_operation_duration_seconds",
@@ -86,40 +88,40 @@ impl CaliberMetrics {
                 &["operation", "entity"],
                 DB_LATENCY_BUCKETS.to_vec()
             )
-            .expect("Failed to register db_operation_duration_seconds"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register db_operation_duration_seconds: {}", e)))?,
 
             websocket_connections: register_gauge!(
                 "caliber_websocket_connections",
                 "Current number of active WebSocket connections"
             )
-            .expect("Failed to register websocket_connections"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register websocket_connections: {}", e)))?,
 
             webhook_deliveries_total: register_counter_vec!(
                 "caliber_webhook_deliveries_total",
                 "Total webhook deliveries",
                 &["status"]
             )
-            .expect("Failed to register webhook_deliveries_total"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register webhook_deliveries_total: {}", e)))?,
 
             mcp_tool_calls_total: register_counter_vec!(
                 "caliber_mcp_tool_calls_total",
                 "Total MCP tool invocations",
                 &["tool", "status"]
             )
-            .expect("Failed to register mcp_tool_calls_total"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register mcp_tool_calls_total: {}", e)))?,
 
             active_agents: register_gauge!(
                 "caliber_active_agents",
                 "Current number of active agents"
             )
-            .expect("Failed to register active_agents"),
+            .map_err(|e| ApiError::internal_error(format!("Failed to register active_agents: {}", e)))?,
 
             active_trajectories: register_gauge!(
                 "caliber_active_trajectories",
                 "Current number of active trajectories"
             )
-            .expect("Failed to register active_trajectories"),
-        }
+            .map_err(|e| ApiError::internal_error(format!("Failed to register active_trajectories: {}", e)))?,
+        })
     }
 
     /// Record an HTTP request.
@@ -233,41 +235,64 @@ mod tests {
     use prometheus::core::Collector;
 
     #[test]
-    fn test_metrics_creation() {
+    fn test_metrics_creation() -> Result<(), String> {
         // Force initialization
-        let _ = &*METRICS;
-        assert!(METRICS.http_requests_total.desc().len() > 0);
+        let metrics = METRICS
+            .as_ref()
+            .map_err(|e| format!("Metrics init failed: {}", e.message))?;
+        assert!(metrics.http_requests_total.desc().len() > 0);
+        Ok(())
     }
 
     #[test]
-    fn test_record_http_request() {
-        METRICS.record_http_request("GET", "/api/v1/trajectories", 200, 0.015);
+    fn test_record_http_request() -> Result<(), String> {
+        let metrics = METRICS
+            .as_ref()
+            .map_err(|e| format!("Metrics init failed: {}", e.message))?;
+        metrics.record_http_request("GET", "/api/v1/trajectories", 200, 0.015);
         // Metric should be recorded without panicking
+        Ok(())
     }
 
     #[test]
-    fn test_record_db_operation() {
-        METRICS.record_db_operation("create", "trajectory", true, 0.005);
-        METRICS.record_db_operation("get", "artifact", false, 0.010);
+    fn test_record_db_operation() -> Result<(), String> {
+        let metrics = METRICS
+            .as_ref()
+            .map_err(|e| format!("Metrics init failed: {}", e.message))?;
+        metrics.record_db_operation("create", "trajectory", true, 0.005);
+        metrics.record_db_operation("get", "artifact", false, 0.010);
+        Ok(())
     }
 
     #[test]
-    fn test_websocket_metrics() {
-        METRICS.ws_connected();
-        METRICS.ws_connected();
-        METRICS.ws_disconnected();
+    fn test_websocket_metrics() -> Result<(), String> {
+        let metrics = METRICS
+            .as_ref()
+            .map_err(|e| format!("Metrics init failed: {}", e.message))?;
+        metrics.ws_connected();
+        metrics.ws_connected();
+        metrics.ws_disconnected();
         // Connection count should be 1
+        Ok(())
     }
 
     #[test]
-    fn test_webhook_metrics() {
-        METRICS.record_webhook_delivery(true);
-        METRICS.record_webhook_delivery(false);
+    fn test_webhook_metrics() -> Result<(), String> {
+        let metrics = METRICS
+            .as_ref()
+            .map_err(|e| format!("Metrics init failed: {}", e.message))?;
+        metrics.record_webhook_delivery(true);
+        metrics.record_webhook_delivery(false);
+        Ok(())
     }
 
     #[test]
-    fn test_mcp_metrics() {
-        METRICS.record_mcp_tool_call("trajectory_create", true);
-        METRICS.record_mcp_tool_call("note_search", false);
+    fn test_mcp_metrics() -> Result<(), String> {
+        let metrics = METRICS
+            .as_ref()
+            .map_err(|e| format!("Metrics init failed: {}", e.message))?;
+        metrics.record_mcp_tool_call("trajectory_create", true);
+        metrics.record_mcp_tool_call("note_search", false);
+        Ok(())
     }
 }

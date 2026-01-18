@@ -18,6 +18,7 @@ use caliber_api::{
 };
 use caliber_core::{ArtifactType, EntityId, ExtractionMethod, TTL};
 use proptest::prelude::*;
+use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 #[path = "support/auth.rs"]
@@ -36,13 +37,20 @@ fn test_db_client() -> DbClient {
     test_db_support::test_db_client()
 }
 
+fn test_runtime() -> Result<Runtime, TestCaseError> {
+    Runtime::new().map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))
+}
+
 /// Helper to create a test trajectory for artifact tests.
-async fn create_test_trajectory(db: &DbClient, tenant_id: EntityId) -> EntityId {
+async fn create_test_trajectory(
+    db: &DbClient,
+    tenant_id: EntityId,
+) -> Result<EntityId, TestCaseError> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .map_err(|e| TestCaseError::fail(format!("Clock error: {}", e)))?
         .as_nanos();
 
     let req = CreateTrajectoryRequest {
@@ -53,19 +61,25 @@ async fn create_test_trajectory(db: &DbClient, tenant_id: EntityId) -> EntityId 
         metadata: None,
     };
 
-    let trajectory = db.trajectory_create(&req, tenant_id).await
-        .expect("Failed to create test trajectory");
+    let trajectory = db
+        .trajectory_create(&req, tenant_id)
+        .await
+        .map_err(|e| TestCaseError::fail(format!("Failed to create test trajectory: {}", e)))?;
 
-    trajectory.trajectory_id
+    Ok(trajectory.trajectory_id)
 }
 
 /// Helper to create a test scope for artifact tests.
-async fn create_test_scope(db: &DbClient, trajectory_id: EntityId, tenant_id: EntityId) -> EntityId {
+async fn create_test_scope(
+    db: &DbClient,
+    trajectory_id: EntityId,
+    tenant_id: EntityId,
+) -> Result<EntityId, TestCaseError> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .map_err(|e| TestCaseError::fail(format!("Clock error: {}", e)))?
         .as_nanos();
 
     let req = CreateScopeRequest {
@@ -77,10 +91,12 @@ async fn create_test_scope(db: &DbClient, trajectory_id: EntityId, tenant_id: En
         metadata: None,
     };
 
-    let scope = db.scope_create(&req, tenant_id).await
-        .expect("Failed to create test scope");
+    let scope = db
+        .scope_create(&req, tenant_id)
+        .await
+        .map_err(|e| TestCaseError::fail(format!("Failed to create test scope: {}", e)))?;
 
-    scope.scope_id
+    Ok(scope.scope_id)
 }
 
 // ============================================================================
@@ -262,14 +278,14 @@ proptest! {
         ttl in ttl_strategy(),
         metadata in optional_metadata_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
             // Create test trajectory and scope
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -319,7 +335,9 @@ proptest! {
             let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?;
             prop_assert!(retrieved.is_some(), "Artifact should exist after creation");
 
-            let retrieved = retrieved.unwrap();
+            let retrieved = retrieved.ok_or_else(|| {
+                TestCaseError::fail("Artifact should exist after creation".to_string())
+            })?;
 
             // Verify all fields match the created artifact
             prop_assert_eq!(retrieved.artifact_id, created.artifact_id);
@@ -384,13 +402,13 @@ proptest! {
         name in artifact_name_strategy(),
         content in artifact_content_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -436,7 +454,7 @@ proptest! {
     fn prop_artifact_get_nonexistent_returns_none(
         random_id_bytes in any::<[u8; 16]>(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
@@ -462,13 +480,13 @@ proptest! {
     fn prop_artifact_name_preservation(
         name in artifact_name_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -489,8 +507,10 @@ proptest! {
             prop_assert_eq!(&created.name, &name);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(&retrieved.name, &name);
 
             Ok(())
@@ -506,13 +526,13 @@ proptest! {
     fn prop_artifact_content_preservation(
         content in artifact_content_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -533,8 +553,10 @@ proptest! {
             prop_assert_eq!(&created.content, &content);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(&retrieved.content, &content);
 
             Ok(())
@@ -550,13 +572,13 @@ proptest! {
     fn prop_artifact_type_preservation(
         artifact_type in artifact_type_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -577,8 +599,10 @@ proptest! {
             prop_assert_eq!(created.artifact_type, artifact_type);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(retrieved.artifact_type, artifact_type);
 
             Ok(())
@@ -597,13 +621,13 @@ proptest! {
         extraction_method in extraction_method_strategy(),
         confidence in confidence_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -626,8 +650,10 @@ proptest! {
             prop_assert_eq!(created.provenance.confidence, confidence);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(retrieved.provenance.source_turn, source_turn);
             prop_assert_eq!(retrieved.provenance.extraction_method, extraction_method);
             prop_assert_eq!(retrieved.provenance.confidence, confidence);
@@ -645,13 +671,13 @@ proptest! {
     fn prop_artifact_ttl_preservation(
         ttl in ttl_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -672,8 +698,10 @@ proptest! {
             prop_assert_eq!(&created.ttl, &ttl);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(&retrieved.ttl, &ttl);
 
             Ok(())
@@ -689,13 +717,13 @@ proptest! {
     fn prop_artifact_metadata_roundtrip(
         metadata in optional_metadata_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -716,8 +744,10 @@ proptest! {
             prop_assert_eq!(&created.metadata, &metadata);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(&retrieved.metadata, &metadata);
 
             Ok(())
@@ -734,13 +764,13 @@ proptest! {
     fn prop_artifact_content_hash_consistency(
         content in artifact_content_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -785,13 +815,13 @@ proptest! {
     fn prop_artifact_belongs_to_scope_and_trajectory(
         name in artifact_name_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -813,8 +843,10 @@ proptest! {
             prop_assert_eq!(created.scope_id, scope_id);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
             prop_assert_eq!(retrieved.trajectory_id, trajectory_id);
             prop_assert_eq!(retrieved.scope_id, scope_id);
 
@@ -839,11 +871,11 @@ mod edge_cases {
     use super::*;
 
     #[tokio::test]
-    async fn test_artifact_with_empty_name_fails() {
+    async fn test_artifact_with_empty_name_fails() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -864,14 +896,15 @@ mod edge_cases {
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
         assert!(result.is_ok() || result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_empty_content_fails() {
+    async fn test_artifact_with_empty_content_fails() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -892,14 +925,15 @@ mod edge_cases {
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
         assert!(result.is_ok() || result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_negative_source_turn_fails() {
+    async fn test_artifact_with_negative_source_turn_fails() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -919,14 +953,15 @@ mod edge_cases {
 
         // Should fail
         assert!(result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_invalid_confidence_fails() {
+    async fn test_artifact_with_invalid_confidence_fails() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         // Test confidence > 1.0
         let create_req = CreateArtifactRequest {
@@ -953,14 +988,15 @@ mod edge_cases {
 
         let result2 = db.artifact_create(&create_req2, auth.tenant_id).await;
         assert!(result2.is_err(), "Confidence < 0.0 should fail");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_very_long_name() {
+    async fn test_artifact_with_very_long_name() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         // Create a very long name (but within reasonable limits)
         let long_name = "A".repeat(500);
@@ -989,14 +1025,15 @@ mod edge_cases {
                 // Database may have length limits - that's acceptable
             }
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_unicode_name() {
+    async fn test_artifact_with_unicode_name() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let unicode_name = "测试工件 🚀 Тест";
 
@@ -1013,25 +1050,30 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should handle Unicode names");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         assert_eq!(created.name, unicode_name);
 
         // Verify persistence
-        let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
-            .expect("Should retrieve artifact")
-            .expect("Artifact should exist");
+        let retrieved = db
+            .artifact_get(created.artifact_id, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?
+            .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
 
         assert_eq!(retrieved.name, unicode_name);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_unicode_content() {
+    async fn test_artifact_with_unicode_content() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let unicode_content = "这是测试内容 🎉 Это тестовый контент";
 
@@ -1048,25 +1090,30 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should handle Unicode content");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         assert_eq!(created.content, unicode_content);
 
         // Verify persistence
-        let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
-            .expect("Should retrieve artifact")
-            .expect("Artifact should exist");
+        let retrieved = db
+            .artifact_get(created.artifact_id, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?
+            .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
 
         assert_eq!(retrieved.content, unicode_content);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_all_artifact_types() {
+    async fn test_artifact_with_all_artifact_types() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let artifact_types = vec![
             ArtifactType::ErrorLog,
@@ -1094,26 +1141,31 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await
-                .expect(&format!("Should create artifact of type {:?}", artifact_type));
+            let created = db
+                .artifact_create(&create_req, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
             assert_eq!(created.artifact_type, artifact_type);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
-                .expect("Should retrieve artifact")
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
 
             assert_eq!(retrieved.artifact_type, artifact_type);
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_all_extraction_methods() {
+    async fn test_artifact_with_all_extraction_methods() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let extraction_methods = vec![
             ExtractionMethod::Explicit,
@@ -1135,26 +1187,31 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await
-                .expect(&format!("Should create artifact with {:?}", extraction_method));
+            let created = db
+                .artifact_create(&create_req, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
             assert_eq!(created.provenance.extraction_method, extraction_method);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
-                .expect("Should retrieve artifact")
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
 
             assert_eq!(retrieved.provenance.extraction_method, extraction_method);
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_all_ttl_variants() {
+    async fn test_artifact_with_all_ttl_variants() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let ttl_variants = vec![
             TTL::Persistent,
@@ -1182,26 +1239,31 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await
-                .expect(&format!("Should create artifact with TTL {:?}", ttl));
+            let created = db
+                .artifact_create(&create_req, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
             assert_eq!(&created.ttl, ttl);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
-                .expect("Should retrieve artifact")
-                .expect("Artifact should exist");
+            let retrieved = db
+                .artifact_get(created.artifact_id, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?
+                .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
 
             assert_eq!(&retrieved.ttl, ttl);
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_confidence_boundary_values() {
+    async fn test_artifact_confidence_boundary_values() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         // Test confidence = 0.0 (minimum valid)
         let create_req = CreateArtifactRequest {
@@ -1217,8 +1279,10 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should create artifact with confidence 0.0");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
         assert_eq!(created.provenance.confidence, Some(0.0));
 
         // Test confidence = 1.0 (maximum valid)
@@ -1228,17 +1292,20 @@ mod edge_cases {
             ..create_req
         };
 
-        let created2 = db.artifact_create(&create_req2, auth.tenant_id).await
-            .expect("Should create artifact with confidence 1.0");
+        let created2 = db
+            .artifact_create(&create_req2, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
         assert_eq!(created2.provenance.confidence, Some(1.0));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_source_turn_zero() {
+    async fn test_artifact_source_turn_zero() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -1253,18 +1320,21 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should create artifact with source_turn 0");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         assert_eq!(created.provenance.source_turn, 0);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_timestamps_are_set() {
+    async fn test_artifact_timestamps_are_set() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -1279,21 +1349,24 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should create artifact");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         // Timestamps should be set and reasonable
         assert!(created.created_at.timestamp() > 0);
         assert!(created.updated_at.timestamp() > 0);
         assert!(created.updated_at >= created.created_at);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_content_hash_is_32_bytes() {
+    async fn test_artifact_content_hash_is_32_bytes() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -1308,22 +1381,25 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should create artifact");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         // Content hash should be SHA-256 (32 bytes)
         assert_eq!(created.content_hash.len(), 32);
         
         // Hash should not be all zeros
         assert_ne!(created.content_hash, [0u8; 32]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_list_by_scope() {
+    async fn test_artifact_list_by_scope() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         // Create multiple artifacts in the same scope
         let mut artifact_ids = Vec::new();
@@ -1341,14 +1417,18 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await
-                .expect("Should create artifact");
+            let created = db
+                .artifact_create(&create_req, auth.tenant_id)
+                .await
+                .map_err(|e| TestCaseError::fail(e.to_string()))?;
             artifact_ids.push(created.artifact_id);
         }
 
         // List artifacts by scope
-        let artifacts = db.artifact_list_by_scope(scope_id, auth.tenant_id).await
-            .expect("Should list artifacts");
+        let artifacts = db
+            .artifact_list_by_scope(scope_id, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         // All created artifacts should be in the list
         for artifact_id in artifact_ids {
@@ -1358,14 +1438,15 @@ mod edge_cases {
                 artifact_id
             );
         }
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_artifact_with_complex_metadata() {
+    async fn test_artifact_with_complex_metadata() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
-        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await?;
 
         let complex_metadata = serde_json::json!({
             "tags": ["important", "reviewed"],
@@ -1392,16 +1473,21 @@ mod edge_cases {
             metadata: Some(complex_metadata.clone()),
         };
 
-        let created = db.artifact_create(&create_req, auth.tenant_id).await
-            .expect("Should create artifact with complex metadata");
+        let created = db
+            .artifact_create(&create_req, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
         assert_eq!(created.metadata, Some(complex_metadata.clone()));
 
         // Verify persistence
-        let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
-            .expect("Should retrieve artifact")
-            .expect("Artifact should exist");
+        let retrieved = db
+            .artifact_get(created.artifact_id, auth.tenant_id)
+            .await
+            .map_err(|e| TestCaseError::fail(e.to_string()))?
+            .ok_or_else(|| TestCaseError::fail("Artifact should exist".to_string()))?;
 
         assert_eq!(retrieved.metadata, Some(complex_metadata));
+        Ok(())
     }
 }

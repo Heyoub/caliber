@@ -584,7 +584,11 @@ pub async fn deliver_webhook(
     #[cfg(feature = "openapi")]
     {
         use crate::telemetry::METRICS;
-        METRICS.record_webhook_delivery(false);
+        if let Ok(metrics) = METRICS.as_ref() {
+            metrics.record_webhook_delivery(false);
+        } else {
+            tracing::error!("Metrics registry unavailable; skipping webhook metrics");
+        }
     }
 }
 
@@ -720,19 +724,20 @@ mod tests {
     }
 
     #[test]
-    fn test_sign_payload() {
+    fn test_sign_payload() -> ApiResult<()> {
         let payload = b"test payload";
         let secret = "supersecretkey123";
 
-        let signature = sign_payload(payload, secret).expect("Failed to sign payload");
+        let signature = sign_payload(payload, secret)?;
 
         // Signature should be a hex string
         assert!(!signature.is_empty());
         assert!(signature.chars().all(|c| c.is_ascii_hexdigit()));
+        Ok(())
     }
 
     #[test]
-    fn test_webhook_serialization() {
+    fn test_webhook_serialization() -> Result<(), serde_json::Error> {
         let webhook = Webhook {
             id: Uuid::new_v4(),
             url: "https://example.com/webhook".to_string(),
@@ -746,7 +751,7 @@ mod tests {
             last_delivery_at: None,
         };
 
-        let json = serde_json::to_string(&webhook).expect("Failed to serialize");
+        let json = serde_json::to_string(&webhook)?;
 
         // Secret should not be in the JSON (skip_serializing)
         assert!(!json.contains("supersecret"));
@@ -754,16 +759,18 @@ mod tests {
         // ID and URL should be present
         assert!(json.contains("id"));
         assert!(json.contains("https://example.com/webhook"));
+        Ok(())
     }
 
     #[test]
-    fn test_webhook_event_type_serialization() {
+    fn test_webhook_event_type_serialization() -> Result<(), serde_json::Error> {
         let all = WebhookEventType::All;
-        let json = serde_json::to_string(&all).expect("Failed to serialize");
+        let json = serde_json::to_string(&all)?;
         assert_eq!(json, "\"*\"");
 
         let trajectory = WebhookEventType::TrajectoryCreated;
-        let json = serde_json::to_string(&trajectory).expect("Failed to serialize");
+        let json = serde_json::to_string(&trajectory)?;
         assert_eq!(json, "\"trajectory_created\"");
+        Ok(())
     }
 }

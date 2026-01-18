@@ -18,7 +18,7 @@
 //! Requirements: 1.7, 1.8
 
 use crate::auth::{authenticate, AuthConfig, AuthContext, AuthProvider};
-use crate::error::ApiError;
+use crate::error::{ApiError, ApiResult};
 use axum::{
     extract::{FromRequestParts, Request, State},
     http::{request::Parts, StatusCode},
@@ -636,7 +636,7 @@ mod tests {
     }
     
     #[tokio::test]
-    async fn test_middleware_with_valid_api_key() {
+    async fn test_middleware_with_valid_api_key() -> Result<(), String> {
         let app = test_app();
         let tenant_id = Uuid::now_v7();
         
@@ -645,15 +645,19 @@ mod tests {
             .header("x-api-key", "test_key_123")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         assert_eq!(response.status(), StatusCode::OK);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_middleware_with_invalid_api_key() {
+    async fn test_middleware_with_invalid_api_key() -> Result<(), String> {
         let app = test_app();
         let tenant_id = Uuid::now_v7();
         
@@ -662,45 +666,57 @@ mod tests {
             .header("x-api-key", "invalid_key")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_middleware_without_authentication() {
+    async fn test_middleware_without_authentication() -> Result<(), String> {
         let app = test_app();
         
         let request = Request::builder()
             .uri("/protected")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_middleware_without_tenant_header() {
+    async fn test_middleware_without_tenant_header() -> Result<(), String> {
         let app = test_app();
         
         let request = Request::builder()
             .uri("/protected")
             .header("x-api-key", "test_key_123")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         // Should fail because tenant header is required
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_middleware_with_valid_jwt() {
+    async fn test_middleware_with_valid_jwt() -> Result<(), String> {
         let auth_config = test_auth_config();
         let user_id = "user123".to_string();
         let tenant_id = Uuid::now_v7();
@@ -712,7 +728,7 @@ mod tests {
             Some(tenant_id.into()),
             vec!["admin".to_string()],
         )
-        .unwrap();
+        .map_err(|e| e.message)?;
         
         let auth_state = AuthMiddlewareState::new(auth_config);
         let app = Router::new()
@@ -723,57 +739,68 @@ mod tests {
             .uri("/protected")
             .header("authorization", format!("Bearer {}", token))
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         assert_eq!(response.status(), StatusCode::OK);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_middleware_with_invalid_jwt() {
+    async fn test_middleware_with_invalid_jwt() -> Result<(), String> {
         let app = test_app();
         
         let request = Request::builder()
             .uri("/protected")
             .header("authorization", "Bearer invalid.jwt.token")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_middleware_with_malformed_auth_header() {
+    async fn test_middleware_with_malformed_auth_header() -> Result<(), String> {
         let app = test_app();
         
         let request = Request::builder()
             .uri("/protected")
             .header("authorization", "NotBearer token")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
     }
     
     #[tokio::test]
-    async fn test_auth_context_injection() {
+    async fn test_auth_context_injection() -> Result<(), String> {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
         let tenant_id = Uuid::now_v7();
 
         // Handler that extracts and verifies AuthContext
-        async fn handler(request: Request<Body>) -> String {
-            let auth_context = extract_auth_context(&request)
-                .expect("AuthContext should be present for authenticated request");
-            format!(
+        async fn handler(request: Request<Body>) -> ApiResult<String> {
+            let auth_context = extract_auth_context(&request)?;
+            Ok(format!(
                 "User: {}, Tenant: {}, Method: {:?}",
                 auth_context.user_id, auth_context.tenant_id, auth_context.auth_method
-            )
+            ))
         }
 
         let app = Router::new()
@@ -785,25 +812,30 @@ mod tests {
             .header("x-api-key", "test_key_123")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::OK);
 
         // Verify the response contains expected data
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let body_str = String::from_utf8(body.to_vec()).unwrap();
+            .map_err(|e| format!("Failed to read body: {:?}", e))?;
+        let body_str = String::from_utf8(body.to_vec())
+            .map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
 
         assert!(body_str.contains("User: api_key_"));
         assert!(body_str.contains(&format!("Tenant: {}", tenant_id)));
         assert!(body_str.contains("Method: ApiKey"));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_auth_extractor_with_valid_auth() {
+    async fn test_auth_extractor_with_valid_auth() -> Result<(), String> {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
         let tenant_id = Uuid::now_v7();
@@ -825,24 +857,29 @@ mod tests {
             .header("x-api-key", "test_key_123")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let body_str = String::from_utf8(body.to_vec()).unwrap();
+            .map_err(|e| format!("Failed to read body: {:?}", e))?;
+        let body_str = String::from_utf8(body.to_vec())
+            .map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
 
         assert!(body_str.contains("User: api_key_"));
         assert!(body_str.contains(&format!("Tenant: {}", tenant_id)));
         assert!(body_str.contains("Method: ApiKey"));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_auth_extractor_without_middleware() {
+    async fn test_auth_extractor_without_middleware() -> Result<(), String> {
         // Handler using AuthExtractor without auth middleware
         async fn handler(AuthExtractor(_auth): AuthExtractor) -> String {
             "Should not reach here".to_string()
@@ -854,16 +891,20 @@ mod tests {
         let request = Request::builder()
             .uri("/unprotected")
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         // Should return 500 because middleware is not configured
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_auth_extractor_deref() {
+    async fn test_auth_extractor_deref() -> Result<(), String> {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
         let tenant_id = Uuid::now_v7();
@@ -887,17 +928,22 @@ mod tests {
             .header("x-api-key", "test_key_123")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
 
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let body_str = String::from_utf8(body.to_vec()).unwrap();
+            .map_err(|e| format!("Failed to read body: {:?}", e))?;
+        let body_str = String::from_utf8(body.to_vec())
+            .map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
 
         assert!(body_str.contains("has api_user role"));
+        Ok(())
     }
 }

@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn test_broadcast_with_receiver() {
+    fn test_broadcast_with_receiver() -> Result<(), String> {
         let state = WsState::new(100);
         let mut rx = state.subscribe();
 
@@ -423,8 +423,11 @@ mod tests {
         state.broadcast(event.clone());
 
         // Should receive the event
-        let received = rx.try_recv().expect("Should receive event");
+        let received = rx
+            .try_recv()
+            .map_err(|err| format!("Expected event broadcast, got error: {:?}", err))?;
         assert_eq!(received, event);
+        Ok(())
     }
 
     #[test]

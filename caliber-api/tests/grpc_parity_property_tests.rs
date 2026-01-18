@@ -22,6 +22,7 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
+use tokio::runtime::Runtime;
 use tonic::metadata::MetadataValue;
 use tonic::Request;
 use uuid::Uuid;
@@ -39,20 +40,30 @@ use test_auth_support::test_auth_context;
 // TEST CONFIGURATION
 // ============================================================================
 
-async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> T {
+async fn extract_json<T: DeserializeOwned>(
+    response: impl IntoResponse,
+) -> Result<T, TestCaseError> {
     let response = response.into_response();
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
-        .expect("Failed to read response body");
-    serde_json::from_slice(&body).expect("Failed to parse JSON response")
+        .map_err(|e| TestCaseError::fail(format!("Failed to read response body: {:?}", e)))?;
+    serde_json::from_slice(&body)
+        .map_err(|e| TestCaseError::fail(format!("Failed to parse JSON response: {}", e)))
 }
 
-fn request_with_tenant<T>(payload: T, tenant_id: caliber_core::EntityId) -> Request<T> {
+fn request_with_tenant<T>(
+    payload: T,
+    tenant_id: caliber_core::EntityId,
+) -> Result<Request<T>, TestCaseError> {
     let mut request = Request::new(payload);
     let tenant_header = MetadataValue::try_from(tenant_id.to_string())
-        .expect("Failed to build tenant metadata header");
+        .map_err(|e| TestCaseError::fail(format!("Failed to build tenant metadata header: {}", e)))?;
     request.metadata_mut().insert("x-tenant-id", tenant_header);
-    request
+    Ok(request)
+}
+
+fn test_runtime() -> Result<Runtime, TestCaseError> {
+    Runtime::new().map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))
 }
 
 fn assert_trajectory_parity(
@@ -129,7 +140,7 @@ proptest! {
         name in name_strategy(),
         description in description_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
@@ -146,8 +157,14 @@ proptest! {
                 metadata: None,
             };
             let rest_created: TrajectoryResponse = extract_json(
-                trajectory::create_trajectory(State(rest_state.clone()), AuthExtractor(auth.clone()), Json(rest_req)).await?
-            ).await;
+                trajectory::create_trajectory(
+                    State(rest_state.clone()),
+                    AuthExtractor(auth.clone()),
+                    Json(rest_req),
+                )
+                .await?,
+            )
+            .await?;
 
             let grpc_get = grpc_service
                 .get_trajectory(request_with_tenant(
@@ -155,7 +172,7 @@ proptest! {
                     trajectory_id: rest_created.trajectory_id.to_string(),
                 },
                     auth.tenant_id,
-                ))
+                )?)
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC get failed: {}", e)))?
                 .into_inner();
@@ -173,20 +190,22 @@ proptest! {
                     metadata: None,
                 },
                     auth.tenant_id,
-                ))
+                )?)
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC create failed: {}", e)))?
                 .into_inner();
 
+            let trajectory_id = Uuid::parse_str(&grpc_created.trajectory_id)
+                .map_err(|e| TestCaseError::fail(format!("invalid uuid: {}", e)))?;
             let rest_get: TrajectoryResponse = extract_json(
                 trajectory::get_trajectory(
                     State(rest_state),
                     AuthExtractor(auth.clone()),
-                    Path(Uuid::parse_str(&grpc_created.trajectory_id).expect("invalid uuid")),
+                    Path(trajectory_id),
                 )
-                .await?
+                .await?,
             )
-            .await;
+            .await?;
 
             assert_trajectory_parity(&rest_get, &grpc_created)?;
 
@@ -201,7 +220,7 @@ proptest! {
         purpose in description_strategy(),
         token_budget in 100..5000i32,
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
@@ -220,8 +239,14 @@ proptest! {
                 metadata: None,
             };
             let trajectory: TrajectoryResponse = extract_json(
-                trajectory::create_trajectory(State(trajectory_state), AuthExtractor(auth.clone()), Json(trajectory_req)).await?
-            ).await;
+                trajectory::create_trajectory(
+                    State(trajectory_state),
+                    AuthExtractor(auth.clone()),
+                    Json(trajectory_req),
+                )
+                .await?,
+            )
+            .await?;
 
             // REST create → gRPC get
             let rest_scope_req = CreateScopeRequest {
@@ -233,8 +258,14 @@ proptest! {
                 metadata: None,
             };
             let rest_created: ScopeResponse = extract_json(
-                scope::create_scope(State(scope_state.clone()), AuthExtractor(auth.clone()), Json(rest_scope_req)).await?
-            ).await;
+                scope::create_scope(
+                    State(scope_state.clone()),
+                    AuthExtractor(auth.clone()),
+                    Json(rest_scope_req),
+                )
+                .await?,
+            )
+            .await?;
 
             let grpc_get = grpc_service
                 .get_scope(request_with_tenant(
@@ -242,7 +273,7 @@ proptest! {
                     scope_id: rest_created.scope_id.to_string(),
                 },
                     auth.tenant_id,
-                ))
+                )?)
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC get failed: {}", e)))?
                 .into_inner();
@@ -261,20 +292,22 @@ proptest! {
                     metadata: None,
                 },
                     auth.tenant_id,
-                ))
+                )?)
                 .await
                 .map_err(|e| TestCaseError::fail(format!("gRPC create failed: {}", e)))?
                 .into_inner();
 
+            let scope_id = Uuid::parse_str(&grpc_created.scope_id)
+                .map_err(|e| TestCaseError::fail(format!("invalid uuid: {}", e)))?;
             let rest_get: ScopeResponse = extract_json(
                 scope::get_scope(
                     State(scope_state),
                     AuthExtractor(auth.clone()),
-                    Path(Uuid::parse_str(&grpc_created.scope_id).expect("invalid uuid")),
+                    Path(scope_id),
                 )
-                .await?
+                .await?,
             )
-            .await;
+            .await?;
 
             assert_scope_parity(&rest_get, &grpc_created)?;
 

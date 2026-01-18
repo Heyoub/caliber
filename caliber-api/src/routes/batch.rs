@@ -708,38 +708,41 @@ mod tests {
     }
 
     #[test]
-    fn test_batch_request_serialization() {
+    fn test_batch_request_serialization() -> Result<(), serde_json::Error> {
         let request = BatchTrajectoryRequest {
             items: vec![],
             stop_on_error: true,
         };
 
-        let json = serde_json::to_string(&request).expect("Failed to serialize");
+        let json = serde_json::to_string(&request)?;
         assert!(json.contains("\"stop_on_error\":true"));
+        Ok(())
     }
 
     #[test]
-    fn test_batch_item_result_success() {
+    fn test_batch_item_result_success() -> Result<(), serde_json::Error> {
         let result: BatchItemResult<String> = BatchItemResult::Success {
             data: "test".to_string(),
         };
 
-        let json = serde_json::to_string(&result).expect("Failed to serialize");
+        let json = serde_json::to_string(&result)?;
         assert!(json.contains("\"status\":\"success\""));
         assert!(json.contains("\"data\":\"test\""));
+        Ok(())
     }
 
     #[test]
-    fn test_batch_item_result_error() {
+    fn test_batch_item_result_error() -> Result<(), serde_json::Error> {
         let result: BatchItemResult<String> = BatchItemResult::Error {
             message: "Something went wrong".to_string(),
             code: "ERR_001".to_string(),
         };
 
-        let json = serde_json::to_string(&result).expect("Failed to serialize");
+        let json = serde_json::to_string(&result)?;
         assert!(json.contains("\"status\":\"error\""));
         assert!(json.contains("\"message\":\"Something went wrong\""));
         assert!(json.contains("\"code\":\"ERR_001\""));
+        Ok(())
     }
 
     #[test]

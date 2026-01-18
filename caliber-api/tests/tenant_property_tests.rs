@@ -19,6 +19,7 @@ use axum::{
 };
 use caliber_api::{
     auth::{generate_jwt_token, AuthConfig},
+    error::ApiError,
     middleware::{auth_middleware, extract_auth_context, AuthMiddlewareState},
     types::{CreateTrajectoryRequest, ListTrajectoriesResponse, TrajectoryResponse},
 };
@@ -27,6 +28,7 @@ use caliber_core::{EntityId, TrajectoryStatus};
 use proptest::prelude::*;
 use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
+use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 #[path = "support/auth_with_tenant.rs"]
@@ -36,6 +38,10 @@ use test_auth_with_tenant_support::test_auth_context_with_tenant;
 // ============================================================================
 // TEST CONFIGURATION
 // ============================================================================
+
+fn test_runtime() -> Result<Runtime, TestCaseError> {
+    Runtime::new().map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))
+}
 
 /// In-memory storage for testing tenant isolation.
 ///
@@ -80,7 +86,7 @@ impl TestStorage {
 
         self.trajectories
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .push((tenant_id, trajectory.clone()));
 
         trajectory
@@ -90,7 +96,7 @@ impl TestStorage {
     fn list_trajectories(&self, tenant_id: EntityId) -> Vec<TrajectoryResponse> {
         self.trajectories
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .iter()
             .filter(|(tid, _)| *tid == tenant_id)
             .map(|(_, traj)| traj.clone())
@@ -105,7 +111,7 @@ impl TestStorage {
     ) -> Option<TrajectoryResponse> {
         self.trajectories
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .iter()
             .find(|(tid, traj)| *tid == tenant_id && traj.trajectory_id == trajectory_id)
             .map(|(_, traj)| traj.clone())
@@ -113,14 +119,17 @@ impl TestStorage {
 
     /// Count total trajectories across all tenants
     fn count_all(&self) -> usize {
-        self.trajectories.lock().unwrap().len()
+        self.trajectories
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .len()
     }
 
     /// Count trajectories for a specific tenant
     fn count_for_tenant(&self, tenant_id: EntityId) -> usize {
         self.trajectories
             .lock()
-            .unwrap()
+            .unwrap_or_else(|err| err.into_inner())
             .iter()
             .filter(|(tid, _)| *tid == tenant_id)
             .count()
@@ -146,15 +155,24 @@ fn test_app(storage: TestStorage) -> Router {
         State(storage): State<TestStorage>,
         request: Request<Body>,
     ) -> impl IntoResponse {
-        let auth_context = extract_auth_context(&request)
-            .expect("AuthContext should be present for authenticated request");
+        let auth_context = match extract_auth_context(&request) {
+            Ok(ctx) => ctx,
+            Err(err) => return (StatusCode::UNAUTHORIZED, Json(err)).into_response(),
+        };
         let tenant_id = auth_context.tenant_id;
 
         // Parse request body
         let body_bytes = axum::body::to_bytes(request.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let req: CreateTrajectoryRequest = serde_json::from_slice(&body_bytes).unwrap();
+            .map_err(|e| ApiError::invalid_input(format!("Failed to read request body: {:?}", e)))
+            .and_then(|bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|e| ApiError::invalid_input(format!("Invalid JSON: {}", e)))
+            });
+        let req = match req {
+            Ok(req) => req,
+            Err(err) => return (StatusCode::BAD_REQUEST, Json(err)).into_response(),
+        };
 
         // Create trajectory for this tenant
         let trajectory = storage.create_trajectory(tenant_id, &req);
@@ -167,8 +185,10 @@ fn test_app(storage: TestStorage) -> Router {
         State(storage): State<TestStorage>,
         request: Request<Body>,
     ) -> impl IntoResponse {
-        let auth_context = extract_auth_context(&request)
-            .expect("AuthContext should be present for authenticated request");
+        let auth_context = match extract_auth_context(&request) {
+            Ok(ctx) => ctx,
+            Err(err) => return (StatusCode::UNAUTHORIZED, Json(err)).into_response(),
+        };
         let tenant_id = auth_context.tenant_id;
 
         // List only trajectories for this tenant
@@ -187,14 +207,22 @@ fn test_app(storage: TestStorage) -> Router {
         State(storage): State<TestStorage>,
         request: Request<Body>,
     ) -> impl IntoResponse {
-        let auth_context = extract_auth_context(&request)
-            .expect("AuthContext should be present for authenticated request");
+        let auth_context = match extract_auth_context(&request) {
+            Ok(ctx) => ctx,
+            Err(err) => return (StatusCode::UNAUTHORIZED, Json(err)).into_response(),
+        };
         let tenant_id = auth_context.tenant_id;
 
         // Extract trajectory ID from path (simplified - in real app would use Path extractor)
         let uri = request.uri().path();
-        let trajectory_id_str = uri.split('/').last().unwrap();
-        let trajectory_id = Uuid::parse_str(trajectory_id_str).unwrap().into();
+        let trajectory_id_str = match uri.split('/').last() {
+            Some(id) => id,
+            None => return StatusCode::BAD_REQUEST.into_response(),
+        };
+        let trajectory_id = match Uuid::parse_str(trajectory_id_str) {
+            Ok(id) => EntityId::from(id),
+            Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+        };
 
         // Get trajectory only if it belongs to this tenant
         match storage.get_trajectory(tenant_id, trajectory_id) {
@@ -259,7 +287,7 @@ proptest! {
         tenant_id_bytes in any::<[u8; 16]>(),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let tenant_id = Uuid::from_bytes(tenant_id_bytes).into();
             let storage = TestStorage::new();
@@ -273,7 +301,7 @@ proptest! {
                 Some(tenant_id),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // Create trajectory
             let request = Request::builder()
@@ -281,10 +309,16 @@ proptest! {
                 .method("POST")
                 .header("authorization", format!("Bearer {}", token))
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&trajectory_req).unwrap()))
-                .unwrap();
+                .body(Body::from(
+                    serde_json::to_string(&trajectory_req)
+                        .map_err(|e| TestCaseError::fail(format!("Failed to serialize request: {}", e)))?,
+                ))
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Verify successful creation
             prop_assert_eq!(response.status(), StatusCode::CREATED);
@@ -292,9 +326,10 @@ proptest! {
             // Verify the trajectory is associated with the correct tenant
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                 .await
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
             let created_trajectory: TrajectoryResponse =
-                serde_json::from_slice(&body).unwrap();
+                serde_json::from_slice(&body)
+                    .map_err(|e| TestCaseError::fail(format!("Failed to parse response: {}", e)))?;
 
             // Verify we can retrieve it with the same tenant
             let trajectory_count = storage.count_for_tenant(tenant_id);
@@ -303,7 +338,7 @@ proptest! {
             // Verify the trajectory matches what we created
             let retrieved = storage.get_trajectory(tenant_id, created_trajectory.trajectory_id);
             prop_assert!(retrieved.is_some());
-            prop_assert_eq!(retrieved.unwrap().name, trajectory_req.name);
+            prop_assert_eq!(retrieved.map(|t| t.name), Some(trajectory_req.name));
 
             Ok(())
         })?;
@@ -321,7 +356,7 @@ proptest! {
         tenant_b_bytes in any::<[u8; 16]>(),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             // Ensure we have two different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
@@ -348,7 +383,7 @@ proptest! {
                 Some(tenant_a),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // List trajectories as tenant A
             let request = Request::builder()
@@ -356,16 +391,21 @@ proptest! {
                 .method("GET")
                 .header("authorization", format!("Bearer {}", token_a))
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.clone().oneshot(request).await.unwrap();
+            let response = app
+                .clone()
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
             prop_assert_eq!(response.status(), StatusCode::OK);
 
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                 .await
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
             let list_response: ListTrajectoriesResponse =
-                serde_json::from_slice(&body).unwrap();
+                serde_json::from_slice(&body)
+                    .map_err(|e| TestCaseError::fail(format!("Failed to parse response: {}", e)))?;
 
             // Property: Tenant A should only see their own trajectory
             prop_assert_eq!(list_response.trajectories.len(), 1);
@@ -378,7 +418,7 @@ proptest! {
                 Some(tenant_b),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // List trajectories as tenant B
             let request = Request::builder()
@@ -386,16 +426,20 @@ proptest! {
                 .method("GET")
                 .header("authorization", format!("Bearer {}", token_b))
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
             prop_assert_eq!(response.status(), StatusCode::OK);
 
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                 .await
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
             let list_response: ListTrajectoriesResponse =
-                serde_json::from_slice(&body).unwrap();
+                serde_json::from_slice(&body)
+                    .map_err(|e| TestCaseError::fail(format!("Failed to parse response: {}", e)))?;
 
             // Property: Tenant B should only see their own trajectory
             prop_assert_eq!(list_response.trajectories.len(), 1);
@@ -418,7 +462,7 @@ proptest! {
         tenant_b_bytes in any::<[u8; 16]>(),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             // Ensure we have two different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
@@ -441,7 +485,7 @@ proptest! {
                 Some(tenant_a),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // Tenant A should be able to get their own trajectory
             let request = Request::builder()
@@ -449,9 +493,13 @@ proptest! {
                 .method("GET")
                 .header("authorization", format!("Bearer {}", token_a))
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.clone().oneshot(request).await.unwrap();
+            let response = app
+                .clone()
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
             prop_assert_eq!(response.status(), StatusCode::OK);
 
             // Generate JWT token for tenant B
@@ -461,7 +509,7 @@ proptest! {
                 Some(tenant_b),
                 vec![],
             )
-            .unwrap();
+            .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
             // Tenant B should NOT be able to get tenant A's trajectory
             let request = Request::builder()
@@ -469,9 +517,12 @@ proptest! {
                 .method("GET")
                 .header("authorization", format!("Bearer {}", token_b))
                 .body(Body::empty())
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-            let response = app.oneshot(request).await.unwrap();
+            let response = app
+                .oneshot(request)
+                .await
+                .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
 
             // Property: Cross-tenant access should return 404
             prop_assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -491,7 +542,7 @@ proptest! {
         tenant_ids in prop::collection::vec(any::<[u8; 16]>(), 2..5),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = test_runtime()?;
         rt.block_on(async {
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
@@ -526,23 +577,28 @@ proptest! {
                     Some(*tenant_id),
                     vec![],
                 )
-                .unwrap();
+                .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
 
                 let request = Request::builder()
                     .uri("/api/v1/trajectories")
                     .method("GET")
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
-                    .unwrap();
+                    .map_err(|e| TestCaseError::fail(format!("Failed to build request: {}", e)))?;
 
-                let response = app.clone().oneshot(request).await.unwrap();
+                let response = app
+                    .clone()
+                    .oneshot(request)
+                    .await
+                    .map_err(|e| TestCaseError::fail(format!("Request failed: {:?}", e)))?;
                 prop_assert_eq!(response.status(), StatusCode::OK);
 
                 let body = axum::body::to_bytes(response.into_body(), usize::MAX)
                     .await
-                    .unwrap();
+                    .map_err(|e| TestCaseError::fail(format!("Failed to read body: {:?}", e)))?;
                 let list_response: ListTrajectoriesResponse =
-                    serde_json::from_slice(&body).unwrap();
+                    serde_json::from_slice(&body)
+                        .map_err(|e| TestCaseError::fail(format!("Failed to parse response: {}", e)))?;
 
                 // Property: Each tenant should see exactly 1 trajectory (their own)
                 prop_assert_eq!(
@@ -644,7 +700,9 @@ mod ws_tenant_isolation {
                     event.event_type()
                 );
                 prop_assert_eq!(
-                    extracted.unwrap(),
+                    extracted.ok_or_else(|| {
+                        TestCaseError::fail("Delete event missing tenant_id".to_string())
+                    })?,
                     tenant_id,
                     "Extracted tenant_id must match"
                 );
@@ -694,7 +752,9 @@ mod ws_tenant_isolation {
                     event.event_type()
                 );
                 prop_assert_eq!(
-                    extracted.unwrap(),
+                    extracted.ok_or_else(|| {
+                        TestCaseError::fail("Status event missing tenant_id".to_string())
+                    })?,
                     tenant_id,
                     "Extracted tenant_id must match for {:?}",
                     event.event_type()
@@ -791,7 +851,7 @@ mod edge_cases {
     use super::*;
 
     #[tokio::test]
-    async fn test_tenant_isolation_empty_database() {
+    async fn test_tenant_isolation_empty_database() -> Result<(), String> {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
@@ -804,7 +864,7 @@ mod edge_cases {
             Some(auth_context.tenant_id),
             auth_context.roles.clone(),
         )
-        .unwrap();
+        .map_err(|e| e.message)?;
 
         // List trajectories for a tenant with no data
         let request = Request::builder()
@@ -812,18 +872,23 @@ mod edge_cases {
             .method("GET")
             .header("authorization", format!("Bearer {}", token))
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap();
-        let list_response: ListTrajectoriesResponse = serde_json::from_slice(&body).unwrap();
+            .map_err(|e| format!("Failed to read body: {:?}", e))?;
+        let list_response: ListTrajectoriesResponse =
+            serde_json::from_slice(&body).map_err(|e| e.to_string())?;
 
         assert_eq!(list_response.trajectories.len(), 0);
         assert_eq!(list_response.total, 0);
+        Ok(())
     }
 
     #[tokio::test]
@@ -853,7 +918,7 @@ mod edge_cases {
     }
 
     #[tokio::test]
-    async fn test_tenant_isolation_nonexistent_trajectory() {
+    async fn test_tenant_isolation_nonexistent_trajectory() -> Result<(), String> {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
@@ -866,7 +931,7 @@ mod edge_cases {
             Some(tenant_id),
             vec![],
         )
-        .unwrap();
+        .map_err(|e| e.message)?;
 
         // Try to get a trajectory that doesn't exist
         let request = Request::builder()
@@ -874,9 +939,13 @@ mod edge_cases {
             .method("GET")
             .header("authorization", format!("Bearer {}", token))
             .body(Body::empty())
-            .unwrap();
+            .map_err(|e| e.to_string())?;
 
-        let response = app.oneshot(request).await.unwrap();
+        let response = app
+            .oneshot(request)
+            .await
+            .map_err(|e| format!("Request failed: {:?}", e))?;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        Ok(())
     }
 }

@@ -287,7 +287,7 @@ mod tests {
     use utoipa::OpenApi;
 
     #[test]
-    fn test_openapi_generation() {
+    fn test_openapi_generation() -> Result<(), String> {
         let openapi = ApiDoc::openapi();
 
         // Verify basic structure
@@ -295,29 +295,42 @@ mod tests {
         assert_eq!(openapi.info.version, "0.1.0");
 
         // Verify servers
-        assert_eq!(openapi.servers.as_ref().unwrap().len(), 2);
+        let servers = openapi
+            .servers
+            .as_ref()
+            .ok_or_else(|| "OpenAPI servers missing".to_string())?;
+        assert_eq!(servers.len(), 2);
 
         // Verify tags exist
-        assert!(openapi.tags.as_ref().unwrap().len() >= 10);
+        let tags = openapi
+            .tags
+            .as_ref()
+            .ok_or_else(|| "OpenAPI tags missing".to_string())?;
+        assert!(tags.len() >= 10);
 
         // Verify security schemes
-        let components = openapi.components.as_ref().unwrap();
+        let components = openapi
+            .components
+            .as_ref()
+            .ok_or_else(|| "OpenAPI components missing".to_string())?;
         assert!(components.security_schemes.contains_key("api_key"));
         assert!(components.security_schemes.contains_key("bearer_auth"));
+        Ok(())
     }
 
     #[test]
-    fn test_openapi_json_serialization() {
-        let json = ApiDoc::to_json().expect("JSON serialization should succeed");
+    fn test_openapi_json_serialization() -> Result<(), String> {
+        let json = ApiDoc::to_json().map_err(|e| format!("Failed to serialize OpenAPI: {}", e))?;
 
         // Verify it's valid JSON by parsing it back
-        let _: serde_json::Value = serde_json::from_str(&json)
-            .expect("Generated JSON should be valid");
+        serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|e| format!("Generated JSON invalid: {}", e))?;
 
         // Verify key fields are present (allow for spacing variations)
         assert!(json.contains("CALIBER API"));
         assert!(json.contains("\"api_key\""));
         assert!(json.contains("\"bearer_auth\""));
+        Ok(())
     }
 
     #[test]
