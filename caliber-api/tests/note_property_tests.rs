@@ -250,7 +250,7 @@ proptest! {
             // ================================================================
             // STEP 2: READ - Retrieve the note by ID
             // ================================================================
-            let retrieved = db.note_get(created.note_id).await?;
+            let retrieved = db.note_get(created.note_id, auth.tenant_id).await?;
             prop_assert!(retrieved.is_some(), "Note should exist after creation");
 
             let retrieved = retrieved.ok_or_else(|| {
@@ -370,7 +370,7 @@ proptest! {
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get a note with a random ID
-            let result = db.note_get(random_id).await?;
+            let result = db.note_get(random_id, auth.tenant_id).await?;
 
             // Property: Should return None, not an error
             prop_assert!(result.is_none() || result.is_some());
@@ -413,7 +413,7 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(&retrieved.title, &title);
@@ -455,7 +455,7 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(&retrieved.content, &content);
@@ -497,7 +497,7 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(retrieved.note_type, note_type);
@@ -539,7 +539,7 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(&retrieved.ttl, &ttl);
@@ -581,7 +581,7 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(&retrieved.metadata, &metadata);
@@ -671,13 +671,15 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(retrieved.source_trajectory_ids, vec![trajectory_id]);
 
             // Verify it appears in trajectory's note list
-            let trajectory_notes = db.note_list_by_trajectory(trajectory_id).await?;
+            let trajectory_notes = db
+                .note_list_by_trajectory(trajectory_id, auth.tenant_id)
+                .await?;
             prop_assert!(
                 trajectory_notes.iter().any(|n| n.note_id == created.note_id),
                 "Note should appear in trajectory's note list"
@@ -720,7 +722,7 @@ proptest! {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
             prop_assert_eq!(retrieved.access_count, 0);
@@ -739,10 +741,10 @@ mod edge_cases {
     use super::*;
 
     #[tokio::test]
-    async fn test_note_with_empty_title_fails() {
+    async fn test_note_with_empty_title_fails() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
-            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -760,10 +762,11 @@ mod edge_cases {
         // Either it fails, or it succeeds with an empty title
         // Both are acceptable at the DB layer - validation is at the API layer
         assert!(result.is_ok() || result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_note_with_empty_content_fails() {
+    async fn test_note_with_empty_content_fails() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
         let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
@@ -784,10 +787,11 @@ mod edge_cases {
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
         assert!(result.is_ok() || result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_note_with_very_long_title() {
+    async fn test_note_with_very_long_title() -> Result<(), TestCaseError> {
         let db = test_db_client();
         let auth = test_auth_context();
         let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await?;
@@ -816,6 +820,7 @@ mod edge_cases {
                 // Database may have length limits - that's acceptable
             }
         }
+        Ok(())
     }
 
     #[tokio::test]
@@ -845,7 +850,7 @@ mod edge_cases {
 
         // Verify persistence
         let retrieved = db
-            .note_get(created.note_id)
+            .note_get(created.note_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?
             .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -881,7 +886,7 @@ mod edge_cases {
 
         // Verify persistence
         let retrieved = db
-            .note_get(created.note_id)
+            .note_get(created.note_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?
             .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -927,7 +932,7 @@ mod edge_cases {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -975,7 +980,7 @@ mod edge_cases {
 
             // Verify persistence
             let retrieved = db
-                .note_get(created.note_id)
+                .note_get(created.note_id, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?
                 .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -1072,7 +1077,7 @@ mod edge_cases {
 
         // List notes by trajectory
         let notes = db
-            .note_list_by_trajectory(trajectory_id)
+            .note_list_by_trajectory(trajectory_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1124,7 +1129,7 @@ mod edge_cases {
 
         // Verify persistence
         let retrieved = db
-            .note_get(created.note_id)
+            .note_get(created.note_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?
             .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -1161,7 +1166,7 @@ mod edge_cases {
 
         // Verify persistence
         let retrieved = db
-            .note_get(created.note_id)
+            .note_get(created.note_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?
             .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -1198,7 +1203,7 @@ mod edge_cases {
 
         // Verify persistence
         let retrieved = db
-            .note_get(created.note_id)
+            .note_get(created.note_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?
             .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;
@@ -1233,7 +1238,7 @@ mod edge_cases {
 
         // Verify persistence
         let retrieved = db
-            .note_get(created.note_id)
+            .note_get(created.note_id, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?
             .ok_or_else(|| TestCaseError::fail("Note should exist".to_string()))?;

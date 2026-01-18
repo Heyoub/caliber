@@ -26,7 +26,6 @@ mod test_auth_support;
 #[path = "support/db.rs"]
 mod test_db_support;
 use test_auth_support::test_auth_context;
-use test_db_support::test_db_client;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -352,6 +351,7 @@ proptest! {
         let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get a trajectory with a random ID
@@ -379,10 +379,13 @@ proptest! {
         let rt = test_runtime()?;
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to update a trajectory with a random ID
-            let result = db.trajectory_update(random_id, &update_req, auth.tenant_id).await;
+            let result = db
+                .trajectory_update(random_id, &update_req, auth.tenant_id)
+                .await;
 
             // Property: Should return an error (trajectory not found)
             prop_assert!(result.is_err(), "Updating non-existent trajectory should fail");

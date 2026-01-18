@@ -231,7 +231,7 @@ proptest! {
             // ================================================================
             // STEP 2: READ - Retrieve the scope by ID
             // ================================================================
-            let retrieved = db.scope_get(created.scope_id).await?;
+            let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await?;
             prop_assert!(retrieved.is_some(), "Scope should exist after creation");
 
             let retrieved = retrieved.unwrap();
@@ -256,7 +256,7 @@ proptest! {
                 metadata: Some(serde_json::json!({"updated": true})),
             };
 
-            let updated = db.scope_update(created.scope_id, &update_req).await?;
+            let updated = db.scope_update(created.scope_id, &update_req, auth.tenant_id).await?;
 
             // Verify the ID hasn't changed
             prop_assert_eq!(updated.scope_id, created.scope_id);
@@ -272,7 +272,8 @@ proptest! {
             // ================================================================
             // STEP 4: READ - Retrieve the updated scope
             // ================================================================
-            let retrieved_after_update = db.scope_get(created.scope_id).await?;
+            let retrieved_after_update =
+                db.scope_get(created.scope_id, auth.tenant_id).await?;
             prop_assert!(retrieved_after_update.is_some(), "Scope should still exist after update");
 
             let retrieved_after_update = retrieved_after_update.unwrap();
@@ -286,7 +287,7 @@ proptest! {
             // ================================================================
             // STEP 5: CLOSE - Close the scope
             // ================================================================
-            let closed = db.scope_close(created.scope_id).await?;
+            let closed = db.scope_close(created.scope_id, auth.tenant_id).await?;
 
             // Verify the scope is now inactive
             prop_assert!(!closed.is_active, "Scope should be inactive after closing");
@@ -295,7 +296,8 @@ proptest! {
             // ================================================================
             // STEP 6: READ - Retrieve the closed scope
             // ================================================================
-            let retrieved_after_close = db.scope_get(created.scope_id).await?;
+            let retrieved_after_close =
+                db.scope_get(created.scope_id, auth.tenant_id).await?;
             prop_assert!(retrieved_after_close.is_some(), "Scope should still exist after closing");
 
             let retrieved_after_close = retrieved_after_close.unwrap();
@@ -366,10 +368,11 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get a scope with a random ID
-            let result = db.scope_get(random_id).await?;
+            let result = db.scope_get(random_id, auth.tenant_id).await?;
 
             // Property: Should return None, not an error
             prop_assert!(result.is_none() || result.is_some());
@@ -390,6 +393,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             let update_req = UpdateScopeRequest {
@@ -400,7 +404,7 @@ proptest! {
             };
 
             // Try to update a scope with a random ID
-            let result = db.scope_update(random_id, &update_req).await;
+            let result = db.scope_update(random_id, &update_req, auth.tenant_id).await;
 
             // Property: Should return an error (scope not found)
             prop_assert!(result.is_err(), "Updating non-existent scope should fail");
@@ -440,7 +444,7 @@ proptest! {
             prop_assert_eq!(&created.name, &name);
 
             // Verify persistence
-            let retrieved = db.scope_get(created.scope_id).await?
+            let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await?
                 .expect("Scope should exist");
             prop_assert_eq!(&retrieved.name, &name);
 
@@ -479,7 +483,7 @@ proptest! {
             prop_assert_eq!(created.token_budget, token_budget);
 
             // Verify persistence
-            let retrieved = db.scope_get(created.scope_id).await?
+            let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await?
                 .expect("Scope should exist");
             prop_assert_eq!(retrieved.token_budget, token_budget);
 
@@ -518,7 +522,7 @@ proptest! {
             prop_assert_eq!(&created.metadata, &metadata);
 
             // Verify persistence
-            let retrieved = db.scope_get(created.scope_id).await?
+            let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await?
                 .expect("Scope should exist");
             prop_assert_eq!(&retrieved.metadata, &metadata);
 
@@ -553,12 +557,12 @@ proptest! {
             let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Close the scope once
-            let closed1 = db.scope_close(created.scope_id).await?;
+            let closed1 = db.scope_close(created.scope_id, auth.tenant_id).await?;
             prop_assert!(!closed1.is_active);
             let first_closed_at = closed1.closed_at;
 
             // Close the scope again
-            let closed2 = db.scope_close(created.scope_id).await?;
+            let closed2 = db.scope_close(created.scope_id, auth.tenant_id).await?;
             prop_assert!(!closed2.is_active);
 
             // Property: closed_at timestamp should remain the same
@@ -699,7 +703,7 @@ mod edge_cases {
         assert_eq!(created.name, unicode_name);
 
         // Verify persistence
-        let retrieved = db.scope_get(created.scope_id).await
+        let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await
             .expect("Should retrieve scope")
             .expect("Scope should exist");
 
@@ -733,7 +737,9 @@ mod edge_cases {
             metadata: created.metadata.clone(),
         };
 
-        let updated = db.scope_update(created.scope_id, &update_req).await
+        let updated = db
+            .scope_update(created.scope_id, &update_req, auth.tenant_id)
+            .await
             .expect("Should update scope");
 
         // Values should remain the same
@@ -764,7 +770,7 @@ mod edge_cases {
         assert_eq!(created.tokens_used, 0);
 
         // Verify persistence
-        let retrieved = db.scope_get(created.scope_id).await
+        let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await
             .expect("Should retrieve scope")
             .expect("Scope should exist");
 
@@ -793,7 +799,7 @@ mod edge_cases {
         assert_eq!(created.trajectory_id, trajectory_id);
 
         // Verify persistence
-        let retrieved = db.scope_get(created.scope_id).await
+        let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await
             .expect("Should retrieve scope")
             .expect("Scope should exist");
 
@@ -844,7 +850,7 @@ mod edge_cases {
         assert!(created.closed_at.is_none());
 
         // Close the scope
-        let closed = db.scope_close(created.scope_id).await
+        let closed = db.scope_close(created.scope_id, auth.tenant_id).await
             .expect("Should close scope");
 
         // Property: closed_at should be set

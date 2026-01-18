@@ -124,7 +124,7 @@ proptest! {
 
     /// Property: Navigation keys are consistent (vim and arrow keys)
     fn navigation_keys_consistent(use_vim in prop::bool::ANY) {
-        let theme = SynthBruteTheme::synthbrute();
+        let _theme = SynthBruteTheme::synthbrute();
         let key = if use_vim {
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)
         } else {
@@ -443,7 +443,7 @@ proptest! {
     // ========================================================================
 
     /// Property: DSL keywords are identified
-    fn dsl_keywords_identified(keyword in prop::sample::select(vec!["caliber", "memory", "policy", "adapter", "inject", "schedule"])) {
+    fn dsl_keywords_identified(_keyword in prop::sample::select(vec!["caliber", "memory", "policy", "adapter", "inject", "schedule"])) {
         let theme = SynthBruteTheme::synthbrute();
         // Keywords should map to cyan
         let expected_color = theme.primary;
@@ -451,7 +451,7 @@ proptest! {
     }
 
     /// Property: DSL memory types are identified
-    fn dsl_memory_types_identified(mem_type in prop::sample::select(vec!["ephemeral", "working", "episodic", "semantic", "procedural", "meta"])) {
+    fn dsl_memory_types_identified(_mem_type in prop::sample::select(vec!["ephemeral", "working", "episodic", "semantic", "procedural", "meta"])) {
         let theme = SynthBruteTheme::synthbrute();
         // Memory types should map to magenta
         let expected_color = theme.secondary;
@@ -459,7 +459,7 @@ proptest! {
     }
 
     /// Property: DSL field types are identified
-    fn dsl_field_types_identified(field_type in prop::sample::select(vec!["uuid", "text", "int", "float", "bool", "timestamp", "json", "embedding"])) {
+    fn dsl_field_types_identified(_field_type in prop::sample::select(vec!["uuid", "text", "int", "float", "bool", "timestamp", "json", "embedding"])) {
         let theme = SynthBruteTheme::synthbrute();
         // Field types should map to yellow
         let expected_color = theme.tertiary;
@@ -538,6 +538,7 @@ proptest! {
 fn create_test_trajectory(id: EntityId, parent_id: Option<EntityId>) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
+        tenant_id: None,
         name: format!("Test Trajectory {}", id),
         description: Some("Test description".to_string()),
         status: TrajectoryStatus::Active,
@@ -555,6 +556,7 @@ fn create_test_trajectory(id: EntityId, parent_id: Option<EntityId>) -> Trajecto
 fn create_test_trajectory_with_status(id: EntityId, status: TrajectoryStatus) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
+        tenant_id: None,
         name: format!("Test Trajectory {}", id),
         description: None,
         status,
@@ -576,6 +578,7 @@ fn create_test_trajectory_full(
 ) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
+        tenant_id: None,
         name: format!("Test Trajectory {}", id),
         description: Some("Test description".to_string()),
         status,
@@ -593,6 +596,7 @@ fn create_test_trajectory_full(
 fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
     ArtifactResponse {
         artifact_id: caliber_core::new_entity_id(),
+        tenant_id: None,
         trajectory_id: caliber_core::new_entity_id(),
         scope_id: caliber_core::new_entity_id(),
         artifact_type,
@@ -616,6 +620,7 @@ fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
 fn create_test_note(note_type: NoteType) -> NoteResponse {
     NoteResponse {
         note_id: caliber_core::new_entity_id(),
+        tenant_id: None,
         note_type,
         title: "Test Note".to_string(),
         content: "Test content".to_string(),

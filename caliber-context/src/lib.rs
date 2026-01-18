@@ -963,7 +963,7 @@ mod prop_tests {
                 Ok(assembler) => assembler,
                 Err(err) => {
                     prop_assert!(false, "Failed to build ContextAssembler: {:?}", err);
-                    return;
+                    return Ok(());
                 }
             };
 
@@ -976,7 +976,7 @@ mod prop_tests {
                 Ok(window) => window,
                 Err(err) => {
                     prop_assert!(false, "Failed to assemble context: {:?}", err);
-                    return;
+                    return Ok(());
                 }
             };
 
@@ -1012,7 +1012,7 @@ mod prop_tests {
                 Ok(assembler) => assembler,
                 Err(err) => {
                     prop_assert!(false, "Failed to build ContextAssembler: {:?}", err);
-                    return;
+                    return Ok(());
                 }
             };
 
@@ -1025,7 +1025,7 @@ mod prop_tests {
                 Ok(window) => window,
                 Err(err) => {
                     prop_assert!(false, "Failed to assemble context: {:?}", err);
-                    return;
+                    return Ok(());
                 }
             };
 

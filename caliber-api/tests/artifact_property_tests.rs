@@ -26,7 +26,6 @@ mod test_auth_support;
 #[path = "support/db.rs"]
 mod test_db_support;
 use test_auth_support::test_auth_context;
-use test_db_support::test_db_client;
 
 // ============================================================================
 // TEST CONFIGURATION

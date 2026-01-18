@@ -13,6 +13,7 @@ use axum::{
     http::{Request, StatusCode},
     middleware,
     routing::get,
+    Json,
     Router,
 };
 use caliber_api::{

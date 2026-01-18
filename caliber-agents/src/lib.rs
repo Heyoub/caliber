@@ -1730,7 +1730,7 @@ mod prop_tests {
                 Ok(lock) => lock,
                 Err(err) => {
                     prop_assert!(false, "Expected lock acquisition to succeed: {:?}", err);
-                    return;
+                    return Ok(());
                 }
             };
 

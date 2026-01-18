@@ -169,7 +169,7 @@ fn test_app(storage: TestStorage) -> Router {
                 serde_json::from_slice(&bytes)
                     .map_err(|e| ApiError::invalid_input(format!("Invalid JSON: {}", e)))
             });
-        let req = match req {
+        let req = match body_bytes {
             Ok(req) => req,
             Err(err) => return (StatusCode::BAD_REQUEST, Json(err)).into_response(),
         };
@@ -177,7 +177,7 @@ fn test_app(storage: TestStorage) -> Router {
         // Create trajectory for this tenant
         let trajectory = storage.create_trajectory(tenant_id, &req);
 
-        (StatusCode::CREATED, Json(trajectory))
+        (StatusCode::CREATED, Json(trajectory)).into_response()
     }
 
     // Handler for listing trajectories
@@ -199,7 +199,7 @@ fn test_app(storage: TestStorage) -> Router {
             total: storage.count_for_tenant(tenant_id) as i32,
         };
 
-        Json(response)
+        Json(response).into_response()
     }
 
     // Handler for getting a specific trajectory
