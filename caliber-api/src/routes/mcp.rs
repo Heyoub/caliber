@@ -707,7 +707,7 @@ async fn execute_tool(
 
             let trajectory = state
                 .db
-                .trajectory_get(id)
+                .trajectory_get(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -730,7 +730,7 @@ async fn execute_tool(
                 _ => return Err(ApiError::invalid_input("Invalid status")),
             };
 
-            let trajectories = state.db.trajectory_list_by_status(status).await?;
+            let trajectories = state.db.trajectory_list_by_status(status, tenant_id).await?;
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&trajectories)
@@ -876,7 +876,7 @@ async fn execute_tool(
 
             let artifact = state
                 .db
-                .artifact_get(id)
+                .artifact_get(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
@@ -998,23 +998,28 @@ pub async fn list_resources(
 )]
 pub async fn read_resource(
     State(state): State<Arc<McpState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<ReadResourceRequest>,
 ) -> ApiResult<impl IntoResponse> {
     tracing::debug!(uri = %req.uri, "MCP resource read");
 
-    let content = read_resource_content(&state, &req.uri).await?;
+    let content = read_resource_content(&state, &req.uri, auth.tenant_id).await?;
 
     Ok(Json(ReadResourceResponse {
         contents: vec![content],
     }))
 }
 
-async fn read_resource_content(state: &McpState, uri: &str) -> ApiResult<ResourceContent> {
+async fn read_resource_content(
+    state: &McpState,
+    uri: &str,
+    tenant_id: EntityId,
+) -> ApiResult<ResourceContent> {
     match uri {
         "caliber://trajectories" => {
             let trajectories = state
                 .db
-                .trajectory_list_by_status(caliber_core::TrajectoryStatus::Active)
+                .trajectory_list_by_status(caliber_core::TrajectoryStatus::Active, tenant_id)
                 .await?;
 
             Ok(ResourceContent {
@@ -1054,7 +1059,7 @@ async fn read_resource_content(state: &McpState, uri: &str) -> ApiResult<Resourc
 
             let trajectory = state
                 .db
-                .trajectory_get(id)
+                .trajectory_get(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 

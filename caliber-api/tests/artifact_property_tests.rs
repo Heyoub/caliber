@@ -20,8 +20,12 @@ use caliber_core::{ArtifactType, EntityId, ExtractionMethod, TTL};
 use proptest::prelude::*;
 use uuid::Uuid;
 
-mod test_support;
-use test_support::test_auth_context;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+use test_auth_support::test_auth_context;
+use test_db_support::test_db_client;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -29,7 +33,7 @@ use test_support::test_auth_context;
 
 /// Create a test database client using shared test infrastructure.
 fn test_db_client() -> DbClient {
-    test_support::test_db_client()
+    test_db_support::test_db_client()
 }
 
 /// Helper to create a test trajectory for artifact tests.
@@ -312,7 +316,7 @@ proptest! {
             // ================================================================
             // STEP 2: READ - Retrieve the artifact by ID
             // ================================================================
-            let retrieved = db.artifact_get(created.artifact_id).await?;
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?;
             prop_assert!(retrieved.is_some(), "Artifact should exist after creation");
 
             let retrieved = retrieved.unwrap();
@@ -350,7 +354,7 @@ proptest! {
             // prop_assert_eq!(updated.artifact_id, created.artifact_id);
             // prop_assert_eq!(&updated.name, &format!("{} Updated", name));
             //
-            // let retrieved_after_update = db.artifact_get(created.artifact_id).await?;
+            // let retrieved_after_update = db.artifact_get(created.artifact_id, auth.tenant_id).await?;
             // prop_assert!(retrieved_after_update.is_some());
 
             // ================================================================
@@ -362,7 +366,7 @@ proptest! {
             // let delete_result = db.artifact_delete(created.artifact_id).await;
             // prop_assert!(delete_result.is_ok(), "Delete should succeed");
             //
-            // let retrieved_after_delete = db.artifact_get(created.artifact_id).await?;
+            // let retrieved_after_delete = db.artifact_get(created.artifact_id, auth.tenant_id).await?;
             // prop_assert!(retrieved_after_delete.is_none(), "Artifact should not exist after deletion");
 
             Ok(())
@@ -435,10 +439,11 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get an artifact with a random ID
-            let result = db.artifact_get(random_id).await?;
+            let result = db.artifact_get(random_id, auth.tenant_id).await?;
 
             // Property: Should return None, not an error
             prop_assert!(result.is_none() || result.is_some());
@@ -484,7 +489,7 @@ proptest! {
             prop_assert_eq!(&created.name, &name);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(&retrieved.name, &name);
 
@@ -528,7 +533,7 @@ proptest! {
             prop_assert_eq!(&created.content, &content);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(&retrieved.content, &content);
 
@@ -572,7 +577,7 @@ proptest! {
             prop_assert_eq!(created.artifact_type, artifact_type);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(retrieved.artifact_type, artifact_type);
 
@@ -621,7 +626,7 @@ proptest! {
             prop_assert_eq!(created.provenance.confidence, confidence);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(retrieved.provenance.source_turn, source_turn);
             prop_assert_eq!(retrieved.provenance.extraction_method, extraction_method);
@@ -667,7 +672,7 @@ proptest! {
             prop_assert_eq!(&created.ttl, &ttl);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(&retrieved.ttl, &ttl);
 
@@ -711,7 +716,7 @@ proptest! {
             prop_assert_eq!(&created.metadata, &metadata);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(&retrieved.metadata, &metadata);
 
@@ -808,13 +813,13 @@ proptest! {
             prop_assert_eq!(created.scope_id, scope_id);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await?
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await?
                 .expect("Artifact should exist");
             prop_assert_eq!(retrieved.trajectory_id, trajectory_id);
             prop_assert_eq!(retrieved.scope_id, scope_id);
 
             // Verify it appears in scope's artifact list
-            let scope_artifacts = db.artifact_list_by_scope(scope_id).await?;
+            let scope_artifacts = db.artifact_list_by_scope(scope_id, auth.tenant_id).await?;
             prop_assert!(
                 scope_artifacts.iter().any(|a| a.artifact_id == created.artifact_id),
                 "Artifact should appear in scope's artifact list"
@@ -1014,7 +1019,7 @@ mod edge_cases {
         assert_eq!(created.name, unicode_name);
 
         // Verify persistence
-        let retrieved = db.artifact_get(created.artifact_id).await
+        let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
             .expect("Should retrieve artifact")
             .expect("Artifact should exist");
 
@@ -1049,7 +1054,7 @@ mod edge_cases {
         assert_eq!(created.content, unicode_content);
 
         // Verify persistence
-        let retrieved = db.artifact_get(created.artifact_id).await
+        let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
             .expect("Should retrieve artifact")
             .expect("Artifact should exist");
 
@@ -1095,7 +1100,7 @@ mod edge_cases {
             assert_eq!(created.artifact_type, artifact_type);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
                 .expect("Should retrieve artifact")
                 .expect("Artifact should exist");
 
@@ -1136,7 +1141,7 @@ mod edge_cases {
             assert_eq!(created.provenance.extraction_method, extraction_method);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
                 .expect("Should retrieve artifact")
                 .expect("Artifact should exist");
 
@@ -1183,7 +1188,7 @@ mod edge_cases {
             assert_eq!(&created.ttl, ttl);
 
             // Verify persistence
-            let retrieved = db.artifact_get(created.artifact_id).await
+            let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
                 .expect("Should retrieve artifact")
                 .expect("Artifact should exist");
 
@@ -1342,7 +1347,7 @@ mod edge_cases {
         }
 
         // List artifacts by scope
-        let artifacts = db.artifact_list_by_scope(scope_id).await
+        let artifacts = db.artifact_list_by_scope(scope_id, auth.tenant_id).await
             .expect("Should list artifacts");
 
         // All created artifacts should be in the list
@@ -1393,7 +1398,7 @@ mod edge_cases {
         assert_eq!(created.metadata, Some(complex_metadata.clone()));
 
         // Verify persistence
-        let retrieved = db.artifact_get(created.artifact_id).await
+        let retrieved = db.artifact_get(created.artifact_id, auth.tenant_id).await
             .expect("Should retrieve artifact")
             .expect("Artifact should exist");
 

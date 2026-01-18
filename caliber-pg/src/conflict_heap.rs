@@ -70,7 +70,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<E
     validate_conflict_relation(&rel)?;
 
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Conflict,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -210,7 +210,7 @@ pub fn conflict_resolve_heap(
         
         // Update resolved_at to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now).into_datum()
+        let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Conflict,
                 id: conflict_id,

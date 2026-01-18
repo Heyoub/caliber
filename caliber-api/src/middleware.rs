@@ -309,11 +309,6 @@ impl std::ops::Deref for AuthExtractor {
 /// This is a helper function for route handlers to get the authenticated
 /// user context that was injected by the middleware.
 ///
-/// # Panics
-///
-/// Panics if the AuthContext is not present in extensions. This should never
-/// happen if the auth middleware is properly configured.
-///
 /// # Example
 ///
 /// ```rust,no_run
@@ -325,18 +320,18 @@ impl std::ops::Deref for AuthExtractor {
 ///     println!("User: {}, Tenant: {}", auth_context.user_id, auth_context.tenant_id);
 /// }
 /// ```
-pub fn extract_auth_context(request: &Request) -> &AuthContext {
+pub fn extract_auth_context(request: &Request) -> ApiResult<&AuthContext> {
     request
         .extensions()
         .get::<AuthContext>()
-        .expect("AuthContext not found in request extensions - is auth middleware configured?")
+        .ok_or_else(|| ApiError::unauthorized("Auth context missing from request"))
 }
 
 /// Extract AuthContext from request extensions (owned version).
 ///
 /// This is similar to `extract_auth_context` but returns a cloned copy.
-pub fn extract_auth_context_owned(request: &Request) -> AuthContext {
-    extract_auth_context(request).clone()
+pub fn extract_auth_context_owned(request: &Request) -> ApiResult<AuthContext> {
+    extract_auth_context(request).map(|auth| auth.clone())
 }
 
 // ============================================================================
@@ -373,7 +368,7 @@ pub async fn tenant_access_middleware(
     next: Next,
 ) -> Result<Response, AuthMiddlewareError> {
     // Extract AuthContext from extensions (injected by auth_middleware)
-    let auth_context = extract_auth_context(&request);
+    let auth_context = extract_auth_context(&request).map_err(AuthMiddlewareError)?;
     
     // Extract tenant_id from path parameters if present
     // Note: This is a simplified version. In practice, you might want to
@@ -773,7 +768,8 @@ mod tests {
 
         // Handler that extracts and verifies AuthContext
         async fn handler(request: Request<Body>) -> String {
-            let auth_context = extract_auth_context(&request);
+            let auth_context = extract_auth_context(&request)
+                .expect("AuthContext should be present for authenticated request");
             format!(
                 "User: {}, Tenant: {}, Method: {:?}",
                 auth_context.user_id, auth_context.tenant_id, auth_context.auth_method

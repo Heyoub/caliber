@@ -237,7 +237,7 @@ pub async fn get_artifact(
 ) -> ApiResult<impl IntoResponse> {
     let artifact = state
         .db
-        .artifact_get(id)
+        .artifact_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
@@ -302,12 +302,12 @@ pub async fn update_artifact(
     // First verify the artifact exists and belongs to this tenant
     let existing = state
         .db
-        .artifact_get(id)
+        .artifact_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    let artifact = state.db.artifact_update(id, &req).await?;
+    let artifact = state.db.artifact_update(id, &req, auth.tenant_id).await?;
     state.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
     Ok(Json(artifact))
 }
@@ -338,7 +338,7 @@ pub async fn delete_artifact(
     // First verify the artifact exists and belongs to this tenant
     let artifact = state
         .db
-        .artifact_get(id)
+        .artifact_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, artifact.tenant_id)?;

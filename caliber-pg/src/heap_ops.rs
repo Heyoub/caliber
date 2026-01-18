@@ -374,13 +374,13 @@ pub fn current_timestamp() -> pg_sys::TimestampTz {
 /// # Returns
 /// A pgrx TimestampWithTimeZone that can be used with IntoDatum.
 #[inline]
-pub fn timestamp_to_pgrx(ts: pg_sys::TimestampTz) -> TimestampWithTimeZone {
+pub fn timestamp_to_pgrx(ts: pg_sys::TimestampTz) -> CaliberResult<TimestampWithTimeZone> {
     // In pgrx 0.16+, use TryFrom to create from raw TimestampTz
-    // This should never fail for valid timestamps from PostgreSQL
-    TimestampWithTimeZone::try_from(ts).unwrap_or_else(|_| {
-        // Fallback to current time if conversion fails (shouldn't happen)
-        TimestampWithTimeZone::try_from(current_timestamp())
-            .expect("current timestamp should always be valid")
+    TimestampWithTimeZone::try_from(ts).map_err(|e| {
+        StorageError::TransactionFailed {
+            reason: format!("Failed to convert timestamp: {}", e),
+        }
+        .into()
     })
 }
 

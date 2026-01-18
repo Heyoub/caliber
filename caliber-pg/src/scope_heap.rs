@@ -82,7 +82,7 @@ pub fn scope_create_heap(
 
     // Get current transaction timestamp for created_at
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Scope,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -275,8 +275,13 @@ pub fn scope_close_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<bool
     
     // Set closed_at to current timestamp
     let now = current_timestamp();
-    values[scope::CLOSED_AT as usize - 1] = timestamp_to_pgrx(now).into_datum()
-        .unwrap_or(pg_sys::Datum::from(0));
+    values[scope::CLOSED_AT as usize - 1] = timestamp_to_pgrx(now)?
+        .into_datum()
+        .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+            entity_type: EntityType::Scope,
+            id,
+            reason: "Failed to convert timestamp to datum".to_string(),
+        }))?;
     nulls[scope::CLOSED_AT as usize - 1] = false;
     
     // Form new tuple

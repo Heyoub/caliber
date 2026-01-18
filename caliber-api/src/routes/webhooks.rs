@@ -638,27 +638,21 @@ pub fn start_webhook_delivery_task(state: Arc<WebhookState>) {
 // ============================================================================
 
 /// Create the webhook routes router and start the delivery task.
-///
-/// # Panics
-///
-/// Panics if the HTTP client cannot be created. This should only happen
-/// if the system's TLS configuration is invalid, which is a fatal error
-/// that should be caught at startup.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> Router {
+pub fn create_router(db: DbClient, ws: Arc<WsState>) -> ApiResult<Router> {
     let state = Arc::new(
         WebhookState::new(db, ws)
-            .unwrap_or_else(|e| panic!("Failed to initialize webhook state: {}", e))
+            .map_err(|e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)))?
     );
 
     // Start the webhook delivery background task
     start_webhook_delivery_task(state.clone());
 
-    Router::new()
+    Ok(Router::new()
         .route("/", post(create_webhook))
         .route("/", get(list_webhooks))
         .route("/:id", get(get_webhook))
         .route("/:id", delete(delete_webhook))
-        .with_state(state)
+        .with_state(state))
 }
 
 #[cfg(test)]

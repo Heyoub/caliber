@@ -85,7 +85,7 @@ pub async fn create_turn(
     // Validate scope belongs to this tenant before creating turn
     let scope = state
         .db
-        .scope_get(req.scope_id)
+        .scope_get(req.scope_id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
@@ -102,7 +102,7 @@ pub async fn create_turn(
     // BATTLE INTEL: Check summarization triggers after turn creation
     // =========================================================================
     // Get the scope to check trigger conditions
-    if let Ok(Some(scope)) = state.db.scope_get(req.scope_id).await {
+    if let Ok(Some(scope)) = state.db.scope_get(req.scope_id, auth.tenant_id).await {
         // Get the trajectory ID from the scope for fetching policies
         let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
 
@@ -112,7 +112,7 @@ pub async fn create_turn(
                 // Get turn count for this scope
                 let turn_count = state
                     .db
-                    .turn_list_by_scope(req.scope_id)
+                    .turn_list_by_scope(req.scope_id, auth.tenant_id)
                     .await
                     .map(|turns| turns.len() as i32)
                     .unwrap_or(0);
@@ -120,7 +120,7 @@ pub async fn create_turn(
                 // Get artifact count for this scope
                 let artifact_count = state
                     .db
-                    .artifact_list_by_scope(req.scope_id)
+                    .artifact_list_by_scope(req.scope_id, auth.tenant_id)
                     .await
                     .map(|artifacts| artifacts.len() as i32)
                     .unwrap_or(0);

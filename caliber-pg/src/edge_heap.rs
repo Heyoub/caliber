@@ -63,7 +63,7 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<Entit
 
     // Get current transaction timestamp
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Edge,
             reason: "Failed to convert timestamp to datum".to_string(),

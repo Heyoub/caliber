@@ -286,7 +286,8 @@ proptest! {
                 .route(
                     "/api/v1/test",
                     get(|request: Request<Body>| async move {
-                        let auth_context = caliber_api::middleware::extract_auth_context(&request);
+                        let auth_context = caliber_api::middleware::extract_auth_context(&request)
+                            .expect("AuthContext should be present for authenticated request");
                         format!("{}", auth_context.tenant_id)
                     }),
                 )
@@ -337,7 +338,8 @@ proptest! {
                 .route(
                     "/api/v1/test",
                     get(|request: Request<Body>| async move {
-                        let auth_context = caliber_api::middleware::extract_auth_context(&request);
+                        let auth_context = caliber_api::middleware::extract_auth_context(&request)
+                            .expect("AuthContext should be present for authenticated request");
                         format!("{:?}", auth_context.auth_method)
                     }),
                 )
@@ -400,7 +402,8 @@ proptest! {
                 .route(
                     "/api/v1/test",
                     get(|request: Request<Body>| async move {
-                        let auth_context = caliber_api::middleware::extract_auth_context(&request);
+                        let auth_context = caliber_api::middleware::extract_auth_context(&request)
+                            .expect("AuthContext should be present for authenticated request");
                         format!("{:?}:{}", auth_context.auth_method, auth_context.user_id)
                     }),
                 )

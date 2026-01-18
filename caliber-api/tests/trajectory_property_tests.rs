@@ -20,8 +20,12 @@ use caliber_core::{EntityId, TrajectoryStatus};
 use proptest::prelude::*;
 use uuid::Uuid;
 
-mod test_support;
-use test_support::test_auth_context;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
+use test_auth_support::test_auth_context;
+use test_db_support::test_db_client;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -32,7 +36,7 @@ use test_support::test_auth_context;
 /// This connects to a test PostgreSQL database with the caliber-pg extension.
 /// The database should be set up with the CALIBER schema.
 fn test_db_client() -> DbClient {
-    test_support::test_db_client()
+    test_db_support::test_db_client()
 }
 
 // ============================================================================
@@ -213,7 +217,7 @@ proptest! {
             // ================================================================
             // STEP 2: READ - Retrieve the trajectory by ID
             // ================================================================
-            let retrieved = db.trajectory_get(created.trajectory_id).await?;
+            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?;
             prop_assert!(retrieved.is_some(), "Trajectory should exist after creation");
 
             let retrieved = retrieved.unwrap();
@@ -230,7 +234,7 @@ proptest! {
             // ================================================================
             // STEP 3: UPDATE - Update the trajectory
             // ================================================================
-            let updated = db.trajectory_update(created.trajectory_id, &update_req).await?;
+            let updated = db.trajectory_update(created.trajectory_id, &update_req, auth.tenant_id).await?;
 
             // Verify the ID hasn't changed
             prop_assert_eq!(updated.trajectory_id, created.trajectory_id);
@@ -264,7 +268,7 @@ proptest! {
             // ================================================================
             // STEP 4: READ - Retrieve the updated trajectory
             // ================================================================
-            let retrieved_after_update = db.trajectory_get(created.trajectory_id).await?;
+            let retrieved_after_update = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?;
             prop_assert!(retrieved_after_update.is_some(), "Trajectory should still exist after update");
 
             let retrieved_after_update = retrieved_after_update.unwrap();
@@ -285,7 +289,7 @@ proptest! {
             // let delete_result = db.trajectory_delete(created.trajectory_id).await;
             // prop_assert!(delete_result.is_ok(), "Delete should succeed");
             //
-            // let retrieved_after_delete = db.trajectory_get(created.trajectory_id).await?;
+            // let retrieved_after_delete = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?;
             // prop_assert!(retrieved_after_delete.is_none(), "Trajectory should not exist after deletion");
 
             Ok(())
@@ -342,7 +346,7 @@ proptest! {
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get a trajectory with a random ID
-            let result = db.trajectory_get(random_id).await?;
+            let result = db.trajectory_get(random_id, auth.tenant_id).await?;
 
             // Property: Should return None, not an error
             // (There's a tiny chance this ID exists, but it's astronomically small)
@@ -369,7 +373,7 @@ proptest! {
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to update a trajectory with a random ID
-            let result = db.trajectory_update(random_id, &update_req).await;
+            let result = db.trajectory_update(random_id, &update_req, auth.tenant_id).await;
 
             // Property: Should return an error (trajectory not found)
             prop_assert!(result.is_err(), "Updating non-existent trajectory should fail");
@@ -405,13 +409,13 @@ proptest! {
                 metadata: None,
             };
 
-            let updated = db.trajectory_update(created.trajectory_id, &update_req).await?;
+            let updated = db.trajectory_update(created.trajectory_id, &update_req, auth.tenant_id).await?;
 
             // Property: Status should change to the requested status
             prop_assert_eq!(updated.status, new_status);
 
             // Verify persistence by retrieving again
-            let retrieved = db.trajectory_get(created.trajectory_id).await?
+            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?
                 .expect("Trajectory should exist");
             prop_assert_eq!(retrieved.status, new_status);
 
@@ -448,7 +452,7 @@ proptest! {
             prop_assert_eq!(&created.name, &name);
 
             // Verify persistence
-            let retrieved = db.trajectory_get(created.trajectory_id).await?
+            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?
                 .expect("Trajectory should exist");
             prop_assert_eq!(&retrieved.name, &name);
 
@@ -485,7 +489,7 @@ proptest! {
             prop_assert_eq!(&created.metadata, &metadata);
 
             // Verify persistence
-            let retrieved = db.trajectory_get(created.trajectory_id).await?
+            let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await?
                 .expect("Trajectory should exist");
             prop_assert_eq!(&retrieved.metadata, &metadata);
 
@@ -575,7 +579,7 @@ mod edge_cases {
         assert_eq!(created.name, unicode_name);
 
         // Verify persistence
-        let retrieved = db.trajectory_get(created.trajectory_id).await
+        let retrieved = db.trajectory_get(created.trajectory_id, auth.tenant_id).await
             .expect("Should retrieve trajectory")
             .expect("Trajectory should exist");
 
@@ -607,7 +611,7 @@ mod edge_cases {
             metadata: created.metadata.clone(),
         };
 
-        let updated = db.trajectory_update(created.trajectory_id, &update_req).await
+        let updated = db.trajectory_update(created.trajectory_id, &update_req, auth.tenant_id).await
             .expect("Should update trajectory");
 
         // Values should remain the same
@@ -634,7 +638,7 @@ mod edge_cases {
             .expect("Should create trajectory");
 
         // List active trajectories
-        let active_list = db.trajectory_list_by_status(TrajectoryStatus::Active).await
+        let active_list = db.trajectory_list_by_status(TrajectoryStatus::Active, auth.tenant_id).await
             .expect("Should list trajectories");
 
         // Should contain our trajectory
@@ -648,11 +652,11 @@ mod edge_cases {
             metadata: None,
         };
 
-        db.trajectory_update(active_traj.trajectory_id, &update_req).await
+        db.trajectory_update(active_traj.trajectory_id, &update_req, auth.tenant_id).await
             .expect("Should update trajectory");
 
         // List completed trajectories
-        let completed_list = db.trajectory_list_by_status(TrajectoryStatus::Completed).await
+        let completed_list = db.trajectory_list_by_status(TrajectoryStatus::Completed, auth.tenant_id).await
             .expect("Should list trajectories");
 
         // Should contain our trajectory

@@ -666,7 +666,7 @@ pub fn timestamp_to_chrono(ts: TimestampWithTimeZone) -> chrono::DateTime<chrono
 ///
 /// # Returns
 /// A pgrx TimestampWithTimeZone
-pub fn chrono_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> TimestampWithTimeZone {
+pub fn chrono_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> CaliberResult<TimestampWithTimeZone> {
     // Convert chrono timestamp to PostgreSQL timestamp
     const PG_EPOCH_OFFSET_SECS: i64 = 946_684_800;
 
@@ -677,17 +677,24 @@ pub fn chrono_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> TimestampWithTi
     let pg_micros = (unix_secs - PG_EPOCH_OFFSET_SECS) * 1_000_000 + (nanos / 1000) as i64;
 
     // In pgrx 0.16+, use TryFrom to create from raw TimestampTz
-    TimestampWithTimeZone::try_from(pg_micros).unwrap_or_else(|_| {
-        // Fallback: create from components if raw conversion fails
-        TimestampWithTimeZone::new(
-            dt.year(),
-            dt.month() as u8,
-            dt.day() as u8,
-            dt.hour() as u8,
-            dt.minute() as u8,
-            dt.second() as f64 + dt.nanosecond() as f64 / 1_000_000_000.0,
-        ).expect("chrono DateTime should produce valid timestamp")
-    })
+    TimestampWithTimeZone::try_from(pg_micros)
+        .or_else(|_| {
+            // Fallback: create from components if raw conversion fails
+            TimestampWithTimeZone::new(
+                dt.year(),
+                dt.month() as u8,
+                dt.day() as u8,
+                dt.hour() as u8,
+                dt.minute() as u8,
+                dt.second() as f64 + dt.nanosecond() as f64 / 1_000_000_000.0,
+            )
+        })
+        .map_err(|e| {
+            StorageError::TransactionFailed {
+                reason: format!("Failed to convert chrono timestamp: {}", e),
+            }
+            .into()
+        })
 }
 
 // ============================================================================
@@ -870,8 +877,15 @@ pub fn uuid_array_to_datum(uuids: &[uuid::Uuid]) -> pg_sys::Datum {
 ///
 /// # Returns
 /// The datum representation
-pub fn datetime_to_datum(dt: chrono::DateTime<chrono::Utc>) -> pg_sys::Datum {
-    chrono_to_timestamp(dt).into_datum().unwrap_or(pg_sys::Datum::from(0))
+pub fn datetime_to_datum(dt: chrono::DateTime<chrono::Utc>) -> CaliberResult<pg_sys::Datum> {
+    chrono_to_timestamp(dt)?
+        .into_datum()
+        .ok_or_else(|| {
+            StorageError::TransactionFailed {
+                reason: "Failed to convert datetime to datum".to_string(),
+            }
+            .into()
+        })
 }
 
 /// Convert an optional chrono DateTime<Utc> to a pgrx Datum.
@@ -881,10 +895,12 @@ pub fn datetime_to_datum(dt: chrono::DateTime<chrono::Utc>) -> pg_sys::Datum {
 ///
 /// # Returns
 /// The datum representation (null datum if None)
-pub fn option_datetime_to_datum(dt: Option<chrono::DateTime<chrono::Utc>>) -> pg_sys::Datum {
+pub fn option_datetime_to_datum(
+    dt: Option<chrono::DateTime<chrono::Utc>>,
+) -> CaliberResult<pg_sys::Datum> {
     match dt {
         Some(d) => datetime_to_datum(d),
-        None => pg_sys::Datum::from(0),
+        None => Ok(pg_sys::Datum::from(0)),
     }
 }
 
@@ -944,7 +960,7 @@ mod tests {
     #[test]
     fn test_timestamp_conversion_roundtrip() {
         let now = chrono::Utc::now();
-        let pg_ts = chrono_to_timestamp(now);
+        let pg_ts = chrono_to_timestamp(now).expect("Failed to convert chrono timestamp");
         let back = timestamp_to_chrono(pg_ts);
         
         // Allow for microsecond precision loss

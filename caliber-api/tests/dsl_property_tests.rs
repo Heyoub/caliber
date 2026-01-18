@@ -19,7 +19,8 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
-mod test_support;
+#[path = "support/db.rs"]
+mod test_db_support;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -95,7 +96,7 @@ proptest! {
     fn prop_dsl_round_trip(source in valid_dsl_strategy()) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let db = test_support::test_db_client();
+            let db = test_db_support::test_db_client();
             let state = Arc::new(dsl::DslState::new(db));
 
             // Parse original source through API

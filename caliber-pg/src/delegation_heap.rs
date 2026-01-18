@@ -77,7 +77,7 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
     validate_delegation_relation(&rel)?;
 
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Delegation,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -88,7 +88,7 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
 
     // Use helper for optional fields (delegatee_agent_id, child_trajectory_id, deadline)
     let ((delegatee_datum, delegatee_null), (child_datum, child_null), (deadline_datum, deadline_null)) =
-        build_optional_delegation_datums(delegatee_agent_id, child_trajectory_id, deadline);
+        build_optional_delegation_datums(delegatee_agent_id, child_trajectory_id, deadline)?;
 
     // Set required fields
     values[delegation::DELEGATION_ID as usize - 1] = uuid_to_datum(delegation_id);
@@ -246,7 +246,7 @@ pub fn delegation_accept_heap(
 
         // Update accepted_at to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now).into_datum()
+        let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Delegation,
                 id: delegation_id,
@@ -314,7 +314,7 @@ pub fn delegation_complete_heap(
         
         // Update completed_at to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now).into_datum()
+        let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Delegation,
                 id: delegation_id,
@@ -387,7 +387,7 @@ fn build_optional_delegation_datums(
     delegatee_agent_id: Option<EntityId>,
     child_trajectory_id: Option<EntityId>,
     deadline: Option<chrono::DateTime<chrono::Utc>>,
-) -> ((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool)) {
+) -> CaliberResult<((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool))> {
     let delegatee = match delegatee_agent_id {
         Some(id) => (uuid_to_datum(id), false),
         None => (pg_sys::Datum::from(0), true),
@@ -397,10 +397,10 @@ fn build_optional_delegation_datums(
         None => (pg_sys::Datum::from(0), true),
     };
     let dl = match deadline {
-        Some(dt) => (option_datetime_to_datum(Some(dt)), false),
+        Some(dt) => (option_datetime_to_datum(Some(dt))?, false),
         None => (pg_sys::Datum::from(0), true),
     };
-    (delegatee, child, dl)
+    Ok((delegatee, child, dl))
 }
 
 unsafe fn tuple_to_delegation(

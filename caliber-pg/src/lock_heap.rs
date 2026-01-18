@@ -54,13 +54,13 @@ pub fn lock_acquire_heap(
     validate_lock_relation(&rel)?;
 
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Lock,
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     
-    let expires_datum = chrono_to_timestamp(expires_at).into_datum()
+    let expires_datum = chrono_to_timestamp(expires_at)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Lock,
             reason: "Failed to convert expires_at to datum".to_string(),
@@ -340,7 +340,8 @@ pub fn lock_extend_heap(
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(tuple, tuple_desc) }?;
 
         // Update expires_at
-        values[lock::EXPIRES_AT as usize - 1] = chrono_to_timestamp(new_expires_at).into_datum()
+        values[lock::EXPIRES_AT as usize - 1] = chrono_to_timestamp(new_expires_at)?
+            .into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Lock,
                 id: lock_id,

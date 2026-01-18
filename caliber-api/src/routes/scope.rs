@@ -117,7 +117,7 @@ pub async fn get_scope(
 ) -> ApiResult<impl IntoResponse> {
     let scope = state
         .db
-        .scope_get(id)
+        .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
 
@@ -174,13 +174,13 @@ pub async fn update_scope(
     // First verify the scope exists and belongs to this tenant
     let existing = state
         .db
-        .scope_get(id)
+        .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update scope via database client
-    let scope = state.db.scope_update(id, &req).await?;
+    let scope = state.db.scope_update(id, &req, auth.tenant_id).await?;
 
     // Broadcast ScopeUpdated event
     state.ws.broadcast(WsEvent::ScopeUpdated {
@@ -226,7 +226,7 @@ pub async fn create_checkpoint(
     // First verify the scope exists and belongs to this tenant
     let scope = state
         .db
-        .scope_get(id)
+        .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
@@ -234,7 +234,7 @@ pub async fn create_checkpoint(
     // Create checkpoint via database client
     let checkpoint = state
         .db
-        .scope_create_checkpoint(id, &req)
+        .scope_create_checkpoint(id, &req, auth.tenant_id)
         .await?;
 
     Ok((StatusCode::CREATED, Json(checkpoint)))
@@ -267,13 +267,13 @@ pub async fn close_scope(
     // First verify the scope exists and belongs to this tenant
     let existing = state
         .db
-        .scope_get(id)
+        .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Close scope via database client
-    let scope = state.db.scope_close(id).await?;
+    let scope = state.db.scope_close(id, auth.tenant_id).await?;
 
     // Broadcast ScopeClosed event
     state.ws.broadcast(WsEvent::ScopeClosed {
@@ -291,7 +291,7 @@ pub async fn close_scope(
             // Get turn count for this scope
             let turn_count = state
                 .db
-                .turn_list_by_scope(id)
+                .turn_list_by_scope(id, auth.tenant_id)
                 .await
                 .map(|turns| turns.len() as i32)
                 .unwrap_or(0);
@@ -299,7 +299,7 @@ pub async fn close_scope(
             // Get artifact count for this scope
             let artifact_count = state
                 .db
-                .artifact_list_by_scope(id)
+                .artifact_list_by_scope(id, auth.tenant_id)
                 .await
                 .map(|artifacts| artifacts.len() as i32)
                 .unwrap_or(0);
@@ -394,13 +394,13 @@ pub async fn list_scope_turns(
     // First verify the scope exists and belongs to this tenant
     let scope = state
         .db
-        .scope_get(id)
+        .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Get turns for this scope
-    let turns = state.db.turn_list_by_scope(id).await?;
+    let turns = state.db.turn_list_by_scope(id, auth.tenant_id).await?;
 
     Ok(Json(turns))
 }
@@ -431,13 +431,13 @@ pub async fn list_scope_artifacts(
     // First verify the scope exists and belongs to this tenant
     let scope = state
         .db
-        .scope_get(id)
+        .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Get artifacts for this scope
-    let artifacts = state.db.artifact_list_by_scope(id).await?;
+    let artifacts = state.db.artifact_list_by_scope(id, auth.tenant_id).await?;
 
     Ok(Json(artifacts))
 }

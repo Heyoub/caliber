@@ -107,7 +107,7 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
 
     // Get current transaction timestamp
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now).into_datum()
+    let now_datum = timestamp_to_pgrx(now)?.into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Note,
             reason: "Failed to convert timestamp to datum".to_string(),
@@ -436,8 +436,13 @@ pub fn note_update_heap(
     
     // Always update updated_at
     let now = current_timestamp();
-    values[note::UPDATED_AT as usize - 1] = timestamp_to_pgrx(now).into_datum()
-        .unwrap_or(pg_sys::Datum::from(0));
+    values[note::UPDATED_AT as usize - 1] = timestamp_to_pgrx(now)?
+        .into_datum()
+        .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
+            entity_type: EntityType::Note,
+            id: note_id,
+            reason: "Failed to convert timestamp to datum".to_string(),
+        }))?;
     
     // Form new tuple
     let new_tuple = form_tuple(&rel, &values, &nulls)?;
