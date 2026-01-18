@@ -728,7 +728,8 @@ mod tests {
         let payload = b"test payload";
         let secret = "supersecretkey123";
 
-        let signature = sign_payload(payload, secret)?;
+        let signature =
+            sign_payload(payload, secret).map_err(|e| ApiError::internal_error(e))?;
 
         // Signature should be a hex string
         assert!(!signature.is_empty());

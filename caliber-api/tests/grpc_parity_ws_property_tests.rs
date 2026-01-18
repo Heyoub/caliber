@@ -10,6 +10,7 @@
 use axum::extract::State;
 use axum::Json;
 use caliber_api::grpc::{proto, TrajectoryServiceImpl};
+use caliber_api::middleware::AuthExtractor;
 use caliber_api::routes::trajectory;
 use caliber_api::types::CreateTrajectoryRequest;
 use caliber_api::ws::WsState;
@@ -25,6 +26,9 @@ use tokio::time::{timeout, Duration};
 mod test_db_support;
 #[path = "support/ws.rs"]
 mod test_ws_support;
+#[path = "support/auth.rs"]
+mod test_auth_support;
+use test_auth_support::test_auth_context;
 
 async fn recv_trajectory_event(
     rx: &mut broadcast::Receiver<caliber_api::events::WsEvent>,
@@ -61,6 +65,7 @@ proptest! {
             .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
+            let auth = test_auth_context();
 
             // REST handler setup
             let ws_rest = test_ws_support::test_ws_state(50);
@@ -79,7 +84,12 @@ proptest! {
                 agent_id: None,
                 metadata: None,
             };
-            let _ = trajectory::create_trajectory(State(rest_state), Json(rest_req)).await?;
+            let _ = trajectory::create_trajectory(
+                State(rest_state),
+                AuthExtractor(auth.clone()),
+                Json(rest_req),
+            )
+            .await?;
             let rest_trajectory = recv_trajectory_event(&mut rx_rest)
                 .await
                 .map_err(TestCaseError::fail)?;

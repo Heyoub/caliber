@@ -189,12 +189,6 @@ impl CaliberMetrics {
     }
 }
 
-impl Default for CaliberMetrics {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Handler for GET /metrics endpoint.
 ///
 /// Returns Prometheus text format metrics.

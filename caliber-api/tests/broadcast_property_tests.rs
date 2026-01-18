@@ -13,7 +13,6 @@ use axum::Json;
 use caliber_api::{
     db::DbClient,
     events::WsEvent,
-    error::ApiResult,
     middleware::AuthExtractor,
     routes::{
         agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn,
@@ -448,8 +447,8 @@ proptest! {
                     };
                     trajectory::update_trajectory(
                         State(trajectory_state),
-                        Path(trajectory.trajectory_id),
                         AuthExtractor(auth.clone()),
+                        Path(trajectory.trajectory_id),
                         Json(req),
                     )
                     .await?;
@@ -459,8 +458,8 @@ proptest! {
                     let trajectory = seed_trajectory(&db, "Seed Trajectory Delete", auth.tenant_id).await?;
                     trajectory::delete_trajectory(
                         State(trajectory_state),
-                        Path(trajectory.trajectory_id),
                         AuthExtractor(auth.clone()),
+                        Path(trajectory.trajectory_id),
                     )
                     .await?;
                     ExpectedEvent::TrajectoryDeleted(trajectory.trajectory_id)
@@ -487,7 +486,13 @@ proptest! {
                         token_budget: Some(1200),
                         metadata: None,
                     };
-                    scope::update_scope(State(scope_state), Path(scope.scope_id), AuthExtractor(auth.clone()), Json(req)).await?;
+                    scope::update_scope(
+                        State(scope_state),
+                        AuthExtractor(auth.clone()),
+                        Path(scope.scope_id),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::ScopeUpdated(scope.scope_id)
                 }
                 MutationCase::ScopeClose => {
@@ -564,12 +569,23 @@ proptest! {
                         capabilities: None,
                         memory_access: None,
                     };
-                    agent::update_agent(State(agent_state), Path(agent.agent_id), AuthExtractor(auth.clone()), Json(req)).await?;
+                    agent::update_agent(
+                        State(agent_state),
+                        AuthExtractor(auth.clone()),
+                        Path(agent.agent_id),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::AgentStatusChanged(agent.agent_id, "active".to_string())
                 }
                 MutationCase::AgentUnregister => {
                     let agent = seed_agent(&db, "seed-unregister", auth.tenant_id).await?;
-                    agent::unregister_agent(State(agent_state), Path(agent.agent_id), AuthExtractor(auth.clone())).await?;
+                    agent::unregister_agent(
+                        State(agent_state),
+                        AuthExtractor(auth.clone()),
+                        Path(agent.agent_id),
+                    )
+                    .await?;
                     ExpectedEvent::AgentUnregistered(agent.agent_id)
                 }
                 MutationCase::LockAcquire => {
@@ -589,7 +605,12 @@ proptest! {
                     let agent = seed_agent(&db, "lock-releaser", auth.tenant_id).await?;
                     let resource_id: EntityId = Uuid::now_v7().into();
                     let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await?;
-                    lock::release_lock(State(lock_state), Path(lock.lock_id), AuthExtractor(auth.clone())).await?;
+                    lock::release_lock(
+                        State(lock_state),
+                        AuthExtractor(auth.clone()),
+                        Path(lock.lock_id),
+                    )
+                    .await?;
                     ExpectedEvent::LockReleased(lock.lock_id)
                 }
                 MutationCase::MessageSend => {
@@ -614,7 +635,12 @@ proptest! {
                     let sender = seed_agent(&db, "ack-sender", auth.tenant_id).await?;
                     let receiver = seed_agent(&db, "ack-receiver", auth.tenant_id).await?;
                     let message = seed_message(&db, sender.agent_id, receiver.agent_id, None, None, auth.tenant_id).await?;
-                    message::acknowledge_message(State(message_state), Path(message.message_id), AuthExtractor(auth.clone())).await?;
+                    message::acknowledge_message(
+                        State(message_state),
+                        AuthExtractor(auth.clone()),
+                        Path(message.message_id),
+                    )
+                    .await?;
                     ExpectedEvent::MessageAcknowledged(message.message_id)
                 }
                 MutationCase::DelegationCreate => {
@@ -645,8 +671,8 @@ proptest! {
                     };
                     delegation::accept_delegation(
                         State(delegation_state),
-                        Path(delegation.delegation_id),
                         AuthExtractor(auth.clone()),
+                        Path(delegation.delegation_id),
                         Json(req),
                     )
                     .await?;
@@ -669,8 +695,8 @@ proptest! {
                     };
                     delegation::complete_delegation(
                         State(delegation_state),
-                        Path(delegation.delegation_id),
                         AuthExtractor(auth.clone()),
+                        Path(delegation.delegation_id),
                         Json(req),
                     )
                     .await?;
@@ -703,8 +729,8 @@ proptest! {
                     };
                     handoff::accept_handoff(
                         State(handoff_state),
-                        Path(handoff.handoff_id),
                         AuthExtractor(auth.clone()),
+                        Path(handoff.handoff_id),
                         Json(req),
                     )
                     .await?;
