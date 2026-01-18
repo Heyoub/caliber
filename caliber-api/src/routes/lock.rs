@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -61,6 +62,7 @@ impl LockState {
 )]
 pub async fn acquire_lock(
     State(state): State<Arc<LockState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<AcquireLockRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -81,8 +83,8 @@ pub async fn acquire_lock(
         return Err(ApiError::invalid_range("timeout_ms", 1, i64::MAX));
     }
 
-    // Acquire lock via database client
-    let lock = state.db.lock_acquire(&req).await?;
+    // Acquire lock via database client with tenant_id for isolation
+    let lock = state.db.lock_acquire(&req, auth.tenant_id).await?;
 
     // Broadcast LockAcquired event
     state.ws.broadcast(WsEvent::LockAcquired { lock: lock.clone() });
@@ -110,9 +112,17 @@ pub async fn acquire_lock(
 )]
 pub async fn release_lock(
     State(state): State<Arc<LockState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    // Verify the lock exists and belongs to this tenant
+    let lock = state
+        .db
+        .lock_get(id)
+        .await?
+        .ok_or_else(|| ApiError::lock_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(lock.tenant_id))?;
+
     // Release lock via database client
     state.db.lock_release(id).await?;
 
@@ -147,6 +157,7 @@ pub async fn release_lock(
 )]
 pub async fn extend_lock(
     State(state): State<Arc<LockState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<ExtendLockRequest>,
 ) -> ApiResult<Json<LockResponse>> {
@@ -154,6 +165,14 @@ pub async fn extend_lock(
     if req.additional_ms <= 0 {
         return Err(ApiError::invalid_range("additional_ms", 1, i64::MAX));
     }
+
+    // Verify the lock exists and belongs to this tenant
+    let existing = state
+        .db
+        .lock_get(id)
+        .await?
+        .ok_or_else(|| ApiError::lock_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     let duration = std::time::Duration::from_millis(req.additional_ms as u64);
     let lock = state.db.lock_extend(id, duration).await?;
@@ -176,8 +195,10 @@ pub async fn extend_lock(
 )]
 pub async fn list_locks(
     State(state): State<Arc<LockState>>,
+    AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
-    let locks = state.db.lock_list_active().await?;
+    // List active locks filtered by tenant for isolation
+    let locks = state.db.lock_list_active_by_tenant(auth.tenant_id).await?;
     let total = locks.len() as i32;
 
     Ok(Json(ListLocksResponse {
@@ -206,6 +227,7 @@ pub async fn list_locks(
 )]
 pub async fn get_lock(
     State(state): State<Arc<LockState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let lock = state
@@ -213,6 +235,9 @@ pub async fn get_lock(
         .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, Some(lock.tenant_id))?;
 
     Ok(Json(lock))
 }

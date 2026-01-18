@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -63,6 +64,7 @@ impl ArtifactState {
 )]
 pub async fn create_artifact(
     State(state): State<Arc<ArtifactState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateArtifactRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -85,8 +87,8 @@ pub async fn create_artifact(
         }
     }
 
-    // Create artifact via database client
-    let artifact = state.db.artifact_create(&req).await?;
+    // Create artifact via database client with tenant_id for isolation
+    let artifact = state.db.artifact_create(&req, auth.tenant_id).await?;
 
     // Broadcast ArtifactCreated event
     state.ws.broadcast(WsEvent::ArtifactCreated {
@@ -122,14 +124,14 @@ pub async fn create_artifact(
 )]
 pub async fn list_artifacts(
     State(state): State<Arc<ArtifactState>>,
+    AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListArtifactsRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // For now, we'll implement basic filtering by scope
-    // Full filtering with pagination will be added as needed
+    // Filter by scope or trajectory with tenant isolation
 
     if let Some(scope_id) = params.scope_id {
-        // Filter by scope
-        let artifacts = state.db.artifact_list_by_scope(scope_id).await?;
+        // Filter by scope and tenant
+        let artifacts = state.db.artifact_list_by_scope_and_tenant(scope_id, auth.tenant_id).await?;
 
         // Apply additional filters if needed
         let mut filtered = artifacts;
@@ -168,8 +170,8 @@ pub async fn list_artifacts(
 
         Ok(Json(response))
     } else if let Some(trajectory_id) = params.trajectory_id {
-        // Filter by trajectory
-        let artifacts = state.db.artifact_list_by_trajectory(trajectory_id).await?;
+        // Filter by trajectory and tenant
+        let artifacts = state.db.artifact_list_by_trajectory_and_tenant(trajectory_id, auth.tenant_id).await?;
 
         // Apply additional filters if needed
         let mut filtered = artifacts;
@@ -230,6 +232,7 @@ pub async fn list_artifacts(
 )]
 pub async fn get_artifact(
     State(state): State<Arc<ArtifactState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let artifact = state
@@ -237,6 +240,9 @@ pub async fn get_artifact(
         .artifact_get(id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, artifact.tenant_id)?;
 
     Ok(Json(artifact))
 }
@@ -263,6 +269,7 @@ pub async fn get_artifact(
 )]
 pub async fn update_artifact(
     State(state): State<Arc<ArtifactState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateArtifactRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -292,6 +299,14 @@ pub async fn update_artifact(
         }
     }
 
+    // First verify the artifact exists and belongs to this tenant
+    let existing = state
+        .db
+        .artifact_get(id)
+        .await?
+        .ok_or_else(|| ApiError::artifact_not_found(id))?;
+    validate_tenant_ownership(&auth, existing.tenant_id)?;
+
     let artifact = state.db.artifact_update(id, &req).await?;
     state.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
     Ok(Json(artifact))
@@ -317,15 +332,16 @@ pub async fn update_artifact(
 )]
 pub async fn delete_artifact(
     State(state): State<Arc<ArtifactState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // First verify the artifact exists
-    let _artifact = state
+    // First verify the artifact exists and belongs to this tenant
+    let artifact = state
         .db
         .artifact_get(id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
+    validate_tenant_ownership(&auth, artifact.tenant_id)?;
 
     state.db.artifact_delete(id).await?;
     state.ws.broadcast(WsEvent::ArtifactDeleted {
@@ -353,6 +369,7 @@ pub async fn delete_artifact(
 )]
 pub async fn search_artifacts(
     State(state): State<Arc<ArtifactState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<SearchRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate search query
@@ -367,8 +384,8 @@ pub async fn search_artifacts(
         ));
     }
 
-    // Perform the search using the database search function
-    let response = state.db.search(&req).await?;
+    // Perform tenant-isolated search
+    let response = state.db.search(&req, auth.tenant_id).await?;
 
     Ok(Json(response))
 }

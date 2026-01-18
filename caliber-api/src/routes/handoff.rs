@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -60,6 +61,7 @@ impl HandoffState {
 )]
 pub async fn create_handoff(
     State(state): State<Arc<HandoffState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateHandoffRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -98,8 +100,8 @@ pub async fn create_handoff(
         )));
     }
 
-    // Create handoff via database client
-    let handoff = state.db.handoff_create(&req).await?;
+    // Create handoff via database client with tenant_id for isolation
+    let handoff = state.db.handoff_create(&req, auth.tenant_id).await?;
 
     // Broadcast HandoffCreated event
     state.ws.broadcast(WsEvent::HandoffCreated {
@@ -129,6 +131,7 @@ pub async fn create_handoff(
 )]
 pub async fn get_handoff(
     State(state): State<Arc<HandoffState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let handoff = state
@@ -136,6 +139,9 @@ pub async fn get_handoff(
         .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, Some(handoff.tenant_id))?;
 
     Ok(Json(handoff))
 }
@@ -164,8 +170,8 @@ pub async fn get_handoff(
 )]
 pub async fn accept_handoff(
     State(state): State<Arc<HandoffState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
     Json(req): Json<AcceptHandoffRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in initiated state
@@ -174,6 +180,9 @@ pub async fn accept_handoff(
         .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
+
+    // Validate tenant ownership
+    validate_tenant_ownership(&auth, Some(handoff.tenant_id))?;
 
     if handoff.status.to_lowercase() != "initiated" {
         return Err(ApiError::state_conflict(format!(
@@ -225,6 +234,7 @@ pub async fn accept_handoff(
 )]
 pub async fn complete_handoff(
     State(state): State<Arc<HandoffState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in accepted state
@@ -233,6 +243,9 @@ pub async fn complete_handoff(
         .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
+
+    // Validate tenant ownership
+    validate_tenant_ownership(&auth, Some(handoff.tenant_id))?;
 
     if handoff.status.to_lowercase() != "accepted" {
         return Err(ApiError::state_conflict(format!(

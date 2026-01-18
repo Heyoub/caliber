@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::{DbClient, MessageListParams},
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -59,6 +60,7 @@ impl MessageState {
 )]
 pub async fn send_message(
     State(state): State<Arc<MessageState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<SendMessageRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that either to_agent_id or to_agent_type is specified
@@ -102,8 +104,8 @@ pub async fn send_message(
         ));
     }
 
-    // Send message via database client
-    let message = state.db.message_send(&req).await?;
+    // Send message via database client with tenant_id for isolation
+    let message = state.db.message_send(&req, auth.tenant_id).await?;
 
     // Broadcast MessageSent event
     state.ws.broadcast(WsEvent::MessageSent {
@@ -142,12 +144,14 @@ pub async fn send_message(
 )]
 pub async fn list_messages(
     State(state): State<Arc<MessageState>>,
+    AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListMessagesRequest>,
 ) -> ApiResult<impl IntoResponse> {
     let limit = params.limit.unwrap_or(100);
     let offset = params.offset.unwrap_or(0);
 
-    let messages = state.db.message_list(MessageListParams {
+    // List messages filtered by tenant for isolation
+    let messages = state.db.message_list_by_tenant(MessageListParams {
         from_agent_id: params.from_agent_id,
         to_agent_id: params.to_agent_id,
         to_agent_type: params.to_agent_type.as_deref(),
@@ -158,7 +162,7 @@ pub async fn list_messages(
         unacknowledged_only: params.unacknowledged_only.unwrap_or(false),
         limit,
         offset,
-    }).await?;
+    }, auth.tenant_id).await?;
 
     let total = messages.len() as i32;
 
@@ -188,6 +192,7 @@ pub async fn list_messages(
 )]
 pub async fn get_message(
     State(state): State<Arc<MessageState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let message = state
@@ -195,6 +200,9 @@ pub async fn get_message(
         .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, Some(message.tenant_id))?;
 
     Ok(Json(message))
 }
@@ -219,9 +227,17 @@ pub async fn get_message(
 )]
 pub async fn acknowledge_message(
     State(state): State<Arc<MessageState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    // Verify the message exists and belongs to this tenant
+    let message = state
+        .db
+        .message_get(id)
+        .await?
+        .ok_or_else(|| ApiError::message_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(message.tenant_id))?;
+
     // Acknowledge message via database client
     state.db.message_acknowledge(id).await?;
 
@@ -254,9 +270,17 @@ pub async fn acknowledge_message(
 )]
 pub async fn deliver_message(
     State(state): State<Arc<MessageState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    // Verify the message exists and belongs to this tenant
+    let message = state
+        .db
+        .message_get(id)
+        .await?
+        .ok_or_else(|| ApiError::message_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(message.tenant_id))?;
+
     state.db.message_deliver(id).await?;
 
     state.ws.broadcast(WsEvent::MessageDelivered {

@@ -10,6 +10,7 @@ default = ["openapi", "swagger-ui"]
 openapi = ["caliber-core/openapi", "caliber-agents/openapi", "caliber-pcp/openapi"]
 swagger-ui = ["dep:utoipa-swagger-ui"]
 workos = ["dep:workos"]
+dev = []  # Enables unauthenticated router for development/testing
 
 [dependencies]
 # Core CALIBER dependencies

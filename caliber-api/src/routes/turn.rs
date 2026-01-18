@@ -17,6 +17,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -81,8 +82,16 @@ pub async fn create_turn(
         return Err(ApiError::invalid_range("token_count", 0, i32::MAX));
     }
 
-    // Create turn via database client
-    let turn = state.db.turn_create(&req).await?;
+    // Validate scope belongs to this tenant before creating turn
+    let scope = state
+        .db
+        .scope_get(req.scope_id)
+        .await?
+        .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
+    validate_tenant_ownership(&auth, scope.tenant_id)?;
+
+    // Create turn via database client with tenant_id for isolation
+    let turn = state.db.turn_create(&req, auth.tenant_id).await?;
 
     // Broadcast TurnCreated event
     state.ws.broadcast(WsEvent::TurnCreated {
@@ -200,10 +209,14 @@ pub async fn create_turn(
 )]
 pub async fn get_turn(
     State(state): State<Arc<TurnState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TurnResponse>> {
     let turn = state.db.turn_get(id).await?
         .ok_or_else(|| ApiError::entity_not_found("Turn", id.to_string()))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, turn.tenant_id)?;
 
     Ok(Json(turn))
 }

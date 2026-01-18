@@ -439,21 +439,29 @@ impl RateLimitState {
     }
 
     /// Get or create a rate limiter for the given key.
-    fn get_or_create_limiter(&self, key: &RateLimitKey) -> Arc<DirectRateLimiter> {
+    ///
+    /// Returns Err if the RwLock is poisoned, which should trigger a rate limit response.
+    fn get_or_create_limiter(&self, key: &RateLimitKey) -> Result<Arc<DirectRateLimiter>, RateLimitError> {
         // Check if limiter exists (read lock)
         {
-            let limiters = self.limiters.read().unwrap();
+            let limiters = self.limiters.read().map_err(|_| {
+                tracing::error!("Rate limiter read lock poisoned");
+                RateLimitError { retry_after: 1 }
+            })?;
             if let Some(limiter) = limiters.get(key) {
-                return limiter.clone();
+                return Ok(limiter.clone());
             }
         }
 
         // Create new limiter (write lock)
-        let mut limiters = self.limiters.write().unwrap();
+        let mut limiters = self.limiters.write().map_err(|_| {
+            tracing::error!("Rate limiter write lock poisoned");
+            RateLimitError { retry_after: 1 }
+        })?;
 
         // Double-check in case another thread created it
         if let Some(limiter) = limiters.get(key) {
-            return limiter.clone();
+            return Ok(limiter.clone());
         }
 
         // Determine rate limit based on key type
@@ -471,7 +479,7 @@ impl RateLimitState {
 
         let limiter = Arc::new(RateLimiter::direct(quota));
         limiters.insert(key.clone(), limiter.clone());
-        limiter
+        Ok(limiter)
     }
 }
 
@@ -483,6 +491,8 @@ pub struct RateLimitError {
 
 impl IntoResponse for RateLimitError {
     fn into_response(self) -> Response {
+        use axum::http::HeaderValue;
+
         let error = crate::error::ApiError::too_many_requests(Some(self.retry_after));
         let status = StatusCode::TOO_MANY_REQUESTS;
 
@@ -491,7 +501,8 @@ impl IntoResponse for RateLimitError {
         let headers = response.headers_mut();
         headers.insert(
             axum::http::header::HeaderName::from_static("retry-after"),
-            self.retry_after.to_string().parse().unwrap(),
+            HeaderValue::from_str(&self.retry_after.to_string())
+                .unwrap_or_else(|_| HeaderValue::from_static("60")),
         );
 
         response
@@ -542,6 +553,8 @@ pub async fn rate_limit_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, RateLimitError> {
+    use axum::http::HeaderValue;
+
     // Skip if rate limiting is disabled
     if !state.config.rate_limit_enabled {
         return Ok(next.run(request).await);
@@ -554,8 +567,8 @@ pub async fn rate_limit_middleware(
         RateLimitKey::Ip(extract_client_ip(&request, addr))
     };
 
-    // Get or create limiter for this key
-    let limiter = state.get_or_create_limiter(&key);
+    // Get or create limiter for this key (propagates error if lock is poisoned)
+    let limiter = state.get_or_create_limiter(&key)?;
 
     // Check rate limit
     match limiter.check() {
@@ -571,7 +584,8 @@ pub async fn rate_limit_middleware(
             };
             headers.insert(
                 axum::http::header::HeaderName::from_static("x-ratelimit-limit"),
-                limit.to_string().parse().unwrap(),
+                HeaderValue::from_str(&limit.to_string())
+                    .unwrap_or_else(|_| HeaderValue::from_static("100")),
             );
 
             Ok(response)

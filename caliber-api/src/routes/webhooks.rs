@@ -671,6 +671,7 @@ mod tests {
         assert!(WebhookEventType::All.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: Uuid::new_v4(),
+                tenant_id: Some(Uuid::new_v4()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -689,6 +690,7 @@ mod tests {
         assert!(WebhookEventType::TrajectoryCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: Uuid::new_v4(),
+                tenant_id: Some(Uuid::new_v4()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -707,6 +709,7 @@ mod tests {
         assert!(!WebhookEventType::NoteCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: Uuid::new_v4(),
+                tenant_id: Some(Uuid::new_v4()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,

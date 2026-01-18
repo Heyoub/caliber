@@ -22,10 +22,12 @@ use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use caliber_core::EntityId;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    middleware::AuthExtractor,
     types::*,
     ws::WsState,
 };
@@ -633,6 +635,7 @@ pub async fn list_tools(
 )]
 pub async fn call_tool(
     State(state): State<Arc<McpState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CallToolRequest>,
 ) -> ApiResult<impl IntoResponse> {
     tracing::debug!(tool = %req.name, "MCP tool call");
@@ -644,7 +647,7 @@ pub async fn call_tool(
         METRICS.record_mcp_tool_call(&req.name, true);
     }
 
-    let result = execute_tool(&state, &req.name, req.arguments).await;
+    let result = execute_tool(&state, &req.name, req.arguments, auth.tenant_id).await;
 
     match result {
         Ok(content) => Ok(Json(CallToolResponse {
@@ -664,6 +667,7 @@ async fn execute_tool(
     state: &McpState,
     name: &str,
     args: JsonValue,
+    tenant_id: EntityId,
 ) -> ApiResult<Vec<ContentBlock>> {
     match name {
         "trajectory_create" => {
@@ -683,7 +687,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let trajectory = state.db.trajectory_create(&req).await?;
+            let trajectory = state.db.trajectory_create(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::TrajectoryCreated {
                 trajectory: trajectory.clone(),
             });
@@ -774,7 +778,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let note = state.db.note_create(&req).await?;
+            let note = state.db.note_create(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
 
             Ok(vec![ContentBlock::Text {
@@ -852,7 +856,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let artifact = state.db.artifact_create(&req).await?;
+            let artifact = state.db.artifact_create(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::ArtifactCreated {
                 artifact: artifact.clone(),
             });
@@ -905,7 +909,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let scope = state.db.scope_create(&req).await?;
+            let scope = state.db.scope_create(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::ScopeCreated { scope: scope.clone() });
 
             Ok(vec![ContentBlock::Text {
@@ -937,7 +941,7 @@ async fn execute_tool(
                 reports_to: None,
             };
 
-            let agent = state.db.agent_register(&req).await?;
+            let agent = state.db.agent_register(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::AgentRegistered { agent: agent.clone() });
 
             Ok(vec![ContentBlock::Text {

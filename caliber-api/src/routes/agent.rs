@@ -14,6 +14,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -61,6 +62,7 @@ impl AgentState {
 )]
 pub async fn register_agent(
     State(state): State<Arc<AgentState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<RegisterAgentRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -81,8 +83,8 @@ pub async fn register_agent(
         ));
     }
 
-    // Register agent via database client
-    let agent = state.db.agent_register(&req).await?;
+    // Register agent via database client with tenant_id for isolation
+    let agent = state.db.agent_register(&req, auth.tenant_id).await?;
 
     // Broadcast AgentRegistered event
     state.ws.broadcast(WsEvent::AgentRegistered {
@@ -115,17 +117,19 @@ pub async fn register_agent(
 )]
 pub async fn list_agents(
     State(state): State<Arc<AgentState>>,
+    AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListAgentsRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    // List agents filtered by tenant for isolation
     let agents = if let Some(agent_type) = params.agent_type {
-        // Filter by agent type
-        state.db.agent_list_by_type(&agent_type).await?
+        // Filter by agent type and tenant
+        state.db.agent_list_by_type_and_tenant(&agent_type, auth.tenant_id).await?
     } else if params.active_only.unwrap_or(false) {
-        // Filter by active status
-        state.db.agent_list_active().await?
+        // Filter by active status and tenant
+        state.db.agent_list_active_by_tenant(auth.tenant_id).await?
     } else {
-        // List all agents
-        state.db.agent_list_all().await?
+        // List all agents for tenant
+        state.db.agent_list_all_by_tenant(auth.tenant_id).await?
     };
 
     // Apply additional filters if needed
@@ -169,6 +173,7 @@ pub async fn list_agents(
 )]
 pub async fn get_agent(
     State(state): State<Arc<AgentState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let agent = state
@@ -176,6 +181,9 @@ pub async fn get_agent(
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
 
     Ok(Json(agent))
 }
@@ -202,8 +210,8 @@ pub async fn get_agent(
 )]
 pub async fn update_agent(
     State(state): State<Arc<AgentState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -236,6 +244,14 @@ pub async fn update_agent(
             ));
         }
     }
+
+    // First verify the agent exists and belongs to this tenant
+    let existing = state
+        .db
+        .agent_get(id)
+        .await?
+        .ok_or_else(|| ApiError::agent_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update agent via database client
     let agent = state.db.agent_update(id, &req).await?;
@@ -273,15 +289,16 @@ pub async fn update_agent(
 )]
 pub async fn unregister_agent(
     State(state): State<Arc<AgentState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // First verify the agent exists
+    // First verify the agent exists and belongs to this tenant
     let agent = state
         .db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
 
     // Check if agent is currently active
     if agent.status.to_lowercase() == "active" {
@@ -322,9 +339,17 @@ pub async fn unregister_agent(
 )]
 pub async fn agent_heartbeat(
     State(state): State<Arc<AgentState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // First verify the agent exists and belongs to this tenant
+    let agent = state
+        .db
+        .agent_get(id)
+        .await?
+        .ok_or_else(|| ApiError::agent_not_found(id))?;
+    validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
+
     // Update heartbeat via database client
     state.db.agent_heartbeat(id).await?;
 
@@ -336,13 +361,13 @@ pub async fn agent_heartbeat(
     });
 
     // Return the updated agent
-    let agent = state
+    let updated_agent = state
         .db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 
-    Ok(Json(agent))
+    Ok(Json(updated_agent))
 }
 
 // ============================================================================

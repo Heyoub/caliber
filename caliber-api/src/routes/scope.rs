@@ -17,6 +17,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -68,6 +69,7 @@ impl ScopeState {
 )]
 pub async fn create_scope(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateScopeRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -79,8 +81,8 @@ pub async fn create_scope(
         return Err(ApiError::invalid_range("token_budget", 1, i32::MAX));
     }
 
-    // Create scope via database client
-    let scope = state.db.scope_create(&req).await?;
+    // Create scope via database client with tenant_id for isolation
+    let scope = state.db.scope_create(&req, auth.tenant_id).await?;
 
     // Broadcast ScopeCreated event
     state.ws.broadcast(WsEvent::ScopeCreated {
@@ -110,6 +112,7 @@ pub async fn create_scope(
 )]
 pub async fn get_scope(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let scope = state
@@ -117,6 +120,9 @@ pub async fn get_scope(
         .scope_get(id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     Ok(Json(scope))
 }
@@ -143,6 +149,7 @@ pub async fn get_scope(
 )]
 pub async fn update_scope(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateScopeRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -163,6 +170,14 @@ pub async fn update_scope(
             return Err(ApiError::invalid_range("token_budget", 1, i32::MAX));
         }
     }
+
+    // First verify the scope exists and belongs to this tenant
+    let existing = state
+        .db
+        .scope_get(id)
+        .await?
+        .ok_or_else(|| ApiError::scope_not_found(id))?;
+    validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update scope via database client
     let scope = state.db.scope_update(id, &req).await?;
@@ -197,6 +212,7 @@ pub async fn update_scope(
 )]
 pub async fn create_checkpoint(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<CreateCheckpointRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -206,6 +222,14 @@ pub async fn create_checkpoint(
             "context_state cannot be empty",
         ));
     }
+
+    // First verify the scope exists and belongs to this tenant
+    let scope = state
+        .db
+        .scope_get(id)
+        .await?
+        .ok_or_else(|| ApiError::scope_not_found(id))?;
+    validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Create checkpoint via database client
     let checkpoint = state
@@ -240,6 +264,14 @@ pub async fn close_scope(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // First verify the scope exists and belongs to this tenant
+    let existing = state
+        .db
+        .scope_get(id)
+        .await?
+        .ok_or_else(|| ApiError::scope_not_found(id))?;
+    validate_tenant_ownership(&auth, existing.tenant_id)?;
+
     // Close scope via database client
     let scope = state.db.scope_close(id).await?;
 
@@ -356,14 +388,16 @@ pub async fn close_scope(
 )]
 pub async fn list_scope_turns(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // First verify the scope exists
-    let _scope = state
+    // First verify the scope exists and belongs to this tenant
+    let scope = state
         .db
         .scope_get(id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
+    validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Get turns for this scope
     let turns = state.db.turn_list_by_scope(id).await?;
@@ -391,14 +425,16 @@ pub async fn list_scope_turns(
 )]
 pub async fn list_scope_artifacts(
     State(state): State<Arc<ScopeState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // First verify the scope exists
-    let _scope = state
+    // First verify the scope exists and belongs to this tenant
+    let scope = state
         .db
         .scope_get(id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
+    validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Get artifacts for this scope
     let artifacts = state.db.artifact_list_by_scope(id).await?;

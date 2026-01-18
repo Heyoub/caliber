@@ -21,6 +21,7 @@ use proptest::prelude::*;
 use uuid::Uuid;
 
 mod test_support;
+use test_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -32,14 +33,14 @@ fn test_db_client() -> DbClient {
 }
 
 /// Helper to create a test trajectory for artifact tests.
-async fn create_test_trajectory(db: &DbClient) -> EntityId {
+async fn create_test_trajectory(db: &DbClient, tenant_id: EntityId) -> EntityId {
     use std::time::{SystemTime, UNIX_EPOCH};
-    
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    
+
     let req = CreateTrajectoryRequest {
         name: format!("Test Trajectory {}", timestamp),
         description: Some("Trajectory for artifact testing".to_string()),
@@ -47,22 +48,22 @@ async fn create_test_trajectory(db: &DbClient) -> EntityId {
         agent_id: None,
         metadata: None,
     };
-    
-    let trajectory = db.trajectory_create(&req).await
+
+    let trajectory = db.trajectory_create(&req, tenant_id).await
         .expect("Failed to create test trajectory");
-    
+
     trajectory.trajectory_id
 }
 
 /// Helper to create a test scope for artifact tests.
-async fn create_test_scope(db: &DbClient, trajectory_id: EntityId) -> EntityId {
+async fn create_test_scope(db: &DbClient, trajectory_id: EntityId, tenant_id: EntityId) -> EntityId {
     use std::time::{SystemTime, UNIX_EPOCH};
-    
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    
+
     let req = CreateScopeRequest {
         trajectory_id,
         parent_scope_id: None,
@@ -71,10 +72,10 @@ async fn create_test_scope(db: &DbClient, trajectory_id: EntityId) -> EntityId {
         token_budget: 10000,
         metadata: None,
     };
-    
-    let scope = db.scope_create(&req).await
+
+    let scope = db.scope_create(&req, tenant_id).await
         .expect("Failed to create test scope");
-    
+
     scope.scope_id
 }
 
@@ -260,10 +261,11 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Create test trajectory and scope
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -281,7 +283,7 @@ proptest! {
             // ================================================================
             // STEP 1: CREATE - Create a new artifact
             // ================================================================
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created artifact has an ID
             let nil_id: EntityId = Uuid::nil().into();
@@ -381,9 +383,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -399,8 +402,8 @@ proptest! {
             };
 
             // Create two artifacts with the same data
-            let artifact1 = db.artifact_create(&create_req).await?;
-            let artifact2 = db.artifact_create(&create_req).await?;
+            let artifact1 = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let artifact2 = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -457,9 +460,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -474,7 +478,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: Name should be preserved exactly
             prop_assert_eq!(&created.name, &name);
@@ -500,9 +504,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -517,7 +522,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: Content should be preserved exactly
             prop_assert_eq!(&created.content, &content);
@@ -543,9 +548,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -560,7 +566,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: Type should be preserved
             prop_assert_eq!(created.artifact_type, artifact_type);
@@ -589,9 +595,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -606,7 +613,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: Provenance should be preserved
             prop_assert_eq!(created.provenance.source_turn, source_turn);
@@ -636,9 +643,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -653,7 +661,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: TTL should be preserved
             prop_assert_eq!(&created.ttl, &ttl);
@@ -679,9 +687,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -696,7 +705,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -723,9 +732,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -740,7 +750,7 @@ proptest! {
                 metadata: None,
             };
 
-            let artifact1 = db.artifact_create(&create_req).await?;
+            let artifact1 = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Create another artifact with the same content
             let create_req2 = CreateArtifactRequest {
@@ -748,7 +758,7 @@ proptest! {
                 ..create_req
             };
 
-            let artifact2 = db.artifact_create(&create_req2).await?;
+            let artifact2 = db.artifact_create(&create_req2, auth.tenant_id).await?;
 
             // Property: Same content should produce same hash
             prop_assert_eq!(
@@ -773,9 +783,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
-            let scope_id = create_test_scope(&db, trajectory_id).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+            let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
             let create_req = CreateArtifactRequest {
                 trajectory_id,
@@ -790,7 +801,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await?;
+            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
 
             // Property: Artifact should belong to the specified scope and trajectory
             prop_assert_eq!(created.trajectory_id, trajectory_id);
@@ -825,8 +836,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_empty_name_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -842,7 +854,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.artifact_create(&create_req).await;
+        let result = db.artifact_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -852,8 +864,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_empty_content_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -869,7 +882,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.artifact_create(&create_req).await;
+        let result = db.artifact_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -879,8 +892,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_negative_source_turn_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -896,7 +910,7 @@ mod edge_cases {
         };
 
         // This should fail validation
-        let result = db.artifact_create(&create_req).await;
+        let result = db.artifact_create(&create_req, auth.tenant_id).await;
 
         // Should fail
         assert!(result.is_err());
@@ -905,8 +919,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_invalid_confidence_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         // Test confidence > 1.0
         let create_req = CreateArtifactRequest {
@@ -922,7 +937,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.artifact_create(&create_req).await;
+        let result = db.artifact_create(&create_req, auth.tenant_id).await;
         assert!(result.is_err(), "Confidence > 1.0 should fail");
 
         // Test confidence < 0.0
@@ -931,15 +946,16 @@ mod edge_cases {
             ..create_req
         };
 
-        let result2 = db.artifact_create(&create_req2).await;
+        let result2 = db.artifact_create(&create_req2, auth.tenant_id).await;
         assert!(result2.is_err(), "Confidence < 0.0 should fail");
     }
 
     #[tokio::test]
     async fn test_artifact_with_very_long_name() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         // Create a very long name (but within reasonable limits)
         let long_name = "A".repeat(500);
@@ -957,7 +973,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.artifact_create(&create_req).await;
+        let result = db.artifact_create(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -973,8 +989,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_unicode_name() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let unicode_name = "测试工件 🚀 Тест";
 
@@ -991,7 +1008,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode names");
 
         assert_eq!(created.name, unicode_name);
@@ -1007,8 +1024,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_unicode_content() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let unicode_content = "这是测试内容 🎉 Это тестовый контент";
 
@@ -1025,7 +1043,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode content");
 
         assert_eq!(created.content, unicode_content);
@@ -1041,8 +1059,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_all_artifact_types() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let artifact_types = vec![
             ArtifactType::ErrorLog,
@@ -1070,7 +1089,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await
+            let created = db.artifact_create(&create_req, auth.tenant_id).await
                 .expect(&format!("Should create artifact of type {:?}", artifact_type));
 
             assert_eq!(created.artifact_type, artifact_type);
@@ -1087,8 +1106,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_all_extraction_methods() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let extraction_methods = vec![
             ExtractionMethod::Explicit,
@@ -1110,7 +1130,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await
+            let created = db.artifact_create(&create_req, auth.tenant_id).await
                 .expect(&format!("Should create artifact with {:?}", extraction_method));
 
             assert_eq!(created.provenance.extraction_method, extraction_method);
@@ -1127,8 +1147,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_all_ttl_variants() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let ttl_variants = vec![
             TTL::Persistent,
@@ -1156,7 +1177,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await
+            let created = db.artifact_create(&create_req, auth.tenant_id).await
                 .expect(&format!("Should create artifact with TTL {:?}", ttl));
 
             assert_eq!(&created.ttl, ttl);
@@ -1173,8 +1194,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_confidence_boundary_values() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         // Test confidence = 0.0 (minimum valid)
         let create_req = CreateArtifactRequest {
@@ -1190,7 +1212,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should create artifact with confidence 0.0");
         assert_eq!(created.provenance.confidence, Some(0.0));
 
@@ -1201,7 +1223,7 @@ mod edge_cases {
             ..create_req
         };
 
-        let created2 = db.artifact_create(&create_req2).await
+        let created2 = db.artifact_create(&create_req2, auth.tenant_id).await
             .expect("Should create artifact with confidence 1.0");
         assert_eq!(created2.provenance.confidence, Some(1.0));
     }
@@ -1209,8 +1231,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_source_turn_zero() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -1225,7 +1248,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should create artifact with source_turn 0");
 
         assert_eq!(created.provenance.source_turn, 0);
@@ -1234,8 +1257,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_timestamps_are_set() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -1250,7 +1274,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should create artifact");
 
         // Timestamps should be set and reasonable
@@ -1262,8 +1286,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_content_hash_is_32_bytes() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let create_req = CreateArtifactRequest {
             trajectory_id,
@@ -1278,7 +1303,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should create artifact");
 
         // Content hash should be SHA-256 (32 bytes)
@@ -1291,8 +1316,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_list_by_scope() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         // Create multiple artifacts in the same scope
         let mut artifact_ids = Vec::new();
@@ -1310,7 +1336,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req).await
+            let created = db.artifact_create(&create_req, auth.tenant_id).await
                 .expect("Should create artifact");
             artifact_ids.push(created.artifact_id);
         }
@@ -1332,8 +1358,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_artifact_with_complex_metadata() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
-        let scope_id = create_test_scope(&db, trajectory_id).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
+        let scope_id = create_test_scope(&db, trajectory_id, auth.tenant_id).await;
 
         let complex_metadata = serde_json::json!({
             "tags": ["important", "reviewed"],
@@ -1360,7 +1387,7 @@ mod edge_cases {
             metadata: Some(complex_metadata.clone()),
         };
 
-        let created = db.artifact_create(&create_req).await
+        let created = db.artifact_create(&create_req, auth.tenant_id).await
             .expect("Should create artifact with complex metadata");
 
         assert_eq!(created.metadata, Some(complex_metadata.clone()));

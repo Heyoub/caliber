@@ -23,6 +23,7 @@ use proptest::prelude::*;
 use uuid::Uuid;
 
 mod test_support;
+use test_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -216,11 +217,12 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // ================================================================
             // STEP 1: REGISTER - Register a new agent
             // ================================================================
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Verify the registered agent has an ID
             let nil_id: EntityId = Uuid::nil().into();
@@ -362,10 +364,11 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Register two agents with the same data
-            let agent1 = db.agent_register(&register_req).await?;
-            let agent2 = db.agent_register(&register_req).await?;
+            let agent1 = db.agent_register(&register_req, auth.tenant_id).await?;
+            let agent2 = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -395,6 +398,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let _auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get an agent with a random ID
@@ -420,6 +424,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let _auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to update an agent with a random ID
@@ -445,9 +450,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Register an agent
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
             prop_assert_eq!(registered.status.to_lowercase(), "idle");
 
             // Update to new status
@@ -486,6 +492,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             let register_req = RegisterAgentRequest {
                 agent_type: agent_type.clone(),
@@ -502,7 +509,7 @@ proptest! {
                 reports_to: None,
             };
 
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: Type should be preserved exactly
             prop_assert_eq!(&registered.agent_type, &agent_type);
@@ -528,6 +535,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             let register_req = RegisterAgentRequest {
                 agent_type: "tester".to_string(),
@@ -544,7 +552,7 @@ proptest! {
                 reports_to: None,
             };
 
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: Capabilities should be preserved
             prop_assert_eq!(&registered.capabilities, &capabilities);
@@ -570,9 +578,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Register an agent
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
             let initial_heartbeat = registered.last_heartbeat;
 
             // Wait a tiny bit to ensure timestamp difference
@@ -607,6 +616,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             let register_req = RegisterAgentRequest {
                 agent_type: "coordinator".to_string(),
@@ -616,7 +626,7 @@ proptest! {
                 reports_to: None,
             };
 
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: Memory access should be preserved
             prop_assert_eq!(registered.memory_access.read.len(), memory_access.read.len());
@@ -644,6 +654,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             let register_req = RegisterAgentRequest {
                 agent_type: "coordinator".to_string(),
@@ -660,7 +671,7 @@ proptest! {
                 reports_to: None,
             };
 
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: Delegation targets should be preserved
             prop_assert_eq!(&registered.can_delegate_to, &delegation_targets);
@@ -689,8 +700,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let registered = db.agent_register(&register_req).await?;
+            let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: Initial state should be correct
             prop_assert_eq!(registered.status.to_lowercase(), "idle");
@@ -720,6 +732,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_with_empty_type_fails() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         let register_req = RegisterAgentRequest {
             agent_type: "".to_string(),
@@ -737,7 +750,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.agent_register(&register_req).await;
+        let result = db.agent_register(&register_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty type
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -747,6 +760,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_with_empty_capabilities_fails() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         let register_req = RegisterAgentRequest {
             agent_type: "tester".to_string(),
@@ -764,7 +778,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.agent_register(&register_req).await;
+        let result = db.agent_register(&register_req, auth.tenant_id).await;
 
         // Should fail
         assert!(result.is_err());
@@ -773,6 +787,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_with_no_memory_permissions_fails() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         let register_req = RegisterAgentRequest {
             agent_type: "tester".to_string(),
@@ -786,7 +801,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.agent_register(&register_req).await;
+        let result = db.agent_register(&register_req, auth.tenant_id).await;
 
         // Should fail
         assert!(result.is_err());
@@ -795,6 +810,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_with_unicode_type() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         let unicode_type = "测试代理";
 
@@ -814,7 +830,7 @@ mod edge_cases {
         };
 
         let registered = db
-            .agent_register(&register_req)
+            .agent_register(&register_req, auth.tenant_id)
             .await
             .expect("Should handle Unicode agent types");
 
@@ -833,6 +849,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_update_with_no_changes() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Register an agent
         let register_req = RegisterAgentRequest {
@@ -855,7 +872,7 @@ mod edge_cases {
         };
 
         let registered = db
-            .agent_register(&register_req)
+            .agent_register(&register_req, auth.tenant_id)
             .await
             .expect("Should register agent");
 
@@ -882,6 +899,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_list_by_type() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Register agents with different types
         let coder_req = RegisterAgentRequest {
@@ -900,7 +918,7 @@ mod edge_cases {
         };
 
         let coder_agent = db
-            .agent_register(&coder_req)
+            .agent_register(&coder_req, auth.tenant_id)
             .await
             .expect("Should register coder agent");
 
@@ -919,6 +937,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_list_active() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Register an agent
         let register_req = RegisterAgentRequest {
@@ -937,7 +956,7 @@ mod edge_cases {
         };
 
         let registered = db
-            .agent_register(&register_req)
+            .agent_register(&register_req, auth.tenant_id)
             .await
             .expect("Should register agent");
 
@@ -966,6 +985,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_unregister_active_fails() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Register an agent
         let register_req = RegisterAgentRequest {
@@ -984,7 +1004,7 @@ mod edge_cases {
         };
 
         let registered = db
-            .agent_register(&register_req)
+            .agent_register(&register_req, auth.tenant_id)
             .await
             .expect("Should register agent");
 
@@ -1011,6 +1031,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_heartbeat_idempotent() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Register an agent
         let register_req = RegisterAgentRequest {
@@ -1029,7 +1050,7 @@ mod edge_cases {
         };
 
         let registered = db
-            .agent_register(&register_req)
+            .agent_register(&register_req, auth.tenant_id)
             .await
             .expect("Should register agent");
 
@@ -1059,6 +1080,7 @@ mod edge_cases {
     #[tokio::test]
     async fn test_agent_with_supervisor() {
         let db = test_db_client();
+        let auth = test_auth_context();
 
         // Register a supervisor agent
         let supervisor_req = RegisterAgentRequest {
@@ -1077,7 +1099,7 @@ mod edge_cases {
         };
 
         let supervisor = db
-            .agent_register(&supervisor_req)
+            .agent_register(&supervisor_req, auth.tenant_id)
             .await
             .expect("Should register supervisor");
 
@@ -1098,7 +1120,7 @@ mod edge_cases {
         };
 
         let subordinate = db
-            .agent_register(&subordinate_req)
+            .agent_register(&subordinate_req, auth.tenant_id)
             .await
             .expect("Should register subordinate");
 

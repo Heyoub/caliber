@@ -283,68 +283,58 @@ fn run_pending_migrations() -> Result<(), String> {
             SCHEMA_VERSION
         );
 
-        // Run each migration in sequence
+        // Run each migration in sequence (inlined to avoid borrow issues with pgrx SpiClient)
         for version in (current_version + 1)..=SCHEMA_VERSION {
-            run_migration(&client, version)?;
+            let start = std::time::Instant::now();
+
+            // Migration SQL based on version
+            let (description, migration_sql): (&str, Option<&str>) = match version {
+                1 => (
+                    "Initial schema - CALIBER 0.4.0",
+                    // Version 1 is the base schema, no migration needed
+                    // (it's created by caliber_init())
+                    None,
+                ),
+                // Future migrations go here:
+                // 2 => ("Add new feature X", Some("ALTER TABLE ...")),
+                _ => {
+                    return Err(format!("Unknown migration version: {}", version));
+                }
+            };
+
+            // Run migration SQL if present
+            if let Some(sql) = migration_sql {
+                pgrx::log!("CALIBER: Running migration v{}: {}", version, description);
+                Spi::run(sql)
+                    .map_err(|e| format!("Migration v{} failed: {:?}", version, e))?;
+            }
+
+            let elapsed = start.elapsed().as_millis() as i32;
+
+            // Record migration in schema_version table
+            // Using formatted SQL since this is trusted internal code
+            let checksum = format!("v{}-{:x}", version, elapsed);
+            let insert_sql = format!(
+                "INSERT INTO caliber_schema_version (version, description, checksum, execution_time_ms) \
+                 VALUES ({}, '{}', '{}', {}) ON CONFLICT (version) DO NOTHING",
+                version,
+                description.replace('\'', "''"),
+                checksum.replace('\'', "''"),
+                elapsed
+            );
+            Spi::run(&insert_sql)
+                .map_err(|e| format!("Failed to record migration v{}: {:?}", version, e))?;
+
+            pgrx::log!(
+                "CALIBER: Migration v{} complete: {} ({}ms)",
+                version,
+                description,
+                elapsed
+            );
         }
 
         Ok(())
     })
-}
-
-/// Run a specific migration version.
-fn run_migration(client: &pgrx::spi::SpiClient<'_>, version: i32) -> Result<(), String> {
-    let start = std::time::Instant::now();
-
-    // Migration SQL based on version
-    let (description, migration_sql): (&str, Option<&str>) = match version {
-        1 => (
-            "Initial schema - CALIBER 0.4.0",
-            // Version 1 is the base schema, no migration needed
-            // (it's created by caliber_init())
-            None,
-        ),
-        // Future migrations go here:
-        // 2 => ("Add new feature X", Some("ALTER TABLE ...")),
-        _ => {
-            return Err(format!("Unknown migration version: {}", version));
-        }
-    };
-
-    // Run migration SQL if present
-    if let Some(sql) = migration_sql {
-        pgrx::log!("CALIBER: Running migration v{}: {}", version, description);
-        client
-            .update(sql, None, &[])
-            .map_err(|e| format!("Migration v{} failed: {:?}", version, e))?;
-    }
-
-    let elapsed = start.elapsed().as_millis() as i32;
-
-    // Record migration in schema_version table
-    let checksum = format!("v{}-{:x}", version, elapsed);
-    client
-        .update(
-            "INSERT INTO caliber_schema_version (version, description, checksum, execution_time_ms) \
-             VALUES ($1, $2, $3, $4) ON CONFLICT (version) DO NOTHING",
-            None,
-            &[
-                (pgrx::PgBuiltInOids::INT4OID.oid(), version.into_datum()),
-                (pgrx::PgBuiltInOids::TEXTOID.oid(), description.into_datum()),
-                (pgrx::PgBuiltInOids::TEXTOID.oid(), checksum.into_datum()),
-                (pgrx::PgBuiltInOids::INT4OID.oid(), elapsed.into_datum()),
-            ],
-        )
-        .map_err(|e| format!("Failed to record migration v{}: {:?}", version, e))?;
-
-    pgrx::log!(
-        "CALIBER: Migration v{} complete: {} ({}ms)",
-        version,
-        description,
-        elapsed
-    );
-
-    Ok(())
 }
 
 

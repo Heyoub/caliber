@@ -21,6 +21,7 @@ use proptest::prelude::*;
 use uuid::Uuid;
 
 mod test_support;
+use test_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -32,14 +33,14 @@ fn test_db_client() -> DbClient {
 }
 
 /// Helper to create a test trajectory for note tests.
-async fn create_test_trajectory(db: &DbClient) -> EntityId {
+async fn create_test_trajectory(db: &DbClient, tenant_id: EntityId) -> EntityId {
     use std::time::{SystemTime, UNIX_EPOCH};
-    
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    
+
     let req = CreateTrajectoryRequest {
         name: format!("Test Trajectory {}", timestamp),
         description: Some("Trajectory for note testing".to_string()),
@@ -47,10 +48,10 @@ async fn create_test_trajectory(db: &DbClient) -> EntityId {
         agent_id: None,
         metadata: None,
     };
-    
-    let trajectory = db.trajectory_create(&req).await
+
+    let trajectory = db.trajectory_create(&req, tenant_id).await
         .expect("Failed to create test trajectory");
-    
+
     trajectory.trajectory_id
 }
 
@@ -190,9 +191,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Create test trajectory
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type,
@@ -207,7 +209,7 @@ proptest! {
             // ================================================================
             // STEP 1: CREATE - Create a new note
             // ================================================================
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created note has an ID
             let nil_id: EntityId = Uuid::nil().into();
@@ -300,8 +302,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -314,8 +317,8 @@ proptest! {
             };
 
             // Create two notes with the same data
-            let note1 = db.note_create(&create_req).await?;
-            let note2 = db.note_create(&create_req).await?;
+            let note1 = db.note_create(&create_req, auth.tenant_id).await?;
+            let note2 = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -347,6 +350,8 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
+            let _ = auth; // Used for consistency with other tests
             let random_id = Uuid::from_bytes(random_id_bytes).into();
 
             // Try to get a note with a random ID
@@ -372,8 +377,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -385,7 +391,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: Title should be preserved exactly
             prop_assert_eq!(&created.title, &title);
@@ -411,8 +417,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -424,7 +431,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: Content should be preserved exactly
             prop_assert_eq!(&created.content, &content);
@@ -450,8 +457,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type,
@@ -463,7 +471,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: Type should be preserved
             prop_assert_eq!(created.note_type, note_type);
@@ -489,8 +497,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -502,7 +511,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: TTL should be preserved
             prop_assert_eq!(&created.ttl, &ttl);
@@ -528,8 +537,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -541,7 +551,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -568,8 +578,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -581,7 +592,7 @@ proptest! {
                 metadata: None,
             };
 
-            let note1 = db.note_create(&create_req).await?;
+            let note1 = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Create another note with the same content
             let create_req2 = CreateNoteRequest {
@@ -589,7 +600,7 @@ proptest! {
                 ..create_req
             };
 
-            let note2 = db.note_create(&create_req2).await?;
+            let note2 = db.note_create(&create_req2, auth.tenant_id).await?;
 
             // Property: Same content should produce same hash
             prop_assert_eq!(
@@ -614,8 +625,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -627,7 +639,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: Note should belong to the specified trajectory
             prop_assert_eq!(created.source_trajectory_ids, vec![trajectory_id]);
@@ -660,8 +672,9 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateNoteRequest {
                 note_type: NoteType::Fact,
@@ -673,7 +686,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await?;
+            let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Property: Access count should be 0 for new notes
             prop_assert_eq!(created.access_count, 0);
@@ -699,7 +712,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_empty_title_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -712,7 +726,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.note_create(&create_req).await;
+        let result = db.note_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty title
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -722,7 +736,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_empty_content_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -735,7 +750,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.note_create(&create_req).await;
+        let result = db.note_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -745,7 +760,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_very_long_title() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         // Create a very long title (but within reasonable limits)
         let long_title = "N".repeat(500);
@@ -760,7 +776,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.note_create(&create_req).await;
+        let result = db.note_create(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -776,7 +792,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_unicode_title() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let unicode_title = "测试笔记 🚀 Тест";
 
@@ -790,7 +807,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode titles");
 
         assert_eq!(created.title, unicode_title);
@@ -806,7 +823,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_unicode_content() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let unicode_content = "这是测试内容 🎉 Это тестовый контент";
 
@@ -820,7 +838,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode content");
 
         assert_eq!(created.content, unicode_content);
@@ -836,7 +854,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_all_note_types() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let note_types = vec![
             NoteType::Convention,
@@ -860,7 +879,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await
+            let created = db.note_create(&create_req, auth.tenant_id).await
                 .expect(&format!("Should create note of type {:?}", note_type));
 
             assert_eq!(created.note_type, note_type);
@@ -877,7 +896,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_all_ttl_variants() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let ttl_variants = vec![
             TTL::Persistent,
@@ -902,7 +922,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await
+            let created = db.note_create(&create_req, auth.tenant_id).await
                 .expect(&format!("Should create note with TTL {:?}", ttl));
 
             assert_eq!(&created.ttl, &ttl);
@@ -919,7 +939,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_timestamps_are_set() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -931,7 +952,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should create note");
 
         // Timestamps should be set and reasonable
@@ -945,7 +966,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_content_hash_is_32_bytes() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -957,7 +979,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should create note");
 
         // Content hash should be SHA-256 (32 bytes)
@@ -970,7 +992,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_list_by_trajectory() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         // Create multiple notes in the same trajectory
         let mut note_ids = Vec::new();
@@ -985,7 +1008,7 @@ mod edge_cases {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req).await
+            let created = db.note_create(&create_req, auth.tenant_id).await
                 .expect("Should create note");
             note_ids.push(created.note_id);
         }
@@ -1007,7 +1030,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_complex_metadata() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let complex_metadata = serde_json::json!({
             "tags": ["important", "reviewed"],
@@ -1031,7 +1055,7 @@ mod edge_cases {
             metadata: Some(complex_metadata.clone()),
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should create note with complex metadata");
 
         assert_eq!(created.metadata, Some(complex_metadata.clone()));
@@ -1047,8 +1071,9 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_with_multiple_source_trajectories() {
         let db = test_db_client();
-        let trajectory_id1 = create_test_trajectory(&db).await;
-        let trajectory_id2 = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id1 = create_test_trajectory(&db, auth.tenant_id).await;
+        let trajectory_id2 = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -1060,7 +1085,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should create note with multiple source trajectories");
 
         assert_eq!(created.source_trajectory_ids.len(), 2);
@@ -1080,7 +1105,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_superseded_by_is_none_initially() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -1092,7 +1118,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should create note");
 
         // Property: superseded_by should be None for new notes
@@ -1109,7 +1135,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_note_embedding_is_none_initially() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateNoteRequest {
             note_type: NoteType::Fact,
@@ -1121,7 +1148,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.note_create(&create_req).await
+        let created = db.note_create(&create_req, auth.tenant_id).await
             .expect("Should create note");
 
         // Property: embedding should be None for new notes (unless explicitly set)

@@ -83,6 +83,9 @@ pub struct ListTrajectoriesResponse {
 pub struct TrajectoryResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
+    /// Tenant this trajectory belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     pub name: String,
     pub description: Option<String>,
     pub status: TrajectoryStatus,
@@ -173,6 +176,9 @@ pub struct CreateCheckpointRequest {
 pub struct ScopeResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
+    /// Tenant this scope belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
@@ -290,6 +296,9 @@ pub struct ListArtifactsResponse {
 pub struct ArtifactResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub artifact_id: EntityId,
+    /// Tenant this artifact belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
@@ -411,6 +420,9 @@ pub struct ListNotesResponse {
 pub struct NoteResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub note_id: EntityId,
+    /// Tenant this note belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     pub note_type: NoteType,
     pub title: String,
     pub content: String,
@@ -471,6 +483,9 @@ pub struct CreateTurnRequest {
 pub struct TurnResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub turn_id: EntityId,
+    /// Tenant this turn belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
     pub sequence: i32,
@@ -818,6 +833,9 @@ pub struct CreateDelegationRequest {
 pub struct DelegationResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub delegation_id: EntityId,
+    /// Tenant this delegation belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub from_agent_id: EntityId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
@@ -1349,6 +1367,9 @@ pub struct EdgeResponse {
     /// Edge ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub edge_id: EntityId,
+    /// Tenant this edge belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     /// Type of edge
     pub edge_type: EdgeType,
     /// Edge participants
@@ -1423,6 +1444,9 @@ pub struct SummarizationPolicyResponse {
     /// Policy ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub policy_id: EntityId,
+    /// Tenant this policy belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub tenant_id: Option<EntityId>,
     /// Policy name
     pub name: String,
     /// Triggers that fire this policy

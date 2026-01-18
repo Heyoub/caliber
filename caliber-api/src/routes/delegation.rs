@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -60,6 +61,7 @@ impl DelegationState {
 )]
 pub async fn create_delegation(
     State(state): State<Arc<DelegationState>>,
+    AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateDelegationRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -74,8 +76,8 @@ pub async fn create_delegation(
         ));
     }
 
-    // Create delegation via database client
-    let delegation = state.db.delegation_create(&req).await?;
+    // Create delegation via database client with tenant_id for isolation
+    let delegation = state.db.delegation_create(&req, auth.tenant_id).await?;
 
     // Broadcast DelegationCreated event
     state.ws.broadcast(WsEvent::DelegationCreated {
@@ -105,6 +107,7 @@ pub async fn create_delegation(
 )]
 pub async fn get_delegation(
     State(state): State<Arc<DelegationState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let delegation = state
@@ -112,6 +115,9 @@ pub async fn get_delegation(
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
+
+    // Validate tenant ownership before returning
+    validate_tenant_ownership(&auth, delegation.tenant_id)?;
 
     Ok(Json(delegation))
 }
@@ -140,8 +146,8 @@ pub async fn get_delegation(
 )]
 pub async fn accept_delegation(
     State(state): State<Arc<DelegationState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
     Json(req): Json<AcceptDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
@@ -150,6 +156,9 @@ pub async fn accept_delegation(
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
+
+    // Validate tenant ownership
+    validate_tenant_ownership(&auth, delegation.tenant_id)?;
 
     if delegation.status.to_lowercase() != "pending" {
         return Err(ApiError::state_conflict(format!(
@@ -204,8 +213,8 @@ pub async fn accept_delegation(
 )]
 pub async fn reject_delegation(
     State(state): State<Arc<DelegationState>>,
-    Path(id): Path<Uuid>,
     AuthExtractor(auth): AuthExtractor,
+    Path(id): Path<Uuid>,
     Json(req): Json<RejectDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
@@ -214,6 +223,9 @@ pub async fn reject_delegation(
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
+
+    // Validate tenant ownership
+    validate_tenant_ownership(&auth, delegation.tenant_id)?;
 
     if delegation.status.to_lowercase() != "pending" {
         return Err(ApiError::state_conflict(format!(
@@ -260,6 +272,7 @@ pub async fn reject_delegation(
 )]
 pub async fn complete_delegation(
     State(state): State<Arc<DelegationState>>,
+    AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<CompleteDelegationRequest>,
 ) -> ApiResult<StatusCode> {
@@ -269,6 +282,9 @@ pub async fn complete_delegation(
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
+
+    // Validate tenant ownership
+    validate_tenant_ownership(&auth, delegation.tenant_id)?;
 
     let status_lower = delegation.status.to_lowercase();
     if status_lower != "accepted" && status_lower != "inprogress" {

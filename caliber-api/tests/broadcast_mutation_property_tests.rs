@@ -23,6 +23,7 @@ use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
 
 mod test_support;
+use test_support::test_auth_context;
 
 async fn recv_event(rx: &mut broadcast::Receiver<WsEvent>, label: &str) -> WsEvent {
     match timeout(Duration::from_millis(200), rx.recv()).await {
@@ -63,6 +64,7 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_support::test_db_client();
+            let auth = test_auth_context();
             let ws = test_support::test_ws_state(100);
             let mut rx = ws.subscribe();
             let pcp = test_support::test_pcp_runtime();
@@ -78,7 +80,7 @@ proptest! {
                 agent_id: None,
                 metadata: None,
             };
-            let _ = trajectory::create_trajectory(State(trajectory_state), Json(create_traj)).await?;
+            let _ = trajectory::create_trajectory(State(trajectory_state), AuthExtractor(auth.clone()), Json(create_traj)).await?;
 
             let trajectory = match recv_event(&mut rx, "TrajectoryCreated").await {
                 WsEvent::TrajectoryCreated { trajectory } => trajectory,
@@ -100,7 +102,7 @@ proptest! {
                 token_budget,
                 metadata: None,
             };
-            let _ = scope::create_scope(State(scope_state), Json(create_scope)).await?;
+            let _ = scope::create_scope(State(scope_state), AuthExtractor(auth.clone()), Json(create_scope)).await?;
 
             let scope = match recv_event(&mut rx, "ScopeCreated").await {
                 WsEvent::ScopeCreated { scope } => scope,
@@ -126,7 +128,7 @@ proptest! {
                 ttl: TTL::Session,
                 metadata: None,
             };
-            let _ = artifact::create_artifact(State(artifact_state), Json(create_artifact)).await?;
+            let _ = artifact::create_artifact(State(artifact_state), AuthExtractor(auth.clone()), Json(create_artifact)).await?;
 
             match recv_event(&mut rx, "ArtifactCreated").await {
                 WsEvent::ArtifactCreated { .. } => {}
@@ -146,7 +148,7 @@ proptest! {
                 ttl: TTL::Session,
                 metadata: None,
             };
-            let _ = note::create_note(State(note_state), Json(create_note)).await?;
+            let _ = note::create_note(State(note_state), AuthExtractor(auth.clone()), Json(create_note)).await?;
 
             match recv_event(&mut rx, "NoteCreated").await {
                 WsEvent::NoteCreated { .. } => {}
@@ -157,7 +159,6 @@ proptest! {
             // Turn Created
             // ------------------------------------------------------------
             let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone(), pcp));
-            let auth = test_support::test_auth_context();
             let create_turn = CreateTurnRequest {
                 scope_id: scope.scope_id,
                 sequence: 0,
@@ -168,7 +169,7 @@ proptest! {
                 tool_results: None,
                 metadata: None,
             };
-            let _ = turn::create_turn(State(turn_state), AuthExtractor(auth), Json(create_turn)).await?;
+            let _ = turn::create_turn(State(turn_state), AuthExtractor(auth.clone()), Json(create_turn)).await?;
 
             match recv_event(&mut rx, "TurnCreated").await {
                 WsEvent::TurnCreated { .. } => {}

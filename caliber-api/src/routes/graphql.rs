@@ -480,6 +480,7 @@ impl MutationRoot {
     ) -> GqlResult<GqlTrajectory> {
         let db = ctx.data::<DbClient>()?;
         let ws = ctx.data::<Arc<WsState>>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         let parent_id = if let Some(id) = input.parent_trajectory_id {
             Some(
@@ -507,7 +508,7 @@ impl MutationRoot {
             metadata: None,
         };
 
-        match db.trajectory_create(&req).await {
+        match db.trajectory_create(&req, auth.tenant_id).await {
             Ok(trajectory) => {
                 ws.broadcast(WsEvent::TrajectoryCreated {
                     trajectory: trajectory.clone(),
@@ -574,6 +575,7 @@ impl MutationRoot {
     async fn create_scope(&self, ctx: &Context<'_>, input: CreateScopeInput) -> GqlResult<GqlScope> {
         let db = ctx.data::<DbClient>()?;
         let ws = ctx.data::<Arc<WsState>>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         let trajectory_id = Uuid::parse_str(&input.trajectory_id.0)
             .map_err(|_| async_graphql::Error::new("Invalid trajectory_id"))?;
@@ -587,7 +589,7 @@ impl MutationRoot {
             metadata: None,
         };
 
-        match db.scope_create(&req).await {
+        match db.scope_create(&req, auth.tenant_id).await {
             Ok(scope) => {
                 ws.broadcast(WsEvent::ScopeCreated { scope: scope.clone() });
                 Ok(scope.into())
@@ -617,6 +619,7 @@ impl MutationRoot {
     async fn create_note(&self, ctx: &Context<'_>, input: CreateNoteInput) -> GqlResult<GqlNote> {
         let db = ctx.data::<DbClient>()?;
         let ws = ctx.data::<Arc<WsState>>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         let source_trajectory_ids: Result<Vec<_>, _> = input
             .source_trajectory_ids
@@ -647,7 +650,7 @@ impl MutationRoot {
             metadata: None,
         };
 
-        match db.note_create(&req).await {
+        match db.note_create(&req, auth.tenant_id).await {
             Ok(note) => {
                 ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
                 Ok(note.into())
@@ -745,6 +748,7 @@ mod tests {
     fn test_gql_trajectory_from_response() {
         let response = TrajectoryResponse {
             trajectory_id: Uuid::new_v4(),
+            tenant_id: Some(Uuid::new_v4()),
             name: "Test".to_string(),
             description: None,
             status: caliber_core::TrajectoryStatus::Active,

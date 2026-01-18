@@ -21,6 +21,7 @@ use proptest::prelude::*;
 use uuid::Uuid;
 
 mod test_support;
+use test_support::test_auth_context;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -32,15 +33,15 @@ fn test_db_client() -> DbClient {
 }
 
 /// Helper to create a test trajectory for scope tests.
-async fn create_test_trajectory(db: &DbClient) -> EntityId {
+async fn create_test_trajectory(db: &DbClient, tenant_id: EntityId) -> EntityId {
     use std::time::{SystemTime, UNIX_EPOCH};
-    
+
     // Generate a unique name using timestamp
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    
+
     let req = CreateTrajectoryRequest {
         name: format!("Test Trajectory {}", timestamp),
         description: Some("Trajectory for scope testing".to_string()),
@@ -48,10 +49,10 @@ async fn create_test_trajectory(db: &DbClient) -> EntityId {
         agent_id: None,
         metadata: None,
     };
-    
-    let trajectory = db.trajectory_create(&req).await
+
+    let trajectory = db.trajectory_create(&req, tenant_id).await
         .expect("Failed to create test trajectory");
-    
+
     trajectory.trajectory_id
 }
 
@@ -186,9 +187,10 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
+            let auth = test_auth_context();
 
             // Create a test trajectory first
-            let trajectory_id = create_test_trajectory(&db).await;
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateScopeRequest {
                 trajectory_id,
@@ -202,7 +204,7 @@ proptest! {
             // ================================================================
             // STEP 1: CREATE - Create a new scope
             // ================================================================
-            let created = db.scope_create(&create_req).await?;
+            let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created scope has an ID
             let nil_id: EntityId = Uuid::nil().into();
@@ -317,7 +319,8 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
-            let trajectory_id = create_test_trajectory(&db).await;
+            let auth = test_auth_context();
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateScopeRequest {
                 trajectory_id,
@@ -329,8 +332,8 @@ proptest! {
             };
 
             // Create two scopes with the same data
-            let scope1 = db.scope_create(&create_req).await?;
-            let scope2 = db.scope_create(&create_req).await?;
+            let scope1 = db.scope_create(&create_req, auth.tenant_id).await?;
+            let scope2 = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -416,7 +419,8 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
-            let trajectory_id = create_test_trajectory(&db).await;
+            let auth = test_auth_context();
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateScopeRequest {
                 trajectory_id,
@@ -427,7 +431,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.scope_create(&create_req).await?;
+            let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Property: Name should be preserved exactly
             prop_assert_eq!(&created.name, &name);
@@ -454,7 +458,8 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
-            let trajectory_id = create_test_trajectory(&db).await;
+            let auth = test_auth_context();
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateScopeRequest {
                 trajectory_id,
@@ -465,7 +470,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.scope_create(&create_req).await?;
+            let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Property: Token budget should be preserved
             prop_assert_eq!(created.token_budget, token_budget);
@@ -492,7 +497,8 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
-            let trajectory_id = create_test_trajectory(&db).await;
+            let auth = test_auth_context();
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateScopeRequest {
                 trajectory_id,
@@ -503,7 +509,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.scope_create(&create_req).await?;
+            let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -529,7 +535,8 @@ proptest! {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
-            let trajectory_id = create_test_trajectory(&db).await;
+            let auth = test_auth_context();
+            let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
             let create_req = CreateScopeRequest {
                 trajectory_id,
@@ -540,7 +547,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.scope_create(&create_req).await?;
+            let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Close the scope once
             let closed1 = db.scope_close(created.scope_id).await?;
@@ -570,7 +577,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_with_empty_name_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -582,7 +590,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.scope_create(&create_req).await;
+        let result = db.scope_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -592,7 +600,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_with_zero_token_budget_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -604,7 +613,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.scope_create(&create_req).await;
+        let result = db.scope_create(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with zero budget
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -614,7 +623,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_with_negative_token_budget_fails() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -626,7 +636,7 @@ mod edge_cases {
         };
 
         // This should fail validation
-        let result = db.scope_create(&create_req).await;
+        let result = db.scope_create(&create_req, auth.tenant_id).await;
 
         // Should fail
         assert!(result.is_err());
@@ -635,7 +645,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_with_very_long_name() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         // Create a very long name (but within reasonable limits)
         let long_name = "S".repeat(500);
@@ -649,7 +660,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.scope_create(&create_req).await;
+        let result = db.scope_create(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -665,7 +676,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_with_unicode_name() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let unicode_name = "测试范围 🚀 Тест";
 
@@ -678,7 +690,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req).await
+        let created = db.scope_create(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode names");
 
         assert_eq!(created.name, unicode_name);
@@ -694,7 +706,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_update_with_no_changes() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         // Create a scope
         let create_req = CreateScopeRequest {
@@ -706,7 +719,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req).await
+        let created = db.scope_create(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Update with the same values
@@ -729,7 +742,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_initial_tokens_used_is_zero() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -740,7 +754,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req).await
+        let created = db.scope_create(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Property: tokens_used should start at 0
@@ -757,7 +771,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_belongs_to_trajectory() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -768,7 +783,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req).await
+        let created = db.scope_create(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Property: scope should belong to the trajectory
@@ -785,7 +800,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_is_active_by_default() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -796,7 +812,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req).await
+        let created = db.scope_create(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Property: scope should be active by default
@@ -807,7 +823,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_scope_close_sets_closed_at() {
         let db = test_db_client();
-        let trajectory_id = create_test_trajectory(&db).await;
+        let auth = test_auth_context();
+        let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
         let create_req = CreateScopeRequest {
             trajectory_id,
@@ -818,7 +835,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req).await
+        let created = db.scope_create(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         assert!(created.closed_at.is_none());
