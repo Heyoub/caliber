@@ -76,6 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker image updated from PostgreSQL 16 to PostgreSQL 18
 - SSO callback now performs tenant resolution and member upsert
 - CORS layer now uses `build_cors_layer()` with config
+- Updated `workos_auth.rs` for workos crate 0.8 trait-based API
+  - `GetProfileAndToken` and `GetAuthorizationUrl` traits must be imported for method access
+  - `GetProfileAndTokenParams` and `GetAuthorizationUrlParams` are direct structs (no builder)
+  - `Profile.idp_id` changed from `Option<String>` to `String`
+  - `Profile.raw_attributes` removed from struct
 
 ### Configuration
 

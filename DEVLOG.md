@@ -5277,3 +5277,51 @@ CALIBER_RATE_LIMIT_BURST=10
 **Time Spent:** ~2 hours
 
 **Status:** Production hardening complete. SDK regeneration pending.
+
+---
+
+### January 17, 2026 — WorkOS 0.8 API Compatibility Fix
+
+**Objective:** Fix compilation errors after workos crate 0.8 API changes.
+
+**Problem:**
+
+The workos crate 0.8 uses a **trait-based API pattern** where methods are defined on traits that must be imported:
+- `GetProfileAndToken` trait provides `get_profile_and_token()` method
+- `GetAuthorizationUrl` trait provides `get_authorization_url()` method
+
+Without importing these traits, Rust reports "method not found" even though the types implement them.
+
+**API Changes in workos 0.8:**
+
+| Item | Before | After |
+|------|--------|-------|
+| Profile exchange | `GetProfileAndToken::builder()...build()` | `GetProfileAndTokenParams { client_id, code }` |
+| Auth URL | `GetAuthorizationUrl::builder()...build()` | `GetAuthorizationUrlParams { client_id, redirect_uri, connection_selector, state }` |
+| `Profile.idp_id` | `Option<String>` | `String` |
+| `Profile.raw_attributes` | Present | Removed |
+| `Profile.connection_type` | Direct type | `KnownOrUnknown<ConnectionType, String>` |
+
+**Fixes Applied:**
+
+1. **Imports updated** (`workos_auth.rs:29-35`):
+   ```rust
+   use workos::sso::{
+       AuthorizationCode, ClientId, ConnectionId, ConnectionSelector, GetAuthorizationUrl,
+       GetAuthorizationUrlParams, GetProfileAndToken, GetProfileAndTokenParams,
+       GetProfileAndTokenResponse, Provider,
+   };
+   ```
+
+2. **exchange_code_for_profile** - Direct struct instead of builder
+3. **generate_authorization_url** - Direct struct instead of builder
+4. **Profile field access** - Handle `KnownOrUnknown` enum for connection_type
+5. **Type annotations** - Added `GetProfileAndTokenResponse` annotation for inference
+
+**Lesson Learned:**
+
+When a Rust crate uses traits to provide methods (extension trait pattern), you must import the trait for the method to be in scope. The compiler hint `help: trait X which provides Y is implemented but not in scope` is the key diagnostic.
+
+**Time Spent:** ~30 minutes
+
+**Status:** All compilation errors fixed. `cargo check -p caliber-api --features openapi,workos` passes.

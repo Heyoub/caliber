@@ -120,8 +120,6 @@ pub async fn liveness() -> impl IntoResponse {
     ),
 )]
 pub async fn readiness(State(state): State<Arc<HealthState>>) -> impl IntoResponse {
-    let _start = std::time::Instant::now();
-
     // Check database connectivity
     let db_health = match check_database(&state.db).await {
         Ok(latency) => ComponentHealth {
