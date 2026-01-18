@@ -22,7 +22,7 @@
 #[cfg(feature = "workos")]
 use crate::workos_auth::{
     create_session_token, exchange_code_for_profile, generate_authorization_url,
-    SsoAuthorizationParams, SsoCallbackParams, SsoCallbackResponse, WorkOsConfig,
+    SsoAuthorizationParams, SsoCallbackParams, WorkOsConfig,
 };
 
 use crate::db::DbClient;
@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
-    routing::{get, post},
+    routing::get,
     Json,
 };
 

@@ -16,6 +16,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mutation testing (planned)
 - Test coverage reporting (planned)
 
+## [0.4.0] - 2026-01-17
+
+### BREAKING CHANGES
+
+- **PostgreSQL 18+ Required**: Dropped support for PostgreSQL 13-17. CALIBER now requires PostgreSQL 18 or later.
+- **API Router Signature**: `create_api_router()` now requires `&ApiConfig` parameter for CORS and rate limiting configuration.
+
+### Added - Production Hardening
+
+#### Tenant Auto-Provisioning (SSO)
+- Automatic tenant creation on first SSO login
+- Domain-based tenant association (user@acme.com → "Acme" tenant)
+- Public email detection (gmail, outlook, etc. → personal tenant)
+- First user becomes admin, subsequent users become members
+- WorkOS organization ID mapping for enterprise SSO
+
+#### Database Schema
+- `caliber_tenant` table for multi-tenant management
+- `caliber_tenant_member` table for user-tenant relationships
+- `caliber_public_email_domain` table for public email detection
+- `caliber_schema_version` table for migration tracking
+- Built-in migration runner in `_PG_init()`
+
+#### PostgreSQL Functions (pgrx)
+- `caliber_is_public_email_domain(domain)` - Check if domain is public
+- `caliber_tenant_create(name, domain, workos_org_id)` - Create tenant
+- `caliber_tenant_get_by_domain(domain)` - Lookup by email domain
+- `caliber_tenant_get_by_workos_org(org_id)` - Lookup by WorkOS org
+- `caliber_tenant_member_upsert(...)` - Add/update member
+- `caliber_tenant_member_count(tenant_id)` - Count members
+- `caliber_tenant_get(tenant_id)` - Get tenant by ID
+
+#### CORS Hardening
+- Config-based CORS origins via `CALIBER_CORS_ORIGINS`
+- Wildcard subdomain support (`*.caliber.run`)
+- Development mode (empty = allow all) vs production mode (strict)
+- Configurable credentials and preflight cache
+
+#### Rate Limiting
+- Per-IP rate limiting for unauthenticated requests (default: 100/min)
+- Per-tenant rate limiting for authenticated requests (default: 1000/min)
+- Configurable burst capacity (default: 10)
+- `429 Too Many Requests` with `Retry-After` header
+- Rate limit headers on all responses (`X-RateLimit-Limit`, etc.)
+
+#### API Enhancements
+- `TooManyRequests` error code (HTTP 429)
+- `ApiConfig` struct for production settings
+- Rate limiting middleware with `governor` crate
+
+#### PGXN Publishing Support
+- `META.json` for PGXN distribution metadata
+- `Makefile` for build/install/package commands
+- PostgreSQL 18+ version validation in Makefile
+
+### Changed
+
+- Docker image updated from PostgreSQL 16 to PostgreSQL 18
+- SSO callback now performs tenant resolution and member upsert
+- CORS layer now uses `build_cors_layer()` with config
+
+### Configuration
+
+New environment variables:
+```env
+# CORS
+CALIBER_CORS_ORIGINS=https://caliber.run,https://app.caliber.run
+CALIBER_CORS_ALLOW_CREDENTIALS=false
+CALIBER_CORS_MAX_AGE_SECS=86400
+
+# Rate Limiting
+CALIBER_RATE_LIMIT_ENABLED=true
+CALIBER_RATE_LIMIT_UNAUTHENTICATED=100
+CALIBER_RATE_LIMIT_AUTHENTICATED=1000
+CALIBER_RATE_LIMIT_BURST=10
+```
+
+### Files Created
+
+- `caliber-api/src/config.rs` - API configuration module
+- `caliber-pg/META.json` - PGXN metadata
+- `caliber-pg/Makefile` - PGXN build wrapper
+
+### Files Modified
+
+- `caliber-pg/sql/caliber_init.sql` - Added tenant tables and schema version
+- `caliber-pg/src/lib.rs` - Added tenant functions and migration runner
+- `caliber-pg/Cargo.toml` - Removed pg13-17 features
+- `caliber-api/src/error.rs` - Added TooManyRequests
+- `caliber-api/src/routes/mod.rs` - Updated CORS configuration
+- `caliber-api/src/middleware.rs` - Added rate limiting
+- `caliber-api/src/routes/sso.rs` - Added tenant auto-creation
+- `caliber-api/src/db.rs` - Added tenant DB functions
+- `caliber-api/Cargo.toml` - Added governor dependency
+- `docker/Dockerfile.pg` - Updated to PostgreSQL 18
+- `.env.example` - Added CORS and rate limit variables
+
+### Migration Guide (0.3.x → 0.4.0)
+
+**1. Update PostgreSQL to 18+**
+```bash
+# CALIBER no longer supports PostgreSQL 13-17
+pg_upgrade --old-datadir=/var/lib/postgresql/17/data \
+           --new-datadir=/var/lib/postgresql/18/data
+```
+
+**2. Update API Router Calls**
+```rust
+// Before (0.3.x)
+let router = create_api_router(db, ws, pcp);
+
+// After (0.4.0)
+let api_config = ApiConfig::from_env();
+let router = create_api_router(db, ws, pcp, &api_config);
+```
+
+**3. Set Environment Variables**
+```env
+# Required for production
+CALIBER_CORS_ORIGINS=https://yourdomain.com
+CALIBER_RATE_LIMIT_ENABLED=true
+```
+
+**4. Run Schema Migration**
+```sql
+-- The extension auto-runs migrations on load
+-- Or manually: SELECT caliber_init();
+```
+
 ## [0.3.2] - 2026-01-17
 
 ### Fixed - SDK Codegen Pipeline & Lint Cleanup

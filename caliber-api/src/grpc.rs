@@ -93,6 +93,7 @@ impl From<ApiError> for Status {
             crate::error::ErrorCode::StateConflict => Status::failed_precondition(err.message),
             crate::error::ErrorCode::ConnectionPoolExhausted => Status::resource_exhausted(err.message),
             crate::error::ErrorCode::Timeout => Status::deadline_exceeded(err.message),
+            crate::error::ErrorCode::TooManyRequests => Status::resource_exhausted(err.message),
             crate::error::ErrorCode::InternalError => Status::internal(err.message),
             crate::error::ErrorCode::DatabaseError => Status::internal(err.message),
             crate::error::ErrorCode::ServiceUnavailable => Status::unavailable(err.message),

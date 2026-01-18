@@ -1236,6 +1236,12 @@ pub struct TenantInfo {
     pub tenant_id: EntityId,
     /// Tenant name
     pub name: String,
+    /// Email domain for auto-association (e.g., "acme.com")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    /// WorkOS organization ID for enterprise SSO
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workos_organization_id: Option<String>,
     /// Tenant status
     pub status: TenantStatus,
     /// When the tenant was created
@@ -1245,6 +1251,7 @@ pub struct TenantInfo {
 
 /// Tenant status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TenantStatus {
     /// Tenant is active and operational
