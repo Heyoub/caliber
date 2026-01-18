@@ -44,6 +44,9 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use uuid::Uuid;
 
+#[cfg(test)]
+mod row_conversion_tests;
+
 // ============================================================================
 // SPI HELPER FUNCTIONS FOR pgrx 0.16 API
 // ============================================================================
@@ -674,6 +677,7 @@ fn caliber_trajectory_create(
     name: &str,
     description: Option<&str>,
     agent_id: Option<pgrx::Uuid>,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
     // Record operation for metrics
     storage_write().record_op("trajectory_create");
@@ -684,11 +688,14 @@ fn caliber_trajectory_create(
     let agent_entity_id = agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
     
     // Use direct heap operations instead of SPI
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
+
     let result = trajectory_heap::trajectory_create_heap(
         trajectory_id,
         name,
         description,
         agent_entity_id,
+        tenant_entity_id,
     );
 
     if let Err(e) = result {
@@ -700,12 +707,14 @@ fn caliber_trajectory_create(
 
 /// Get a trajectory by ID.
 #[pg_extern]
-fn caliber_trajectory_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_trajectory_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match trajectory_heap::trajectory_get_heap(entity_id) {
-        Ok(Some(trajectory)) => {
+    match trajectory_heap::trajectory_get_heap(entity_id, tenant_entity_id) {
+        Ok(Some(row)) => {
+            let trajectory = row.trajectory;
             // Convert Trajectory to JSON
             Some(pgrx::JsonB(serde_json::json!({
                 "trajectory_id": trajectory.trajectory_id.to_string(),
@@ -725,6 +734,7 @@ fn caliber_trajectory_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "completed_at": trajectory.completed_at.map(|t| t.to_rfc3339()),
                 "outcome": trajectory.outcome.as_ref().map(safe_to_json),
                 "metadata": trajectory.metadata,
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -738,8 +748,9 @@ fn caliber_trajectory_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 /// Update trajectory status.
 /// Returns None if status is invalid.
 #[pg_extern]
-fn caliber_trajectory_set_status(id: pgrx::Uuid, status: &str) -> Option<bool> {
+fn caliber_trajectory_set_status(id: pgrx::Uuid, status: &str, tenant_id: pgrx::Uuid) -> Option<bool> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
     
     // Validate status - reject unknown values instead of returning false silently (REQ-12)
     let trajectory_status = match status {
@@ -758,7 +769,7 @@ fn caliber_trajectory_set_status(id: pgrx::Uuid, status: &str) -> Option<bool> {
     };
 
     // Use direct heap operations instead of SPI
-    match trajectory_heap::trajectory_set_status_heap(entity_id, trajectory_status) {
+    match trajectory_heap::trajectory_set_status_heap(entity_id, trajectory_status, tenant_entity_id) {
         Ok(updated) => Some(updated),
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to update trajectory status: {}", e);
@@ -773,8 +784,9 @@ fn caliber_trajectory_set_status(id: pgrx::Uuid, status: &str) -> Option<bool> {
 /// Only provided fields are updated; null/missing fields are left unchanged.
 /// Returns true if the trajectory was found and updated, false otherwise.
 #[pg_extern]
-fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
+fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB, tenant_id: pgrx::Uuid) -> bool {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
     let update_obj = &updates.0;
 
     // Parse updates from JSON
@@ -856,6 +868,7 @@ fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
 
     let params = trajectory_heap::TrajectoryUpdateHeapParams {
         id: entity_id,
+        tenant_id: tenant_entity_id,
         name,
         description,
         status,
@@ -877,7 +890,8 @@ fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
 
 /// List trajectories by status.
 #[pg_extern]
-fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
+fn caliber_trajectory_list_by_status(status: &str, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
     // Validate and convert status
     let trajectory_status = match status {
         "active" => TrajectoryStatus::Active,
@@ -891,11 +905,12 @@ fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
     };
 
     // Use direct heap operations instead of SPI
-    match trajectory_heap::trajectory_list_by_status_heap(trajectory_status) {
+    match trajectory_heap::trajectory_list_by_status_heap(trajectory_status, tenant_entity_id) {
         Ok(trajectories) => {
             let json_trajectories: Vec<serde_json::Value> = trajectories
                 .into_iter()
-                .map(|t| {
+                .map(|row| {
+                    let t = row.trajectory;
                     serde_json::json!({
                         "trajectory_id": t.trajectory_id.to_string(),
                         "name": t.name,
@@ -914,6 +929,7 @@ fn caliber_trajectory_list_by_status(status: &str) -> pgrx::JsonB {
                         "completed_at": t.completed_at.map(|dt| dt.to_rfc3339()),
                         "outcome": t.outcome.as_ref().map(safe_to_json),
                         "metadata": t.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -939,9 +955,11 @@ fn caliber_scope_create(
     name: &str,
     purpose: Option<&str>,
     token_budget: i32,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
     let scope_id = new_entity_id();
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
     let result = scope_heap::scope_create_heap(
@@ -950,6 +968,7 @@ fn caliber_scope_create(
         name,
         purpose,
         token_budget,
+        tenant_uuid,
     );
 
     if let Err(e) = result {
@@ -961,12 +980,14 @@ fn caliber_scope_create(
 
 /// Get a scope by ID.
 #[pg_extern]
-fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_scope_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match scope_heap::scope_get_heap(entity_id) {
-        Ok(Some(scope)) => {
+    match scope_heap::scope_get_heap(entity_id, tenant_entity_id) {
+        Ok(Some(row)) => {
+            let scope = row.scope;
             // Convert Scope to JSON
             Some(pgrx::JsonB(serde_json::json!({
                 "scope_id": scope.scope_id.to_string(),
@@ -981,6 +1002,7 @@ fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "token_budget": scope.token_budget,
                 "tokens_used": scope.tokens_used,
                 "metadata": scope.metadata,
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -993,19 +1015,21 @@ fn caliber_scope_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 
 /// Get the current active scope for a trajectory.
 #[pg_extern]
-fn caliber_scope_get_current(trajectory_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_scope_get_current(trajectory_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match scope_heap::scope_list_by_trajectory_heap(traj_id) {
+    match scope_heap::scope_list_by_trajectory_heap(traj_id, tenant_entity_id) {
         Ok(scopes) => {
             // Filter for active scopes and get the most recent one
             let active_scope = scopes
                 .into_iter()
-                .filter(|s| s.is_active)
-                .max_by_key(|s| s.created_at);
+                .filter(|row| row.scope.is_active)
+                .max_by_key(|row| row.scope.created_at);
             
-            if let Some(scope) = active_scope {
+            if let Some(row) = active_scope {
+                let scope = row.scope;
                 Some(pgrx::JsonB(serde_json::json!({
                     "scope_id": scope.scope_id.to_string(),
                     "trajectory_id": scope.trajectory_id.to_string(),
@@ -1019,6 +1043,7 @@ fn caliber_scope_get_current(trajectory_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     "token_budget": scope.token_budget,
                     "tokens_used": scope.tokens_used,
                     "metadata": scope.metadata,
+                    "tenant_id": row.tenant_id.map(|id| id.to_string()),
                 })))
             } else {
                 None
@@ -1033,11 +1058,12 @@ fn caliber_scope_get_current(trajectory_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 
 /// Close a scope.
 #[pg_extern]
-fn caliber_scope_close(id: pgrx::Uuid) -> bool {
+fn caliber_scope_close(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match scope_heap::scope_close_heap(entity_id) {
+    match scope_heap::scope_close_heap(entity_id, tenant_entity_id) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to close scope: {}", e);
@@ -1048,11 +1074,12 @@ fn caliber_scope_close(id: pgrx::Uuid) -> bool {
 
 /// Update tokens used in a scope.
 #[pg_extern]
-fn caliber_scope_update_tokens(id: pgrx::Uuid, tokens_used: i32) -> bool {
+fn caliber_scope_update_tokens(id: pgrx::Uuid, tokens_used: i32, tenant_id: pgrx::Uuid) -> bool {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match scope_heap::scope_update_tokens_heap(entity_id, tokens_used) {
+    match scope_heap::scope_update_tokens_heap(entity_id, tokens_used, tenant_entity_id) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to update scope tokens: {}", e);
@@ -1067,7 +1094,7 @@ fn caliber_scope_update_tokens(id: pgrx::Uuid, tokens_used: i32) -> bool {
 /// Only provided fields are updated; null/missing fields are left unchanged.
 /// Returns true if the scope was found and updated, false otherwise.
 #[pg_extern]
-fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
+fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB, tenant_id: pgrx::Uuid) -> bool {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
 
@@ -1157,9 +1184,10 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
     }
 
     let query = format!(
-        "UPDATE caliber_scope SET {} WHERE scope_id = ${}",
+        "UPDATE caliber_scope SET {} WHERE scope_id = ${} AND tenant_id = ${}",
         set_clauses.join(", "),
-        param_idx
+        param_idx,
+        param_idx + 1
     );
 
     // Build params array using our helper functions
@@ -1219,6 +1247,7 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB) -> bool {
     // Add the WHERE clause parameter (entity_id)
     let pg_entity_id = pgrx::Uuid::from_bytes(*entity_id.as_bytes());
     params.push(unsafe { DatumWithOid::new(pg_entity_id, pgrx::pg_sys::UUIDOID) });
+    params.push(unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) });
 
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         let table = client.update(&query, None, &params)?;
@@ -1247,6 +1276,11 @@ fn caliber_artifact_create(
     artifact_type: &str,
     name: &str,
     content: &str,
+    source_turn: i32,
+    extraction_method: &str,
+    confidence: Option<f32>,
+    ttl: &str,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     // Record operation for metrics
     storage_write().record_op("artifact_create");
@@ -1279,14 +1313,55 @@ fn caliber_artifact_create(
     // Compute content hash
     let content_hash = compute_content_hash(content.as_bytes());
 
+    // Parse extraction method
+    let extraction_method_enum = match extraction_method {
+        "explicit" => ExtractionMethod::Explicit,
+        "inferred" => ExtractionMethod::Inferred,
+        "user_provided" => ExtractionMethod::UserProvided,
+        _ => {
+            let validation_err = ValidationError::InvalidValue {
+                field: "extraction_method".to_string(),
+                reason: format!("unknown value '{}'. Valid values: explicit, inferred, user_provided", extraction_method),
+            };
+            pgrx::warning!("CALIBER: {:?}", validation_err);
+            return None;
+        }
+    };
+
+    // Parse TTL
+    let ttl_enum = match ttl {
+        "persistent" => TTL::Persistent,
+        "session" => TTL::Session,
+        "scope" => TTL::Scope,
+        "ephemeral" => TTL::Ephemeral,
+        "short_term" => TTL::ShortTerm,
+        "medium_term" => TTL::MediumTerm,
+        "long_term" => TTL::LongTerm,
+        "permanent" => TTL::Permanent,
+        _ => {
+            if let Some(ms) = ttl.strip_prefix("duration:").and_then(|v| v.parse::<i64>().ok()) {
+                TTL::Duration(ms)
+            } else {
+                let validation_err = ValidationError::InvalidValue {
+                    field: "ttl".to_string(),
+                    reason: format!("unknown value '{}'. Valid values: persistent, session, scope, duration:<ms>, ephemeral, short_term, medium_term, long_term, permanent", ttl),
+                };
+                pgrx::warning!("CALIBER: {:?}", validation_err);
+                return None;
+            }
+        }
+    };
+
     // Build provenance
     let provenance = Provenance {
-        source_turn: 0,
-        extraction_method: ExtractionMethod::Explicit,
-        confidence: None,
+        source_turn,
+        extraction_method: extraction_method_enum,
+        confidence,
     };
 
     // Use direct heap operations instead of SPI
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     let result = artifact_heap::artifact_create_heap(artifact_heap::ArtifactCreateParams {
         artifact_id,
         trajectory_id: traj_id,
@@ -1297,7 +1372,8 @@ fn caliber_artifact_create(
         content_hash,
         embedding: None, // No embedding
         provenance: &provenance,
-        ttl: TTL::Persistent,
+        ttl: ttl_enum,
+        tenant_id: tenant_uuid,
     });
 
     match result {
@@ -1311,12 +1387,14 @@ fn caliber_artifact_create(
 
 /// Get an artifact by ID.
 #[pg_extern]
-fn caliber_artifact_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_artifact_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match artifact_heap::artifact_get_heap(entity_id) {
-        Ok(Some(artifact)) => {
+    match artifact_heap::artifact_get_heap(entity_id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let artifact = row.artifact;
             // Convert Artifact to JSON
             Some(pgrx::JsonB(serde_json::json!({
                 "artifact_id": artifact.artifact_id.to_string(),
@@ -1361,6 +1439,7 @@ fn caliber_artifact_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "updated_at": artifact.updated_at.to_rfc3339(),
                 "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
                 "metadata": artifact.metadata,
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -1376,7 +1455,9 @@ fn caliber_artifact_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 fn caliber_artifact_query_by_type(
     trajectory_id: pgrx::Uuid,
     artifact_type: &str,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::JsonB {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     // Validate and convert artifact_type
     let artifact_type_enum = match artifact_type {
         "code" => ArtifactType::Code,
@@ -1394,13 +1475,14 @@ fn caliber_artifact_query_by_type(
     };
 
     // Use direct heap operations instead of SPI
-    match artifact_heap::artifact_query_by_type_heap(artifact_type_enum) {
+    match artifact_heap::artifact_query_by_type_heap(artifact_type_enum, tenant_uuid) {
         Ok(artifacts) => {
             // Filter by trajectory_id and convert to JSON
             let json_artifacts: Vec<serde_json::Value> = artifacts
                 .into_iter()
-                .filter(|a| a.trajectory_id == Uuid::from_bytes(*trajectory_id.as_bytes()))
-                .map(|artifact| {
+                .filter(|row| row.artifact.trajectory_id == Uuid::from_bytes(*trajectory_id.as_bytes()))
+                .map(|row| {
+                    let artifact = row.artifact;
                     serde_json::json!({
                         "artifact_id": artifact.artifact_id.to_string(),
                         "trajectory_id": artifact.trajectory_id.to_string(),
@@ -1444,6 +1526,7 @@ fn caliber_artifact_query_by_type(
                         "updated_at": artifact.updated_at.to_rfc3339(),
                         "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
                         "metadata": artifact.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -1459,16 +1542,18 @@ fn caliber_artifact_query_by_type(
 
 /// Query artifacts by scope.
 #[pg_extern]
-fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
+fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match artifact_heap::artifact_query_by_scope_heap(scp_id) {
+    match artifact_heap::artifact_query_by_scope_heap(scp_id, tenant_uuid) {
         Ok(artifacts) => {
             // Convert to JSON
             let json_artifacts: Vec<serde_json::Value> = artifacts
                 .into_iter()
-                .map(|artifact| {
+                .map(|row| {
+                    let artifact = row.artifact;
                     serde_json::json!({
                         "artifact_id": artifact.artifact_id.to_string(),
                         "trajectory_id": artifact.trajectory_id.to_string(),
@@ -1512,6 +1597,7 @@ fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
                         "updated_at": artifact.updated_at.to_rfc3339(),
                         "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
                         "metadata": artifact.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -1520,6 +1606,219 @@ fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
         }
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to query artifacts by scope: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// Query artifacts by trajectory.
+#[pg_extern]
+fn caliber_artifact_query_by_trajectory(trajectory_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    match artifact_heap::artifact_query_by_trajectory_heap(traj_id, tenant_uuid) {
+        Ok(artifacts) => {
+            let json_artifacts: Vec<serde_json::Value> = artifacts
+                .into_iter()
+                .map(|row| {
+                    let artifact = row.artifact;
+                    serde_json::json!({
+                        "artifact_id": artifact.artifact_id.to_string(),
+                        "trajectory_id": artifact.trajectory_id.to_string(),
+                        "scope_id": artifact.scope_id.to_string(),
+                        "artifact_type": match artifact.artifact_type {
+                            ArtifactType::Code => "code",
+                            ArtifactType::Document => "document",
+                            ArtifactType::Data => "data",
+                            ArtifactType::Config => "config",
+                            ArtifactType::Log => "log",
+                            ArtifactType::Summary => "summary",
+                            ArtifactType::Decision => "decision",
+                            ArtifactType::Plan => "plan",
+                            ArtifactType::ErrorLog => "error_log",
+                            ArtifactType::CodePatch => "code_patch",
+                            ArtifactType::DesignDecision => "design_decision",
+                            ArtifactType::UserPreference => "user_preference",
+                            ArtifactType::Fact => "fact",
+                            ArtifactType::Constraint => "constraint",
+                            ArtifactType::ToolResult => "tool_result",
+                            ArtifactType::IntermediateOutput => "intermediate_output",
+                            ArtifactType::Custom => "custom",
+                        },
+                        "name": artifact.name,
+                        "content": artifact.content,
+                        "content_hash": hex::encode(artifact.content_hash),
+                        "embedding": artifact.embedding,
+                        "provenance": safe_to_json(&artifact.provenance),
+                        "ttl": match artifact.ttl {
+                            TTL::Persistent => "persistent",
+                            TTL::Session => "session",
+                            TTL::Scope => "scope",
+                            TTL::Duration(ms) => format!("duration:{}", ms).leak(),
+                            TTL::Ephemeral => "ephemeral",
+                            TTL::ShortTerm => "short_term",
+                            TTL::MediumTerm => "medium_term",
+                            TTL::LongTerm => "long_term",
+                            TTL::Permanent => "permanent",
+                        },
+                        "created_at": artifact.created_at.to_rfc3339(),
+                        "updated_at": artifact.updated_at.to_rfc3339(),
+                        "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
+                        "metadata": artifact.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+                    })
+                })
+                .collect();
+
+            pgrx::JsonB(serde_json::json!(json_artifacts))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to query artifacts by trajectory: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// Query artifacts by scope with tenant isolation.
+#[pg_extern]
+fn caliber_artifact_query_by_scope_and_tenant(
+    scope_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> pgrx::JsonB {
+    let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    match artifact_heap::artifact_query_by_scope_heap(scp_id, tenant_uuid) {
+        Ok(artifacts) => {
+            let json_artifacts: Vec<serde_json::Value> = artifacts
+                .into_iter()
+                .map(|row| {
+                    let artifact = row.artifact;
+                    serde_json::json!({
+                        "artifact_id": artifact.artifact_id.to_string(),
+                        "trajectory_id": artifact.trajectory_id.to_string(),
+                        "scope_id": artifact.scope_id.to_string(),
+                        "artifact_type": match artifact.artifact_type {
+                            ArtifactType::Code => "code",
+                            ArtifactType::Document => "document",
+                            ArtifactType::Data => "data",
+                            ArtifactType::Config => "config",
+                            ArtifactType::Log => "log",
+                            ArtifactType::Summary => "summary",
+                            ArtifactType::Decision => "decision",
+                            ArtifactType::Plan => "plan",
+                            ArtifactType::ErrorLog => "error_log",
+                            ArtifactType::CodePatch => "code_patch",
+                            ArtifactType::DesignDecision => "design_decision",
+                            ArtifactType::UserPreference => "user_preference",
+                            ArtifactType::Fact => "fact",
+                            ArtifactType::Constraint => "constraint",
+                            ArtifactType::ToolResult => "tool_result",
+                            ArtifactType::IntermediateOutput => "intermediate_output",
+                            ArtifactType::Custom => "custom",
+                        },
+                        "name": artifact.name,
+                        "content": artifact.content,
+                        "content_hash": hex::encode(artifact.content_hash),
+                        "embedding": artifact.embedding,
+                        "provenance": safe_to_json(&artifact.provenance),
+                        "ttl": match artifact.ttl {
+                            TTL::Persistent => "persistent",
+                            TTL::Session => "session",
+                            TTL::Scope => "scope",
+                            TTL::Duration(ms) => format!("duration:{}", ms).leak(),
+                            TTL::Ephemeral => "ephemeral",
+                            TTL::ShortTerm => "short_term",
+                            TTL::MediumTerm => "medium_term",
+                            TTL::LongTerm => "long_term",
+                            TTL::Permanent => "permanent",
+                        },
+                        "created_at": artifact.created_at.to_rfc3339(),
+                        "updated_at": artifact.updated_at.to_rfc3339(),
+                        "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
+                        "metadata": artifact.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+                    })
+                })
+                .collect();
+
+            pgrx::JsonB(serde_json::json!(json_artifacts))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to query artifacts by scope: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// Query artifacts by trajectory with tenant isolation.
+#[pg_extern]
+fn caliber_artifact_query_by_trajectory_and_tenant(
+    trajectory_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> pgrx::JsonB {
+    let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    match artifact_heap::artifact_query_by_trajectory_heap(traj_id, tenant_uuid) {
+        Ok(artifacts) => {
+            let json_artifacts: Vec<serde_json::Value> = artifacts
+                .into_iter()
+                .map(|row| {
+                    let artifact = row.artifact;
+                    serde_json::json!({
+                        "artifact_id": artifact.artifact_id.to_string(),
+                        "trajectory_id": artifact.trajectory_id.to_string(),
+                        "scope_id": artifact.scope_id.to_string(),
+                        "artifact_type": match artifact.artifact_type {
+                            ArtifactType::Code => "code",
+                            ArtifactType::Document => "document",
+                            ArtifactType::Data => "data",
+                            ArtifactType::Config => "config",
+                            ArtifactType::Log => "log",
+                            ArtifactType::Summary => "summary",
+                            ArtifactType::Decision => "decision",
+                            ArtifactType::Plan => "plan",
+                            ArtifactType::ErrorLog => "error_log",
+                            ArtifactType::CodePatch => "code_patch",
+                            ArtifactType::DesignDecision => "design_decision",
+                            ArtifactType::UserPreference => "user_preference",
+                            ArtifactType::Fact => "fact",
+                            ArtifactType::Constraint => "constraint",
+                            ArtifactType::ToolResult => "tool_result",
+                            ArtifactType::IntermediateOutput => "intermediate_output",
+                            ArtifactType::Custom => "custom",
+                        },
+                        "name": artifact.name,
+                        "content": artifact.content,
+                        "content_hash": hex::encode(artifact.content_hash),
+                        "embedding": artifact.embedding,
+                        "provenance": safe_to_json(&artifact.provenance),
+                        "ttl": match artifact.ttl {
+                            TTL::Persistent => "persistent",
+                            TTL::Session => "session",
+                            TTL::Scope => "scope",
+                            TTL::Duration(ms) => format!("duration:{}", ms).leak(),
+                            TTL::Ephemeral => "ephemeral",
+                            TTL::ShortTerm => "short_term",
+                            TTL::MediumTerm => "medium_term",
+                            TTL::LongTerm => "long_term",
+                            TTL::Permanent => "permanent",
+                        },
+                        "created_at": artifact.created_at.to_rfc3339(),
+                        "updated_at": artifact.updated_at.to_rfc3339(),
+                        "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
+                        "metadata": artifact.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+                    })
+                })
+                .collect();
+
+            pgrx::JsonB(serde_json::json!(json_artifacts))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to query artifacts by trajectory: {}", e);
             pgrx::JsonB(serde_json::json!([]))
         }
     }
@@ -1536,7 +1835,10 @@ fn caliber_note_create(
     note_type: &str,
     title: &str,
     content: &str,
-    source_trajectory_id: Option<pgrx::Uuid>,
+    source_trajectory_ids: Vec<pgrx::Uuid>,
+    source_artifact_ids: Vec<pgrx::Uuid>,
+    ttl: &str,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     // Record operation for metrics
     storage_write().record_op("note_create");
@@ -1563,10 +1865,40 @@ fn caliber_note_create(
 
     let content_hash = compute_content_hash(content.as_bytes());
     
-    // Build source_trajectory_ids array
-    let source_traj_ids: Vec<EntityId> = source_trajectory_id
-        .map(|u| vec![Uuid::from_bytes(*u.as_bytes())])
-        .unwrap_or_default();
+    // Parse TTL
+    let ttl_enum = match ttl {
+        "persistent" => TTL::Persistent,
+        "session" => TTL::Session,
+        "scope" => TTL::Scope,
+        "ephemeral" => TTL::Ephemeral,
+        "short_term" => TTL::ShortTerm,
+        "medium_term" => TTL::MediumTerm,
+        "long_term" => TTL::LongTerm,
+        "permanent" => TTL::Permanent,
+        _ => {
+            if let Some(ms) = ttl.strip_prefix("duration:").and_then(|v| v.parse::<i64>().ok()) {
+                TTL::Duration(ms)
+            } else {
+                let validation_err = ValidationError::InvalidValue {
+                    field: "ttl".to_string(),
+                    reason: format!("unknown value '{}'. Valid values: persistent, session, scope, duration:<ms>, ephemeral, short_term, medium_term, long_term, permanent", ttl),
+                };
+                pgrx::warning!("CALIBER: {:?}", validation_err);
+                return None;
+            }
+        }
+    };
+
+    // Build source IDs arrays
+    let source_traj_ids: Vec<EntityId> = source_trajectory_ids
+        .into_iter()
+        .map(|u| Uuid::from_bytes(*u.as_bytes()))
+        .collect();
+    let source_artifact_ids: Vec<EntityId> = source_artifact_ids
+        .into_iter()
+        .map(|u| Uuid::from_bytes(*u.as_bytes()))
+        .collect();
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
     let result = note_heap::note_create_heap(note_heap::NoteCreateParams {
@@ -1577,10 +1909,11 @@ fn caliber_note_create(
         content_hash,
         embedding: None, // embedding
         source_trajectory_ids: &source_traj_ids,
-        source_artifact_ids: &[], // source_artifact_ids
-        ttl: TTL::Permanent, // default to permanent
+        source_artifact_ids: &source_artifact_ids,
+        ttl: ttl_enum,
         abstraction_level: AbstractionLevel::Raw, // new notes start at L0
         source_note_ids: &[], // source_note_ids - none for newly created notes
+        tenant_id: tenant_uuid,
     });
 
     match result {
@@ -1595,12 +1928,14 @@ fn caliber_note_create(
 /// Get a note by ID.
 /// Updates access_count and accessed_at timestamp on each read.
 #[pg_extern]
-fn caliber_note_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_note_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match note_heap::note_get_heap(entity_id) {
-        Ok(Some(note)) => {
+    match note_heap::note_get_heap(entity_id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let note = row.note;
             // Convert Note to JSON
             Some(pgrx::JsonB(serde_json::json!({
                 "note_id": note.note_id.to_string(),
@@ -1644,6 +1979,7 @@ fn caliber_note_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "access_count": note.access_count,
                 "superseded_by": note.superseded_by.map(|id| id.to_string()),
                 "metadata": note.metadata,
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -1657,15 +1993,17 @@ fn caliber_note_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 /// Query notes by trajectory.
 /// Updates access_count and accessed_at for all returned notes.
 #[pg_extern]
-fn caliber_note_query_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
+fn caliber_note_query_by_trajectory(trajectory_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match note_heap::note_query_by_trajectory_heap(traj_id) {
+    match note_heap::note_query_by_trajectory_heap(traj_id, tenant_uuid) {
         Ok(notes) => {
             let json_notes: Vec<serde_json::Value> = notes
                 .into_iter()
-                .map(|note| {
+                .map(|row| {
+                    let note = row.note;
                     serde_json::json!({
                         "note_id": note.note_id.to_string(),
                         "note_type": match note.note_type {
@@ -1708,6 +2046,7 @@ fn caliber_note_query_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
                         "access_count": note.access_count,
                         "superseded_by": note.superseded_by.map(|id| id.to_string()),
                         "metadata": note.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -1716,6 +2055,164 @@ fn caliber_note_query_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
         }
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to query notes by trajectory: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// Query notes by trajectory with tenant isolation.
+#[pg_extern]
+fn caliber_note_query_by_trajectory_and_tenant(
+    trajectory_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> pgrx::JsonB {
+    let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    match note_heap::note_query_by_trajectory_heap(traj_id, tenant_uuid) {
+        Ok(notes) => {
+            let json_notes: Vec<serde_json::Value> = notes
+                .into_iter()
+                .map(|row| {
+                    let note = row.note;
+                    serde_json::json!({
+                        "note_id": note.note_id.to_string(),
+                        "note_type": match note.note_type {
+                            NoteType::Convention => "convention",
+                            NoteType::Strategy => "strategy",
+                            NoteType::Gotcha => "gotcha",
+                            NoteType::Fact => "fact",
+                            NoteType::Preference => "preference",
+                            NoteType::Relationship => "relationship",
+                            NoteType::Procedure => "procedure",
+                            NoteType::Meta => "meta",
+                            NoteType::Insight => "insight",
+                            NoteType::Correction => "correction",
+                            NoteType::Summary => "summary",
+                        },
+                        "title": note.title,
+                        "content": note.content,
+                        "content_hash": hex::encode(note.content_hash),
+                        "embedding": note.embedding,
+                        "source_trajectory_ids": note.source_trajectory_ids.iter()
+                            .map(|id| id.to_string())
+                            .collect::<Vec<_>>(),
+                        "source_artifact_ids": note.source_artifact_ids.iter()
+                            .map(|id| id.to_string())
+                            .collect::<Vec<_>>(),
+                        "ttl": match note.ttl {
+                            TTL::Persistent => "persistent",
+                            TTL::Session => "session",
+                            TTL::Scope => "scope",
+                            TTL::Duration(ms) => format!("duration:{}", ms).leak(),
+                            TTL::Ephemeral => "ephemeral",
+                            TTL::ShortTerm => "short_term",
+                            TTL::MediumTerm => "medium_term",
+                            TTL::LongTerm => "long_term",
+                            TTL::Permanent => "permanent",
+                        },
+                        "created_at": note.created_at.to_rfc3339(),
+                        "updated_at": note.updated_at.to_rfc3339(),
+                        "accessed_at": note.accessed_at.to_rfc3339(),
+                        "access_count": note.access_count,
+                        "superseded_by": note.superseded_by.map(|id| id.to_string()),
+                        "metadata": note.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+                    })
+                })
+                .collect();
+
+            pgrx::JsonB(serde_json::json!(json_notes))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to query notes by trajectory: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// List all notes for a tenant with pagination.
+#[pg_extern]
+fn caliber_note_list_all_by_tenant(limit: i32, offset: i32, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let table = client.select(
+            "SELECT note_id, note_type, title, content, content_hash, embedding, source_trajectory_ids, source_artifact_ids, ttl,
+                    created_at, updated_at, accessed_at, access_count, superseded_by, metadata, abstraction_level, source_note_ids, tenant_id
+             FROM caliber_note
+             WHERE tenant_id = $1
+             ORDER BY created_at DESC
+             LIMIT $2 OFFSET $3",
+            None,
+            &[
+                pgrx_uuid_datum(tenant_id),
+                i32_datum(limit),
+                i32_datum(offset),
+            ],
+        )?;
+
+        let mut notes = Vec::new();
+        for row in table {
+            let note_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+            let note_type: Option<String> = row.get(2).ok().flatten();
+            let title: Option<String> = row.get(3).ok().flatten();
+            let content: Option<String> = row.get(4).ok().flatten();
+            let content_hash: Option<Vec<u8>> = row.get(5).ok().flatten();
+            let embedding: Option<Vec<f32>> = row.get(6).ok().flatten();
+            let source_trajectory_ids: Option<Vec<pgrx::Uuid>> = row.get(7).ok().flatten();
+            let source_artifact_ids: Option<Vec<pgrx::Uuid>> = row.get(8).ok().flatten();
+            let ttl: Option<String> = row.get(9).ok().flatten();
+            let created_at: Option<TimestampWithTimeZone> = row.get(10).ok().flatten();
+            let updated_at: Option<TimestampWithTimeZone> = row.get(11).ok().flatten();
+            let accessed_at: Option<TimestampWithTimeZone> = row.get(12).ok().flatten();
+            let access_count: Option<i32> = row.get(13).ok().flatten();
+            let superseded_by: Option<pgrx::Uuid> = row.get(14).ok().flatten();
+            let metadata: Option<pgrx::JsonB> = row.get(15).ok().flatten();
+            let abstraction_level: Option<String> = row.get(16).ok().flatten();
+            let source_note_ids: Option<Vec<pgrx::Uuid>> = row.get(17).ok().flatten();
+            let tenant_id_val: Option<pgrx::Uuid> = row.get(18).ok().flatten();
+
+            let json = serde_json::json!({
+                "note_id": note_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "note_type": note_type,
+                "title": title,
+                "content": content,
+                "content_hash": content_hash.map(hex::encode),
+                "embedding": embedding.map(|data| EmbeddingVector::new(data, "unknown".to_string())),
+                "source_trajectory_ids": source_trajectory_ids
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|u| Uuid::from_bytes(*u.as_bytes()).to_string())
+                    .collect::<Vec<_>>(),
+                "source_artifact_ids": source_artifact_ids
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|u| Uuid::from_bytes(*u.as_bytes()).to_string())
+                    .collect::<Vec<_>>(),
+                "ttl": ttl,
+                "created_at": created_at.map(|t| t.to_string()),
+                "updated_at": updated_at.map(|t| t.to_string()),
+                "accessed_at": accessed_at.map(|t| t.to_string()),
+                "access_count": access_count,
+                "superseded_by": superseded_by.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "metadata": metadata.map(|m| m.0),
+                "abstraction_level": abstraction_level,
+                "source_note_ids": source_note_ids
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|u| Uuid::from_bytes(*u.as_bytes()).to_string())
+                    .collect::<Vec<_>>(),
+                "tenant_id": tenant_id_val.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+            });
+            notes.push(json);
+        }
+
+        Ok(notes)
+    });
+
+    match result {
+        Ok(notes) => pgrx::JsonB(serde_json::json!(notes)),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to list notes by tenant: {}", e);
             pgrx::JsonB(serde_json::json!([]))
         }
     }
@@ -1737,6 +2234,7 @@ fn caliber_turn_create(
     role: &str,
     content: &str,
     token_count: i32,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     let turn_id = new_entity_id();
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
@@ -1758,6 +2256,8 @@ fn caliber_turn_create(
     };
 
     // Use direct heap operations instead of SPI
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     let result = turn_heap::turn_create_heap(turn_heap::TurnCreateParams {
         turn_id,
         scope_id: scp_id,
@@ -1767,6 +2267,7 @@ fn caliber_turn_create(
         token_count,
         tool_calls: None,
         tool_results: None,
+        tenant_id: tenant_uuid,
     });
 
     match result {
@@ -1780,15 +2281,17 @@ fn caliber_turn_create(
 
 /// Get turns by scope.
 #[pg_extern]
-fn caliber_turn_get_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
+fn caliber_turn_get_by_scope(scope_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match turn_heap::turn_get_by_scope_heap(scp_id) {
+    match turn_heap::turn_get_by_scope_heap(scp_id, tenant_uuid) {
         Ok(turns) => {
             let json_turns: Vec<serde_json::Value> = turns
                 .into_iter()
-                .map(|t| {
+                .map(|row| {
+                    let t = row.turn;
                     serde_json::json!({
                         "turn_id": t.turn_id.to_string(),
                         "scope_id": t.scope_id.to_string(),
@@ -1805,6 +2308,7 @@ fn caliber_turn_get_by_scope(scope_id: pgrx::Uuid) -> pgrx::JsonB {
                         "tool_calls": t.tool_calls,
                         "tool_results": t.tool_results,
                         "metadata": t.metadata,
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -1900,6 +2404,7 @@ fn caliber_lock_acquire(
     timeout_ms: i64,
     mode: &str,
     level: Option<&str>,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     let agent = Uuid::from_bytes(*agent_id.as_bytes());
     let resource = Uuid::from_bytes(*resource_id.as_bytes());
@@ -1937,6 +2442,8 @@ fn caliber_lock_acquire(
         let now = Utc::now();
         let expires_at = now + chrono::Duration::milliseconds(timeout_ms);
 
+        let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
         let result = lock_heap::lock_acquire_heap(
             lock_id,
             resource_type,
@@ -1944,6 +2451,7 @@ fn caliber_lock_acquire(
             agent,
             expires_at,
             lock_mode,
+            tenant_uuid,
         );
 
         match result {
@@ -1966,12 +2474,13 @@ fn caliber_lock_acquire(
 /// Release an advisory lock.
 /// Only works for session-level locks. Transaction locks auto-release.
 #[pg_extern]
-fn caliber_lock_release(lock_id: pgrx::Uuid) -> bool {
+fn caliber_lock_release(lock_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     let lid = Uuid::from_bytes(*lock_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Get lock info using direct heap operations
-    let lock_info = match lock_heap::lock_get_heap(lid) {
-        Ok(Some(lock)) => Some((lock.resource_type, lock.resource_id, lock.mode)),
+    let lock_info = match lock_heap::lock_get_heap(lid, tenant_uuid) {
+        Ok(Some(row)) => Some((row.lock.resource_type, row.lock.resource_id, row.lock.mode)),
         Ok(None) => None,
         Err(e) => {
             pgrx::warning!("CALIBER: {:?}", e);
@@ -1987,7 +2496,7 @@ fn caliber_lock_release(lock_id: pgrx::Uuid) -> bool {
         release_advisory_lock(lock_key, exclusive, true); // session_lock=true
 
         // Delete lock record using direct heap operations
-        match lock_heap::lock_release_heap(lid) {
+        match lock_heap::lock_release_heap(lid, tenant_uuid) {
             Ok(deleted) => deleted,
             Err(e) => {
                 pgrx::warning!("CALIBER: {:?}", e);
@@ -2007,20 +2516,26 @@ fn caliber_lock_release(lock_id: pgrx::Uuid) -> bool {
 
 /// Check if a resource is locked.
 #[pg_extern]
-fn caliber_lock_check(resource_type: &str, resource_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_lock_check(
+    resource_type: &str,
+    resource_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> Option<pgrx::JsonB> {
     let resource = Uuid::from_bytes(*resource_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Query using direct heap operations
-    match lock_heap::lock_list_by_resource_heap(resource_type, resource) {
+    match lock_heap::lock_list_by_resource_heap(resource_type, resource, tenant_uuid) {
         Ok(locks) => {
             // Filter for non-expired locks
             let now = Utc::now();
             let active_locks: Vec<_> = locks
                 .into_iter()
-                .filter(|lock| lock.expires_at > now)
+                .filter(|row| row.lock.expires_at > now)
                 .collect();
             
-            active_locks.first().map(|lock| {
+            active_locks.first().map(|row| {
+                let lock = &row.lock;
                 pgrx::JsonB(serde_json::json!({
                     "lock_id": lock.lock_id.to_string(),
                     "resource_type": &lock.resource_type,
@@ -2032,6 +2547,7 @@ fn caliber_lock_check(resource_type: &str, resource_id: pgrx::Uuid) -> Option<pg
                         LockMode::Exclusive => "exclusive",
                         LockMode::Shared => "shared",
                     },
+                    "tenant_id": row.tenant_id.map(|id| id.to_string()),
                 }))
             })
         }
@@ -2044,12 +2560,14 @@ fn caliber_lock_check(resource_type: &str, resource_id: pgrx::Uuid) -> Option<pg
 
 /// Get lock by ID.
 #[pg_extern]
-fn caliber_lock_get(lock_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_lock_get(lock_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let lid = Uuid::from_bytes(*lock_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Get lock using direct heap operations
-    match lock_heap::lock_get_heap(lid) {
-        Ok(Some(lock)) => {
+    match lock_heap::lock_get_heap(lid, tenant_uuid) {
+        Ok(Some(row)) => {
+            let lock = row.lock;
             Some(pgrx::JsonB(serde_json::json!({
                 "lock_id": lock.lock_id.to_string(),
                 "resource_type": lock.resource_type,
@@ -2061,6 +2579,7 @@ fn caliber_lock_get(lock_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     LockMode::Exclusive => "exclusive",
                     LockMode::Shared => "shared",
                 },
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -2073,10 +2592,11 @@ fn caliber_lock_get(lock_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 
 /// Extend a lock's expiration time by the given milliseconds.
 #[pg_extern]
-fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64) -> bool {
+fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64, tenant_id: pgrx::Uuid) -> bool {
     let lid = Uuid::from_bytes(*lock_id.as_bytes());
-    let lock = match lock_heap::lock_get_heap(lid) {
-        Ok(Some(lock)) => lock,
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+    let row = match lock_heap::lock_get_heap(lid, tenant_uuid) {
+        Ok(Some(lock_row)) => lock_row,
         Ok(None) => return false,
         Err(e) => {
             pgrx::warning!("CALIBER: {:?}", e);
@@ -2084,8 +2604,8 @@ fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64) -> bool {
         }
     };
 
-    let new_expires_at = lock.expires_at + chrono::Duration::milliseconds(additional_ms);
-    match lock_heap::lock_extend_heap(lid, new_expires_at) {
+    let new_expires_at = row.lock.expires_at + chrono::Duration::milliseconds(additional_ms);
+    match lock_heap::lock_extend_heap(lid, new_expires_at, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: {:?}", e);
@@ -2096,12 +2616,14 @@ fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64) -> bool {
 
 /// List all active (non-expired) locks.
 #[pg_extern]
-fn caliber_lock_list_active() -> pgrx::JsonB {
-    match lock_heap::lock_list_active_heap() {
+fn caliber_lock_list_active(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+    match lock_heap::lock_list_active_heap(tenant_uuid) {
         Ok(locks) => {
             let json_locks: Vec<serde_json::Value> = locks
                 .into_iter()
-                .map(|lock| {
+                .map(|row| {
+                    let lock = row.lock;
                     serde_json::json!({
                         "lock_id": lock.lock_id.to_string(),
                         "resource_type": lock.resource_type,
@@ -2113,6 +2635,7 @@ fn caliber_lock_list_active() -> pgrx::JsonB {
                             LockMode::Exclusive => "exclusive",
                             LockMode::Shared => "shared",
                         },
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -2120,6 +2643,42 @@ fn caliber_lock_list_active() -> pgrx::JsonB {
         }
         Err(e) => {
             pgrx::warning!("CALIBER: {:?}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// List all active (non-expired) locks for a tenant.
+#[pg_extern]
+fn caliber_lock_list_active_by_tenant(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
+    match lock_heap::lock_list_active_heap(tenant_uuid) {
+        Ok(locks) => {
+            let json_locks: Vec<serde_json::Value> = locks
+                .into_iter()
+                .map(|row| {
+                    let lock = row.lock;
+                    serde_json::json!({
+                        "lock_id": lock.lock_id.to_string(),
+                        "resource_type": lock.resource_type,
+                        "resource_id": lock.resource_id.to_string(),
+                        "holder_agent_id": lock.holder_agent_id.to_string(),
+                        "acquired_at": lock.acquired_at.to_rfc3339(),
+                        "expires_at": lock.expires_at.to_rfc3339(),
+                        "mode": match lock.mode {
+                            LockMode::Exclusive => "exclusive",
+                            LockMode::Shared => "shared",
+                        },
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+                    })
+                })
+                .collect();
+
+            pgrx::JsonB(serde_json::json!(json_locks))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to list active locks: {}", e);
             pgrx::JsonB(serde_json::json!([]))
         }
     }
@@ -2140,10 +2699,23 @@ fn caliber_message_send(
     to_agent_type: Option<&str>,
     message_type: &str,
     payload: &str,
+    trajectory_id: Option<pgrx::Uuid>,
+    scope_id: Option<pgrx::Uuid>,
+    artifact_ids: Vec<pgrx::Uuid>,
     priority: &str,
+    expires_at: Option<i64>,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     let from_agent = Uuid::from_bytes(*from_agent_id.as_bytes());
     let to_agent = to_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
+    let traj_id = trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
+    let scp_id = scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
+    let artifact_ids: Vec<EntityId> = artifact_ids
+        .into_iter()
+        .map(|u| Uuid::from_bytes(*u.as_bytes()))
+        .collect();
+    let expires_at = expires_at.and_then(|ts| chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0));
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Validate and convert message_type
     let msg_type = match message_type {
@@ -2183,11 +2755,12 @@ fn caliber_message_send(
         to_agent_type,
         message_type: msg_type,
         payload,
-        trajectory_id: None,
-        scope_id: None,
-        artifact_ids: &[],
+        trajectory_id: traj_id,
+        scope_id: scp_id,
+        artifact_ids: &artifact_ids,
         priority: msg_priority,
-        expires_at: None,
+        expires_at,
+        tenant_id: tenant_uuid,
     });
 
     match result {
@@ -2226,12 +2799,14 @@ fn caliber_message_send(
 
 /// Get a message by ID using direct heap operations.
 #[pg_extern]
-fn caliber_message_get(message_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_message_get(message_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let mid = Uuid::from_bytes(*message_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match message_heap::message_get_heap(mid) {
-        Ok(Some(message)) => {
+    match message_heap::message_get_heap(mid, tenant_uuid) {
+        Ok(Some(row)) => {
+            let message = row.message;
             Some(pgrx::JsonB(serde_json::json!({
                 "message_id": message.message_id.to_string(),
                 "from_agent_id": message.from_agent_id.to_string(),
@@ -2261,6 +2836,7 @@ fn caliber_message_get(message_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                     MessagePriority::Critical => "critical",
                 },
                 "expires_at": message.expires_at.map(|t| t.to_rfc3339()),
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -2273,7 +2849,7 @@ fn caliber_message_get(message_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 
 /// Mark a message as delivered.
 #[pg_extern]
-fn caliber_message_mark_delivered(message_id: pgrx::Uuid) -> bool {
+fn caliber_message_mark_delivered(message_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
 
@@ -2285,9 +2861,10 @@ fn caliber_message_mark_delivered(message_id: pgrx::Uuid) -> bool {
         let params: &[DatumWithOid<'_>] = &[
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(pg_mid, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         let table = client.update(
-            "UPDATE caliber_message SET delivered_at = $1 WHERE message_id = $2 AND delivered_at IS NULL",
+            "UPDATE caliber_message SET delivered_at = $1 WHERE message_id = $2 AND tenant_id = $3 AND delivered_at IS NULL",
             None,
             params,
         )?;
@@ -2311,11 +2888,12 @@ fn caliber_message_mark_delivered(message_id: pgrx::Uuid) -> bool {
 
 /// Mark a message as acknowledged using direct heap operations.
 #[pg_extern]
-fn caliber_message_mark_acknowledged(message_id: pgrx::Uuid) -> bool {
+fn caliber_message_mark_acknowledged(message_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     let mid = Uuid::from_bytes(*message_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match message_heap::message_acknowledge_heap(mid) {
+    match message_heap::message_acknowledge_heap(mid, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to acknowledge message: {}", e);
@@ -2328,11 +2906,16 @@ fn caliber_message_mark_acknowledged(message_id: pgrx::Uuid) -> bool {
 /// Returns messages where delivered_at IS NULL and not expired, ordered by priority.
 /// Note: agent_type is kept for API compatibility but not currently used in filtering.
 #[pg_extern]
-fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx::JsonB {
+fn caliber_message_get_pending(
+    agent_id: pgrx::Uuid,
+    _agent_type: &str,
+    tenant_id: pgrx::Uuid,
+) -> pgrx::JsonB {
     let aid = Uuid::from_bytes(*agent_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations to get messages for this agent
-    let messages_result = message_heap::message_list_for_agent_heap(aid);
+    let messages_result = message_heap::message_list_for_agent_heap(aid, tenant_uuid);
     
     match messages_result {
         Ok(messages) => {
@@ -2341,9 +2924,9 @@ fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx:
             // Filter for pending messages (delivered_at IS NULL and not expired)
             let mut pending: Vec<_> = messages
                 .into_iter()
-                .filter(|m| {
-                    m.delivered_at.is_none() && 
-                    (m.expires_at.is_none() || m.expires_at.unwrap() > now)
+                .filter(|row| {
+                    row.message.delivered_at.is_none() && 
+                    (row.message.expires_at.is_none() || row.message.expires_at.unwrap() > now)
                 })
                 .collect();
             
@@ -2356,15 +2939,16 @@ fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx:
                     MessagePriority::Low => 4,
                 };
                 
-                priority_order(&a.priority)
-                    .cmp(&priority_order(&b.priority))
-                    .then_with(|| a.created_at.cmp(&b.created_at))
+                priority_order(&a.message.priority)
+                    .cmp(&priority_order(&b.message.priority))
+                    .then_with(|| a.message.created_at.cmp(&b.message.created_at))
             });
             
             // Convert to JSON
             let json_messages: Vec<serde_json::Value> = pending
                 .into_iter()
-                .map(|m| {
+                .map(|row| {
+                    let m = row.message;
                     serde_json::json!({
                         "message_id": m.message_id.to_string(),
                         "from_agent_id": m.from_agent_id.to_string(),
@@ -2394,6 +2978,7 @@ fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx:
                             MessagePriority::Critical => "critical",
                         },
                         "expires_at": m.expires_at.map(|t| t.to_rfc3339()),
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -2402,6 +2987,168 @@ fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx:
         }
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to get pending messages: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
+/// List messages using filter JSON.
+#[pg_extern]
+fn caliber_message_list(filters: pgrx::JsonB) -> pgrx::JsonB {
+    message_list_internal(&filters.0, None)
+}
+
+/// List messages using filter JSON with tenant isolation.
+#[pg_extern]
+fn caliber_message_list_by_tenant(filters: pgrx::JsonB) -> pgrx::JsonB {
+    let tenant_id = filters
+        .0
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+    message_list_internal(&filters.0, tenant_id)
+}
+
+fn message_list_internal(filters: &serde_json::Value, tenant_id: Option<Uuid>) -> pgrx::JsonB {
+    let parse_uuid = |key: &str| {
+        filters.get(key)
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+    };
+
+    let from_agent_id = parse_uuid("from_agent_id");
+    let to_agent_id = parse_uuid("to_agent_id");
+    let trajectory_id = parse_uuid("trajectory_id");
+    let message_type = filters.get("message_type").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let priority = filters.get("priority").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let to_agent_type = filters.get("to_agent_type").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let undelivered_only = filters.get("undelivered_only").and_then(|v| v.as_bool()).unwrap_or(false);
+    let unacknowledged_only = filters.get("unacknowledged_only").and_then(|v| v.as_bool()).unwrap_or(false);
+    let limit = filters.get("limit").and_then(|v| v.as_i64()).unwrap_or(100).max(0) as usize;
+    let offset = filters.get("offset").and_then(|v| v.as_i64()).unwrap_or(0).max(0) as usize;
+
+    let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let (sql, params) = if let Some(tenant_id) = tenant_id {
+            (
+                "SELECT message_id, from_agent_id, to_agent_id, to_agent_type, message_type, payload,
+                        trajectory_id, scope_id, artifact_ids, created_at, delivered_at, acknowledged_at,
+                        priority, expires_at, tenant_id
+                 FROM caliber_message
+                 WHERE tenant_id = $1
+                 ORDER BY created_at DESC",
+                vec![uuid_datum(tenant_id)],
+            )
+        } else {
+            (
+                "SELECT message_id, from_agent_id, to_agent_id, to_agent_type, message_type, payload,
+                        trajectory_id, scope_id, artifact_ids, created_at, delivered_at, acknowledged_at,
+                        priority, expires_at, tenant_id
+                 FROM caliber_message
+                 ORDER BY created_at DESC",
+                vec![],
+            )
+        };
+
+        let table = client.select(sql, None, &params)?;
+        let mut messages = Vec::new();
+
+        for row in table {
+            let message_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+            let from_agent_id_row: Option<pgrx::Uuid> = row.get(2).ok().flatten();
+            let to_agent_id_row: Option<pgrx::Uuid> = row.get(3).ok().flatten();
+            let to_agent_type_row: Option<String> = row.get(4).ok().flatten();
+            let message_type_row: Option<String> = row.get(5).ok().flatten();
+            let payload_row: Option<String> = row.get(6).ok().flatten();
+            let trajectory_id_row: Option<pgrx::Uuid> = row.get(7).ok().flatten();
+            let scope_id_row: Option<pgrx::Uuid> = row.get(8).ok().flatten();
+            let artifact_ids_row: Option<Vec<pgrx::Uuid>> = row.get(9).ok().flatten();
+            let created_at_row: Option<TimestampWithTimeZone> = row.get(10).ok().flatten();
+            let delivered_at_row: Option<TimestampWithTimeZone> = row.get(11).ok().flatten();
+            let acknowledged_at_row: Option<TimestampWithTimeZone> = row.get(12).ok().flatten();
+            let priority_row: Option<String> = row.get(13).ok().flatten();
+            let expires_at_row: Option<TimestampWithTimeZone> = row.get(14).ok().flatten();
+            let tenant_id_row: Option<pgrx::Uuid> = row.get(15).ok().flatten();
+
+            let from_agent_uuid = from_agent_id_row.map(|u| Uuid::from_bytes(*u.as_bytes()));
+            let to_agent_uuid = to_agent_id_row.map(|u| Uuid::from_bytes(*u.as_bytes()));
+            let traj_uuid = trajectory_id_row.map(|u| Uuid::from_bytes(*u.as_bytes()));
+
+            if let Some(filter) = from_agent_id {
+                if from_agent_uuid != Some(filter) {
+                    continue;
+                }
+            }
+            if let Some(filter) = to_agent_id {
+                if to_agent_uuid != Some(filter) {
+                    continue;
+                }
+            }
+            if let Some(filter) = trajectory_id {
+                if traj_uuid != Some(filter) {
+                    continue;
+                }
+            }
+            if let Some(filter) = &message_type {
+                if message_type_row.as_deref() != Some(filter.as_str()) {
+                    continue;
+                }
+            }
+            if let Some(filter) = &priority {
+                if priority_row.as_deref() != Some(filter.as_str()) {
+                    continue;
+                }
+            }
+            if let Some(filter) = &to_agent_type {
+                if to_agent_type_row.as_deref() != Some(filter.as_str()) {
+                    continue;
+                }
+            }
+            if undelivered_only && delivered_at_row.is_some() {
+                continue;
+            }
+            if unacknowledged_only && acknowledged_at_row.is_some() {
+                continue;
+            }
+
+            let json = serde_json::json!({
+                "message_id": message_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "from_agent_id": from_agent_uuid.map(|u| u.to_string()),
+                "to_agent_id": to_agent_uuid.map(|u| u.to_string()),
+                "to_agent_type": to_agent_type_row,
+                "message_type": message_type_row,
+                "payload": payload_row,
+                "trajectory_id": trajectory_id_row.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "scope_id": scope_id_row.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "artifact_ids": artifact_ids_row
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|u| Uuid::from_bytes(*u.as_bytes()).to_string())
+                    .collect::<Vec<_>>(),
+                "created_at": created_at_row.map(|t| t.to_string()),
+                "delivered_at": delivered_at_row.map(|t| t.to_string()),
+                "acknowledged_at": acknowledged_at_row.map(|t| t.to_string()),
+                "priority": priority_row,
+                "expires_at": expires_at_row.map(|t| t.to_string()),
+                "tenant_id": tenant_id_row.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+            });
+
+            messages.push(json);
+        }
+
+        Ok(messages)
+    });
+
+    match result {
+        Ok(messages) => {
+            let sliced: Vec<serde_json::Value> = messages
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .collect();
+            pgrx::JsonB(serde_json::json!(sliced))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to list messages: {}", e);
             pgrx::JsonB(serde_json::json!([]))
         }
     }
@@ -2417,6 +3164,7 @@ fn caliber_message_get_pending(agent_id: pgrx::Uuid, _agent_type: &str) -> pgrx:
 fn caliber_agent_register(
     agent_type: &str,
     capabilities: pgrx::JsonB,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
     // Record operation for metrics
     storage_write().record_op("agent_register");
@@ -2428,6 +3176,8 @@ fn caliber_agent_register(
     let agent_id = agent.agent_id;
 
     // Use direct heap operations instead of SPI
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     let result = agent_heap::agent_register_heap(
         agent_id,
         agent_type,
@@ -2435,6 +3185,7 @@ fn caliber_agent_register(
         &agent.memory_access,
         &agent.can_delegate_to,
         agent.reports_to,
+        tenant_uuid,
     );
 
     if let Err(e) = result {
@@ -2446,12 +3197,14 @@ fn caliber_agent_register(
 
 /// Get an agent by ID.
 #[pg_extern]
-fn caliber_agent_get(agent_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_agent_get(agent_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*agent_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match agent_heap::agent_get_heap(entity_id) {
-        Ok(Some(agent)) => {
+    match agent_heap::agent_get_heap(entity_id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let agent = row.agent;
             // Convert Agent to JSON
             let agent_json = serde_json::json!({
                 "agent_id": agent.agent_id.to_string(),
@@ -2470,6 +3223,7 @@ fn caliber_agent_get(agent_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "reports_to": agent.reports_to.map(|id| id.to_string()),
                 "created_at": agent.created_at.to_rfc3339(),
                 "last_heartbeat": agent.last_heartbeat.to_rfc3339(),
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             });
             Some(pgrx::JsonB(agent_json))
         }
@@ -2483,8 +3237,9 @@ fn caliber_agent_get(agent_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 
 /// Update agent status.
 #[pg_extern]
-fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str) -> bool {
+fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str, tenant_id: pgrx::Uuid) -> bool {
     let entity_id = Uuid::from_bytes(*agent_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     
     // Validate and convert status
     let agent_status = match status {
@@ -2499,7 +3254,7 @@ fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str) -> bool {
     };
 
     // Use direct heap operations instead of SPI
-    match agent_heap::agent_set_status_heap(entity_id, agent_status) {
+    match agent_heap::agent_set_status_heap(entity_id, agent_status, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to update agent status: {}", e);
@@ -2510,11 +3265,12 @@ fn caliber_agent_set_status(agent_id: pgrx::Uuid, status: &str) -> bool {
 
 /// Update agent heartbeat.
 #[pg_extern]
-fn caliber_agent_heartbeat(agent_id: pgrx::Uuid) -> bool {
+fn caliber_agent_heartbeat(agent_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     let entity_id = Uuid::from_bytes(*agent_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match agent_heap::agent_heartbeat_heap(entity_id) {
+    match agent_heap::agent_heartbeat_heap(entity_id, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to update agent heartbeat: {}", e);
@@ -2525,25 +3281,33 @@ fn caliber_agent_heartbeat(agent_id: pgrx::Uuid) -> bool {
 
 /// List agents by type.
 #[pg_extern]
-fn caliber_agent_list_by_type(agent_type: &str) -> pgrx::JsonB {
+fn caliber_agent_list_by_type(agent_type: &str, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     // Use direct heap operations instead of SPI
-    match agent_heap::agent_list_by_type_heap(agent_type) {
+    match agent_heap::agent_list_by_type_heap(agent_type, tenant_uuid) {
         Ok(agents) => {
             let json_agents: Vec<serde_json::Value> = agents
                 .into_iter()
-                .map(|agent| {
+                .map(|row| {
+                    let agent = row.agent;
                     serde_json::json!({
                         "agent_id": agent.agent_id.to_string(),
                         "agent_type": agent.agent_type,
                         "capabilities": agent.capabilities,
+                        "memory_access": serde_json::to_value(&agent.memory_access).unwrap_or(serde_json::json!({})),
                         "status": match agent.status {
                             AgentStatus::Idle => "idle",
                             AgentStatus::Active => "active",
                             AgentStatus::Blocked => "blocked",
                             AgentStatus::Failed => "failed",
                         },
+                        "current_trajectory_id": agent.current_trajectory_id.map(|id| id.to_string()),
+                        "current_scope_id": agent.current_scope_id.map(|id| id.to_string()),
+                        "can_delegate_to": agent.can_delegate_to,
+                        "reports_to": agent.reports_to.map(|id| id.to_string()),
                         "created_at": agent.created_at.to_rfc3339(),
                         "last_heartbeat": agent.last_heartbeat.to_rfc3339(),
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -2559,13 +3323,14 @@ fn caliber_agent_list_by_type(agent_type: &str) -> pgrx::JsonB {
 
 /// List all active agents.
 #[pg_extern]
-fn caliber_agent_list_active() -> pgrx::JsonB {
+fn caliber_agent_list_active(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
     Spi::connect(|client| {
         let result = client.select(
-            "SELECT agent_id, agent_type, capabilities, status, created_at, last_heartbeat
-             FROM caliber_agent WHERE status IN ('active', 'idle')",
+            "SELECT agent_id, agent_type, capabilities, memory_access, status, current_trajectory_id, current_scope_id,
+                    can_delegate_to, reports_to, created_at, last_heartbeat, tenant_id
+             FROM caliber_agent WHERE status IN ('active', 'idle') AND tenant_id = $1",
             None,
-            &[],
+            &[pgrx_uuid_datum(tenant_id)],
         );
 
         match result {
@@ -2575,15 +3340,147 @@ fn caliber_agent_list_active() -> pgrx::JsonB {
                         "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
                         "agent_type": row.get::<String>(2).ok().flatten(),
                         "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
-                        "status": row.get::<String>(4).ok().flatten(),
-                        "created_at": row.get::<TimestampWithTimeZone>(5).ok().flatten().map(|t| t.to_string()),
-                        "last_heartbeat": row.get::<TimestampWithTimeZone>(6).ok().flatten().map(|t| t.to_string()),
+                        "memory_access": row.get::<pgrx::JsonB>(4).ok().flatten().map(|j| j.0).unwrap_or(serde_json::json!({})),
+                        "status": row.get::<String>(5).ok().flatten(),
+                        "current_trajectory_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "current_scope_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "can_delegate_to": row.get::<Vec<String>>(8).ok().flatten().unwrap_or_default(),
+                        "reports_to": row.get::<pgrx::Uuid>(9).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": row.get::<TimestampWithTimeZone>(10).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                        "tenant_id": row.get::<pgrx::Uuid>(12).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
                     })
                 }).collect();
                 pgrx::JsonB(serde_json::json!(agents))
             }
             Err(e) => {
                 pgrx::warning!("CALIBER: Failed to list active agents: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
+}
+
+/// List agents by type with tenant isolation.
+#[pg_extern]
+fn caliber_agent_list_by_type_and_tenant(agent_type: &str, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, memory_access, status, current_trajectory_id, current_scope_id,
+                    can_delegate_to, reports_to, created_at, last_heartbeat, tenant_id
+             FROM caliber_agent
+             WHERE agent_type = $1 AND tenant_id = $2",
+            None,
+            &[
+                text_datum(agent_type),
+                pgrx_uuid_datum(tenant_id),
+            ],
+        );
+
+        match result {
+            Ok(table) => {
+                let agents: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "memory_access": row.get::<pgrx::JsonB>(4).ok().flatten().map(|j| j.0).unwrap_or(serde_json::json!({})),
+                        "status": row.get::<String>(5).ok().flatten(),
+                        "current_trajectory_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "current_scope_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "can_delegate_to": row.get::<Vec<String>>(8).ok().flatten().unwrap_or_default(),
+                        "reports_to": row.get::<pgrx::Uuid>(9).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": row.get::<TimestampWithTimeZone>(10).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                        "tenant_id": row.get::<pgrx::Uuid>(12).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(agents))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list agents by type: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
+}
+
+/// List active agents for a tenant.
+#[pg_extern]
+fn caliber_agent_list_active_by_tenant(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, memory_access, status, current_trajectory_id, current_scope_id,
+                    can_delegate_to, reports_to, created_at, last_heartbeat, tenant_id
+             FROM caliber_agent
+             WHERE status IN ('active', 'idle') AND tenant_id = $1",
+            None,
+            &[pgrx_uuid_datum(tenant_id)],
+        );
+
+        match result {
+            Ok(table) => {
+                let agents: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "memory_access": row.get::<pgrx::JsonB>(4).ok().flatten().map(|j| j.0).unwrap_or(serde_json::json!({})),
+                        "status": row.get::<String>(5).ok().flatten(),
+                        "current_trajectory_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "current_scope_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "can_delegate_to": row.get::<Vec<String>>(8).ok().flatten().unwrap_or_default(),
+                        "reports_to": row.get::<pgrx::Uuid>(9).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": row.get::<TimestampWithTimeZone>(10).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                        "tenant_id": row.get::<pgrx::Uuid>(12).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(agents))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list active agents: {}", e);
+                pgrx::JsonB(serde_json::json!([]))
+            }
+        }
+    })
+}
+
+/// List all agents for a tenant.
+#[pg_extern]
+fn caliber_agent_list_all_by_tenant(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    Spi::connect(|client| {
+        let result = client.select(
+            "SELECT agent_id, agent_type, capabilities, memory_access, status, current_trajectory_id, current_scope_id,
+                    can_delegate_to, reports_to, created_at, last_heartbeat, tenant_id
+             FROM caliber_agent
+             WHERE tenant_id = $1",
+            None,
+            &[pgrx_uuid_datum(tenant_id)],
+        );
+
+        match result {
+            Ok(table) => {
+                let agents: Vec<serde_json::Value> = table.into_iter().map(|row| {
+                    serde_json::json!({
+                        "agent_id": row.get::<pgrx::Uuid>(1).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "agent_type": row.get::<String>(2).ok().flatten(),
+                        "capabilities": row.get::<Vec<String>>(3).ok().flatten().unwrap_or_default(),
+                        "memory_access": row.get::<pgrx::JsonB>(4).ok().flatten().map(|j| j.0).unwrap_or(serde_json::json!({})),
+                        "status": row.get::<String>(5).ok().flatten(),
+                        "current_trajectory_id": row.get::<pgrx::Uuid>(6).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "current_scope_id": row.get::<pgrx::Uuid>(7).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "can_delegate_to": row.get::<Vec<String>>(8).ok().flatten().unwrap_or_default(),
+                        "reports_to": row.get::<pgrx::Uuid>(9).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                        "created_at": row.get::<TimestampWithTimeZone>(10).ok().flatten().map(|t| t.to_string()),
+                        "last_heartbeat": row.get::<TimestampWithTimeZone>(11).ok().flatten().map(|t| t.to_string()),
+                        "tenant_id": row.get::<pgrx::Uuid>(12).ok().flatten().map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    })
+                }).collect();
+                pgrx::JsonB(serde_json::json!(agents))
+            }
+            Err(e) => {
+                pgrx::warning!("CALIBER: Failed to list agents: {}", e);
                 pgrx::JsonB(serde_json::json!([]))
             }
         }
@@ -2603,6 +3500,7 @@ fn caliber_delegation_create(
     delegatee_agent_type: Option<&str>,
     task_description: &str,
     parent_trajectory_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
     let delegator = Uuid::from_bytes(*delegator_agent_id.as_bytes());
     let parent_traj = Uuid::from_bytes(*parent_trajectory_id.as_bytes());
@@ -2612,6 +3510,8 @@ fn caliber_delegation_create(
     let delegation_id = new_entity_id();
 
     // Use direct heap operations instead of SPI
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     let result = delegation_heap::delegation_create_heap(delegation_heap::DelegationCreateParams {
         delegation_id,
         delegator_agent_id: delegator,
@@ -2625,6 +3525,7 @@ fn caliber_delegation_create(
         additional_context: None,
         constraints: "{}",
         deadline: None,
+        tenant_id: tenant_uuid,
     });
 
     if let Err(e) = result {
@@ -2636,12 +3537,14 @@ fn caliber_delegation_create(
 
 /// Get a delegation by ID.
 #[pg_extern]
-fn caliber_delegation_get(delegation_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_delegation_get(delegation_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*delegation_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations instead of SPI
-    match delegation_heap::delegation_get_heap(entity_id) {
-        Ok(Some(delegation)) => {
+    match delegation_heap::delegation_get_heap(entity_id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let delegation = row.delegation;
             // Convert DelegatedTask to JSON
             Some(pgrx::JsonB(serde_json::json!({
                 "delegation_id": delegation.delegation_id.to_string(),
@@ -2668,6 +3571,7 @@ fn caliber_delegation_get(delegation_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "created_at": delegation.created_at.to_rfc3339(),
                 "accepted_at": delegation.accepted_at.map(|dt| dt.to_rfc3339()),
                 "completed_at": delegation.completed_at.map(|dt| dt.to_rfc3339()),
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             })))
         }
         Ok(None) => None,
@@ -2686,13 +3590,15 @@ fn caliber_delegation_accept(
     delegation_id: pgrx::Uuid,
     delegatee_agent_id: pgrx::Uuid,
     child_trajectory_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
 ) -> bool {
     let entity_id = Uuid::from_bytes(*delegation_id.as_bytes());
     let agent_id = Uuid::from_bytes(*delegatee_agent_id.as_bytes());
     let traj_id = Uuid::from_bytes(*child_trajectory_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations - pass all parameters
-    match delegation_heap::delegation_accept_heap(entity_id, agent_id, traj_id) {
+    match delegation_heap::delegation_accept_heap(entity_id, agent_id, traj_id, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to accept delegation: {}", e);
@@ -2707,8 +3613,10 @@ fn caliber_delegation_complete(
     delegation_id: pgrx::Uuid,
     success: bool,
     summary: &str,
+    tenant_id: pgrx::Uuid,
 ) -> bool {
     let entity_id = Uuid::from_bytes(*delegation_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     
     // Build DelegationResult from parameters
     let result = if success {
@@ -2730,7 +3638,7 @@ fn caliber_delegation_complete(
     };
 
     // Use direct heap operations instead of SPI
-    match delegation_heap::delegation_complete_heap(entity_id, &result) {
+    match delegation_heap::delegation_complete_heap(entity_id, &result, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to complete delegation: {}", e);
@@ -2741,18 +3649,20 @@ fn caliber_delegation_complete(
 
 /// List pending delegations for an agent type.
 #[pg_extern]
-fn caliber_delegation_list_pending(agent_type: &str) -> pgrx::JsonB {
+fn caliber_delegation_list_pending(agent_type: &str, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     // Use direct heap operations instead of SPI
-    match delegation_heap::delegation_list_pending_heap() {
+    match delegation_heap::delegation_list_pending_heap(tenant_uuid) {
         Ok(delegations) => {
             // Filter by agent type (matching agent_type or wildcard "*")
             let filtered: Vec<serde_json::Value> = delegations
                 .into_iter()
-                .filter(|d| {
-                    d.delegatee_agent_type.as_deref() == Some(agent_type) ||
-                    d.delegatee_agent_type.as_deref() == Some("*")
+                .filter(|row| {
+                    row.delegation.delegatee_agent_type.as_deref() == Some(agent_type) ||
+                    row.delegation.delegatee_agent_type.as_deref() == Some("*")
                 })
-                .map(|d| {
+                .map(|row| {
+                    let d = row.delegation;
                     serde_json::json!({
                         "delegation_id": d.delegation_id.to_string(),
                         "delegator_agent_id": d.delegator_agent_id.to_string(),
@@ -2763,6 +3673,7 @@ fn caliber_delegation_list_pending(agent_type: &str) -> pgrx::JsonB {
                         "child_trajectory_id": d.child_trajectory_id.map(|id| id.to_string()),
                         "status": "pending",
                         "created_at": d.created_at.to_rfc3339(),
+                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
                     })
                 })
                 .collect();
@@ -2791,6 +3702,7 @@ fn caliber_handoff_create(
     scope_id: pgrx::Uuid,
     context_snapshot_id: pgrx::Uuid,
     reason: &str,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
     let from_agent = Uuid::from_bytes(*from_agent_id.as_bytes());
     let to_agent = to_agent_id.map(|id| Uuid::from_bytes(*id.as_bytes()));
@@ -2815,6 +3727,8 @@ fn caliber_handoff_create(
 
     let handoff_id = caliber_core::new_entity_id();
 
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     // Insert via direct heap operations
     match handoff_heap::handoff_create_heap(handoff_heap::HandoffCreateParams {
         handoff_id,
@@ -2829,6 +3743,7 @@ fn caliber_handoff_create(
         blockers: &[],
         open_questions: &[],
         reason: handoff_reason,
+        tenant_id: tenant_uuid,
     }) {
         Ok(_) => pgrx::Uuid::from_bytes(*handoff_id.as_bytes()),
         Err(e) => {
@@ -2839,11 +3754,13 @@ fn caliber_handoff_create(
 
 /// Get a handoff by ID.
 #[pg_extern]
-fn caliber_handoff_get(handoff_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_handoff_get(handoff_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let id = Uuid::from_bytes(*handoff_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     
-    match handoff_heap::handoff_get_heap(id) {
-        Ok(Some(handoff)) => {
+    match handoff_heap::handoff_get_heap(id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let handoff = row.handoff;
             let json = serde_json::json!({
                 "handoff_id": handoff.handoff_id.to_string(),
                 "from_agent_id": handoff.from_agent_id.to_string(),
@@ -2874,6 +3791,7 @@ fn caliber_handoff_get(handoff_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "initiated_at": handoff.initiated_at.to_rfc3339(),
                 "accepted_at": handoff.accepted_at.map(|t| t.to_rfc3339()),
                 "completed_at": handoff.completed_at.map(|t| t.to_rfc3339()),
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             });
             Some(pgrx::JsonB(json))
         }
@@ -2889,12 +3807,17 @@ fn caliber_handoff_get(handoff_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 ///
 /// Records the agent accepting the handoff and updates the handoff status.
 #[pg_extern]
-fn caliber_handoff_accept(handoff_id: pgrx::Uuid, accepting_agent_id: pgrx::Uuid) -> bool {
+fn caliber_handoff_accept(
+    handoff_id: pgrx::Uuid,
+    accepting_agent_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> bool {
     let id = Uuid::from_bytes(*handoff_id.as_bytes());
     let agent_id = Uuid::from_bytes(*accepting_agent_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
     // Use direct heap operations - pass accepting agent ID
-    match handoff_heap::handoff_accept_heap(id, agent_id) {
+    match handoff_heap::handoff_accept_heap(id, agent_id, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to accept handoff: {}", e);
@@ -2905,10 +3828,11 @@ fn caliber_handoff_accept(handoff_id: pgrx::Uuid, accepting_agent_id: pgrx::Uuid
 
 /// Complete a handoff.
 #[pg_extern]
-fn caliber_handoff_complete(handoff_id: pgrx::Uuid) -> bool {
+fn caliber_handoff_complete(handoff_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     let id = Uuid::from_bytes(*handoff_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     
-    match handoff_heap::handoff_complete_heap(id) {
+    match handoff_heap::handoff_complete_heap(id, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to complete handoff: {}", e);
@@ -2930,6 +3854,7 @@ fn caliber_conflict_create(
     item_a_id: pgrx::Uuid,
     item_b_type: &str,
     item_b_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
     let a_id = Uuid::from_bytes(*item_a_id.as_bytes());
     let b_id = Uuid::from_bytes(*item_b_id.as_bytes());
@@ -2951,6 +3876,8 @@ fn caliber_conflict_create(
     let conflict_id = conflict.conflict_id;
 
     // Insert via direct heap operations (NO SQL)
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     match conflict_heap::conflict_create_heap(conflict_heap::ConflictCreateParams {
         conflict_id,
         conflict_type: c_type,
@@ -2961,6 +3888,7 @@ fn caliber_conflict_create(
         agent_a_id: None,
         agent_b_id: None,
         trajectory_id: None,
+        tenant_id: tenant_uuid,
     }) {
         Ok(_) => {},
         Err(e) => {
@@ -2973,12 +3901,14 @@ fn caliber_conflict_create(
 
 /// Get a conflict by ID.
 #[pg_extern]
-fn caliber_conflict_get(conflict_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_conflict_get(conflict_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let id = Uuid::from_bytes(*conflict_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     
     // Get via direct heap operations (NO SQL)
-    match conflict_heap::conflict_get_heap(id) {
-        Ok(Some(conflict)) => {
+    match conflict_heap::conflict_get_heap(id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let conflict = row.conflict;
             let status_str = match conflict.status {
                 ConflictStatus::Detected => "detected",
                 ConflictStatus::Resolving => "resolving",
@@ -3006,6 +3936,7 @@ fn caliber_conflict_get(conflict_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "resolution": conflict.resolution.as_ref().map(safe_to_json),
                 "detected_at": conflict.detected_at.to_rfc3339(),
                 "resolved_at": conflict.resolved_at.map(|t| t.to_rfc3339()),
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             });
             Some(pgrx::JsonB(json))
         }
@@ -3024,10 +3955,12 @@ fn caliber_conflict_resolve(
     strategy: &str,
     winner: Option<&str>,
     reason: &str,
+    tenant_id: pgrx::Uuid,
 ) -> bool {
     use caliber_agents::ConflictResolutionRecord;
 
     let id = Uuid::from_bytes(*conflict_id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     
     // Parse strategy
     let resolution_strategy = match strategy {
@@ -3052,7 +3985,7 @@ fn caliber_conflict_resolve(
     };
     
     // Resolve via direct heap operations (NO SQL)
-    match conflict_heap::conflict_resolve_heap(id, &resolution) {
+    match conflict_heap::conflict_resolve_heap(id, &resolution, tenant_uuid) {
         Ok(updated) => updated,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to resolve conflict: {}", e);
@@ -3063,11 +3996,13 @@ fn caliber_conflict_resolve(
 
 /// List unresolved conflicts.
 #[pg_extern]
-fn caliber_conflict_list_unresolved() -> pgrx::JsonB {
+fn caliber_conflict_list_unresolved(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
     // List via direct heap operations (NO SQL)
-    match conflict_heap::conflict_list_pending_heap() {
+    match conflict_heap::conflict_list_pending_heap(tenant_uuid) {
         Ok(conflicts) => {
-            let conflicts_json: Vec<serde_json::Value> = conflicts.into_iter().map(|conflict| {
+            let conflicts_json: Vec<serde_json::Value> = conflicts.into_iter().map(|row| {
+                let conflict = row.conflict;
                 serde_json::json!({
                     "conflict_id": conflict.conflict_id.to_string(),
                     "conflict_type": match conflict.conflict_type {
@@ -3088,6 +4023,7 @@ fn caliber_conflict_list_unresolved() -> pgrx::JsonB {
                         ConflictStatus::Escalated => "escalated",
                     },
                     "detected_at": conflict.detected_at.to_rfc3339(),
+                    "tenant_id": row.tenant_id.map(|id| id.to_string()),
                 })
             }).collect();
             pgrx::JsonB(serde_json::json!(conflicts_json))
@@ -3171,6 +4107,166 @@ fn caliber_vector_search(
     });
 
     pgrx::JsonB(serde_json::json!(results))
+}
+
+/// Search across entities with tenant isolation.
+#[pg_extern]
+fn caliber_search(query: pgrx::JsonB, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let query_obj = query.0;
+    let query_text = query_obj.get("query").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    if query_text.is_empty() {
+        return pgrx::JsonB(serde_json::json!({ "results": [], "total": 0 }));
+    }
+
+    let entity_types: Vec<String> = query_obj
+        .get("entity_types")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let limit = query_obj
+        .get("limit")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(20)
+        .max(1) as usize;
+
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+    let pattern = format!("%{}%", query_text.replace('%', "\\%").replace('_', "\\_"));
+
+    let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let mut results = Vec::new();
+
+        let include = |name: &str| entity_types.is_empty() || entity_types.iter().any(|t| t == name);
+
+        if include("Trajectory") {
+            let table = client.select(
+                "SELECT trajectory_id, name, description
+                 FROM caliber_trajectory
+                 WHERE tenant_id = $1 AND (name ILIKE $2 OR description ILIKE $2)
+                 ORDER BY updated_at DESC",
+                None,
+                &[
+                    uuid_datum(tenant_uuid),
+                    text_datum(&pattern),
+                ],
+            )?;
+            for row in table {
+                let id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                let name: Option<String> = row.get(2).ok().flatten();
+                let description: Option<String> = row.get(3).ok().flatten();
+                let snippet = description.clone().unwrap_or_default();
+                results.push(serde_json::json!({
+                    "entity_type": "Trajectory",
+                    "id": id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    "name": name.unwrap_or_default(),
+                    "snippet": snippet.chars().take(160).collect::<String>(),
+                    "score": 1.0_f32,
+                }));
+            }
+        }
+
+        if include("Scope") {
+            let table = client.select(
+                "SELECT scope_id, name, purpose
+                 FROM caliber_scope
+                 WHERE tenant_id = $1 AND (name ILIKE $2 OR purpose ILIKE $2)
+                 ORDER BY created_at DESC",
+                None,
+                &[
+                    uuid_datum(tenant_uuid),
+                    text_datum(&pattern),
+                ],
+            )?;
+            for row in table {
+                let id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                let name: Option<String> = row.get(2).ok().flatten();
+                let purpose: Option<String> = row.get(3).ok().flatten();
+                let snippet = purpose.clone().unwrap_or_default();
+                results.push(serde_json::json!({
+                    "entity_type": "Scope",
+                    "id": id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    "name": name.unwrap_or_default(),
+                    "snippet": snippet.chars().take(160).collect::<String>(),
+                    "score": 1.0_f32,
+                }));
+            }
+        }
+
+        if include("Artifact") {
+            let table = client.select(
+                "SELECT artifact_id, name, content
+                 FROM caliber_artifact
+                 WHERE tenant_id = $1 AND (name ILIKE $2 OR content ILIKE $2)
+                 ORDER BY updated_at DESC",
+                None,
+                &[
+                    uuid_datum(tenant_uuid),
+                    text_datum(&pattern),
+                ],
+            )?;
+            for row in table {
+                let id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                let name: Option<String> = row.get(2).ok().flatten();
+                let content: Option<String> = row.get(3).ok().flatten();
+                let snippet = content.clone().unwrap_or_default();
+                results.push(serde_json::json!({
+                    "entity_type": "Artifact",
+                    "id": id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    "name": name.unwrap_or_default(),
+                    "snippet": snippet.chars().take(160).collect::<String>(),
+                    "score": 1.0_f32,
+                }));
+            }
+        }
+
+        if include("Note") {
+            let table = client.select(
+                "SELECT note_id, title, content
+                 FROM caliber_note
+                 WHERE tenant_id = $1 AND (title ILIKE $2 OR content ILIKE $2)
+                 ORDER BY updated_at DESC",
+                None,
+                &[
+                    uuid_datum(tenant_uuid),
+                    text_datum(&pattern),
+                ],
+            )?;
+            for row in table {
+                let id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+                let title: Option<String> = row.get(2).ok().flatten();
+                let content: Option<String> = row.get(3).ok().flatten();
+                let snippet = content.clone().unwrap_or_default();
+                results.push(serde_json::json!({
+                    "entity_type": "Note",
+                    "id": id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                    "name": title.unwrap_or_default(),
+                    "snippet": snippet.chars().take(160).collect::<String>(),
+                    "score": 1.0_f32,
+                }));
+            }
+        }
+
+        Ok(results)
+    });
+
+    match result {
+        Ok(results) => {
+            let total = results.len() as i32;
+            let limited: Vec<serde_json::Value> = results.into_iter().take(limit).collect();
+            pgrx::JsonB(serde_json::json!({
+                "results": limited,
+                "total": total,
+            }))
+        }
+        Err(e) => {
+            pgrx::warning!("CALIBER: search failed: {}", e);
+            pgrx::JsonB(serde_json::json!({ "results": [], "total": 0 }))
+        }
+    }
 }
 
 
@@ -3659,6 +4755,7 @@ fn caliber_region_create(
     region_type: &str,
     team_id: Option<pgrx::Uuid>,
     require_lock: bool,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
@@ -3708,12 +4805,13 @@ fn caliber_region_create(
             bool_datum(version_tracking),
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         client.update(
             "INSERT INTO caliber_region (region_id, region_type, owner_agent_id, team_id,
                                          readers, writers, require_lock, conflict_resolution,
-                                         version_tracking, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                                         version_tracking, created_at, updated_at, tenant_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
             None,
             params,
         )?;
@@ -3731,7 +4829,7 @@ fn caliber_region_create(
 
 /// Get a memory region by ID.
 #[pg_extern]
-fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_region_get(region_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     use pgrx::datum::DatumWithOid;
 
     let rid = Uuid::from_bytes(*region_id.as_bytes());
@@ -3740,11 +4838,12 @@ fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     Spi::connect(|client| {
         let params: &[DatumWithOid<'_>] = &[
             unsafe { DatumWithOid::new(pg_rid, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         let result = client.select(
             "SELECT region_id, region_type, owner_agent_id, team_id, readers, writers,
                     require_lock, conflict_resolution, version_tracking, created_at, updated_at
-             FROM caliber_region WHERE region_id = $1",
+             FROM caliber_region WHERE region_id = $1 AND tenant_id = $2",
             None,
             params,
         );
@@ -3802,7 +4901,11 @@ fn caliber_region_get(region_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 
 /// Add a reader to a memory region.
 #[pg_extern]
-fn caliber_region_add_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+fn caliber_region_add_reader(
+    region_id: pgrx::Uuid,
+    agent_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> bool {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
 
@@ -3815,11 +4918,12 @@ fn caliber_region_add_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> boo
             unsafe { DatumWithOid::new(pg_aid, pgrx::pg_sys::UUIDOID) },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(pg_rid, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         let table = client.update(
             "UPDATE caliber_region
              SET readers = array_append(readers, $1), updated_at = $2
-             WHERE region_id = $3 AND NOT ($1 = ANY(readers))",
+             WHERE region_id = $3 AND tenant_id = $4 AND NOT ($1 = ANY(readers))",
             None,
             params,
         )?;
@@ -3837,7 +4941,11 @@ fn caliber_region_add_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> boo
 
 /// Add a writer to a memory region.
 #[pg_extern]
-fn caliber_region_add_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+fn caliber_region_add_writer(
+    region_id: pgrx::Uuid,
+    agent_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> bool {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
 
@@ -3850,11 +4958,12 @@ fn caliber_region_add_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> boo
             unsafe { DatumWithOid::new(pg_aid, pgrx::pg_sys::UUIDOID) },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(pg_rid, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         let table = client.update(
             "UPDATE caliber_region
              SET writers = array_append(writers, $1), updated_at = $2
-             WHERE region_id = $3 AND NOT ($1 = ANY(writers))",
+             WHERE region_id = $3 AND tenant_id = $4 AND NOT ($1 = ANY(writers))",
             None,
             params,
         )?;
@@ -3872,7 +4981,11 @@ fn caliber_region_add_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> boo
 
 /// Remove a reader from a memory region.
 #[pg_extern]
-fn caliber_region_remove_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+fn caliber_region_remove_reader(
+    region_id: pgrx::Uuid,
+    agent_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> bool {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
 
@@ -3885,11 +4998,12 @@ fn caliber_region_remove_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> 
             unsafe { DatumWithOid::new(pg_aid, pgrx::pg_sys::UUIDOID) },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(pg_rid, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         let table = client.update(
             "UPDATE caliber_region
              SET readers = array_remove(readers, $1), updated_at = $2
-             WHERE region_id = $3",
+             WHERE region_id = $3 AND tenant_id = $4",
             None,
             params,
         )?;
@@ -3907,7 +5021,11 @@ fn caliber_region_remove_reader(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> 
 
 /// Remove a writer from a memory region.
 #[pg_extern]
-fn caliber_region_remove_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> bool {
+fn caliber_region_remove_writer(
+    region_id: pgrx::Uuid,
+    agent_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> bool {
     use pgrx::datum::DatumWithOid;
     use tuple_extract::chrono_to_timestamp;
 
@@ -3920,11 +5038,12 @@ fn caliber_region_remove_writer(region_id: pgrx::Uuid, agent_id: pgrx::Uuid) -> 
             unsafe { DatumWithOid::new(pg_aid, pgrx::pg_sys::UUIDOID) },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(pg_rid, pgrx::pg_sys::UUIDOID) },
+            unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
         let table = client.update(
             "UPDATE caliber_region
              SET writers = array_remove(writers, $1), updated_at = $2
-             WHERE region_id = $3",
+             WHERE region_id = $3 AND tenant_id = $4",
             None,
             params,
         )?;
@@ -3968,6 +5087,7 @@ fn caliber_edge_create(
     source_turn: i32,
     extraction_method: &str,
     confidence: Option<f32>,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     // Record operation for metrics
     storage_write().record_op("edge_create");
@@ -4035,8 +5155,10 @@ fn caliber_edge_create(
         metadata: None,
     };
 
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
+
     // Insert via direct heap operations (NO SQL)
-    match edge_heap::edge_create_heap(&edge) {
+    match edge_heap::edge_create_heap(&edge, tenant_uuid) {
         Ok(_) => Some(pgrx::Uuid::from_bytes(*edge_id.as_bytes())),
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to insert edge: {}", e);
@@ -4047,11 +5169,13 @@ fn caliber_edge_create(
 
 /// Get an edge by ID.
 #[pg_extern]
-fn caliber_edge_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_edge_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let entity_id = Uuid::from_bytes(*id.as_bytes());
+    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
-    match edge_heap::edge_get_heap(entity_id) {
-        Ok(Some(edge)) => {
+    match edge_heap::edge_get_heap(entity_id, tenant_uuid) {
+        Ok(Some(row)) => {
+            let edge = row.edge;
             let json = serde_json::json!({
                 "edge_id": edge.edge_id.to_string(),
                 "edge_type": match edge.edge_type {
@@ -4080,6 +5204,7 @@ fn caliber_edge_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 },
                 "created_at": edge.created_at.to_rfc3339(),
                 "metadata": edge.metadata,
+                "tenant_id": row.tenant_id.map(|id| id.to_string()),
             });
             Some(pgrx::JsonB(json))
         }
@@ -4091,6 +5216,73 @@ fn caliber_edge_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     }
 }
 
+/// List edges by participant with tenant isolation.
+#[pg_extern]
+fn caliber_edges_by_participant_and_tenant(entity_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
+    let participant_id = Uuid::from_bytes(*entity_id.as_bytes());
+
+    let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
+        let table = client.select(
+            "SELECT edge_id, edge_type, participants, weight, trajectory_id, source_turn, extraction_method, confidence, created_at, metadata, tenant_id
+             FROM caliber_edge
+             WHERE tenant_id = $1",
+            None,
+            &[pgrx_uuid_datum(tenant_id)],
+        )?;
+
+        let mut edges = Vec::new();
+        for row in table {
+            let edge_id: Option<pgrx::Uuid> = row.get(1).ok().flatten();
+            let edge_type: Option<String> = row.get(2).ok().flatten();
+            let participants: Option<pgrx::JsonB> = row.get(3).ok().flatten();
+            let weight: Option<f32> = row.get(4).ok().flatten();
+            let trajectory_id: Option<pgrx::Uuid> = row.get(5).ok().flatten();
+            let source_turn: Option<i32> = row.get(6).ok().flatten();
+            let extraction_method: Option<String> = row.get(7).ok().flatten();
+            let confidence: Option<f32> = row.get(8).ok().flatten();
+            let created_at: Option<TimestampWithTimeZone> = row.get(9).ok().flatten();
+            let metadata: Option<pgrx::JsonB> = row.get(10).ok().flatten();
+            let tenant_id_val: Option<pgrx::Uuid> = row.get(11).ok().flatten();
+
+            let participants_json = participants
+                .as_ref()
+                .map(|j| j.0.clone())
+                .unwrap_or(serde_json::Value::Null);
+            let participants_vec: Vec<EdgeParticipant> =
+                serde_json::from_value(participants_json.clone()).unwrap_or_default();
+
+            if !participants_vec.iter().any(|p| p.id == participant_id) {
+                continue;
+            }
+
+            let json = serde_json::json!({
+                "edge_id": edge_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "edge_type": edge_type,
+                "participants": participants_json,
+                "weight": weight,
+                "trajectory_id": trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+                "source_turn": source_turn,
+                "extraction_method": extraction_method,
+                "confidence": confidence,
+                "created_at": created_at.map(|t| t.to_string()),
+                "metadata": metadata.map(|m| m.0),
+                "tenant_id": tenant_id_val.map(|u| Uuid::from_bytes(*u.as_bytes()).to_string()),
+            });
+            edges.push(json);
+        }
+
+        Ok(edges)
+    });
+
+    match result {
+        Ok(edges) => pgrx::JsonB(serde_json::json!(edges)),
+        Err(e) => {
+            pgrx::warning!("CALIBER: Failed to list edges by participant: {}", e);
+            pgrx::JsonB(serde_json::json!([]))
+        }
+    }
+}
+
 /// List edges by participant entity.
 /// Returns all edges that include the given entity as a participant.
 ///
@@ -4098,7 +5290,7 @@ fn caliber_edge_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 /// For high-frequency queries, consider adding a GIN index on participants.
 /// This is NOT hot path - edge queries are analytical, not per-turn.
 #[pg_extern]
-fn caliber_edges_by_participant(entity_id: pgrx::Uuid) -> pgrx::JsonB {
+fn caliber_edges_by_participant(entity_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> pgrx::JsonB {
     let id = Uuid::from_bytes(*entity_id.as_bytes());
 
     // Use SPI for JSONB containment query - this is analytical, not hot path
@@ -4109,9 +5301,9 @@ fn caliber_edges_by_participant(entity_id: pgrx::Uuid) -> pgrx::JsonB {
             "SELECT edge_id, edge_type, participants, weight, trajectory_id,
                     source_turn, extraction_method, confidence, created_at, metadata
              FROM caliber_edge
-             WHERE participants @> $1::jsonb",
+            WHERE participants @> $1::jsonb AND tenant_id = $2",
             None,
-            &[jsonb_datum(&search_json)],
+            &[jsonb_datum(&search_json), pgrx_uuid_datum(tenant_id)],
         )?;
 
         let mut edges = Vec::new();
@@ -4182,6 +5374,7 @@ fn caliber_summarization_policy_create(
     max_sources: i32,
     create_edges: bool,
     trajectory_id: Option<pgrx::Uuid>,
+    tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     // Record operation for metrics
     storage_write().record_op("summarization_policy_create");
@@ -4252,6 +5445,7 @@ fn caliber_summarization_policy_create(
         let now = chrono_to_timestamp(Utc::now());
         let pg_id = pgrx::Uuid::from_bytes(*policy_id.as_bytes());
         let pg_traj_id = traj_id.map(|id| pgrx::Uuid::from_bytes(*id.as_bytes()));
+        let pg_tenant_id = pgrx::Uuid::from_bytes(*tenant_id.as_bytes());
 
         // Build params with proper OIDs
         let params: Vec<DatumWithOid<'_>> = vec![
@@ -4267,12 +5461,13 @@ fn caliber_summarization_policy_create(
                 None => unsafe { DatumWithOid::new((), pgrx::pg_sys::UUIDOID) },
             },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
+            unsafe { DatumWithOid::new(pg_tenant_id, pgrx::pg_sys::UUIDOID) },
         ];
 
         client.update(
             "INSERT INTO caliber_summarization_policy
-             (policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+             (policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at, tenant_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
             None,
             &params,
         )?;
@@ -4292,14 +5487,14 @@ fn caliber_summarization_policy_create(
 /// Get a summarization policy by ID.
 /// NOTE: Policy reads are config/admin operations, not hot path.
 #[pg_extern]
-fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
+fn caliber_summarization_policy_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
     let result: Result<Option<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
         let mut table = client.select(
-            "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at
+            "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at, tenant_id
              FROM caliber_summarization_policy
-             WHERE policy_id = $1",
+             WHERE policy_id = $1 AND tenant_id = $2",
             None,
-            &[pgrx_uuid_datum(id)],
+            &[pgrx_uuid_datum(id), pgrx_uuid_datum(tenant_id)],
         )?;
 
         // Iterate and take first row
@@ -4313,6 +5508,7 @@ fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
             let create_edges: Option<bool> = row.get(7).ok().flatten();
             let trajectory_id: Option<pgrx::Uuid> = row.get(8).ok().flatten();
             let created_at: Option<TimestampWithTimeZone> = row.get(9).ok().flatten();
+            let tenant_id: Option<pgrx::Uuid> = row.get(10).ok().flatten();
 
             let json = serde_json::json!({
                 "policy_id": policy_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
@@ -4324,6 +5520,7 @@ fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
                 "create_edges": create_edges,
                 "trajectory_id": trajectory_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
                 "created_at": created_at.map(|t: TimestampWithTimeZone| t.to_string()),
+                "tenant_id": tenant_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
             });
             return Ok(Some(json));
         }
@@ -4343,15 +5540,18 @@ fn caliber_summarization_policy_get(id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 /// List summarization policies for a trajectory.
 /// NOTE: Policy listing is config/admin operation, not hot path.
 #[pg_extern]
-fn caliber_summarization_policies_by_trajectory(trajectory_id: pgrx::Uuid) -> pgrx::JsonB {
+fn caliber_summarization_policies_by_trajectory(
+    trajectory_id: pgrx::Uuid,
+    tenant_id: pgrx::Uuid,
+) -> pgrx::JsonB {
     let result: Result<Vec<serde_json::Value>, pgrx::spi::SpiError> = Spi::connect(|client| {
         let table = client.select(
-            "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at
+            "SELECT policy_id, name, triggers, source_level, target_level, max_sources, create_edges, trajectory_id, created_at, tenant_id
              FROM caliber_summarization_policy
-             WHERE trajectory_id = $1
+             WHERE trajectory_id = $1 AND tenant_id = $2
              ORDER BY created_at DESC",
             None,
-            &[pgrx_uuid_datum(trajectory_id)],
+            &[pgrx_uuid_datum(trajectory_id), pgrx_uuid_datum(tenant_id)],
         )?;
 
         let mut policies = Vec::new();
@@ -4365,6 +5565,7 @@ fn caliber_summarization_policies_by_trajectory(trajectory_id: pgrx::Uuid) -> pg
             let create_edges: Option<bool> = row.get(7).ok().flatten();
             let traj_id: Option<pgrx::Uuid> = row.get(8).ok().flatten();
             let created_at: Option<TimestampWithTimeZone> = row.get(9).ok().flatten();
+            let tenant_id: Option<pgrx::Uuid> = row.get(10).ok().flatten();
 
             let json = serde_json::json!({
                 "policy_id": policy_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
@@ -4376,6 +5577,7 @@ fn caliber_summarization_policies_by_trajectory(trajectory_id: pgrx::Uuid) -> pg
                 "create_edges": create_edges,
                 "trajectory_id": traj_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
                 "created_at": created_at.map(|t: TimestampWithTimeZone| t.to_string()),
+                "tenant_id": tenant_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()).to_string()),
             });
             policies.push(json);
         }
@@ -4394,12 +5596,12 @@ fn caliber_summarization_policies_by_trajectory(trajectory_id: pgrx::Uuid) -> pg
 /// Delete a summarization policy.
 /// NOTE: Policy deletion is config/admin operation, not hot path.
 #[pg_extern]
-fn caliber_summarization_policy_delete(id: pgrx::Uuid) -> bool {
+fn caliber_summarization_policy_delete(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> bool {
     let result: Result<usize, pgrx::spi::SpiError> = Spi::connect_mut(|client| {
         let table = client.update(
-            "DELETE FROM caliber_summarization_policy WHERE policy_id = $1",
+            "DELETE FROM caliber_summarization_policy WHERE policy_id = $1 AND tenant_id = $2",
             None,
-            &[pgrx_uuid_datum(id)],
+            &[pgrx_uuid_datum(id), pgrx_uuid_datum(tenant_id)],
         )?;
         Ok(table.len())
     });
@@ -4670,7 +5872,7 @@ impl StorageTrait for PgStorage {
 
     fn scope_insert(&self, s: &Scope) -> CaliberResult<()> {
         // Check if already exists using heap module
-        if scope_heap::scope_get_heap(s.scope_id)?.is_some() {
+        if scope_heap::scope_get_heap(s.scope_id, Uuid::nil())?.is_some() {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Scope,
                 reason: "already exists".to_string(),
@@ -4682,26 +5884,29 @@ impl StorageTrait for PgStorage {
             &s.name,
             s.purpose.as_deref(),
             s.token_budget,
+            Uuid::nil(),
         )?;
         Ok(())
     }
 
     fn scope_get(&self, id: EntityId) -> CaliberResult<Option<Scope>> {
-        scope_heap::scope_get_heap(id)
+        scope_heap::scope_get_heap(id, Uuid::nil())
+            .map(|row| row.map(Into::into))
     }
 
     fn scope_get_current(&self, trajectory_id: EntityId) -> CaliberResult<Option<Scope>> {
         // Get all scopes for trajectory and find the active one with latest created_at
-        let scopes = scope_heap::scope_list_by_trajectory_heap(trajectory_id)?;
+        let scopes = scope_heap::scope_list_by_trajectory_heap(trajectory_id, Uuid::nil())?;
         Ok(scopes
             .into_iter()
+            .map(Into::into)
             .filter(|s| s.is_active)
             .max_by_key(|s| s.created_at))
     }
 
     fn scope_update(&self, id: EntityId, update: ScopeUpdate) -> CaliberResult<()> {
         // Verify scope exists
-        let existing = scope_heap::scope_get_heap(id)?;
+        let existing = scope_heap::scope_get_heap(id, Uuid::nil())?;
         if existing.is_none() {
             return Err(CaliberError::Storage(StorageError::NotFound {
                 entity_type: EntityType::Scope,
@@ -4711,22 +5916,23 @@ impl StorageTrait for PgStorage {
 
         // For now, handle close specifically (most common update)
         if update.is_active == Some(false) {
-            scope_heap::scope_close_heap(id)?;
+            scope_heap::scope_close_heap(id, Uuid::nil())?;
         }
         // Token updates via dedicated function
         if let Some(tokens) = update.tokens_used {
-            scope_heap::scope_update_tokens_heap(id, tokens)?;
+            scope_heap::scope_update_tokens_heap(id, tokens, Uuid::nil())?;
         }
         Ok(())
     }
 
     fn scope_list_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Scope>> {
-        scope_heap::scope_list_by_trajectory_heap(trajectory_id)
+        scope_heap::scope_list_by_trajectory_heap(trajectory_id, Uuid::nil())
+            .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn artifact_insert(&self, a: &Artifact) -> CaliberResult<()> {
         // Check if already exists using heap module
-        if artifact_heap::artifact_get_heap(a.artifact_id)?.is_some() {
+        if artifact_heap::artifact_get_heap(a.artifact_id, Uuid::nil())?.is_some() {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Artifact,
                 reason: "already exists".to_string(),
@@ -4743,12 +5949,14 @@ impl StorageTrait for PgStorage {
             embedding: a.embedding.as_ref(),
             provenance: &a.provenance,
             ttl: a.ttl.clone(),
+            tenant_id: Uuid::nil(),
         })?;
         Ok(())
     }
 
     fn artifact_get(&self, id: EntityId) -> CaliberResult<Option<Artifact>> {
-        artifact_heap::artifact_get_heap(id)
+        artifact_heap::artifact_get_heap(id, Uuid::nil())
+            .map(|row| row.map(Into::into))
     }
 
     fn artifact_query_by_type(
@@ -4757,15 +5965,17 @@ impl StorageTrait for PgStorage {
         artifact_type: ArtifactType,
     ) -> CaliberResult<Vec<Artifact>> {
         // Get all artifacts of type and filter by trajectory
-        let artifacts = artifact_heap::artifact_query_by_type_heap(artifact_type)?;
-        Ok(artifacts
+        let artifacts = artifact_heap::artifact_query_by_type_heap(artifact_type, Uuid::nil())?
             .into_iter()
+            .map(Into::into)
             .filter(|a| a.trajectory_id == trajectory_id)
-            .collect())
+            .collect();
+        Ok(artifacts)
     }
 
     fn artifact_query_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Artifact>> {
-        artifact_heap::artifact_query_by_scope_heap(scope_id)
+        artifact_heap::artifact_query_by_scope_heap(scope_id, Uuid::nil())
+            .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn artifact_update(&self, id: EntityId, update: ArtifactUpdate) -> CaliberResult<()> {
@@ -4783,13 +5993,14 @@ impl StorageTrait for PgStorage {
             embedding_opt,
             superseded_opt,
             None, // metadata not in ArtifactUpdate struct
+            Uuid::nil(),
         )?;
         Ok(())
     }
 
     fn note_insert(&self, n: &Note) -> CaliberResult<()> {
         // Check if already exists using heap module
-        if note_heap::note_get_heap(n.note_id)?.is_some() {
+        if note_heap::note_get_heap(n.note_id, Uuid::nil())?.is_some() {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Note,
                 reason: "already exists".to_string(),
@@ -4807,16 +6018,19 @@ impl StorageTrait for PgStorage {
             ttl: n.ttl.clone(),
             abstraction_level: n.abstraction_level,
             source_note_ids: &n.source_note_ids,
+            tenant_id: Uuid::nil(),
         })?;
         Ok(())
     }
 
     fn note_get(&self, id: EntityId) -> CaliberResult<Option<Note>> {
-        note_heap::note_get_heap(id)
+        note_heap::note_get_heap(id, Uuid::nil())
+            .map(|row| row.map(Into::into))
     }
 
     fn note_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Note>> {
-        note_heap::note_query_by_trajectory_heap(trajectory_id)
+        note_heap::note_query_by_trajectory_heap(trajectory_id, Uuid::nil())
+            .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn note_update(&self, id: EntityId, update: NoteUpdate) -> CaliberResult<()> {
@@ -4834,6 +6048,7 @@ impl StorageTrait for PgStorage {
             embedding_opt,
             superseded_opt,
             None, // metadata not in NoteUpdate struct
+            Uuid::nil(),
         )?;
         Ok(())
     }
@@ -4848,12 +6063,14 @@ impl StorageTrait for PgStorage {
             token_count: t.token_count,
             tool_calls: t.tool_calls.as_ref(),
             tool_results: t.tool_results.as_ref(),
+            tenant_id: Uuid::nil(),
         })?;
         Ok(())
     }
 
     fn turn_get_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
-        turn_heap::turn_get_by_scope_heap(scope_id)
+        turn_heap::turn_get_by_scope_heap(scope_id, Uuid::nil())
+            .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn vector_search(
@@ -4923,20 +6140,23 @@ impl StorageTrait for PgStorage {
     // === Edge Operations (Battle Intel Feature 1) ===
 
     fn edge_insert(&self, e: &Edge) -> CaliberResult<()> {
-        edge_heap::edge_create_heap(e)?;
+        edge_heap::edge_create_heap(e, Uuid::nil())?;
         Ok(())
     }
 
     fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>> {
-        edge_heap::edge_get_heap(id)
+        edge_heap::edge_get_heap(id, Uuid::nil())
+            .map(|row| row.map(Into::into))
     }
 
     fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>> {
-        edge_heap::edge_query_by_type_heap(edge_type)
+        edge_heap::edge_query_by_type_heap(edge_type, Uuid::nil())
+            .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>> {
-        edge_heap::edge_query_by_trajectory_heap(trajectory_id)
+        edge_heap::edge_query_by_trajectory_heap(trajectory_id, Uuid::nil())
+            .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>> {
@@ -4956,8 +6176,8 @@ impl StorageTrait for PgStorage {
                 // Parse each row into Edge struct
                 if let Ok(Some(edge_id_pg)) = row.get::<pgrx::Uuid>(1) {
                     let edge_id = Uuid::from_bytes(*edge_id_pg.as_bytes());
-                    if let Some(edge) = edge_heap::edge_get_heap(edge_id)? {
-                        edges.push(edge);
+                    if let Some(edge_row) = edge_heap::edge_get_heap(edge_id, Uuid::nil())? {
+                        edges.push(edge_row.into());
                     }
                 }
             }
@@ -4988,8 +6208,8 @@ impl StorageTrait for PgStorage {
             for row in result {
                 if let Ok(Some(note_id_pg)) = row.get::<pgrx::Uuid>(1) {
                     let note_id = Uuid::from_bytes(*note_id_pg.as_bytes());
-                    if let Some(note) = note_heap::note_get_heap(note_id)? {
-                        notes.push(note);
+                    if let Some(note_row) = note_heap::note_get_heap(note_id, Uuid::nil())? {
+                        notes.push(note_row.into());
                     }
                 }
             }
@@ -5009,8 +6229,8 @@ impl StorageTrait for PgStorage {
             for row in result {
                 if let Ok(Some(note_id_pg)) = row.get::<pgrx::Uuid>(1) {
                     let note_id = Uuid::from_bytes(*note_id_pg.as_bytes());
-                    if let Some(note) = note_heap::note_get_heap(note_id)? {
-                        notes.push(note);
+                    if let Some(note_row) = note_heap::note_get_heap(note_id, Uuid::nil())? {
+                        notes.push(note_row.into());
                     }
                 }
             }

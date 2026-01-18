@@ -31,6 +31,18 @@ use crate::tuple_extract::{
     json_to_datum, timestamp_to_chrono,
 };
 
+/// Turn row with tenant ownership metadata.
+pub struct TurnRow {
+    pub turn: Turn,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<TurnRow> for Turn {
+    fn from(row: TurnRow) -> Self {
+        row.turn
+    }
+}
+
 /// Create a new turn using direct heap operations.
 ///
 /// # Arguments
@@ -59,6 +71,7 @@ pub struct TurnCreateParams<'a> {
     pub token_count: i32,
     pub tool_calls: Option<&'a serde_json::Value>,
     pub tool_results: Option<&'a serde_json::Value>,
+    pub tenant_id: EntityId,
 }
 
 pub fn turn_create_heap(params: TurnCreateParams<'_>) -> CaliberResult<EntityId> {
@@ -71,6 +84,7 @@ pub fn turn_create_heap(params: TurnCreateParams<'_>) -> CaliberResult<EntityId>
         token_count,
         tool_calls,
         tool_results,
+        tenant_id,
     } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(turn::TABLE_NAME, LockMode::RowExclusive)?;
@@ -127,6 +141,9 @@ pub fn turn_create_heap(params: TurnCreateParams<'_>) -> CaliberResult<EntityId>
     
     // Column 10: metadata (JSONB, nullable)
     nulls[turn::METADATA as usize - 1] = true;
+
+    // Column 11: tenant_id (UUID, NOT NULL)
+    values[turn::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -153,7 +170,7 @@ pub fn turn_create_heap(params: TurnCreateParams<'_>) -> CaliberResult<EntityId>
 ///
 /// # Requirements
 /// - 5.2: Uses index scan on scope_id instead of SPI SELECT
-pub fn turn_get_by_scope_heap(scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
+pub fn turn_get_by_scope_heap(scope_id: EntityId, tenant_id: EntityId) -> CaliberResult<Vec<TurnRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(turn::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -187,8 +204,10 @@ pub fn turn_get_by_scope_heap(scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
     
     // Collect all matching tuples
     for tuple in &mut scanner {
-        let turn = unsafe { tuple_to_turn(tuple, tuple_desc) }?;
-        results.push(turn);
+        let row = unsafe { tuple_to_turn(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
     
     // Sort by sequence number
@@ -246,7 +265,7 @@ fn str_to_role(s: &str) -> TurnRole {
 unsafe fn tuple_to_turn(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Turn> {
+) -> CaliberResult<TurnRow> {
     let turn_id = extract_uuid(tuple, tuple_desc, turn::TURN_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "turn_id is NULL".to_string(),
@@ -287,18 +306,22 @@ unsafe fn tuple_to_turn(
     let tool_calls = extract_jsonb(tuple, tuple_desc, turn::TOOL_CALLS)?;
     let tool_results = extract_jsonb(tuple, tuple_desc, turn::TOOL_RESULTS)?;
     let metadata = extract_jsonb(tuple, tuple_desc, turn::METADATA)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, turn::TENANT_ID)?;
     
-    Ok(Turn {
-        turn_id,
-        scope_id,
-        sequence,
-        role,
-        content,
-        token_count,
-        created_at,
-        tool_calls,
-        tool_results,
-        metadata,
+    Ok(TurnRow {
+        turn: Turn {
+            turn_id,
+            scope_id,
+            sequence,
+            role,
+            content,
+            token_count,
+            created_at,
+            tool_calls,
+            tool_results,
+            metadata,
+        },
+        tenant_id,
     })
 }
 
@@ -356,11 +379,13 @@ mod tests {
             runner.run(&strategy, |(content, role, token_count, sequence)| {
                 // Create trajectory and scope first
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 let scope_id = caliber_core::new_entity_id();
@@ -370,6 +395,7 @@ mod tests {
                     "test_scope",
                     None,
                     10000,
+                    tenant_id,
                 );
 
                 // Create turn
@@ -383,31 +409,33 @@ mod tests {
                     token_count,
                     tool_calls: None,
                     tool_results: None,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), turn_id);
 
                 // Get by scope
-                let get_result = turn_get_by_scope_heap(scope_id);
+                let get_result = turn_get_by_scope_heap(scope_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed");
                 
                 let turns = get_result.unwrap();
                 prop_assert!(!turns.is_empty(), "Should find at least one turn");
                 
                 // Find our turn
-                let t = turns.iter().find(|t| t.turn_id == turn_id);
+                let t = turns.iter().find(|t| t.turn.turn_id == turn_id);
                 prop_assert!(t.is_some(), "Our turn should be in results");
                 
                 let t = t.unwrap();
-                prop_assert_eq!(t.turn_id, turn_id);
-                prop_assert_eq!(t.scope_id, scope_id);
-                prop_assert_eq!(t.sequence, sequence);
-                prop_assert_eq!(t.role, role);
-                prop_assert_eq!(t.content, content);
-                prop_assert_eq!(t.token_count, token_count);
-                prop_assert!(t.tool_calls.is_none());
-                prop_assert!(t.tool_results.is_none());
-                prop_assert!(t.metadata.is_none());
+                prop_assert_eq!(t.turn.turn_id, turn_id);
+                prop_assert_eq!(t.turn.scope_id, scope_id);
+                prop_assert_eq!(t.turn.sequence, sequence);
+                prop_assert_eq!(t.turn.role, role);
+                prop_assert_eq!(t.turn.content, content);
+                prop_assert_eq!(t.turn.token_count, token_count);
+                prop_assert!(t.turn.tool_calls.is_none());
+                prop_assert!(t.turn.tool_results.is_none());
+                prop_assert!(t.turn.metadata.is_none());
+                prop_assert_eq!(t.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -426,11 +454,13 @@ mod tests {
             runner.run(&strategy, |num_turns| {
                 // Create trajectory and scope
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 let scope_id = caliber_core::new_entity_id();
@@ -440,6 +470,7 @@ mod tests {
                     "test_scope",
                     None,
                     10000,
+                    tenant_id,
                 );
 
                 // Create turns in random order but with sequential sequence numbers
@@ -458,16 +489,18 @@ mod tests {
                         token_count: 100,
                         tool_calls: None,
                         tool_results: None,
+                        tenant_id,
                     });
                 }
 
                 // Get by scope - should be ordered
-                let turns = turn_get_by_scope_heap(scope_id).unwrap();
+                let turns = turn_get_by_scope_heap(scope_id, tenant_id).unwrap();
                 prop_assert_eq!(turns.len(), num_turns);
 
                 // Verify ordering
                 for (i, turn) in turns.iter().enumerate() {
-                    prop_assert_eq!(turn.sequence, i as i32, "Turns should be ordered by sequence");
+                    prop_assert_eq!(turn.turn.sequence, i as i32, "Turns should be ordered by sequence");
+                    prop_assert_eq!(turn.tenant_id, Some(tenant_id));
                 }
 
                 Ok(())
@@ -485,7 +518,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = turn_get_by_scope_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = turn_get_by_scope_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_empty(), "Get for non-existent scope should be empty");
 

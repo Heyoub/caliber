@@ -28,6 +28,18 @@ use crate::tuple_extract::{
     json_to_datum, option_datetime_to_datum,
 };
 
+/// Delegation row with tenant ownership metadata.
+pub struct DelegationRow {
+    pub delegation: DelegatedTask,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<DelegationRow> for DelegatedTask {
+    fn from(row: DelegationRow) -> Self {
+        row.delegation
+    }
+}
+
 /// Create a new delegation by inserting a delegation record using direct heap operations.
 pub struct DelegationCreateParams<'a> {
     pub delegation_id: EntityId,
@@ -42,6 +54,7 @@ pub struct DelegationCreateParams<'a> {
     pub additional_context: Option<&'a str>,
     pub constraints: &'a str,
     pub deadline: Option<chrono::DateTime<chrono::Utc>>,
+    pub tenant_id: EntityId,
 }
 
 pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResult<EntityId> {
@@ -58,6 +71,7 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
         additional_context,
         constraints,
         deadline,
+        tenant_id,
     } = params;
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_delegation_relation(&rel)?;
@@ -128,6 +142,9 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
     // Set optional deadline
     values[delegation::DEADLINE as usize - 1] = deadline_datum;
     nulls[delegation::DEADLINE as usize - 1] = deadline_null;
+
+    // Set tenant_id
+    values[delegation::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     // Set status - default to "pending"
     values[delegation::STATUS as usize - 1] = string_to_datum("pending");
@@ -148,7 +165,10 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
 }
 
 /// Get a delegation by ID using direct heap operations.
-pub fn delegation_get_heap(delegation_id: EntityId) -> CaliberResult<Option<DelegatedTask>> {
+pub fn delegation_get_heap(
+    delegation_id: EntityId,
+    tenant_id: EntityId,
+) -> CaliberResult<Option<DelegationRow>> {
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(delegation::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -166,8 +186,12 @@ pub fn delegation_get_heap(delegation_id: EntityId) -> CaliberResult<Option<Dele
     
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let delegation = unsafe { tuple_to_delegation(tuple, tuple_desc) }?;
-        Ok(Some(delegation))
+        let row = unsafe { tuple_to_delegation(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
@@ -184,6 +208,7 @@ pub fn delegation_accept_heap(
     delegation_id: EntityId,
     delegatee_agent_id: EntityId,
     child_trajectory_id: EntityId,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(delegation::PK_INDEX)?;
@@ -202,6 +227,10 @@ pub fn delegation_accept_heap(
 
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
+        let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, delegation::TENANT_ID)? };
+        if existing_tenant != Some(tenant_id) {
+            return Ok(false);
+        }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
         // Update delegatee_agent_id - the agent accepting the delegation
@@ -244,6 +273,7 @@ pub fn delegation_accept_heap(
 pub fn delegation_complete_heap(
     delegation_id: EntityId,
     result: &DelegationResult,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(delegation::PK_INDEX)?;
@@ -262,6 +292,10 @@ pub fn delegation_complete_heap(
     
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
+        let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, delegation::TENANT_ID)? };
+        if existing_tenant != Some(tenant_id) {
+            return Ok(false);
+        }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
         
         // Update status to "completed"
@@ -304,7 +338,7 @@ pub fn delegation_complete_heap(
 }
 
 /// List pending delegations using direct heap operations.
-pub fn delegation_list_pending_heap() -> CaliberResult<Vec<DelegatedTask>> {
+pub fn delegation_list_pending_heap(tenant_id: EntityId) -> CaliberResult<Vec<DelegationRow>> {
     let rel = open_relation(delegation::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(delegation::STATUS_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -324,8 +358,10 @@ pub fn delegation_list_pending_heap() -> CaliberResult<Vec<DelegatedTask>> {
     let mut results = Vec::new();
     
     for tuple in &mut scanner {
-        let delegation = unsafe { tuple_to_delegation(tuple, tuple_desc) }?;
-        results.push(delegation);
+        let row = unsafe { tuple_to_delegation(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
     
     Ok(results)
@@ -370,7 +406,7 @@ fn build_optional_delegation_datums(
 unsafe fn tuple_to_delegation(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<DelegatedTask> {
+) -> CaliberResult<DelegationRow> {
     let delegation_id = extract_uuid(tuple, tuple_desc, delegation::DELEGATION_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "delegation_id is NULL".to_string(),
@@ -443,25 +479,30 @@ unsafe fn tuple_to_delegation(
     
     let completed_at = extract_timestamp(tuple, tuple_desc, delegation::COMPLETED_AT)?
         .map(timestamp_to_chrono);
+
+    let tenant_id = extract_uuid(tuple, tuple_desc, delegation::TENANT_ID)?;
     
-    Ok(DelegatedTask {
-        delegation_id,
-        delegator_agent_id,
-        delegatee_agent_id,
-        delegatee_agent_type,
-        task_description,
-        parent_trajectory_id,
-        child_trajectory_id,
-        shared_artifacts,
-        shared_notes,
-        additional_context,
-        constraints,
-        deadline,
-        status,
-        result,
-        created_at,
-        accepted_at,
-        completed_at,
+    Ok(DelegationRow {
+        delegation: DelegatedTask {
+            delegation_id,
+            delegator_agent_id,
+            delegatee_agent_id,
+            delegatee_agent_type,
+            task_description,
+            parent_trajectory_id,
+            child_trajectory_id,
+            shared_artifacts,
+            shared_notes,
+            additional_context,
+            constraints,
+            deadline,
+            status,
+            result,
+            created_at,
+            accepted_at,
+            completed_at,
+        },
+        tenant_id,
     })
 }
 
@@ -615,6 +656,8 @@ mod tests {
             )| {
                 // Generate a new delegation ID
                 let delegation_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let result = delegation_create_heap(DelegationCreateParams {
@@ -630,18 +673,20 @@ mod tests {
                     additional_context: additional_context.as_deref(),
                     constraints: &constraints,
                     deadline,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), delegation_id);
 
                 // Get via heap
-                let get_result = delegation_get_heap(delegation_id);
+                let get_result = delegation_get_heap(delegation_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result.err());
                 
                 let delegation = get_result.unwrap();
                 prop_assert!(delegation.is_some(), "Delegation should be found");
                 
-                let d = delegation.unwrap();
+                let row = delegation.unwrap();
+                let d = row.delegation;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(d.delegation_id, delegation_id);
@@ -662,6 +707,7 @@ mod tests {
                 prop_assert!(d.accepted_at.is_none(), "accepted_at should be None initially");
                 prop_assert!(d.completed_at.is_none(), "completed_at should be None initially");
                 prop_assert!(d.result.is_none(), "result should be None initially");
+                prop_assert_eq!(row.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -683,7 +729,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = delegation_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = delegation_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent delegation should return None");
 
@@ -748,34 +795,42 @@ mod tests {
                     additional_context: additional_context.as_deref(),
                     constraints: &constraints,
                     deadline,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial status is Pending
-                let get_before = delegation_get_heap(delegation_id);
+                let get_before = delegation_get_heap(delegation_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before accept should succeed");
                 let delegation_before = get_before.unwrap().unwrap();
-                prop_assert_eq!(delegation_before.status, DelegationStatus::Pending);
-                prop_assert!(delegation_before.accepted_at.is_none(), "accepted_at should be None before accept");
+                prop_assert_eq!(delegation_before.delegation.status, DelegationStatus::Pending);
+                prop_assert!(delegation_before.delegation.accepted_at.is_none(), "accepted_at should be None before accept");
+                prop_assert_eq!(delegation_before.tenant_id, Some(tenant_id));
 
                 // Generate IDs for acceptance
                 let accepting_agent_id = caliber_core::new_entity_id();
                 let new_child_trajectory_id = caliber_core::new_entity_id();
 
                 // Accept the delegation with accepting agent and child trajectory
-                let accept_result = delegation_accept_heap(delegation_id, accepting_agent_id, new_child_trajectory_id);
+                let accept_result = delegation_accept_heap(
+                    delegation_id,
+                    accepting_agent_id,
+                    new_child_trajectory_id,
+                    tenant_id,
+                );
                 prop_assert!(accept_result.is_ok(), "Accept should succeed: {:?}", accept_result.err());
                 prop_assert!(accept_result.unwrap(), "Accept should return true for existing delegation");
 
                 // Verify status, accepted_at, delegatee_agent_id, and child_trajectory_id were updated
-                let get_after = delegation_get_heap(delegation_id);
+                let get_after = delegation_get_heap(delegation_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after accept should succeed");
                 let delegation_after = get_after.unwrap().unwrap();
-                prop_assert_eq!(delegation_after.status, DelegationStatus::Accepted, "Status should be Accepted");
-                prop_assert!(delegation_after.accepted_at.is_some(), "accepted_at should be set after accept");
-                prop_assert!(delegation_after.accepted_at.unwrap() <= chrono::Utc::now(), "accepted_at should be <= now");
-                prop_assert_eq!(delegation_after.delegatee_agent_id, Some(accepting_agent_id), "delegatee_agent_id should be set");
-                prop_assert_eq!(delegation_after.child_trajectory_id, Some(new_child_trajectory_id), "child_trajectory_id should be set");
+                prop_assert_eq!(delegation_after.delegation.status, DelegationStatus::Accepted, "Status should be Accepted");
+                prop_assert!(delegation_after.delegation.accepted_at.is_some(), "accepted_at should be set after accept");
+                prop_assert!(delegation_after.delegation.accepted_at.unwrap() <= chrono::Utc::now(), "accepted_at should be <= now");
+                prop_assert_eq!(delegation_after.delegation.delegatee_agent_id, Some(accepting_agent_id), "delegatee_agent_id should be set");
+                prop_assert_eq!(delegation_after.delegation.child_trajectory_id, Some(new_child_trajectory_id), "child_trajectory_id should be set");
+                prop_assert_eq!(delegation_after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -825,6 +880,7 @@ mod tests {
             )| {
                 // Generate a new delegation ID
                 let delegation_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = delegation_create_heap(DelegationCreateParams {
@@ -840,30 +896,33 @@ mod tests {
                     additional_context: additional_context.as_deref(),
                     constraints: &constraints,
                     deadline,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Verify initial state
-                let get_before = delegation_get_heap(delegation_id);
+                let get_before = delegation_get_heap(delegation_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before complete should succeed");
                 let delegation_before = get_before.unwrap().unwrap();
-                prop_assert_eq!(delegation_before.status, DelegationStatus::Pending);
-                prop_assert!(delegation_before.result.is_none(), "result should be None before complete");
-                prop_assert!(delegation_before.completed_at.is_none(), "completed_at should be None before complete");
+                prop_assert_eq!(delegation_before.delegation.status, DelegationStatus::Pending);
+                prop_assert!(delegation_before.delegation.result.is_none(), "result should be None before complete");
+                prop_assert!(delegation_before.delegation.completed_at.is_none(), "completed_at should be None before complete");
+                prop_assert_eq!(delegation_before.tenant_id, Some(tenant_id));
 
                 // Complete the delegation
-                let complete_result = delegation_complete_heap(delegation_id, &result);
+                let complete_result = delegation_complete_heap(delegation_id, &result, tenant_id);
                 prop_assert!(complete_result.is_ok(), "Complete should succeed: {:?}", complete_result.err());
                 prop_assert!(complete_result.unwrap(), "Complete should return true for existing delegation");
 
                 // Verify status, result, and completed_at were updated
-                let get_after = delegation_get_heap(delegation_id);
+                let get_after = delegation_get_heap(delegation_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after complete should succeed");
                 let delegation_after = get_after.unwrap().unwrap();
-                prop_assert_eq!(delegation_after.status, DelegationStatus::Completed, "Status should be Completed");
-                prop_assert!(delegation_after.result.is_some(), "result should be set after complete");
-                prop_assert!(delegation_after.completed_at.is_some(), "completed_at should be set after complete");
-                prop_assert!(delegation_after.completed_at.unwrap() <= chrono::Utc::now(), "completed_at should be <= now");
+                prop_assert_eq!(delegation_after.delegation.status, DelegationStatus::Completed, "Status should be Completed");
+                prop_assert!(delegation_after.delegation.result.is_some(), "result should be set after complete");
+                prop_assert!(delegation_after.delegation.completed_at.is_some(), "completed_at should be set after complete");
+                prop_assert!(delegation_after.delegation.completed_at.unwrap() <= chrono::Utc::now(), "completed_at should be <= now");
+                prop_assert_eq!(delegation_after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -890,12 +949,19 @@ mod tests {
                 let random_traj_id = uuid::Uuid::from_bytes(traj_bytes);
 
                 // Try accept with random IDs
-                let accept_result = delegation_accept_heap(random_id, random_agent_id, random_traj_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let accept_result = delegation_accept_heap(
+                    random_id,
+                    random_agent_id,
+                    random_traj_id,
+                    tenant_id,
+                );
                 prop_assert!(accept_result.is_ok(), "Accept should not error");
                 prop_assert!(!accept_result.unwrap(), "Accept of non-existent delegation should return false");
 
                 // Try complete
-                let complete_result = delegation_complete_heap(random_id, &result);
+                let tenant_id = caliber_core::new_entity_id();
+                let complete_result = delegation_complete_heap(random_id, &result, tenant_id);
                 prop_assert!(complete_result.is_ok(), "Complete should not error");
                 prop_assert!(!complete_result.unwrap(), "Complete of non-existent delegation should return false");
 
@@ -945,6 +1011,7 @@ mod tests {
             )| {
                 // Generate a new delegation ID
                 let delegation_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = delegation_create_heap(DelegationCreateParams {
@@ -960,11 +1027,12 @@ mod tests {
                     additional_context: additional_context.as_deref(),
                     constraints: &constraints,
                     deadline,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
                 // Query via status index (should be "pending")
-                let list_result = delegation_list_pending_heap();
+                let list_result = delegation_list_pending_heap(tenant_id);
                 prop_assert!(list_result.is_ok(), "List pending should succeed: {:?}", list_result.err());
                 
                 let delegations = list_result.unwrap();

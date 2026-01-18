@@ -37,6 +37,18 @@ use crate::tuple_extract::{
     extract_content_hash,
 };
 
+/// Note row with tenant ownership metadata.
+pub struct NoteRow {
+    pub note: Note,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<NoteRow> for Note {
+    fn from(row: NoteRow) -> Self {
+        row.note
+    }
+}
+
 /// Create a new note using direct heap operations.
 ///
 /// # Arguments
@@ -71,6 +83,7 @@ pub struct NoteCreateParams<'a> {
     pub ttl: TTL,
     pub abstraction_level: AbstractionLevel,
     pub source_note_ids: &'a [EntityId],
+    pub tenant_id: EntityId,
 }
 
 pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId> {
@@ -86,6 +99,7 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
         ttl,
         abstraction_level,
         source_note_ids,
+        tenant_id,
     } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(note::TABLE_NAME, LockMode::RowExclusive)?;
@@ -170,6 +184,9 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
         nulls[note::SOURCE_NOTE_IDS as usize - 1] = true;
     }
 
+    // Column 18: tenant_id (UUID, NOT NULL)
+    values[note::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
     
@@ -195,7 +212,7 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
 ///
 /// # Requirements
 /// - 4.2: Uses index_beginscan for O(log n) lookup instead of SPI SELECT
-pub fn note_get_heap(id: EntityId) -> CaliberResult<Option<Note>> {
+pub fn note_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<NoteRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(note::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -227,8 +244,12 @@ pub fn note_get_heap(id: EntityId) -> CaliberResult<Option<Note>> {
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let note = unsafe { tuple_to_note(tuple, tuple_desc) }?;
-        Ok(Some(note))
+        let row = unsafe { tuple_to_note(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
@@ -251,7 +272,8 @@ pub fn note_get_heap(id: EntityId) -> CaliberResult<Option<Note>> {
 /// - 4.3: Uses index scan instead of SPI SELECT
 pub fn note_query_by_trajectory_heap(
     trajectory_id: EntityId,
-) -> CaliberResult<Vec<Note>> {
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<NoteRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(note::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -277,10 +299,12 @@ pub fn note_query_by_trajectory_heap(
 
         if let Some(ids) = source_ids {
             if ids.contains(&trajectory_id) {
-                let note = unsafe { tuple_to_note(tuple, tuple_desc) }?;
+                let row = unsafe { tuple_to_note(tuple, tuple_desc) }?;
                 // Enforce TTL - skip expired notes
-                if !is_note_expired(&note.ttl, note.created_at) {
-                    results.push(note);
+                if row.tenant_id == Some(tenant_id)
+                    && !is_note_expired(&row.note.ttl, row.note.created_at)
+                {
+                    results.push(row);
                 }
             }
         }
@@ -313,6 +337,7 @@ pub fn note_update_heap(
     embedding: Option<Option<&EmbeddingVector>>,
     superseded_by: Option<Option<EntityId>>,
     metadata: Option<Option<&serde_json::Value>>,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(note::TABLE_NAME, LockMode::RowExclusive)?;
@@ -356,6 +381,10 @@ pub fn note_update_heap(
         }))?;
     
     let tuple_desc = rel.tuple_desc();
+    let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, note::TENANT_ID)? };
+    if existing_tenant != Some(tenant_id) {
+        return Ok(false);
+    }
     
     // Extract current values and nulls
     let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -608,7 +637,7 @@ pub fn is_note_expired(ttl: &TTL, created_at: chrono::DateTime<chrono::Utc>) -> 
 unsafe fn tuple_to_note(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Note> {
+) -> CaliberResult<NoteRow> {
     let note_id = extract_uuid(tuple, tuple_desc, note::NOTE_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "note_id is NULL".to_string(),
@@ -689,24 +718,29 @@ unsafe fn tuple_to_note(
     let source_note_ids = extract_uuid_array(tuple, tuple_desc, note::SOURCE_NOTE_IDS)?
         .unwrap_or_default();
 
-    Ok(Note {
-        note_id,
-        note_type,
-        title,
-        content,
-        content_hash,
-        embedding,
-        source_trajectory_ids,
-        source_artifact_ids,
-        ttl,
-        created_at,
-        updated_at,
-        accessed_at,
-        access_count,
-        superseded_by,
-        metadata,
-        abstraction_level,
-        source_note_ids,
+    let tenant_id = extract_uuid(tuple, tuple_desc, note::TENANT_ID)?;
+
+    Ok(NoteRow {
+        note: Note {
+            note_id,
+            note_type,
+            title,
+            content,
+            content_hash,
+            embedding,
+            source_trajectory_ids,
+            source_artifact_ids,
+            ttl,
+            created_at,
+            updated_at,
+            accessed_at,
+            access_count,
+            superseded_by,
+            metadata,
+            abstraction_level,
+            source_note_ids,
+        },
+        tenant_id,
     })
 }
 
@@ -782,6 +816,7 @@ mod tests {
 
             runner.run(&strategy, |(title, content, note_type, ttl)| {
                 let note_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let content_hash = caliber_core::compute_content_hash(content.as_bytes());
 
                 // Insert via heap
@@ -797,18 +832,20 @@ mod tests {
                     ttl,
                     abstraction_level: AbstractionLevel::Raw, // Battle Intel Feature 2
                     source_note_ids: &[],                      // Battle Intel Feature 2
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), note_id);
 
                 // Get via heap
-                let get_result = note_get_heap(note_id);
+                let get_result = note_get_heap(note_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed");
                 
                 let note = get_result.unwrap();
                 prop_assert!(note.is_some(), "Note should be found");
                 
-                let n = note.unwrap();
+                let row = note.unwrap();
+                let n = row.note;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(n.note_id, note_id);
@@ -826,6 +863,7 @@ mod tests {
                 // Battle Intel Feature 2 assertions
                 prop_assert_eq!(n.abstraction_level, AbstractionLevel::Raw);
                 prop_assert!(n.source_note_ids.is_empty());
+                prop_assert_eq!(row.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -842,7 +880,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = note_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = note_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent note should return None");
 
@@ -873,6 +912,7 @@ mod tests {
 
             runner.run(&strategy, |(original_content, new_content)| {
                 let note_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let original_hash = caliber_core::compute_content_hash(original_content.as_bytes());
                 
                 let _ = note_create_heap(NoteCreateParams {
@@ -887,6 +927,7 @@ mod tests {
                     ttl: TTL::MediumTerm,
                     abstraction_level: AbstractionLevel::Raw,
                     source_note_ids: &[],
+                    tenant_id,
                 });
 
                 // Update content
@@ -898,14 +939,16 @@ mod tests {
                     None,
                     None,
                     None,
+                    tenant_id,
                 );
                 prop_assert!(update_result.is_ok());
                 prop_assert!(update_result.unwrap(), "Update should find the note");
 
                 // Verify updated
-                let after = note_get_heap(note_id).unwrap().unwrap();
-                prop_assert_eq!(after.content, new_content);
-                prop_assert_eq!(after.content_hash, new_hash);
+                let after = note_get_heap(note_id, tenant_id).unwrap().unwrap();
+                prop_assert_eq!(after.note.content, new_content);
+                prop_assert_eq!(after.note.content_hash, new_hash);
+                prop_assert_eq!(after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -929,6 +972,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    caliber_core::new_entity_id(),
                 );
                 prop_assert!(result.is_ok(), "Update should not error");
                 prop_assert!(!result.unwrap(), "Update of non-existent note should return false");
@@ -961,11 +1005,13 @@ mod tests {
             runner.run(&strategy, |num_notes| {
                 // Create a trajectory to use as source
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "source_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 // Create notes with this trajectory as source
@@ -987,12 +1033,13 @@ mod tests {
                         ttl: TTL::MediumTerm,
                         abstraction_level: AbstractionLevel::Raw,
                         source_note_ids: &[],
+                        tenant_id,
                     });
                     note_ids.push(note_id);
                 }
 
                 // Query by trajectory
-                let query_result = note_query_by_trajectory_heap(trajectory_id);
+                let query_result = note_query_by_trajectory_heap(trajectory_id, tenant_id);
                 prop_assert!(query_result.is_ok(), "Query should succeed");
                 
                 let notes = query_result.unwrap();
@@ -1001,17 +1048,18 @@ mod tests {
                 // All created notes should be in result
                 for note_id in &note_ids {
                     prop_assert!(
-                        notes.iter().any(|n| n.note_id == *note_id),
+                        notes.iter().any(|n| n.note.note_id == *note_id),
                         "All created notes should be in result"
                     );
                 }
 
                 // All results should have trajectory_id in source_trajectory_ids
-                for note in &notes {
+                for row in &notes {
                     prop_assert!(
-                        note.source_trajectory_ids.contains(&trajectory_id),
+                        row.note.source_trajectory_ids.contains(&trajectory_id),
                         "All notes should have trajectory in source_trajectory_ids"
                     );
+                    prop_assert_eq!(row.tenant_id, Some(tenant_id));
                 }
 
                 Ok(())
@@ -1029,7 +1077,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = note_query_by_trajectory_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = note_query_by_trajectory_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Query should not error");
                 prop_assert!(result.unwrap().is_empty(), "Query for non-existent trajectory should be empty");
 

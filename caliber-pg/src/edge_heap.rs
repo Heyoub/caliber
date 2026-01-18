@@ -36,6 +36,18 @@ use crate::tuple_extract::{
     json_to_datum, float4_to_datum, i32_to_datum, timestamp_to_chrono,
 };
 
+/// Edge row with tenant ownership metadata.
+pub struct EdgeRow {
+    pub edge: Edge,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<EdgeRow> for Edge {
+    fn from(row: EdgeRow) -> Self {
+        row.edge
+    }
+}
+
 /// Create a new edge using direct heap operations.
 ///
 /// # Arguments
@@ -44,7 +56,7 @@ use crate::tuple_extract::{
 /// # Returns
 /// * `Ok(EntityId)` - The edge ID on success
 /// * `Err(CaliberError)` - On failure
-pub fn edge_create_heap(edge: &Edge) -> CaliberResult<EntityId> {
+pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<EntityId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(edge::TABLE_NAME, LockMode::RowExclusive)?;
     validate_edge_relation(&rel)?;
@@ -114,6 +126,9 @@ pub fn edge_create_heap(edge: &Edge) -> CaliberResult<EntityId> {
         nulls[edge::METADATA as usize - 1] = true;
     }
 
+    // Column 11: tenant_id (UUID, NOT NULL)
+    values[edge::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
 
@@ -135,7 +150,7 @@ pub fn edge_create_heap(edge: &Edge) -> CaliberResult<EntityId> {
 /// * `Ok(Some(Edge))` - The edge if found
 /// * `Ok(None)` - If no edge with that ID exists
 /// * `Err(CaliberError)` - On failure
-pub fn edge_get_heap(id: EntityId) -> CaliberResult<Option<Edge>> {
+pub fn edge_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
 
@@ -167,8 +182,12 @@ pub fn edge_get_heap(id: EntityId) -> CaliberResult<Option<Edge>> {
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let edge = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
-        Ok(Some(edge))
+        let row = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
@@ -182,7 +201,7 @@ pub fn edge_get_heap(id: EntityId) -> CaliberResult<Option<Edge>> {
 /// # Returns
 /// * `Ok(Vec<Edge>)` - List of matching edges
 /// * `Err(CaliberError)` - On failure
-pub fn edge_query_by_type_heap(edge_type: EdgeType) -> CaliberResult<Vec<Edge>> {
+pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: EntityId) -> CaliberResult<Vec<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
 
@@ -216,8 +235,10 @@ pub fn edge_query_by_type_heap(edge_type: EdgeType) -> CaliberResult<Vec<Edge>> 
 
     // Collect all matching tuples
     for tuple in &mut scanner {
-        let edge = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
-        results.push(edge);
+        let row = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
 
     Ok(results)
@@ -231,7 +252,10 @@ pub fn edge_query_by_type_heap(edge_type: EdgeType) -> CaliberResult<Vec<Edge>> 
 /// # Returns
 /// * `Ok(Vec<Edge>)` - List of matching edges
 /// * `Err(CaliberError)` - On failure
-pub fn edge_query_by_trajectory_heap(trajectory_id: EntityId) -> CaliberResult<Vec<Edge>> {
+pub fn edge_query_by_trajectory_heap(
+    trajectory_id: EntityId,
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
 
@@ -265,8 +289,10 @@ pub fn edge_query_by_trajectory_heap(trajectory_id: EntityId) -> CaliberResult<V
 
     // Collect all matching tuples
     for tuple in &mut scanner {
-        let edge = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
-        results.push(edge);
+        let row = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            results.push(row);
+        }
     }
 
     Ok(results)
@@ -355,7 +381,7 @@ fn str_to_extraction_method(s: &str) -> ExtractionMethod {
 unsafe fn tuple_to_edge(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Edge> {
+) -> CaliberResult<EdgeRow> {
     let edge_id = extract_uuid(tuple, tuple_desc, edge::EDGE_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "edge_id is NULL".to_string(),
@@ -409,15 +435,20 @@ unsafe fn tuple_to_edge(
 
     let metadata = extract_jsonb(tuple, tuple_desc, edge::METADATA)?;
 
-    Ok(Edge {
-        edge_id,
-        edge_type,
-        participants,
-        weight,
-        trajectory_id,
-        provenance,
-        created_at,
-        metadata,
+    let tenant_id = extract_uuid(tuple, tuple_desc, edge::TENANT_ID)?;
+
+    Ok(EdgeRow {
+        edge: Edge {
+            edge_id,
+            edge_type,
+            participants,
+            weight,
+            trajectory_id,
+            provenance,
+            created_at,
+            metadata,
+        },
+        tenant_id,
     })
 }
 
@@ -569,7 +600,7 @@ mod tests {
                 prop_assert_eq!(result.unwrap(), edge_id);
 
                 // Get via heap
-                let get_result = edge_get_heap(edge_id);
+                let get_result = edge_get_heap(edge_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed");
 
                 let retrieved = get_result.unwrap();
@@ -602,7 +633,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
 
-                let result = edge_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = edge_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent edge should return None");
 

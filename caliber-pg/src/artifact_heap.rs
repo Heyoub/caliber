@@ -38,6 +38,18 @@ use crate::tuple_extract::{
     extract_content_hash,
 };
 
+/// Artifact row with tenant ownership metadata.
+pub struct ArtifactRow {
+    pub artifact: Artifact,
+    pub tenant_id: Option<EntityId>,
+}
+
+impl From<ArtifactRow> for Artifact {
+    fn from(row: ArtifactRow) -> Self {
+        row.artifact
+    }
+}
+
 /// Create a new artifact using direct heap operations.
 ///
 /// This bypasses SQL parsing entirely for hot-path performance.
@@ -72,6 +84,7 @@ pub struct ArtifactCreateParams<'a> {
     pub embedding: Option<&'a EmbeddingVector>,
     pub provenance: &'a Provenance,
     pub ttl: TTL,
+    pub tenant_id: EntityId,
 }
 
 pub fn artifact_create_heap(params: ArtifactCreateParams<'_>) -> CaliberResult<EntityId> {
@@ -86,6 +99,7 @@ pub fn artifact_create_heap(params: ArtifactCreateParams<'_>) -> CaliberResult<E
         embedding,
         provenance,
         ttl,
+        tenant_id,
     } = params;
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(artifact::TABLE_NAME, LockMode::RowExclusive)?;
@@ -153,6 +167,9 @@ pub fn artifact_create_heap(params: ArtifactCreateParams<'_>) -> CaliberResult<E
     
     // Column 14: metadata (JSONB, nullable)
     nulls[artifact::METADATA as usize - 1] = true;
+
+    // Column 15: tenant_id (UUID, NOT NULL)
+    values[artifact::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
     
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -181,7 +198,7 @@ pub fn artifact_create_heap(params: ArtifactCreateParams<'_>) -> CaliberResult<E
 ///
 /// # Requirements
 /// - 3.2: Uses index_beginscan for O(log n) lookup instead of SPI SELECT
-pub fn artifact_get_heap(id: EntityId) -> CaliberResult<Option<Artifact>> {
+pub fn artifact_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<ArtifactRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(artifact::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -213,8 +230,12 @@ pub fn artifact_get_heap(id: EntityId) -> CaliberResult<Option<Artifact>> {
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
-        let artifact = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
-        Ok(Some(artifact))
+        let row = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id) {
+            Ok(Some(row))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
@@ -233,7 +254,8 @@ pub fn artifact_get_heap(id: EntityId) -> CaliberResult<Option<Artifact>> {
 /// - 3.3: Uses index scan instead of SPI SELECT
 pub fn artifact_query_by_type_heap(
     artifact_type: ArtifactType,
-) -> CaliberResult<Vec<Artifact>> {
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<ArtifactRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(artifact::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -267,10 +289,12 @@ pub fn artifact_query_by_type_heap(
 
     // Collect all matching tuples, filtering out expired ones
     for tuple in &mut scanner {
-        let artifact = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
+        let row = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
         // Enforce TTL - skip expired artifacts
-        if !is_artifact_expired(&artifact.ttl, artifact.created_at) {
-            results.push(artifact);
+        if row.tenant_id == Some(tenant_id)
+            && !is_artifact_expired(&row.artifact.ttl, row.artifact.created_at)
+        {
+            results.push(row);
         }
     }
 
@@ -290,7 +314,8 @@ pub fn artifact_query_by_type_heap(
 /// - 3.4: Uses index scan instead of SPI SELECT
 pub fn artifact_query_by_scope_heap(
     scope_id: EntityId,
-) -> CaliberResult<Vec<Artifact>> {
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<ArtifactRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(artifact::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -324,10 +349,68 @@ pub fn artifact_query_by_scope_heap(
 
     // Collect all matching tuples, filtering out expired ones
     for tuple in &mut scanner {
-        let artifact = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
+        let row = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
         // Enforce TTL - skip expired artifacts
-        if !is_artifact_expired(&artifact.ttl, artifact.created_at) {
-            results.push(artifact);
+        if row.tenant_id == Some(tenant_id)
+            && !is_artifact_expired(&row.artifact.ttl, row.artifact.created_at)
+        {
+            results.push(row);
+        }
+    }
+
+    Ok(results)
+}
+
+/// Query artifacts by trajectory using direct heap operations.
+///
+/// # Arguments
+/// * `trajectory_id` - The trajectory ID to filter by
+///
+/// # Returns
+/// * `Ok(Vec<ArtifactRow>)` - List of matching artifacts
+/// * `Err(CaliberError)` - On failure
+pub fn artifact_query_by_trajectory_heap(
+    trajectory_id: EntityId,
+    tenant_id: EntityId,
+) -> CaliberResult<Vec<ArtifactRow>> {
+    // Open relation with AccessShare lock for reads
+    let rel = open_relation(artifact::TABLE_NAME, LockMode::AccessShare)?;
+
+    // Open the trajectory index
+    let index_rel = open_index(artifact::TRAJECTORY_INDEX)?;
+
+    // Get active snapshot for visibility
+    let snapshot = get_active_snapshot();
+
+    // Build scan key for trajectory_id lookup
+    let mut scan_key = pg_sys::ScanKeyData::default();
+    init_scan_key(
+        &mut scan_key,
+        1, // First column of index (trajectory_id)
+        BTreeStrategy::Equal,
+        operator_oids::UUID_EQ,
+        uuid_to_datum(trajectory_id),
+    );
+
+    // Create index scanner
+    let mut scanner = unsafe { IndexScanner::new(
+        &rel,
+        &index_rel,
+        snapshot,
+        1,
+        &mut scan_key,
+    ) };
+
+    let tuple_desc = rel.tuple_desc();
+    let mut results = Vec::new();
+
+    // Collect all matching tuples, filtering out expired ones
+    for tuple in &mut scanner {
+        let row = unsafe { tuple_to_artifact(tuple, tuple_desc) }?;
+        if row.tenant_id == Some(tenant_id)
+            && !is_artifact_expired(&row.artifact.ttl, row.artifact.created_at)
+        {
+            results.push(row);
         }
     }
 
@@ -359,6 +442,7 @@ pub fn artifact_update_heap(
     embedding: Option<Option<&EmbeddingVector>>,
     superseded_by: Option<Option<EntityId>>,
     metadata: Option<Option<&serde_json::Value>>,
+    tenant_id: EntityId,
 ) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(artifact::TABLE_NAME, LockMode::RowExclusive)?;
@@ -402,6 +486,10 @@ pub fn artifact_update_heap(
         }))?;
     
     let tuple_desc = rel.tuple_desc();
+    let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, artifact::TENANT_ID)? };
+    if existing_tenant != Some(tenant_id) {
+        return Ok(false);
+    }
     
     // Extract current values and nulls
     let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -681,7 +769,7 @@ pub fn is_artifact_expired(ttl: &TTL, created_at: chrono::DateTime<chrono::Utc>)
 unsafe fn tuple_to_artifact(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
-) -> CaliberResult<Artifact> {
+) -> CaliberResult<ArtifactRow> {
     // Extract all fields from the tuple
     let artifact_id = extract_uuid(tuple, tuple_desc, artifact::ARTIFACT_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
@@ -753,22 +841,26 @@ unsafe fn tuple_to_artifact(
     let superseded_by = extract_uuid(tuple, tuple_desc, artifact::SUPERSEDED_BY)?;
     
     let metadata = extract_jsonb(tuple, tuple_desc, artifact::METADATA)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, artifact::TENANT_ID)?;
     
-    Ok(Artifact {
-        artifact_id,
-        trajectory_id,
-        scope_id,
-        artifact_type,
-        name,
-        content,
-        content_hash,
-        embedding,
-        provenance,
-        ttl,
-        created_at,
-        updated_at,
-        superseded_by,
-        metadata,
+    Ok(ArtifactRow {
+        artifact: Artifact {
+            artifact_id,
+            trajectory_id,
+            scope_id,
+            artifact_type,
+            name,
+            content,
+            content_hash,
+            embedding,
+            provenance,
+            ttl,
+            created_at,
+            updated_at,
+            superseded_by,
+            metadata,
+        },
+        tenant_id,
     })
 }
 
@@ -877,11 +969,13 @@ mod tests {
             runner.run(&strategy, |(name, content, artifact_type, ttl, provenance)| {
                 // Create trajectory and scope first
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 let scope_id = caliber_core::new_entity_id();
@@ -891,6 +985,7 @@ mod tests {
                     "test_scope",
                     None,
                     10000,
+                    tenant_id,
                 );
 
                 // Generate artifact ID and content hash
@@ -909,18 +1004,20 @@ mod tests {
                     embedding: None, // No embedding for basic test
                     provenance: &provenance,
                     ttl,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), artifact_id);
 
                 // Get via heap
-                let get_result = artifact_get_heap(artifact_id);
+                let get_result = artifact_get_heap(artifact_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed");
                 
                 let artifact = get_result.unwrap();
                 prop_assert!(artifact.is_some(), "Artifact should be found");
                 
-                let a = artifact.unwrap();
+                let row = artifact.unwrap();
+                let a = row.artifact;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(a.artifact_id, artifact_id);
@@ -934,6 +1031,7 @@ mod tests {
                 prop_assert!(a.embedding.is_none());
                 prop_assert!(a.superseded_by.is_none());
                 prop_assert!(a.metadata.is_none());
+                prop_assert_eq!(row.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -950,7 +1048,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = artifact_get_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = artifact_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent artifact should return None");
 
@@ -986,11 +1085,13 @@ mod tests {
             runner.run(&strategy, |(num_artifacts, artifact_type)| {
                 // Create trajectory and scope
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 let scope_id = caliber_core::new_entity_id();
@@ -1000,6 +1101,7 @@ mod tests {
                     "test_scope",
                     None,
                     10000,
+                    tenant_id,
                 );
 
                 // Create multiple artifacts of the same type
@@ -1025,12 +1127,13 @@ mod tests {
                         embedding: None,
                         provenance: &provenance,
                         ttl: TTL::MediumTerm,
+                        tenant_id,
                     });
                     artifact_ids.push(artifact_id);
                 }
 
                 // Query by type
-                let query_result = artifact_query_by_type_heap(artifact_type.clone());
+                let query_result = artifact_query_by_type_heap(artifact_type.clone(), tenant_id);
                 prop_assert!(query_result.is_ok(), "Query should succeed");
                 
                 let artifacts = query_result.unwrap();
@@ -1038,14 +1141,15 @@ mod tests {
                 // All created artifacts should be in result
                 for artifact_id in &artifact_ids {
                     prop_assert!(
-                        artifacts.iter().any(|a| a.artifact_id == *artifact_id),
+                        artifacts.iter().any(|a| a.artifact.artifact_id == *artifact_id),
                         "All created artifacts should be in result"
                     );
                 }
 
                 // All results should have correct type
-                for artifact in &artifacts {
-                    prop_assert_eq!(artifact.artifact_type, artifact_type);
+                for row in &artifacts {
+                    prop_assert_eq!(row.artifact.artifact_type, artifact_type);
+                    prop_assert_eq!(row.tenant_id, Some(tenant_id));
                 }
 
                 Ok(())
@@ -1067,11 +1171,13 @@ mod tests {
             runner.run(&strategy, |num_artifacts| {
                 // Create trajectory and scope
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 let scope_id = caliber_core::new_entity_id();
@@ -1081,6 +1187,7 @@ mod tests {
                     "test_scope",
                     None,
                     10000,
+                    tenant_id,
                 );
 
                 // Create multiple artifacts in the scope
@@ -1106,26 +1213,28 @@ mod tests {
                         embedding: None,
                         provenance: &provenance,
                         ttl: TTL::MediumTerm,
+                        tenant_id,
                     });
                     artifact_ids.push(artifact_id);
                 }
 
                 // Query by scope
-                let query_result = artifact_query_by_scope_heap(scope_id);
+                let query_result = artifact_query_by_scope_heap(scope_id, tenant_id);
                 prop_assert!(query_result.is_ok(), "Query should succeed");
                 
                 let artifacts = query_result.unwrap();
                 prop_assert_eq!(artifacts.len(), num_artifacts, "Should return all artifacts");
 
                 // All results should have correct scope_id
-                for artifact in &artifacts {
-                    prop_assert_eq!(artifact.scope_id, scope_id);
+                for row in &artifacts {
+                    prop_assert_eq!(row.artifact.scope_id, scope_id);
+                    prop_assert_eq!(row.tenant_id, Some(tenant_id));
                 }
 
                 // All created artifacts should be in result
                 for artifact_id in &artifact_ids {
                     prop_assert!(
-                        artifacts.iter().any(|a| a.artifact_id == *artifact_id),
+                        artifacts.iter().any(|a| a.artifact.artifact_id == *artifact_id),
                         "All created artifacts should be in result"
                     );
                 }
@@ -1145,7 +1254,8 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let result = artifact_query_by_scope_heap(random_id);
+                let tenant_id = caliber_core::new_entity_id();
+                let result = artifact_query_by_scope_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Query should not error");
                 prop_assert!(result.unwrap().is_empty(), "Query for non-existent scope should be empty");
 
@@ -1180,11 +1290,13 @@ mod tests {
             runner.run(&strategy, |(original_content, new_content)| {
                 // Create trajectory and scope
                 let trajectory_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
                     None,
                     None,
+                    tenant_id,
                 );
 
                 let scope_id = caliber_core::new_entity_id();
@@ -1194,6 +1306,7 @@ mod tests {
                     "test_scope",
                     None,
                     10000,
+                    tenant_id,
                 );
 
                 // Create artifact
@@ -1216,6 +1329,7 @@ mod tests {
                     embedding: None,
                     provenance: &provenance,
                     ttl: TTL::MediumTerm,
+                    tenant_id,
                 });
 
                 // Update content
@@ -1227,14 +1341,16 @@ mod tests {
                     None,
                     None,
                     None,
+                    tenant_id,
                 );
                 prop_assert!(update_result.is_ok());
                 prop_assert!(update_result.unwrap(), "Update should find the artifact");
 
                 // Verify updated
-                let after = artifact_get_heap(artifact_id).unwrap().unwrap();
-                prop_assert_eq!(after.content, new_content, "Content should be updated");
-                prop_assert_eq!(after.content_hash, new_hash, "Content hash should be updated");
+                let after = artifact_get_heap(artifact_id, tenant_id).unwrap().unwrap();
+                prop_assert_eq!(after.artifact.content, new_content, "Content should be updated");
+                prop_assert_eq!(after.artifact.content_hash, new_hash, "Content hash should be updated");
+                prop_assert_eq!(after.tenant_id, Some(tenant_id));
 
                 Ok(())
             }).unwrap();
@@ -1258,6 +1374,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    caliber_core::new_entity_id(),
                 );
                 prop_assert!(result.is_ok(), "Update should not error");
                 prop_assert!(!result.unwrap(), "Update of non-existent artifact should return false");

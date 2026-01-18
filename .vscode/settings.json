@@ -46,6 +46,7 @@
         "hyperedge",
         "Hyperedge",
         "hyperedges",
+        "ILIKE",
         "inets",
         "inprogress",
         "intermediateoutput",
@@ -115,6 +116,7 @@
         "utoipa",
         "UUIDARRAYOID",
         "UUIDOID",
+        "workos",
         "контент",
         "Тест",
         "тестовый"
