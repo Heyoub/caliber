@@ -97,3 +97,5 @@ secrets.yaml
 # Local audit scripts
 scripts/repo_audit_rust.py
 scripts/repo_features_matrix.py
+_depg/
+_depg_results/
