@@ -22,30 +22,13 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{
         ArtifactResponse, CheckpointResponse, CreateCheckpointRequest, CreateScopeRequest,
         ScopeResponse, TurnResponse, UpdateScopeRequest,
     },
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for scope routes.
-#[derive(Clone)]
-pub struct ScopeState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-    pub pcp: Arc<PCPRuntime>,
-}
-
-impl ScopeState {
-    pub fn new(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> Self {
-        Self { db, ws, pcp }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -68,7 +51,8 @@ impl ScopeState {
     )
 )]
 pub async fn create_scope(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateScopeRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -82,10 +66,10 @@ pub async fn create_scope(
     }
 
     // Create scope via database client with tenant_id for isolation
-    let scope = state.db.scope_create(&req, auth.tenant_id).await?;
+    let scope = db.scope_create(&req, auth.tenant_id).await?;
 
     // Broadcast ScopeCreated event
-    state.ws.broadcast(WsEvent::ScopeCreated {
+    ws.broadcast(WsEvent::ScopeCreated {
         scope: scope.clone(),
     });
 
@@ -111,12 +95,11 @@ pub async fn create_scope(
     )
 )]
 pub async fn get_scope(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let scope = state
-        .db
+    let scope = db
         .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
@@ -148,7 +131,8 @@ pub async fn get_scope(
     )
 )]
 pub async fn update_scope(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateScopeRequest>,
@@ -172,18 +156,17 @@ pub async fn update_scope(
     }
 
     // First verify the scope exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update scope via database client
-    let scope = state.db.scope_update(id, &req, auth.tenant_id).await?;
+    let scope = db.scope_update(id, &req, auth.tenant_id).await?;
 
     // Broadcast ScopeUpdated event
-    state.ws.broadcast(WsEvent::ScopeUpdated {
+    ws.broadcast(WsEvent::ScopeUpdated {
         scope: scope.clone(),
     });
 
@@ -211,7 +194,7 @@ pub async fn update_scope(
     )
 )]
 pub async fn create_checkpoint(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<CreateCheckpointRequest>,
@@ -224,16 +207,14 @@ pub async fn create_checkpoint(
     }
 
     // First verify the scope exists and belongs to this tenant
-    let scope = state
-        .db
+    let scope = db
         .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Create checkpoint via database client
-    let checkpoint = state
-        .db
+    let checkpoint = db
         .scope_create_checkpoint(id, &req, auth.tenant_id)
         .await?;
 
@@ -260,23 +241,24 @@ pub async fn create_checkpoint(
     )
 )]
 pub async fn close_scope(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
+    State(pcp): State<Arc<PCPRuntime>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Close scope via database client
-    let scope = state.db.scope_close(id, auth.tenant_id).await?;
+    let scope = db.scope_close(id, auth.tenant_id).await?;
 
     // Broadcast ScopeClosed event
-    state.ws.broadcast(WsEvent::ScopeClosed {
+    ws.broadcast(WsEvent::ScopeClosed {
         scope: scope.clone(),
     });
 
@@ -286,19 +268,17 @@ pub async fn close_scope(
     let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
 
     // Fetch summarization policies for this trajectory
-    if let Ok(policies) = state.db.summarization_policies_for_trajectory(trajectory_id).await {
+    if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
         if !policies.is_empty() {
             // Get turn count for this scope
-            let turn_count = state
-                .db
+            let turn_count = db
                 .turn_list_by_scope(id, auth.tenant_id)
                 .await
                 .map(|turns| turns.len() as i32)
                 .unwrap_or(0);
 
             // Get artifact count for this scope
-            let artifact_count = state
-                .db
+            let artifact_count = db
                 .artifact_list_by_scope(id, auth.tenant_id)
                 .await
                 .map(|artifacts| artifacts.len() as i32)
@@ -338,7 +318,7 @@ pub async fn close_scope(
             };
 
             // Check which triggers should fire (ScopeClose will fire since is_active=false)
-            if let Ok(triggered) = state.pcp.check_summarization_triggers(
+            if let Ok(triggered) = pcp.check_summarization_triggers(
                 &core_scope,
                 turn_count,
                 artifact_count,
@@ -348,7 +328,7 @@ pub async fn close_scope(
                 for (policy_id, trigger) in triggered {
                     // Find the policy to get its details
                     if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
-                        state.ws.broadcast(WsEvent::SummarizationTriggered {
+                        ws.broadcast(WsEvent::SummarizationTriggered {
                             tenant_id: auth.tenant_id,
                             policy_id,
                             trigger,
@@ -387,20 +367,19 @@ pub async fn close_scope(
     )
 )]
 pub async fn list_scope_turns(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
-    let scope = state
-        .db
+    let scope = db
         .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Get turns for this scope
-    let turns = state.db.turn_list_by_scope(id, auth.tenant_id).await?;
+    let turns = db.turn_list_by_scope(id, auth.tenant_id).await?;
 
     Ok(Json(turns))
 }
@@ -424,20 +403,19 @@ pub async fn list_scope_turns(
     )
 )]
 pub async fn list_scope_artifacts(
-    State(state): State<Arc<ScopeState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
-    let scope = state
-        .db
+    let scope = db
         .scope_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Get artifacts for this scope
-    let artifacts = state.db.artifact_list_by_scope(id, auth.tenant_id).await?;
+    let artifacts = db.artifact_list_by_scope(id, auth.tenant_id).await?;
 
     Ok(Json(artifacts))
 }
@@ -447,9 +425,7 @@ pub async fn list_scope_artifacts(
 // ============================================================================
 
 /// Create the scope routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> axum::Router {
-    let state = Arc::new(ScopeState::new(db, ws, pcp));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_scope))
         .route("/:id", axum::routing::get(get_scope))
@@ -458,7 +434,6 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> ax
         .route("/:id/close", axum::routing::post(close_scope))
         .route("/:id/turns", axum::routing::get(list_scope_turns))
         .route("/:id/artifacts", axum::routing::get(list_scope_artifacts))
-        .with_state(state)
 }
 
 #[cfg(test)]

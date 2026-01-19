@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-agents"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-core",
  "caliber-pcp",
@@ -523,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-api"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-graphql",
  "async-graphql-axum",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-context"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-core",
  "chrono",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-core"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -606,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-dsl"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-core",
  "proptest",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-llm"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "caliber-core",
@@ -630,7 +630,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-pcp"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-core",
  "chrono",
@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-pg"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-agents",
  "caliber-context",
@@ -666,7 +666,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-storage"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-core",
  "chrono",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-test-utils"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-agents",
  "caliber-context",
@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-tui"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "caliber-api",
  "caliber-core",

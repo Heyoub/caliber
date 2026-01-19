@@ -21,6 +21,7 @@ use crate::{
     error::ApiError,
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{
         ArtifactBatchItem, ArtifactResponse, BatchArtifactRequest, BatchArtifactResponse,
         BatchItemResult, BatchNoteRequest, BatchNoteResponse, BatchOperation,
@@ -29,23 +30,6 @@ use crate::{
     },
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for batch routes.
-#[derive(Clone)]
-pub struct BatchState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl BatchState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -68,7 +52,8 @@ impl BatchState {
     )
 )]
 pub async fn batch_trajectories(
-    State(state): State<Arc<BatchState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<BatchTrajectoryRequest>,
 ) -> impl IntoResponse {
@@ -77,7 +62,7 @@ pub async fn batch_trajectories(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_trajectory_item(&state, item, &auth).await;
+        let result = process_trajectory_item(&db, &ws, item, &auth).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -102,7 +87,8 @@ pub async fn batch_trajectories(
 }
 
 async fn process_trajectory_item(
-    state: &BatchState,
+    db: &DbClient,
+    ws: &Arc<WsState>,
     item: TrajectoryBatchItem,
     auth: &AuthContext,
 ) -> BatchItemResult<TrajectoryResponse> {
@@ -122,9 +108,9 @@ async fn process_trajectory_item(
                 };
             }
 
-            match state.db.trajectory_create(&create_req, auth.tenant_id).await {
+            match db.trajectory_create(&create_req, auth.tenant_id).await {
                 Ok(trajectory) => {
-                    state.ws.broadcast(WsEvent::TrajectoryCreated {
+                    ws.broadcast(WsEvent::TrajectoryCreated {
                         trajectory: trajectory.clone(),
                     });
                     BatchItemResult::Success { data: trajectory }
@@ -145,7 +131,7 @@ async fn process_trajectory_item(
             };
 
             // Validate tenant ownership before update
-            match state.db.trajectory_get(id, auth.tenant_id).await {
+            match db.trajectory_get(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -186,9 +172,9 @@ async fn process_trajectory_item(
                 };
             }
 
-            match state.db.trajectory_update(id, &update_req, auth.tenant_id).await {
+            match db.trajectory_update(id, &update_req, auth.tenant_id).await {
                 Ok(trajectory) => {
-                    state.ws.broadcast(WsEvent::TrajectoryUpdated {
+                    ws.broadcast(WsEvent::TrajectoryUpdated {
                         trajectory: trajectory.clone(),
                     });
                     BatchItemResult::Success { data: trajectory }
@@ -209,7 +195,7 @@ async fn process_trajectory_item(
             };
 
             // First get the trajectory to validate ownership and return in response
-            match state.db.trajectory_get(id, auth.tenant_id).await {
+            match db.trajectory_get(id, auth.tenant_id).await {
                 Ok(Some(trajectory)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, trajectory.tenant_id).is_err() {
@@ -219,9 +205,9 @@ async fn process_trajectory_item(
                         };
                     }
 
-                    match state.db.trajectory_delete(id).await {
+                    match db.trajectory_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::TrajectoryDeleted { tenant_id: auth.tenant_id, id });
+                            ws.broadcast(WsEvent::TrajectoryDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: trajectory }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -261,7 +247,8 @@ async fn process_trajectory_item(
     )
 )]
 pub async fn batch_artifacts(
-    State(state): State<Arc<BatchState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<BatchArtifactRequest>,
 ) -> impl IntoResponse {
@@ -270,7 +257,7 @@ pub async fn batch_artifacts(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_artifact_item(&state, item, &auth).await;
+        let result = process_artifact_item(&db, &ws, item, &auth).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -295,7 +282,8 @@ pub async fn batch_artifacts(
 }
 
 async fn process_artifact_item(
-    state: &BatchState,
+    db: &DbClient,
+    ws: &Arc<WsState>,
     item: ArtifactBatchItem,
     auth: &AuthContext,
 ) -> BatchItemResult<ArtifactResponse> {
@@ -338,9 +326,9 @@ async fn process_artifact_item(
                 }
             }
 
-            match state.db.artifact_create(&create_req, auth.tenant_id).await {
+            match db.artifact_create(&create_req, auth.tenant_id).await {
                 Ok(artifact) => {
-                    state.ws.broadcast(WsEvent::ArtifactCreated {
+                    ws.broadcast(WsEvent::ArtifactCreated {
                         artifact: artifact.clone(),
                     });
                     BatchItemResult::Success { data: artifact }
@@ -361,7 +349,7 @@ async fn process_artifact_item(
             };
 
             // Validate tenant ownership before update
-            match state.db.artifact_get(id, auth.tenant_id).await {
+            match db.artifact_get(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -403,9 +391,9 @@ async fn process_artifact_item(
                 };
             }
 
-            match state.db.artifact_update(id, &update_req, auth.tenant_id).await {
+            match db.artifact_update(id, &update_req, auth.tenant_id).await {
                 Ok(artifact) => {
-                    state.ws.broadcast(WsEvent::ArtifactUpdated {
+                    ws.broadcast(WsEvent::ArtifactUpdated {
                         artifact: artifact.clone(),
                     });
                     BatchItemResult::Success { data: artifact }
@@ -425,7 +413,7 @@ async fn process_artifact_item(
                 };
             };
 
-            match state.db.artifact_get(id, auth.tenant_id).await {
+            match db.artifact_get(id, auth.tenant_id).await {
                 Ok(Some(artifact)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, artifact.tenant_id).is_err() {
@@ -435,9 +423,9 @@ async fn process_artifact_item(
                         };
                     }
 
-                    match state.db.artifact_delete(id).await {
+                    match db.artifact_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id: auth.tenant_id, id });
+                            ws.broadcast(WsEvent::ArtifactDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: artifact }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -476,7 +464,8 @@ async fn process_artifact_item(
     )
 )]
 pub async fn batch_notes(
-    State(state): State<Arc<BatchState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<BatchNoteRequest>,
 ) -> impl IntoResponse {
@@ -485,7 +474,7 @@ pub async fn batch_notes(
     let mut failed = 0i32;
 
     for item in req.items {
-        let result = process_note_item(&state, item, &auth).await;
+        let result = process_note_item(&db, &ws, item, &auth).await;
 
         match &result {
             BatchItemResult::Success { .. } => succeeded += 1,
@@ -510,7 +499,8 @@ pub async fn batch_notes(
 }
 
 async fn process_note_item(
-    state: &BatchState,
+    db: &DbClient,
+    ws: &Arc<WsState>,
     item: NoteBatchItem,
     auth: &AuthContext,
 ) -> BatchItemResult<NoteResponse> {
@@ -537,9 +527,9 @@ async fn process_note_item(
                 };
             }
 
-            match state.db.note_create(&create_req, auth.tenant_id).await {
+            match db.note_create(&create_req, auth.tenant_id).await {
                 Ok(note) => {
-                    state.ws.broadcast(WsEvent::NoteCreated {
+                    ws.broadcast(WsEvent::NoteCreated {
                         note: note.clone(),
                     });
                     BatchItemResult::Success { data: note }
@@ -560,7 +550,7 @@ async fn process_note_item(
             };
 
             // Validate tenant ownership before update
-            match state.db.note_get(id, auth.tenant_id).await {
+            match db.note_get(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -602,9 +592,9 @@ async fn process_note_item(
                 };
             }
 
-            match state.db.note_update(id, &update_req, auth.tenant_id).await {
+            match db.note_update(id, &update_req, auth.tenant_id).await {
                 Ok(note) => {
-                    state.ws.broadcast(WsEvent::NoteUpdated {
+                    ws.broadcast(WsEvent::NoteUpdated {
                         note: note.clone(),
                     });
                     BatchItemResult::Success { data: note }
@@ -624,7 +614,7 @@ async fn process_note_item(
                 };
             };
 
-            match state.db.note_get(id, auth.tenant_id).await {
+            match db.note_get(id, auth.tenant_id).await {
                 Ok(Some(note)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, note.tenant_id).is_err() {
@@ -634,9 +624,9 @@ async fn process_note_item(
                         };
                     }
 
-                    match state.db.note_delete(id).await {
+                    match db.note_delete(id).await {
                         Ok(_) => {
-                            state.ws.broadcast(WsEvent::NoteDeleted { tenant_id: auth.tenant_id, id });
+                            ws.broadcast(WsEvent::NoteDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: note }
                         }
                         Err(e) => BatchItemResult::Error {
@@ -663,14 +653,11 @@ async fn process_note_item(
 // ============================================================================
 
 /// Create the batch routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> Router {
-    let state = Arc::new(BatchState::new(db, ws));
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/trajectories", post(batch_trajectories))
         .route("/artifacts", post(batch_artifacts))
         .route("/notes", post(batch_notes))
-        .with_state(state)
 }
 
 #[cfg(test)]

@@ -32,6 +32,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    state::AppState,
     ws::WsState,
 };
 
@@ -641,22 +642,13 @@ pub fn start_webhook_delivery_task(state: Arc<WebhookState>) {
 // ROUTER SETUP
 // ============================================================================
 
-/// Create the webhook routes router and start the delivery task.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> ApiResult<Router> {
-    let state = Arc::new(
-        WebhookState::new(db, ws)
-            .map_err(|e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)))?
-    );
-
-    // Start the webhook delivery background task
-    start_webhook_delivery_task(state.clone());
-
-    Ok(Router::new()
+/// Create the webhook routes router.
+pub fn create_router() -> Router<AppState> {
+    Router::new()
         .route("/", post(create_webhook))
         .route("/", get(list_webhooks))
         .route("/:id", get(get_webhook))
         .route("/:id", delete(delete_webhook))
-        .with_state(state))
 }
 
 #[cfg(test)]

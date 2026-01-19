@@ -11,7 +11,6 @@
 //! - Automatic reconnection support via standard WebSocket protocol
 //! - JSON-serialized events using the WsEvent enum
 
-use crate::auth::AuthContext;
 use crate::error::ApiResult;
 use crate::events::WsEvent;
 use axum::{
@@ -107,7 +106,7 @@ impl WsState {
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<WsState>>,
-    auth: AuthContext,
+    crate::middleware::AuthExtractor(auth): crate::middleware::AuthExtractor,
 ) -> ApiResult<Response> {
     // Extract tenant ID from auth context
     let tenant_id = auth.tenant_id;

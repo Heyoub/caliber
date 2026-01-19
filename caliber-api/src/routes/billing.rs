@@ -21,6 +21,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     middleware::AuthExtractor,
+    state::AppState,
 };
 
 // ============================================================================
@@ -498,15 +499,12 @@ async fn handle_subscription_cancelled(
 // ============================================================================
 
 /// Create the billing routes router.
-pub fn create_router(db: DbClient) -> Router {
-    let state = Arc::new(BillingState::new(db));
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/status", get(get_billing_status))
         .route("/checkout", post(create_checkout))
         .route("/portal", get(get_portal_url))
         .route("/webhooks/lemonsqueezy", post(handle_lemonsqueezy_webhook))
-        .with_state(state)
 }
 
 #[cfg(test)]

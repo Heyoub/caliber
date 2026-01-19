@@ -28,6 +28,7 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::*,
     ws::WsState,
 };
@@ -1084,16 +1085,13 @@ async fn read_resource_content(
 // ============================================================================
 
 /// Create the MCP routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> Router {
-    let state = Arc::new(McpState::new(db, ws));
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/initialize", post(initialize))
         .route("/tools/list", get(list_tools))
         .route("/tools/call", post(call_tool))
         .route("/resources/list", get(list_resources))
         .route("/resources/read", post(read_resource))
-        .with_state(state)
 }
 
 #[cfg(test)]

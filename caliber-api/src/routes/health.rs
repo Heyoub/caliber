@@ -9,9 +9,8 @@
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
-use crate::db::DbClient;
+use crate::{db::DbClient, state::AppState};
 
 // ============================================================================
 // TYPES
@@ -53,25 +52,6 @@ pub struct ComponentHealth {
     pub latency_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-}
-
-// ============================================================================
-// STATE
-// ============================================================================
-
-#[derive(Clone)]
-pub struct HealthState {
-    pub db: DbClient,
-    pub start_time: std::time::Instant,
-}
-
-impl HealthState {
-    pub fn new(db: DbClient) -> Self {
-        Self {
-            db,
-            start_time: std::time::Instant::now(),
-        }
-    }
 }
 
 // ============================================================================
@@ -119,9 +99,12 @@ pub async fn liveness() -> impl IntoResponse {
         (status = 503, description = "Service is not ready", body = HealthResponse),
     ),
 )]
-pub async fn readiness(State(state): State<Arc<HealthState>>) -> impl IntoResponse {
+pub async fn readiness(
+    State(db): State<DbClient>,
+    State(start_time): State<std::time::Instant>,
+) -> impl IntoResponse {
     // Check database connectivity
-    let db_health = match check_database(&state.db).await {
+    let db_health = match check_database(&db).await {
         Ok(latency) => ComponentHealth {
             status: HealthStatus::Healthy,
             latency_ms: Some(latency),
@@ -146,7 +129,7 @@ pub async fn readiness(State(state): State<Arc<HealthState>>) -> impl IntoRespon
         details: Some(HealthDetails {
             database: db_health,
             version: env!("CARGO_PKG_VERSION").to_string(),
-            uptime_seconds: state.start_time.elapsed().as_secs(),
+            uptime_seconds: start_time.elapsed().as_secs(),
         }),
     };
 
@@ -174,14 +157,11 @@ async fn check_database(db: &DbClient) -> Result<u64, String> {
 // ============================================================================
 
 /// Create health check router (no auth required)
-pub fn create_router(db: DbClient) -> Router {
-    let state = Arc::new(HealthState::new(db));
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/ping", get(ping))
         .route("/live", get(liveness))
         .route("/ready", get(readiness))
-        .with_state(state)
 }
 
 #[cfg(test)]

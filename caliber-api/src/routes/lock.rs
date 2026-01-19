@@ -18,26 +18,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for lock routes.
-#[derive(Clone)]
-pub struct LockState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl LockState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -61,7 +45,8 @@ impl LockState {
     )
 )]
 pub async fn acquire_lock(
-    State(state): State<Arc<LockState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<AcquireLockRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -84,10 +69,10 @@ pub async fn acquire_lock(
     }
 
     // Acquire lock via database client with tenant_id for isolation
-    let lock = state.db.lock_acquire(&req, auth.tenant_id).await?;
+    let lock = db.lock_acquire(&req, auth.tenant_id).await?;
 
     // Broadcast LockAcquired event
-    state.ws.broadcast(WsEvent::LockAcquired { lock: lock.clone() });
+    ws.broadcast(WsEvent::LockAcquired { lock: lock.clone() });
 
     Ok((StatusCode::CREATED, Json(lock)))
 }
@@ -111,23 +96,23 @@ pub async fn acquire_lock(
     )
 )]
 pub async fn release_lock(
-    State(state): State<Arc<LockState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify the lock exists and belongs to this tenant
-    let lock = state
-        .db
+    let lock = db
         .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
     validate_tenant_ownership(&auth, Some(lock.tenant_id))?;
 
     // Release lock via database client
-    state.db.lock_release(id).await?;
+    db.lock_release(id).await?;
 
     // Broadcast LockReleased event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::LockReleased {
+    ws.broadcast(WsEvent::LockReleased {
         tenant_id: auth.tenant_id,
         lock_id: id,
     });
@@ -156,7 +141,7 @@ pub async fn release_lock(
     )
 )]
 pub async fn extend_lock(
-    State(state): State<Arc<LockState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<ExtendLockRequest>,
@@ -167,15 +152,14 @@ pub async fn extend_lock(
     }
 
     // Verify the lock exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
     validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     let duration = std::time::Duration::from_millis(req.additional_ms as u64);
-    let lock = state.db.lock_extend(id, duration).await?;
+    let lock = db.lock_extend(id, duration).await?;
     Ok(Json(lock))
 }
 
@@ -194,11 +178,11 @@ pub async fn extend_lock(
     )
 )]
 pub async fn list_locks(
-    State(state): State<Arc<LockState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // List active locks filtered by tenant for isolation
-    let locks = state.db.lock_list_active_by_tenant(auth.tenant_id).await?;
+    let locks = db.lock_list_active_by_tenant(auth.tenant_id).await?;
     let total = locks.len() as i32;
 
     Ok(Json(ListLocksResponse {
@@ -226,12 +210,11 @@ pub async fn list_locks(
     )
 )]
 pub async fn get_lock(
-    State(state): State<Arc<LockState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let lock = state
-        .db
+    let lock = db
         .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
@@ -247,16 +230,13 @@ pub async fn get_lock(
 // ============================================================================
 
 /// Create the lock routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(LockState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/acquire", axum::routing::post(acquire_lock))
         .route("/:id/release", axum::routing::post(release_lock))
         .route("/:id/extend", axum::routing::post(extend_lock))
         .route("/", axum::routing::get(list_locks))
         .route("/:id", axum::routing::get(get_lock))
-        .with_state(state)
 }
 
 #[cfg(test)]

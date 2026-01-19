@@ -11,13 +11,13 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     middleware::AuthExtractor,
+    state::AppState,
 };
 
 // ============================================================================
@@ -59,22 +59,6 @@ pub struct ApiKeyResponse {
 }
 
 // ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for user routes.
-#[derive(Clone)]
-pub struct UserState {
-    pub db: DbClient,
-}
-
-impl UserState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
-    }
-}
-
-// ============================================================================
 // ROUTE HANDLERS
 // ============================================================================
 
@@ -93,14 +77,14 @@ impl UserState {
     )
 )]
 pub async fn get_current_user(
-    State(state): State<Arc<UserState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Get user profile from database or auth context
     // For now, we derive from the auth context and check for API key in DB
 
     // Try to get API key from database
-    let api_key = state.db.user_get_api_key(&auth.user_id).await.ok().flatten();
+    let api_key = db.user_get_api_key(&auth.user_id).await.ok().flatten();
 
     let profile = UserProfile {
         id: auth.user_id.clone(),
@@ -130,14 +114,14 @@ pub async fn get_current_user(
     )
 )]
 pub async fn regenerate_api_key(
-    State(state): State<Arc<UserState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
     // Generate a new API key
     let new_key = generate_api_key();
 
     // Store in database
-    state.db.user_set_api_key(&auth.user_id, &new_key).await?;
+    db.user_set_api_key(&auth.user_id, &new_key).await?;
 
     tracing::info!(
         user_id = %auth.user_id,
@@ -175,13 +159,10 @@ fn generate_api_key() -> String {
 // ============================================================================
 
 /// Create the user routes router.
-pub fn create_router(db: DbClient) -> Router {
-    let state = Arc::new(UserState::new(db));
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/me", get(get_current_user))
         .route("/me/api-key", post(regenerate_api_key))
-        .with_state(state)
 }
 
 #[cfg(test)]

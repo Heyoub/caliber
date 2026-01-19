@@ -3,30 +3,14 @@
 //! This module implements Axum route handlers for global search.
 
 use axum::{extract::State, response::IntoResponse, Json};
-use std::sync::Arc;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     middleware::AuthExtractor,
+    state::AppState,
     types::{SearchRequest, SearchResponse},
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for search routes.
-#[derive(Clone)]
-pub struct SearchState {
-    pub db: DbClient,
-}
-
-impl SearchState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -49,7 +33,7 @@ impl SearchState {
     )
 )]
 pub async fn search(
-    State(state): State<Arc<SearchState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<SearchRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -61,7 +45,7 @@ pub async fn search(
         return Err(ApiError::missing_field("entity_types"));
     }
 
-    let response = state.db.search(&req, auth.tenant_id).await?;
+    let response = db.search(&req, auth.tenant_id).await?;
     Ok(Json(response))
 }
 
@@ -70,11 +54,9 @@ pub async fn search(
 // ============================================================================
 
 /// Create the search routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(SearchState::new(db));
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(search))
-        .with_state(state)
 }
 
 #[cfg(test)]

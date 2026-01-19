@@ -18,26 +18,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{CreateDelegationRequest, DelegationResponse, DelegationResultResponse},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for delegation routes.
-#[derive(Clone)]
-pub struct DelegationState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl DelegationState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -60,7 +44,8 @@ impl DelegationState {
     )
 )]
 pub async fn create_delegation(
-    State(state): State<Arc<DelegationState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateDelegationRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -77,10 +62,10 @@ pub async fn create_delegation(
     }
 
     // Create delegation via database client with tenant_id for isolation
-    let delegation = state.db.delegation_create(&req, auth.tenant_id).await?;
+    let delegation = db.delegation_create(&req, auth.tenant_id).await?;
 
     // Broadcast DelegationCreated event
-    state.ws.broadcast(WsEvent::DelegationCreated {
+    ws.broadcast(WsEvent::DelegationCreated {
         delegation: delegation.clone(),
     });
 
@@ -106,12 +91,11 @@ pub async fn create_delegation(
     )
 )]
 pub async fn get_delegation(
-    State(state): State<Arc<DelegationState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let delegation = state
-        .db
+    let delegation = db
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
@@ -145,14 +129,14 @@ pub async fn get_delegation(
     )
 )]
 pub async fn accept_delegation(
-    State(state): State<Arc<DelegationState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<AcceptDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
-    let delegation = state
-        .db
+    let delegation = db
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
@@ -175,13 +159,10 @@ pub async fn accept_delegation(
     }
 
     // Accept delegation via database client
-    let _ = state
-        .db
-        .delegation_accept(id, req.accepting_agent_id)
-        .await?;
+    let _ = db.delegation_accept(id, req.accepting_agent_id).await?;
 
     // Broadcast DelegationAccepted event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::DelegationAccepted {
+    ws.broadcast(WsEvent::DelegationAccepted {
         tenant_id: auth.tenant_id,
         delegation_id: id,
     });
@@ -212,14 +193,14 @@ pub async fn accept_delegation(
     )
 )]
 pub async fn reject_delegation(
-    State(state): State<Arc<DelegationState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<RejectDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
-    let delegation = state
-        .db
+    let delegation = db
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
@@ -241,8 +222,8 @@ pub async fn reject_delegation(
         ));
     }
 
-    state.db.delegation_reject(id, req.reason).await?;
-    state.ws.broadcast(WsEvent::DelegationRejected {
+    db.delegation_reject(id, req.reason).await?;
+    ws.broadcast(WsEvent::DelegationRejected {
         tenant_id: auth.tenant_id,
         delegation_id: id,
     });
@@ -271,14 +252,14 @@ pub async fn reject_delegation(
     )
 )]
 pub async fn complete_delegation(
-    State(state): State<Arc<DelegationState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<CompleteDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in accepted/in-progress state
-    let delegation = state
-        .db
+    let delegation = db
         .delegation_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
@@ -307,13 +288,10 @@ pub async fn complete_delegation(
     let result_json = serde_json::to_value(&req.result)?;
 
     // Complete delegation via database client
-    let updated = state
-        .db
-        .delegation_complete(id, result_json)
-        .await?;
+    let updated = db.delegation_complete(id, result_json).await?;
 
     // Broadcast DelegationCompleted event
-    state.ws.broadcast(WsEvent::DelegationCompleted {
+    ws.broadcast(WsEvent::DelegationCompleted {
         delegation: updated,
     });
 
@@ -357,16 +335,13 @@ pub struct CompleteDelegationRequest {
 // ============================================================================
 
 /// Create the delegation routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(DelegationState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_delegation))
         .route("/:id", axum::routing::get(get_delegation))
         .route("/:id/accept", axum::routing::post(accept_delegation))
         .route("/:id/reject", axum::routing::post(reject_delegation))
         .route("/:id/complete", axum::routing::post(complete_delegation))
-        .with_state(state)
 }
 
 #[cfg(test)]

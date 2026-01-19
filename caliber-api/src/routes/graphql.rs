@@ -27,6 +27,7 @@ use crate::{
     db::DbClient,
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::*,
     ws::WsState,
 };
@@ -707,13 +708,10 @@ pub async fn graphiql_handler() -> impl IntoResponse {
 // ============================================================================
 
 /// Create the GraphQL routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> Router {
-    let schema = create_schema(db, ws);
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/", post(graphql_handler))
         .route("/playground", get(graphiql_handler))
-        .with_state(schema)
 }
 
 #[cfg(test)]

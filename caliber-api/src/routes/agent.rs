@@ -19,26 +19,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{AgentResponse, ListAgentsRequest, ListAgentsResponse, RegisterAgentRequest, UpdateAgentRequest},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for agent routes.
-#[derive(Clone)]
-pub struct AgentState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl AgentState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -61,7 +45,8 @@ impl AgentState {
     )
 )]
 pub async fn register_agent(
-    State(state): State<Arc<AgentState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<RegisterAgentRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -84,10 +69,10 @@ pub async fn register_agent(
     }
 
     // Register agent via database client with tenant_id for isolation
-    let agent = state.db.agent_register(&req, auth.tenant_id).await?;
+    let agent = db.agent_register(&req, auth.tenant_id).await?;
 
     // Broadcast AgentRegistered event
-    state.ws.broadcast(WsEvent::AgentRegistered {
+    ws.broadcast(WsEvent::AgentRegistered {
         agent: agent.clone(),
     });
 
@@ -116,20 +101,20 @@ pub async fn register_agent(
     )
 )]
 pub async fn list_agents(
-    State(state): State<Arc<AgentState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListAgentsRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // List agents filtered by tenant for isolation
     let agents = if let Some(agent_type) = params.agent_type {
         // Filter by agent type and tenant
-        state.db.agent_list_by_type_and_tenant(&agent_type, auth.tenant_id).await?
+        db.agent_list_by_type_and_tenant(&agent_type, auth.tenant_id).await?
     } else if params.active_only.unwrap_or(false) {
         // Filter by active status and tenant
-        state.db.agent_list_active_by_tenant(auth.tenant_id).await?
+        db.agent_list_active_by_tenant(auth.tenant_id).await?
     } else {
         // List all agents for tenant
-        state.db.agent_list_all_by_tenant(auth.tenant_id).await?
+        db.agent_list_all_by_tenant(auth.tenant_id).await?
     };
 
     // Apply additional filters if needed
@@ -172,12 +157,11 @@ pub async fn list_agents(
     )
 )]
 pub async fn get_agent(
-    State(state): State<Arc<AgentState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let agent = state
-        .db
+    let agent = db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
@@ -209,7 +193,8 @@ pub async fn get_agent(
     )
 )]
 pub async fn update_agent(
-    State(state): State<Arc<AgentState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateAgentRequest>,
@@ -246,19 +231,18 @@ pub async fn update_agent(
     }
 
     // First verify the agent exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
     validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update agent via database client
-    let agent = state.db.agent_update(id, &req).await?;
+    let agent = db.agent_update(id, &req).await?;
 
     // Broadcast AgentStatusChanged when status updates are included
     if let Some(status) = &req.status {
-        state.ws.broadcast(WsEvent::AgentStatusChanged {
+        ws.broadcast(WsEvent::AgentStatusChanged {
             tenant_id: auth.tenant_id,
             agent_id: agent.agent_id,
             status: status.clone(),
@@ -288,13 +272,13 @@ pub async fn update_agent(
     )
 )]
 pub async fn unregister_agent(
-    State(state): State<Arc<AgentState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // First verify the agent exists and belongs to this tenant
-    let agent = state
-        .db
+    let agent = db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
@@ -308,10 +292,10 @@ pub async fn unregister_agent(
     }
 
     // Unregister agent via database client
-    state.db.agent_unregister(id).await?;
+    db.agent_unregister(id).await?;
 
     // Broadcast AgentUnregistered event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::AgentUnregistered {
+    ws.broadcast(WsEvent::AgentUnregistered {
         tenant_id: auth.tenant_id,
         id,
     });
@@ -338,31 +322,30 @@ pub async fn unregister_agent(
     )
 )]
 pub async fn agent_heartbeat(
-    State(state): State<Arc<AgentState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the agent exists and belongs to this tenant
-    let agent = state
-        .db
+    let agent = db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
     validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
 
     // Update heartbeat via database client
-    state.db.agent_heartbeat(id).await?;
+    db.agent_heartbeat(id).await?;
 
     // Broadcast AgentHeartbeat event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::AgentHeartbeat {
+    ws.broadcast(WsEvent::AgentHeartbeat {
         tenant_id: auth.tenant_id,
         agent_id: id,
         timestamp: Utc::now(),
     });
 
     // Return the updated agent
-    let updated_agent = state
-        .db
+    let updated_agent = db
         .agent_get(id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
@@ -375,9 +358,7 @@ pub async fn agent_heartbeat(
 // ============================================================================
 
 /// Create the agent routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(AgentState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(register_agent))
         .route("/", axum::routing::get(list_agents))
@@ -385,7 +366,6 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
         .route("/:id", axum::routing::patch(update_agent))
         .route("/:id", axum::routing::delete(unregister_agent))
         .route("/:id/heartbeat", axum::routing::post(agent_heartbeat))
-        .with_state(state)
 }
 
 #[cfg(test)]
