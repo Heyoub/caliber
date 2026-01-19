@@ -67,6 +67,9 @@ cargo pgrx package -p caliber-pg
 cargo pgrx test -p caliber-pg
 ```
 
+Note: `pgrx-tests` is currently blocked by upstream PG18 incompatibility.
+Use the ops checklist for the fallback test lane.
+
 ### Hello World (Postgres, low-level API)
 
 ```bash
@@ -183,9 +186,11 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 | [MULTI_AGENT_COORDINATION.md](docs/MULTI_AGENT_COORDINATION.md) | Agent coordination |
 | [DEPENDENCY_GRAPH.md](docs/DEPENDENCY_GRAPH.md) | Type system reference |
 | [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Cheat sheet |
+| [CONFIG_PRESETS.md](docs/CONFIG_PRESETS.md) | Preset-first config philosophy + hard-value audit |
 | [BENCHMARKS.md](BENCHMARKS.md) | Performance benchmarks and comparisons |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and workflow |
 | [SECURITY.md](SECURITY.md) | Security policy and vulnerability reporting |
+| [OPERATIONS_CHECKLIST.md](docs/OPERATIONS_CHECKLIST.md) | Production readiness checklist |
 | [DEVLOG.md](DEVLOG.md) | Development timeline |
 | [examples/README.md](examples/README.md) | Example programs and usage patterns |
 

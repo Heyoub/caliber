@@ -4,7 +4,9 @@
 
 **Base URL:** `https://api.caliber.run` (production) or `http://localhost:3000` (local)
 
-**Authentication:** Bearer token in `Authorization` header
+**REST Prefix:** All REST endpoints are under `/api/v1/*`.
+
+**Authentication:** API key or JWT as Bearer token in `Authorization` header
 ```
 Authorization: Bearer <api_key>
 ```
@@ -22,7 +24,7 @@ Trajectories are task containers - the primary unit of work.
 
 ### Create Trajectory
 ```http
-POST /trajectories
+POST /api/v1/trajectories
 Content-Type: application/json
 
 {
@@ -47,17 +49,17 @@ Content-Type: application/json
 
 ### Get Trajectory
 ```http
-GET /trajectories/:trajectory_id
+GET /api/v1/trajectories/:trajectory_id
 ```
 
 ### List Trajectories
 ```http
-GET /trajectories?status=Active&agent_id=uuid&limit=50&offset=0
+GET /api/v1/trajectories?status=Active&agent_id=uuid&limit=50&offset=0
 ```
 
 ### Update Trajectory
 ```http
-PATCH /trajectories/:trajectory_id
+PATCH /api/v1/trajectories/:trajectory_id
 Content-Type: application/json
 
 {
@@ -69,7 +71,7 @@ Content-Type: application/json
 
 ### Delete Trajectory
 ```http
-DELETE /trajectories/:trajectory_id
+DELETE /api/v1/trajectories/:trajectory_id
 ```
 
 ---
@@ -80,7 +82,7 @@ Scopes are context windows with token budgets.
 
 ### Create Scope
 ```http
-POST /scopes
+POST /api/v1/scopes
 Content-Type: application/json
 
 {
@@ -95,12 +97,12 @@ Content-Type: application/json
 
 ### Get Scope
 ```http
-GET /scopes/:scope_id
+GET /api/v1/scopes/:scope_id
 ```
 
 ### Update Scope
 ```http
-PATCH /scopes/:scope_id
+PATCH /api/v1/scopes/:scope_id
 Content-Type: application/json
 
 {
@@ -111,7 +113,7 @@ Content-Type: application/json
 
 ### Create Checkpoint
 ```http
-POST /scopes/:scope_id/checkpoint
+POST /api/v1/scopes/:scope_id/checkpoint
 Content-Type: application/json
 
 {
@@ -122,7 +124,7 @@ Content-Type: application/json
 
 ### Close Scope
 ```http
-POST /scopes/:scope_id/close
+POST /api/v1/scopes/:scope_id/close
 ```
 
 **Note:** Closing a scope deletes all turns within it. Extract artifacts first!
@@ -135,7 +137,7 @@ Turns are individual conversation messages. Ephemeral - deleted when scope close
 
 ### Create Turn
 ```http
-POST /turns
+POST /api/v1/turns
 Content-Type: application/json
 
 {
@@ -152,7 +154,7 @@ Content-Type: application/json
 
 ### Get Turn
 ```http
-GET /turns/:turn_id
+GET /api/v1/turns/:turn_id
 ```
 
 ---
@@ -163,7 +165,7 @@ Artifacts are extracted value from conversations. They persist after scope close
 
 ### Create Artifact
 ```http
-POST /artifacts
+POST /api/v1/artifacts
 Content-Type: application/json
 
 {
@@ -182,17 +184,17 @@ Content-Type: application/json
 
 ### Get Artifact
 ```http
-GET /artifacts/:artifact_id
+GET /api/v1/artifacts/:artifact_id
 ```
 
 ### List Artifacts
 ```http
-GET /artifacts?trajectory_id=uuid&scope_id=uuid&artifact_type=Code&limit=50
+GET /api/v1/artifacts?trajectory_id=uuid&scope_id=uuid&artifact_type=Code&limit=50
 ```
 
 ### Update Artifact
 ```http
-PATCH /artifacts/:artifact_id
+PATCH /api/v1/artifacts/:artifact_id
 Content-Type: application/json
 
 {
@@ -204,12 +206,12 @@ Content-Type: application/json
 
 ### Delete Artifact
 ```http
-DELETE /artifacts/:artifact_id
+DELETE /api/v1/artifacts/:artifact_id
 ```
 
 ### Batch Artifacts
 ```http
-POST /artifacts/batch
+POST /api/v1/artifacts/batch
 Content-Type: application/json
 
 {
@@ -230,7 +232,7 @@ Notes are cross-trajectory knowledge that persists globally.
 
 ### Create Note
 ```http
-POST /notes
+POST /api/v1/notes
 Content-Type: application/json
 
 {
@@ -246,17 +248,17 @@ Content-Type: application/json
 
 ### Get Note
 ```http
-GET /notes/:note_id
+GET /api/v1/notes/:note_id
 ```
 
 ### List Notes
 ```http
-GET /notes?note_type=Convention&source_trajectory_id=uuid&limit=50
+GET /api/v1/notes?note_type=Convention&source_trajectory_id=uuid&limit=50
 ```
 
 ### Update Note
 ```http
-PATCH /notes/:note_id
+PATCH /api/v1/notes/:note_id
 Content-Type: application/json
 
 {
@@ -267,12 +269,12 @@ Content-Type: application/json
 
 ### Delete Note
 ```http
-DELETE /notes/:note_id
+DELETE /api/v1/notes/:note_id
 ```
 
 ### Batch Notes
 ```http
-POST /notes/batch
+POST /api/v1/notes/batch
 Content-Type: application/json
 
 {
@@ -291,7 +293,7 @@ Agents are registered workers with capabilities and permissions.
 
 ### Register Agent
 ```http
-POST /agents/register
+POST /api/v1/agents/register
 Content-Type: application/json
 
 {
@@ -308,12 +310,12 @@ Content-Type: application/json
 
 ### Get Agent
 ```http
-GET /agents/:agent_id
+GET /api/v1/agents/:agent_id
 ```
 
 ### Update Agent
 ```http
-PATCH /agents/:agent_id
+PATCH /api/v1/agents/:agent_id
 Content-Type: application/json
 
 {
@@ -324,12 +326,12 @@ Content-Type: application/json
 
 ### Heartbeat
 ```http
-POST /agents/:agent_id/heartbeat
+POST /api/v1/agents/:agent_id/heartbeat
 ```
 
 ### Unregister Agent
 ```http
-DELETE /agents/:agent_id
+DELETE /api/v1/agents/:agent_id
 ```
 
 ---
@@ -340,7 +342,7 @@ Locks provide exclusive or shared access to resources.
 
 ### Acquire Lock
 ```http
-POST /locks/acquire
+POST /api/v1/locks/acquire
 Content-Type: application/json
 
 {
@@ -354,12 +356,12 @@ Content-Type: application/json
 
 ### Release Lock
 ```http
-DELETE /locks/:lock_id/release
+DELETE /api/v1/locks/:lock_id/release
 ```
 
 ### Extend Lock
 ```http
-PATCH /locks/:lock_id/extend
+PATCH /api/v1/locks/:lock_id/extend
 Content-Type: application/json
 
 {
@@ -375,7 +377,7 @@ Async messages between agents.
 
 ### Send Message
 ```http
-POST /messages
+POST /api/v1/messages
 Content-Type: application/json
 
 {
@@ -394,17 +396,17 @@ Content-Type: application/json
 
 ### Get Message
 ```http
-GET /messages/:message_id
+GET /api/v1/messages/:message_id
 ```
 
 ### List Messages (for agent)
 ```http
-GET /agents/:agent_id/messages?unacknowledged=true
+GET /api/v1/agents/:agent_id/messages?unacknowledged=true
 ```
 
 ### Acknowledge Message
 ```http
-POST /messages/:message_id/acknowledge
+POST /api/v1/messages/:message_id/acknowledge
 ```
 
 ---
@@ -415,7 +417,7 @@ Delegations are sub-task assignments between agents.
 
 ### Create Delegation
 ```http
-POST /delegations
+POST /api/v1/delegations
 Content-Type: application/json
 
 {
@@ -431,12 +433,12 @@ Content-Type: application/json
 
 ### Accept Delegation
 ```http
-POST /delegations/:delegation_id/accept
+POST /api/v1/delegations/:delegation_id/accept
 ```
 
 ### Reject Delegation
 ```http
-POST /delegations/:delegation_id/reject
+POST /api/v1/delegations/:delegation_id/reject
 Content-Type: application/json
 
 {
@@ -446,7 +448,7 @@ Content-Type: application/json
 
 ### Complete Delegation
 ```http
-POST /delegations/:delegation_id/complete
+POST /api/v1/delegations/:delegation_id/complete
 Content-Type: application/json
 
 {
@@ -465,7 +467,7 @@ Handoffs transfer full control of a trajectory between agents.
 
 ### Create Handoff
 ```http
-POST /handoffs
+POST /api/v1/handoffs
 Content-Type: application/json
 
 {
@@ -480,12 +482,12 @@ Content-Type: application/json
 
 ### Accept Handoff
 ```http
-POST /handoffs/:handoff_id/accept
+POST /api/v1/handoffs/:handoff_id/accept
 ```
 
 ### Complete Handoff
 ```http
-POST /handoffs/:handoff_id/complete
+POST /api/v1/handoffs/:handoff_id/complete
 ```
 
 ---
@@ -496,7 +498,7 @@ Global search across all entities.
 
 ### Search
 ```http
-POST /search
+POST /api/v1/search
 Content-Type: application/json
 
 {
@@ -533,7 +535,7 @@ Validate and parse CALIBER DSL configurations.
 
 ### Validate DSL
 ```http
-POST /dsl/validate
+POST /api/v1/dsl/validate
 Content-Type: application/json
 
 {
@@ -552,7 +554,7 @@ Content-Type: application/json
 
 ### Parse DSL
 ```http
-POST /dsl/parse
+POST /api/v1/dsl/parse
 Content-Type: application/json
 
 {
@@ -580,7 +582,8 @@ GET /health/ready
 
 ## WebSocket Events
 
-Connect to `/ws` for real-time events.
+Connect to `/api/v1/ws` for real-time events. Authentication and `X-Tenant-ID`
+are required.
 
 **Event Types:**
 - `trajectory.created`, `trajectory.updated`, `trajectory.completed`
@@ -604,6 +607,41 @@ Connect to `/ws` for real-time events.
 ```
 
 ---
+
+## MCP Server
+
+The MCP server is exposed under `/mcp/*` and is not versioned with REST.
+Use this endpoint only if you are integrating MCP tools.
+
+---
+
+## GraphQL
+
+GraphQL is available under `/api/v1/graphql` with the playground at
+`/api/v1/graphql/playground`.
+
+---
+
+## OpenAPI and Swagger
+
+- OpenAPI JSON: `/openapi.json`
+- OpenAPI YAML: `/openapi.yaml` (feature-gated)
+- Swagger UI: `/swagger-ui` (feature-gated)
+
+---
+
+## Additional REST Endpoints
+
+These endpoints are implemented but not expanded in this quick reference.
+Refer to `/openapi.json` for full request/response shapes.
+
+- `/api/v1/billing/*`
+- `/api/v1/webhooks/*`
+- `/api/v1/edges/*`
+- `/api/v1/summarization-policies/*`
+- `/api/v1/config/*`
+- `/api/v1/tenants/*`
+- `/api/v1/users/*`
 
 ## Error Responses
 

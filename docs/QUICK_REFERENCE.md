@@ -2,14 +2,17 @@
 
 **Cross-crate reference sheet for implementers.**
 
-## ⚠️ Critical: Nothing Hard-Coded
+## ⚠️ Critical: Preset-First, No Implicit Defaults
 
 CALIBER is a framework. Every value is configured by the user.
+Presets are explicit and validated; overrides are opt-in.
 
 ```rust
-// Config is REQUIRED - no defaults
+// Config is REQUIRED - no implicit defaults
 let config = CaliberConfig { /* user provides all values */ };
 ```
+
+See `docs/CONFIG_PRESETS.md` for preset profiles and hard-value audit.
 
 ---
 
