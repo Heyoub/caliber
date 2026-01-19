@@ -589,6 +589,34 @@ pub fn validate_tenant_ownership(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let previous = std::env::var(key).ok();
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match self.previous.as_deref() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
     
     fn test_config() -> AuthConfig {
         let mut config = AuthConfig::default();
@@ -815,7 +843,8 @@ mod tests {
 
     #[test]
     fn test_production_validation_allows_secure_secret() {
-        std::env::set_var("CALIBER_ENVIRONMENT", "production");
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig {
             jwt_secret: "this-is-a-very-secure-secret-that-is-at-least-32-characters-long"
                 .to_string(),
@@ -825,23 +854,22 @@ mod tests {
         // Should succeed
         assert!(config.validate_for_production().is_ok());
 
-        std::env::remove_var("CALIBER_ENVIRONMENT");
     }
 
     #[test]
     fn test_production_validation_rejects_insecure_default() {
-        std::env::set_var("CALIBER_ENVIRONMENT", "production");
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig::default(); // Uses insecure default
 
         // Should fail
         assert!(config.validate_for_production().is_err());
-
-        std::env::remove_var("CALIBER_ENVIRONMENT");
     }
 
     #[test]
     fn test_production_validation_rejects_short_secret() {
-        std::env::set_var("CALIBER_ENVIRONMENT", "production");
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig {
             jwt_secret: "short".to_string(), // Too short
             ..Default::default()
@@ -850,23 +878,22 @@ mod tests {
         // Should fail
         assert!(config.validate_for_production().is_err());
 
-        std::env::remove_var("CALIBER_ENVIRONMENT");
     }
 
     #[test]
     fn test_production_validation_allows_development() {
-        std::env::set_var("CALIBER_ENVIRONMENT", "development");
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("development"));
         let config = AuthConfig::default(); // Uses insecure default
 
         // Should not fail in development
         assert!(config.validate_for_production().is_ok());
-
-        std::env::remove_var("CALIBER_ENVIRONMENT");
     }
 
     #[test]
     fn test_production_validation_without_env_var() {
-        std::env::remove_var("CALIBER_ENVIRONMENT");
+        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", None);
         let config = AuthConfig::default(); // Uses insecure default
 
         // Should not fail when no environment is set (defaults to development)

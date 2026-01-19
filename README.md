@@ -16,8 +16,14 @@ A Postgres-native memory framework for AI agents, built as a multi-crate Rust wo
 ### Prerequisites
 
 - **Rust** 1.75+ (install via [rustup](https://rustup.rs/))
-- **PostgreSQL** 13-17 (for pgrx extension, optional for core development)
+- **PostgreSQL** 18+ (for pgrx extension, optional for core development)
 - **Cargo** (comes with Rust)
+
+### WSL Notes (Windows)
+
+- Clone and run the repo from the Linux filesystem (e.g. `/home/<user>/projects/...`), not `/mnt/c`, for reliable file watching and performance.
+- Install build tooling and SSL headers if missing: `build-essential`, `pkg-config`, `libssl-dev` (and `clang` if you use crates that require it).
+- If file watching is flaky, increase inotify limits (e.g. `fs.inotify.max_user_watches`).
 
 ### Build & Test (Without PostgreSQL)
 
@@ -37,6 +43,9 @@ cargo test --workspace --exclude caliber-pg -- --nocapture
 
 # Run clippy lints
 cargo clippy --workspace --exclude caliber-pg -- -D warnings
+
+# (Optional) Install JS deps for SDK/landing work
+bun install
 ```
 
 ### Build with PostgreSQL (Full Extension)
