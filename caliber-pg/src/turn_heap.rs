@@ -211,7 +211,7 @@ pub fn turn_get_by_scope_heap(scope_id: EntityId, tenant_id: EntityId) -> Calibe
     }
     
     // Sort by sequence number
-    results.sort_by_key(|t| t.sequence);
+    results.sort_by_key(|t| t.turn.sequence);
     
     Ok(results)
 }

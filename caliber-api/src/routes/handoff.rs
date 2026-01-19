@@ -353,7 +353,7 @@ mod tests {
         };
 
         // Just verify the struct can be created
-        assert!(req.accepting_agent_id.to_string().len() > 0);
+        assert!(!req.accepting_agent_id.to_string().is_empty());
     }
 
     #[test]

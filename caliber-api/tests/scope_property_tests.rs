@@ -210,7 +210,7 @@ proptest! {
             let created = db.scope_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created scope has an ID
-            let nil_id: EntityId = Uuid::nil().into();
+            let nil_id: EntityId = Uuid::nil();
             prop_assert_ne!(created.scope_id, nil_id);
 
             // Verify the created scope matches the request
@@ -369,7 +369,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to get a scope with a random ID
             let result = db.scope_get(random_id, auth.tenant_id).await?;
@@ -394,7 +394,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             let update_req = UpdateScopeRequest {
                 name: Some("Updated Name".to_string()),

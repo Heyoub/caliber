@@ -176,8 +176,8 @@ proptest! {
     /// Property: Agent status maps to correct color
     fn agent_status_colors_correct(status in prop::sample::select(vec!["active", "idle", "blocked", "failed"])) {
         let theme = SynthBruteTheme::synthbrute();
-        let color = agent_status_color(&status, &theme);
-        let expected = match &*status {
+        let color = agent_status_color(status, &theme);
+        let expected = match status {
             "active" => theme.primary,
             "idle" => theme.text_dim,
             "blocked" => theme.warning,
@@ -190,8 +190,8 @@ proptest! {
     /// Property: Message priority maps to correct color
     fn message_priority_colors_correct(priority in prop::sample::select(vec!["low", "normal", "high", "critical"])) {
         let theme = SynthBruteTheme::synthbrute();
-        let color = message_priority_color(&priority, &theme);
-        let expected = match &*priority {
+        let color = message_priority_color(priority, &theme);
+        let expected = match priority {
             "low" => theme.text_dim,
             "normal" => theme.text,
             "high" => theme.warning,
@@ -534,6 +534,25 @@ proptest! {
 // ============================================================================
 // Test Helper Functions
 // ============================================================================
+
+#[test]
+fn test_helper_builders_smoke() {
+    let id: EntityId = Uuid::now_v7();
+    let traj = create_test_trajectory(id, None);
+    assert_eq!(traj.tenant_id, None);
+
+    let traj_with_status = create_test_trajectory_with_status(id, TrajectoryStatus::Active);
+    assert_eq!(traj_with_status.tenant_id, None);
+
+    let traj_full = create_test_trajectory_full(id, TrajectoryStatus::Completed, None);
+    assert_eq!(traj_full.tenant_id, None);
+
+    let artifact = create_test_artifact(ArtifactType::Fact);
+    assert_eq!(artifact.tenant_id, None);
+
+    let note = create_test_note(NoteType::Fact);
+    assert_eq!(note.tenant_id, None);
+}
 
 fn create_test_trajectory(id: EntityId, parent_id: Option<EntityId>) -> TrajectoryResponse {
     TrajectoryResponse {

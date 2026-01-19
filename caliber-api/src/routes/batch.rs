@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_batch_operation_variants() {
-        let ops = vec![
+        let ops = [
             BatchOperation::Create,
             BatchOperation::Update,
             BatchOperation::Delete,

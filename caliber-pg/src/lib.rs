@@ -19,9 +19,9 @@ pub use pgrx_tests::pg_test;
 // Re-export core types for use in SQL functions
 use caliber_core::{
     AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
-    CaliberResult, Checkpoint, Edge, EdgeType, EmbeddingVector, EntityId, EntityType,
-    ExtractionMethod, MemoryCategory, Note, NoteType, Provenance, RawContent, Scope,
-    StorageError, SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome,
+    CaliberResult, Checkpoint, Edge, EdgeParticipant, EdgeType, EmbeddingVector, EntityId,
+    EntityType, ExtractionMethod, MemoryCategory, Note, NoteType, Provenance, RawContent,
+    Scope, StorageError, SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome,
     TrajectoryStatus, Turn, TurnRole, ValidationError, compute_content_hash, new_entity_id,
 };
 
@@ -2162,8 +2162,8 @@ fn caliber_note_list_all_by_tenant(limit: i32, offset: i32, tenant_id: pgrx::Uui
             None,
             &[
                 pgrx_uuid_datum(tenant_id),
-                i32_datum(limit),
-                i32_datum(offset),
+                int4_datum(limit),
+                int4_datum(offset),
             ],
         )?;
 
@@ -4781,12 +4781,11 @@ fn caliber_region_create(
     tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
     use pgrx::datum::DatumWithOid;
-    use tuple_extract::chrono_to_timestamp;
 
     let pg_owner = owner_agent_id;
     let region_id = new_entity_id();
     let pg_region_id = pgrx::Uuid::from_bytes(*region_id.as_bytes());
-    let now = match chrono_to_timestamp(Utc::now()) {
+    let now = match tuple_extract::chrono_to_timestamp(Utc::now()) {
         Ok(ts) => ts,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
@@ -5304,7 +5303,10 @@ fn caliber_edges_by_participant_and_tenant(entity_id: pgrx::Uuid, tenant_id: pgr
             let participants_vec: Vec<EdgeParticipant> =
                 serde_json::from_value(participants_json.clone()).unwrap_or_default();
 
-            if !participants_vec.iter().any(|p| p.id == participant_id) {
+            if !participants_vec
+                .iter()
+                .any(|p| p.entity_ref.id == participant_id)
+            {
                 continue;
             }
 
@@ -5491,7 +5493,7 @@ fn caliber_summarization_policy_create(
     let traj_id = trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
     let triggers_json = serde_json::to_value(&triggers_vec).unwrap_or(serde_json::Value::Null);
 
-    let now = match chrono_to_timestamp(Utc::now()) {
+    let now: TimestampWithTimeZone = match tuple_extract::chrono_to_timestamp(Utc::now()) {
         Ok(ts) => ts,
         Err(e) => {
             pgrx::warning!("CALIBER: Failed to convert timestamp: {}", e);
@@ -5516,7 +5518,7 @@ fn caliber_summarization_policy_create(
             unsafe { DatumWithOid::new(create_edges, pgrx::pg_sys::BOOLOID) },
             match pg_traj_id {
                 Some(id) => unsafe { DatumWithOid::new(id, pgrx::pg_sys::UUIDOID) },
-                None => unsafe { DatumWithOid::new((), pgrx::pg_sys::UUIDOID) },
+                None => DatumWithOid::null_oid(pgrx::pg_sys::UUIDOID),
             },
             unsafe { DatumWithOid::new(now, pgrx::pg_sys::TIMESTAMPTZOID) },
             unsafe { DatumWithOid::new(pg_tenant_id, pgrx::pg_sys::UUIDOID) },
@@ -5964,7 +5966,7 @@ impl StorageTrait for PgStorage {
         Ok(scopes
             .into_iter()
             .map(Into::into)
-            .filter(|s| s.is_active)
+            .filter(|s: &Scope| s.is_active)
             .max_by_key(|s| s.created_at))
     }
 
@@ -6032,7 +6034,7 @@ impl StorageTrait for PgStorage {
         let artifacts = artifact_heap::artifact_query_by_type_heap(artifact_type, Uuid::nil())?
             .into_iter()
             .map(Into::into)
-            .filter(|a| a.trajectory_id == trajectory_id)
+            .filter(|a: &Artifact| a.trajectory_id == trajectory_id)
             .collect();
         Ok(artifacts)
     }

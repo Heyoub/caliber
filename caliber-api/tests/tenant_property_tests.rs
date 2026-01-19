@@ -215,7 +215,7 @@ fn test_app(storage: TestStorage) -> Router {
 
         // Extract trajectory ID from path (simplified - in real app would use Path extractor)
         let uri = request.uri().path();
-        let trajectory_id_str = match uri.split('/').last() {
+        let trajectory_id_str = match uri.split('/').next_back() {
             Some(id) => id,
             None => return StatusCode::BAD_REQUEST.into_response(),
         };
@@ -250,7 +250,7 @@ fn test_app(storage: TestStorage) -> Router {
 /// TODO: Wire this into property tests instead of using raw any::<[u8; 16]>()
 #[allow(dead_code)]
 fn tenant_id_strategy() -> impl Strategy<Value = EntityId> {
-    any::<[u8; 16]>().prop_map(|bytes| Uuid::from_bytes(bytes).into())
+    any::<[u8; 16]>().prop_map(Uuid::from_bytes)
 }
 
 /// Strategy for generating trajectory names
@@ -289,7 +289,7 @@ proptest! {
     ) {
         let rt = test_runtime()?;
         rt.block_on(async {
-            let tenant_id = Uuid::from_bytes(tenant_id_bytes).into();
+            let tenant_id = Uuid::from_bytes(tenant_id_bytes);
             let storage = TestStorage::new();
             let app = test_app(storage.clone());
             let auth_config = test_auth_config();
@@ -361,8 +361,8 @@ proptest! {
             // Ensure we have two different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
 
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes).into();
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes).into();
+            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes);
+            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes);
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
 
@@ -467,8 +467,8 @@ proptest! {
             // Ensure we have two different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
 
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes).into();
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes).into();
+            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes);
+            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes);
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
 
@@ -550,7 +550,7 @@ proptest! {
             // Convert to EntityIds and ensure uniqueness
             let mut tenant_ids: Vec<EntityId> = tenant_ids
                 .into_iter()
-                .map(|bytes| Uuid::from_bytes(bytes).into())
+                .map(Uuid::from_bytes)
                 .collect();
             tenant_ids.sort();
             tenant_ids.dedup();
@@ -633,7 +633,7 @@ mod ws_tenant_isolation {
 
     /// Strategy for generating EntityIds
     fn entity_id_strategy() -> impl Strategy<Value = EntityId> {
-        any::<[u8; 16]>().prop_map(|bytes| Uuid::from_bytes(bytes).into())
+        any::<[u8; 16]>().prop_map(Uuid::from_bytes)
     }
 
     proptest! {
@@ -720,8 +720,8 @@ mod ws_tenant_isolation {
             tenant_id_bytes in any::<[u8; 16]>(),
             entity_id_bytes in any::<[u8; 16]>(),
         ) {
-            let tenant_id: EntityId = Uuid::from_bytes(tenant_id_bytes).into();
-            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes).into();
+            let tenant_id: EntityId = Uuid::from_bytes(tenant_id_bytes);
+            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes);
 
             let status_events = vec![
                 WsEvent::AgentStatusChanged {
@@ -772,7 +772,7 @@ mod ws_tenant_isolation {
         fn prop_ws_unknown_tenant_events_denied(
             client_tenant_id_bytes in any::<[u8; 16]>(),
         ) {
-            let client_tenant_id: EntityId = Uuid::from_bytes(client_tenant_id_bytes).into();
+            let client_tenant_id: EntityId = Uuid::from_bytes(client_tenant_id_bytes);
 
             // Events that currently return None for tenant_id should be denied
             // (Note: This tests the DENY by default behavior)
@@ -809,9 +809,9 @@ mod ws_tenant_isolation {
             // Must be different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
 
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes).into();
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes).into();
-            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes).into();
+            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes);
+            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes);
+            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes);
 
             // All tenant-specific events with tenant_a should not be delivered to tenant_b
             let tenant_a_events = vec![

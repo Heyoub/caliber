@@ -131,7 +131,7 @@ fn optional_supervisor_strategy() -> impl Strategy<Value = Option<EntityId>> {
         // No supervisor
         3 => Just(None),
         // Has supervisor
-        1 => any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes).into())),
+        1 => any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes))),
     ]
 }
 
@@ -171,8 +171,8 @@ fn agent_status_strategy() -> impl Strategy<Value = String> {
 fn update_agent_request_strategy() -> impl Strategy<Value = UpdateAgentRequest> {
     (
         prop::option::of(agent_status_strategy()),
-        prop::option::of(any::<[u8; 16]>().prop_map(|bytes| Uuid::from_bytes(bytes).into())),
-        prop::option::of(any::<[u8; 16]>().prop_map(|bytes| Uuid::from_bytes(bytes).into())),
+        prop::option::of(any::<[u8; 16]>().prop_map(Uuid::from_bytes)),
+        prop::option::of(any::<[u8; 16]>().prop_map(Uuid::from_bytes)),
         prop::option::of(capabilities_strategy()),
         prop::option::of(memory_access_strategy()),
     )
@@ -233,7 +233,7 @@ proptest! {
             let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Verify the registered agent has an ID
-            let nil_id: EntityId = Uuid::nil().into();
+            let nil_id: EntityId = Uuid::nil();
             prop_assert_ne!(registered.agent_id, nil_id);
 
             // Verify the registered agent matches the request
@@ -411,7 +411,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let _auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to get an agent with a random ID
             let result = db.agent_get(random_id).await?;
@@ -437,7 +437,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let _auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to update an agent with a random ID
             let result = db.agent_update(random_id, &update_req).await;

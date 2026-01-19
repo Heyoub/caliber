@@ -96,7 +96,7 @@ fn optional_agent_id_strategy() -> impl Strategy<Value = Option<EntityId>> {
         // No agent
         Just(None),
         // Random agent ID
-        any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes).into())),
+        any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes))),
     ]
 }
 
@@ -106,7 +106,7 @@ fn optional_parent_id_strategy() -> impl Strategy<Value = Option<EntityId>> {
         // No parent (root trajectory)
         3 => Just(None),
         // Has parent
-        1 => any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes).into())),
+        1 => any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes))),
     ]
 }
 
@@ -203,7 +203,7 @@ proptest! {
             let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created trajectory has an ID
-            let nil_id: EntityId = Uuid::nil().into();
+            let nil_id: EntityId = Uuid::nil();
             prop_assert_ne!(created.trajectory_id, nil_id);
 
             // Verify the created trajectory matches the request
@@ -352,7 +352,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to get a trajectory with a random ID
             let result = db.trajectory_get(random_id, auth.tenant_id).await?;
@@ -380,7 +380,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to update a trajectory with a random ID
             let result = db

@@ -5,10 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "pgrx_embed"
+name = "pgrx_embed_caliber_pg"
 path = "src/bin/pgrx_embed.rs"
 
 [features]

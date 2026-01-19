@@ -225,7 +225,7 @@ proptest! {
             let created = db.note_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created note has an ID
-            let nil_id: EntityId = Uuid::nil().into();
+            let nil_id: EntityId = Uuid::nil();
             prop_assert_ne!(created.note_id, nil_id);
 
             // Verify the created note matches the request
@@ -367,7 +367,7 @@ proptest! {
             let db = test_db_client();
             let auth = test_auth_context();
             let _ = auth; // Used for consistency with other tests
-            let random_id = Uuid::from_bytes(random_id_bytes).into();
+            let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to get a note with a random ID
             let result = db.note_get(random_id, auth.tenant_id).await?;

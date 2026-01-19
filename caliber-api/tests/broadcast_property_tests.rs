@@ -293,7 +293,7 @@ enum ExpectedEvent {
 }
 
 fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCaseError> {
-    let nil_id: EntityId = Uuid::nil().into();
+    let nil_id: EntityId = Uuid::nil();
 
     match (expected, actual) {
         (ExpectedEvent::TrajectoryCreated, WsEvent::TrajectoryCreated { trajectory }) => {
@@ -590,7 +590,7 @@ proptest! {
                 }
                 MutationCase::LockAcquire => {
                     let agent = seed_agent(&db, "lock-holder", auth.tenant_id).await?;
-                    let resource_id: EntityId = Uuid::now_v7().into();
+                    let resource_id: EntityId = Uuid::now_v7();
                     let req = AcquireLockRequest {
                         resource_type: "trajectory".to_string(),
                         resource_id,
@@ -603,7 +603,7 @@ proptest! {
                 }
                 MutationCase::LockRelease => {
                     let agent = seed_agent(&db, "lock-releaser", auth.tenant_id).await?;
-                    let resource_id: EntityId = Uuid::now_v7().into();
+                    let resource_id: EntityId = Uuid::now_v7();
                     let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await?;
                     lock::release_lock(
                         State(lock_state),

@@ -333,7 +333,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
                 .into_datum()
                 .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                     entity_type: EntityType::Trajectory,
-                    id: trajectory_id,
+                    id,
                     reason: "Failed to convert timestamp to datum".to_string(),
                 }))?;
             nulls[trajectory::COMPLETED_AT as usize - 1] = false;
@@ -412,7 +412,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
         .into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Trajectory,
-            id: trajectory_id,
+            id,
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     

@@ -331,7 +331,7 @@ pub fn extract_auth_context(request: &Request) -> ApiResult<&AuthContext> {
 ///
 /// This is similar to `extract_auth_context` but returns a cloned copy.
 pub fn extract_auth_context_owned(request: &Request) -> ApiResult<AuthContext> {
-    extract_auth_context(request).map(|auth| auth.clone())
+    extract_auth_context(request).cloned()
 }
 
 // ============================================================================
@@ -725,7 +725,7 @@ mod tests {
         let token = crate::auth::generate_jwt_token(
             &auth_config,
             user_id,
-            Some(tenant_id.into()),
+            Some(tenant_id),
             vec!["admin".to_string()],
         )
         .map_err(|e| e.message)?;
