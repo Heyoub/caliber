@@ -93,3 +93,7 @@ site/
 *.pem
 *.key
 secrets.yaml
+
+# Local audit scripts
+scripts/repo_audit_rust.py
+scripts/repo_features_matrix.py

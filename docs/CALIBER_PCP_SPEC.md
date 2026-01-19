@@ -3382,17 +3382,15 @@ caliber-llm = { path = "../caliber-llm" }
 caliber-agents = { path = "../caliber-agents" }
 
 # pgrx for Postgres extension
-pgrx = "0.11"
+pgrx = "0.16"
 uuid.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["pg16"]
-pg14 = ["pgrx/pg14"]
-pg15 = ["pgrx/pg15"]
-pg16 = ["pgrx/pg16"]
+default = ["pg18"]
+pg18 = ["pgrx/pg18"]
 ```
 
 ### 10.4 Dependency Graph
@@ -5308,7 +5306,7 @@ pub enum ConfigError {
 This document is complete. An AI agent with:
 
 1. Rust toolchain + pgrx
-2. PostgreSQL 14+ with pgvector
+2. PostgreSQL 18+ with pgvector
 3. This specification
 
 ...can implement CALIBER + PCP as a multi-crate workspace.

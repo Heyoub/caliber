@@ -247,8 +247,6 @@ fn test_app(storage: TestStorage) -> Router {
 // ============================================================================
 
 /// Strategy for generating tenant IDs
-/// TODO: Wire this into property tests instead of using raw any::<[u8; 16]>()
-#[allow(dead_code)]
 fn tenant_id_strategy() -> impl Strategy<Value = EntityId> {
     any::<[u8; 16]>().prop_map(Uuid::from_bytes)
 }
@@ -284,12 +282,11 @@ proptest! {
     /// **Validates: Requirements 1.6, 2.5**
     #[test]
     fn prop_tenant_isolation_create(
-        tenant_id_bytes in any::<[u8; 16]>(),
+        tenant_id in tenant_id_strategy(),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
         let rt = test_runtime()?;
         rt.block_on(async {
-            let tenant_id = Uuid::from_bytes(tenant_id_bytes);
             let storage = TestStorage::new();
             let app = test_app(storage.clone());
             let auth_config = test_auth_config();
@@ -352,17 +349,14 @@ proptest! {
     /// **Validates: Requirements 1.6, 2.5**
     #[test]
     fn prop_tenant_isolation_list(
-        tenant_a_bytes in any::<[u8; 16]>(),
-        tenant_b_bytes in any::<[u8; 16]>(),
+        tenant_a in tenant_id_strategy(),
+        tenant_b in tenant_id_strategy(),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
         let rt = test_runtime()?;
         rt.block_on(async {
             // Ensure we have two different tenants
-            prop_assume!(tenant_a_bytes != tenant_b_bytes);
-
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes);
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes);
+            prop_assume!(tenant_a != tenant_b);
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
 
@@ -458,17 +452,14 @@ proptest! {
     /// **Validates: Requirements 1.6, 2.5**
     #[test]
     fn prop_tenant_isolation_get(
-        tenant_a_bytes in any::<[u8; 16]>(),
-        tenant_b_bytes in any::<[u8; 16]>(),
+        tenant_a in tenant_id_strategy(),
+        tenant_b in tenant_id_strategy(),
         trajectory_req in create_trajectory_request_strategy(),
     ) {
         let rt = test_runtime()?;
         rt.block_on(async {
             // Ensure we have two different tenants
-            prop_assume!(tenant_a_bytes != tenant_b_bytes);
-
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes);
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes);
+            prop_assume!(tenant_a != tenant_b);
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
 

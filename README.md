@@ -5,7 +5,7 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.3.2  
+**Version:** 0.4.0  
 **Architecture:** Multi-crate ECS (Entity-Component-System)  
 **Language:** Rust (pgrx)
 
