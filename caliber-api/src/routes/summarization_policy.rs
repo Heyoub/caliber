@@ -9,35 +9,17 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    state::AppState,
     types::{
         CreateSummarizationPolicyRequest, ListSummarizationPoliciesResponse,
         SummarizationPolicyResponse,
     },
-    ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for summarization policy routes.
-#[derive(Clone)]
-pub struct SummarizationPolicyState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl SummarizationPolicyState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -60,7 +42,7 @@ impl SummarizationPolicyState {
     )
 )]
 pub async fn create_policy(
-    State(state): State<Arc<SummarizationPolicyState>>,
+    State(db): State<DbClient>,
     Json(req): Json<CreateSummarizationPolicyRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate required fields
@@ -95,7 +77,7 @@ pub async fn create_policy(
     }
 
     // Create policy via database client
-    let policy = state.db.summarization_policy_create(&req).await?;
+    let policy = db.summarization_policy_create(&req).await?;
 
     Ok((StatusCode::CREATED, Json(policy)))
 }
@@ -119,10 +101,10 @@ pub async fn create_policy(
     )
 )]
 pub async fn get_policy(
-    State(state): State<Arc<SummarizationPolicyState>>,
+    State(db): State<DbClient>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let policy = state.db.summarization_policy_get(id).await?;
+    let policy = db.summarization_policy_get(id).await?;
 
     match policy {
         Some(p) => Ok(Json(p)),
@@ -148,11 +130,10 @@ pub async fn get_policy(
     )
 )]
 pub async fn list_policies_by_trajectory(
-    State(state): State<Arc<SummarizationPolicyState>>,
+    State(db): State<DbClient>,
     Path(trajectory_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let policies = state
-        .db
+    let policies = db
         .summarization_policies_for_trajectory(trajectory_id)
         .await?;
 
@@ -178,10 +159,10 @@ pub async fn list_policies_by_trajectory(
     )
 )]
 pub async fn delete_policy(
-    State(state): State<Arc<SummarizationPolicyState>>,
+    State(db): State<DbClient>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    state.db.summarization_policy_delete(id).await?;
+    db.summarization_policy_delete(id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -191,22 +172,16 @@ pub async fn delete_policy(
 // ============================================================================
 
 /// Create the summarization policy router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(SummarizationPolicyState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_policy))
         .route("/{id}", axum::routing::get(get_policy))
         .route("/{id}", axum::routing::delete(delete_policy))
-        .with_state(state)
 }
 
 /// Create the trajectory-scoped summarization policy router.
 /// This is nested under /api/v1/trajectories/{id}/summarization-policies
-pub fn create_trajectory_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(SummarizationPolicyState::new(db, ws));
-
+pub fn create_trajectory_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::get(list_policies_by_trajectory))
-        .with_state(state)
 }

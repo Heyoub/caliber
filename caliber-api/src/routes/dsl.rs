@@ -8,29 +8,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use std::sync::Arc;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    state::AppState,
     types::{ParseErrorResponse, ValidateDslRequest, ValidateDslResponse},
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for DSL routes.
-#[derive(Clone)]
-pub struct DslState {
-    pub db: DbClient,
-}
-
-impl DslState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -53,10 +37,10 @@ impl DslState {
     )
 )]
 pub async fn validate_dsl(
-    State(state): State<Arc<DslState>>,
+    State(db): State<DbClient>,
     Json(req): Json<ValidateDslRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    tracing::debug!(db_pool_size = state.db.pool_size(), "DSL validation request");
+    tracing::debug!(db_pool_size = db.pool_size(), "DSL validation request");
 
     // Validate that source is not empty
     if req.source.trim().is_empty() {
@@ -109,10 +93,10 @@ pub async fn validate_dsl(
     )
 )]
 pub async fn parse_dsl(
-    State(state): State<Arc<DslState>>,
+    State(db): State<DbClient>,
     Json(req): Json<ValidateDslRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    tracing::debug!(db_pool_size = state.db.pool_size(), "DSL parse request");
+    tracing::debug!(db_pool_size = db.pool_size(), "DSL parse request");
 
     // Validate that source is not empty
     if req.source.trim().is_empty() {
@@ -153,13 +137,10 @@ pub async fn parse_dsl(
 // ============================================================================
 
 /// Create the DSL routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(DslState::new(db));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/validate", axum::routing::post(validate_dsl))
         .route("/parse", axum::routing::post(parse_dsl))
-        .with_state(state)
 }
 
 #[cfg(test)]

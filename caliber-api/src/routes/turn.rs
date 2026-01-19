@@ -22,27 +22,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{CreateTurnRequest, TurnResponse},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for turn routes.
-#[derive(Clone)]
-pub struct TurnState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-    pub pcp: Arc<PCPRuntime>,
-}
-
-impl TurnState {
-    pub fn new(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> Self {
-        Self { db, ws, pcp }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -65,7 +48,9 @@ impl TurnState {
     )
 )]
 pub async fn create_turn(
-    State(state): State<Arc<TurnState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
+    State(pcp): State<Arc<PCPRuntime>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateTurnRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -83,18 +68,17 @@ pub async fn create_turn(
     }
 
     // Validate scope belongs to this tenant before creating turn
-    let scope = state
-        .db
+    let scope = db
         .scope_get(req.scope_id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Create turn via database client with tenant_id for isolation
-    let turn = state.db.turn_create(&req, auth.tenant_id).await?;
+    let turn = db.turn_create(&req, auth.tenant_id).await?;
 
     // Broadcast TurnCreated event
-    state.ws.broadcast(WsEvent::TurnCreated {
+    ws.broadcast(WsEvent::TurnCreated {
         turn: turn.clone(),
     });
 
@@ -102,24 +86,22 @@ pub async fn create_turn(
     // BATTLE INTEL: Check summarization triggers after turn creation
     // =========================================================================
     // Get the scope to check trigger conditions
-    if let Ok(Some(scope)) = state.db.scope_get(req.scope_id, auth.tenant_id).await {
+    if let Ok(Some(scope)) = db.scope_get(req.scope_id, auth.tenant_id).await {
         // Get the trajectory ID from the scope for fetching policies
         let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
 
         // Fetch summarization policies for this trajectory
-        if let Ok(policies) = state.db.summarization_policies_for_trajectory(trajectory_id).await {
+        if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
             if !policies.is_empty() {
                 // Get turn count for this scope
-                let turn_count = state
-                    .db
+                let turn_count = db
                     .turn_list_by_scope(req.scope_id, auth.tenant_id)
                     .await
                     .map(|turns| turns.len() as i32)
                     .unwrap_or(0);
 
                 // Get artifact count for this scope
-                let artifact_count = state
-                    .db
+                let artifact_count = db
                     .artifact_list_by_scope(req.scope_id, auth.tenant_id)
                     .await
                     .map(|artifacts| artifacts.len() as i32)
@@ -158,7 +140,7 @@ pub async fn create_turn(
                 };
 
                 // Check which triggers should fire
-                if let Ok(triggered) = state.pcp.check_summarization_triggers(
+                if let Ok(triggered) = pcp.check_summarization_triggers(
                     &core_scope,
                     turn_count,
                     artifact_count,
@@ -168,7 +150,7 @@ pub async fn create_turn(
                     for (policy_id, trigger) in triggered {
                         // Find the policy to get its details
                         if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
-                            state.ws.broadcast(WsEvent::SummarizationTriggered {
+                            ws.broadcast(WsEvent::SummarizationTriggered {
                                 tenant_id: auth.tenant_id,
                                 policy_id,
                                 trigger,
@@ -208,11 +190,13 @@ pub async fn create_turn(
     )
 )]
 pub async fn get_turn(
-    State(state): State<Arc<TurnState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TurnResponse>> {
-    let turn = state.db.turn_get(id).await?
+    let turn = db
+        .turn_get(id)
+        .await?
         .ok_or_else(|| ApiError::entity_not_found("Turn", id.to_string()))?;
 
     // Validate tenant ownership before returning
@@ -226,13 +210,10 @@ pub async fn get_turn(
 // ============================================================================
 
 /// Create the turn routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>, pcp: Arc<PCPRuntime>) -> axum::Router {
-    let state = Arc::new(TurnState::new(db, ws, pcp));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_turn))
         .route("/:id", axum::routing::get(get_turn))
-        .with_state(state)
 }
 
 #[cfg(test)]

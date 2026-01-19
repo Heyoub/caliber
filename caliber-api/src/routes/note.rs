@@ -18,29 +18,13 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{
         CreateNoteRequest, ListNotesRequest, ListNotesResponse, NoteResponse, SearchRequest,
         SearchResponse, UpdateNoteRequest,
     },
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for note routes.
-#[derive(Clone)]
-pub struct NoteState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl NoteState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -63,7 +47,8 @@ impl NoteState {
     )
 )]
 pub async fn create_note(
-    State(state): State<Arc<NoteState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateNoteRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -77,10 +62,10 @@ pub async fn create_note(
     }
 
     // Create note via database client with tenant_id for isolation
-    let note = state.db.note_create(&req, auth.tenant_id).await?;
+    let note = db.note_create(&req, auth.tenant_id).await?;
 
     // Broadcast NoteCreated event
-    state.ws.broadcast(WsEvent::NoteCreated {
+    ws.broadcast(WsEvent::NoteCreated {
         note: note.clone(),
     });
 
@@ -111,7 +96,7 @@ pub async fn create_note(
     )
 )]
 pub async fn list_notes(
-    State(state): State<Arc<NoteState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListNotesRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -119,7 +104,9 @@ pub async fn list_notes(
 
     if let Some(source_trajectory_id) = params.source_trajectory_id {
         // Filter by source trajectory and tenant
-        let notes = state.db.note_list_by_trajectory_and_tenant(source_trajectory_id, auth.tenant_id).await?;
+        let notes = db
+            .note_list_by_trajectory_and_tenant(source_trajectory_id, auth.tenant_id)
+            .await?;
 
         // Apply additional filters if needed
         let mut filtered = notes;
@@ -154,7 +141,7 @@ pub async fn list_notes(
         let limit = params.limit.unwrap_or(100);
         let offset = params.offset.unwrap_or(0);
 
-        let notes = state.db.note_list_all_by_tenant(limit, offset, auth.tenant_id).await?;
+        let notes = db.note_list_all_by_tenant(limit, offset, auth.tenant_id).await?;
 
         // Apply additional filters if needed
         let mut filtered = notes;
@@ -201,12 +188,11 @@ pub async fn list_notes(
     )
 )]
 pub async fn get_note(
-    State(state): State<Arc<NoteState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let note = state
-        .db
+    let note = db
         .note_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
@@ -238,7 +224,8 @@ pub async fn get_note(
     )
 )]
 pub async fn update_note(
-    State(state): State<Arc<NoteState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateNoteRequest>,
@@ -270,15 +257,14 @@ pub async fn update_note(
     }
 
     // First verify the note exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .note_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    let note = state.db.note_update(id, &req, auth.tenant_id).await?;
-    state.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
+    let note = db.note_update(id, &req, auth.tenant_id).await?;
+    ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
     Ok(Json(note))
 }
 
@@ -301,20 +287,20 @@ pub async fn update_note(
     )
 )]
 pub async fn delete_note(
-    State(state): State<Arc<NoteState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // First verify the note exists and belongs to this tenant
-    let note = state
-        .db
+    let note = db
         .note_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
     validate_tenant_ownership(&auth, note.tenant_id)?;
 
-    state.db.note_delete(id).await?;
-    state.ws.broadcast(WsEvent::NoteDeleted {
+    db.note_delete(id).await?;
+    ws.broadcast(WsEvent::NoteDeleted {
         tenant_id: auth.tenant_id,
         id,
     });
@@ -338,7 +324,7 @@ pub async fn delete_note(
     )
 )]
 pub async fn search_notes(
-    State(state): State<Arc<NoteState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<SearchRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -358,7 +344,7 @@ pub async fn search_notes(
     }
 
     // Perform tenant-isolated search
-    let response = state.db.search(&req, auth.tenant_id).await?;
+    let response = db.search(&req, auth.tenant_id).await?;
 
     Ok(Json(response))
 }
@@ -368,9 +354,7 @@ pub async fn search_notes(
 // ============================================================================
 
 /// Create the note routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(NoteState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_note))
         .route("/", axum::routing::get(list_notes))
@@ -378,7 +362,6 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
         .route("/:id", axum::routing::patch(update_note))
         .route("/:id", axum::routing::delete(delete_note))
         .route("/search", axum::routing::post(search_notes))
-        .with_state(state)
 }
 
 #[cfg(test)]

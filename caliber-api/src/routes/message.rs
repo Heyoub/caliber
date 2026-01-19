@@ -18,26 +18,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{ListMessagesRequest, ListMessagesResponse, MessageResponse, SendMessageRequest},
     ws::WsState,
 };
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for message routes.
-#[derive(Clone)]
-pub struct MessageState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl MessageState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
-
 // ============================================================================
 // ROUTE HANDLERS
 // ============================================================================
@@ -59,7 +43,8 @@ impl MessageState {
     )
 )]
 pub async fn send_message(
-    State(state): State<Arc<MessageState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<SendMessageRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -105,10 +90,10 @@ pub async fn send_message(
     }
 
     // Send message via database client with tenant_id for isolation
-    let message = state.db.message_send(&req, auth.tenant_id).await?;
+    let message = db.message_send(&req, auth.tenant_id).await?;
 
     // Broadcast MessageSent event
-    state.ws.broadcast(WsEvent::MessageSent {
+    ws.broadcast(WsEvent::MessageSent {
         message: message.clone(),
     });
 
@@ -143,7 +128,7 @@ pub async fn send_message(
     )
 )]
 pub async fn list_messages(
-    State(state): State<Arc<MessageState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListMessagesRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -151,7 +136,7 @@ pub async fn list_messages(
     let offset = params.offset.unwrap_or(0);
 
     // List messages filtered by tenant for isolation
-    let messages = state.db.message_list_by_tenant(MessageListParams {
+    let messages = db.message_list_by_tenant(MessageListParams {
         from_agent_id: params.from_agent_id,
         to_agent_id: params.to_agent_id,
         to_agent_type: params.to_agent_type.as_deref(),
@@ -191,12 +176,11 @@ pub async fn list_messages(
     )
 )]
 pub async fn get_message(
-    State(state): State<Arc<MessageState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let message = state
-        .db
+    let message = db
         .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
@@ -226,23 +210,23 @@ pub async fn get_message(
     )
 )]
 pub async fn acknowledge_message(
-    State(state): State<Arc<MessageState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify the message exists and belongs to this tenant
-    let message = state
-        .db
+    let message = db
         .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
     validate_tenant_ownership(&auth, Some(message.tenant_id))?;
 
     // Acknowledge message via database client
-    state.db.message_acknowledge(id).await?;
+    db.message_acknowledge(id).await?;
 
     // Broadcast MessageAcknowledged event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::MessageAcknowledged {
+    ws.broadcast(WsEvent::MessageAcknowledged {
         tenant_id: auth.tenant_id,
         message_id: id,
     });
@@ -269,21 +253,21 @@ pub async fn acknowledge_message(
     )
 )]
 pub async fn deliver_message(
-    State(state): State<Arc<MessageState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify the message exists and belongs to this tenant
-    let message = state
-        .db
+    let message = db
         .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
     validate_tenant_ownership(&auth, Some(message.tenant_id))?;
 
-    state.db.message_deliver(id).await?;
+    db.message_deliver(id).await?;
 
-    state.ws.broadcast(WsEvent::MessageDelivered {
+    ws.broadcast(WsEvent::MessageDelivered {
         tenant_id: auth.tenant_id,
         message_id: id,
     });
@@ -296,16 +280,13 @@ pub async fn deliver_message(
 // ============================================================================
 
 /// Create the message routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(MessageState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(send_message))
         .route("/", axum::routing::get(list_messages))
         .route("/:id", axum::routing::get(get_message))
         .route("/:id/acknowledge", axum::routing::post(acknowledge_message))
         .route("/:id/deliver", axum::routing::post(deliver_message))
-        .with_state(state)
 }
 
 #[cfg(test)]

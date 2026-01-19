@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mutation testing (planned)
 - Test coverage reporting (planned)
 - WSL-specific setup notes in README for Linux filesystem and tooling
+- Shared `AppState` for Axum routes with `FromRef` extractors
 
 ### Fixed
 
@@ -23,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   storage trait type mismatches across heap modules
 - Auth config production-validation tests now isolate environment variables
 - Smoke test network error handling now tolerates non-throwing fetch runtimes
+- Axum router state mismatch caused by `/ws` route state requirements
+
+### Changed
+
+- Centralized API router state initialization (webhooks, GraphQL schema, billing state)
+- Route modules now rely on shared app state instead of per-module routers
 
 ## [0.4.0] - 2026-01-17
 

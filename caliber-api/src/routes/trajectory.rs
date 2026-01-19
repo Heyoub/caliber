@@ -18,29 +18,13 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{
         CreateTrajectoryRequest, ListTrajectoriesRequest, ListTrajectoriesResponse,
         ScopeResponse, TrajectoryResponse, UpdateTrajectoryRequest,
     },
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for trajectory routes.
-#[derive(Clone)]
-pub struct TrajectoryState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl TrajectoryState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -63,7 +47,8 @@ impl TrajectoryState {
     )
 )]
 pub async fn create_trajectory(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateTrajectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -73,10 +58,10 @@ pub async fn create_trajectory(
     }
 
     // Create trajectory via database client with tenant_id for isolation
-    let trajectory = state.db.trajectory_create(&req, auth.tenant_id).await?;
+    let trajectory = db.trajectory_create(&req, auth.tenant_id).await?;
 
     // Broadcast TrajectoryCreated event
-    state.ws.broadcast(WsEvent::TrajectoryCreated {
+    ws.broadcast(WsEvent::TrajectoryCreated {
         trajectory: trajectory.clone(),
     });
 
@@ -106,13 +91,15 @@ pub async fn create_trajectory(
     )
 )]
 pub async fn list_trajectories(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListTrajectoriesRequest>,
 ) -> ApiResult<impl IntoResponse> {
     if let Some(status) = params.status {
         // Filter by status and tenant (tenant isolation enforced at DB level)
-        let trajectories = state.db.trajectory_list_by_status_and_tenant(status, auth.tenant_id).await?;
+        let trajectories = db
+            .trajectory_list_by_status_and_tenant(status, auth.tenant_id)
+            .await?;
 
         // Apply additional filters if needed
         let mut filtered = trajectories;
@@ -168,12 +155,11 @@ pub async fn list_trajectories(
     )
 )]
 pub async fn get_trajectory(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let trajectory = state
-        .db
+    let trajectory = db
         .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
@@ -205,7 +191,8 @@ pub async fn get_trajectory(
     )
 )]
 pub async fn update_trajectory(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTrajectoryRequest>,
@@ -222,18 +209,17 @@ pub async fn update_trajectory(
     }
 
     // First verify the trajectory exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update trajectory via database client
-    let trajectory = state.db.trajectory_update(id, &req, auth.tenant_id).await?;
+    let trajectory = db.trajectory_update(id, &req, auth.tenant_id).await?;
 
     // Broadcast TrajectoryUpdated event
-    state.ws.broadcast(WsEvent::TrajectoryUpdated {
+    ws.broadcast(WsEvent::TrajectoryUpdated {
         trajectory: trajectory.clone(),
     });
 
@@ -259,23 +245,23 @@ pub async fn update_trajectory(
     )
 )]
 pub async fn delete_trajectory(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // First verify the trajectory exists and belongs to this tenant
-    let trajectory = state
-        .db
+    let trajectory = db
         .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     // Delete trajectory via database client
-    state.db.trajectory_delete(id).await?;
+    db.trajectory_delete(id).await?;
 
     // Broadcast TrajectoryDeleted event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::TrajectoryDeleted {
+    ws.broadcast(WsEvent::TrajectoryDeleted {
         tenant_id: auth.tenant_id,
         id,
     });
@@ -302,20 +288,19 @@ pub async fn delete_trajectory(
     )
 )]
 pub async fn list_trajectory_scopes(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the trajectory exists and belongs to this tenant
-    let trajectory = state
-        .db
+    let trajectory = db
         .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     // Get scopes for this trajectory
-    let scopes = state.db.scope_list_by_trajectory(id).await?;
+    let scopes = db.scope_list_by_trajectory(id).await?;
 
     Ok(Json(scopes))
 }
@@ -339,20 +324,21 @@ pub async fn list_trajectory_scopes(
     )
 )]
 pub async fn list_trajectory_children(
-    State(state): State<Arc<TrajectoryState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the trajectory exists and belongs to this tenant
-    let trajectory = state
-        .db
+    let trajectory = db
         .trajectory_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     // Get child trajectories (only those belonging to this tenant)
-    let children = state.db.trajectory_list_children_by_tenant(id, auth.tenant_id).await?;
+    let children = db
+        .trajectory_list_children_by_tenant(id, auth.tenant_id)
+        .await?;
 
     Ok(Json(children))
 }
@@ -362,9 +348,7 @@ pub async fn list_trajectory_children(
 // ============================================================================
 
 /// Create the trajectory routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(TrajectoryState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_trajectory))
         .route("/", axum::routing::get(list_trajectories))
@@ -373,7 +357,6 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
         .route("/:id", axum::routing::delete(delete_trajectory))
         .route("/:id/scopes", axum::routing::get(list_trajectory_scopes))
         .route("/:id/children", axum::routing::get(list_trajectory_children))
-        .with_state(state)
 }
 
 #[cfg(test)]

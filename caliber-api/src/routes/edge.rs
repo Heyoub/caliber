@@ -18,26 +18,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{CreateEdgeRequest, EdgeResponse, ListEdgesResponse},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for edge routes.
-#[derive(Clone)]
-pub struct EdgeState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl EdgeState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -60,7 +44,8 @@ impl EdgeState {
     )
 )]
 pub async fn create_edge(
-    State(state): State<Arc<EdgeState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateEdgeRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -79,10 +64,10 @@ pub async fn create_edge(
     }
 
     // Create edge via database client with tenant_id for isolation
-    let edge = state.db.edge_create(&req, auth.tenant_id).await?;
+    let edge = db.edge_create(&req, auth.tenant_id).await?;
 
     // Broadcast EdgeCreated event
-    state.ws.broadcast(WsEvent::EdgeCreated {
+    ws.broadcast(WsEvent::EdgeCreated {
         tenant_id: auth.tenant_id,
         edge_id: edge.edge_id,
         edge_type: edge.edge_type,
@@ -108,7 +93,8 @@ pub async fn create_edge(
     )
 )]
 pub async fn create_edges_batch(
-    State(state): State<Arc<EdgeState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(requests): Json<Vec<CreateEdgeRequest>>,
 ) -> ApiResult<impl IntoResponse> {
@@ -120,14 +106,14 @@ pub async fn create_edges_batch(
             continue;
         }
 
-        match state.db.edge_create(&req, auth.tenant_id).await {
+        match db.edge_create(&req, auth.tenant_id).await {
             Ok(edge) => edges.push(edge),
             Err(_) => continue, // Skip failed creations
         }
     }
 
     // Broadcast batch event
-    state.ws.broadcast(WsEvent::EdgesBatchCreated { tenant_id: auth.tenant_id, count: edges.len() });
+    ws.broadcast(WsEvent::EdgesBatchCreated { tenant_id: auth.tenant_id, count: edges.len() });
 
     Ok((StatusCode::CREATED, Json(ListEdgesResponse { edges })))
 }
@@ -151,12 +137,11 @@ pub async fn create_edges_batch(
     )
 )]
 pub async fn get_edge(
-    State(state): State<Arc<EdgeState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let edge = state
-        .db
+    let edge = db
         .edge_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Edge", id))?;
@@ -185,12 +170,12 @@ pub async fn get_edge(
     )
 )]
 pub async fn list_edges_by_participant(
-    State(state): State<Arc<EdgeState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(entity_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // List edges filtered by tenant for isolation
-    let edges = state.db.edge_list_by_participant_and_tenant(entity_id, auth.tenant_id).await?;
+    let edges = db.edge_list_by_participant_and_tenant(entity_id, auth.tenant_id).await?;
 
     Ok(Json(ListEdgesResponse { edges }))
 }
@@ -200,9 +185,7 @@ pub async fn list_edges_by_participant(
 // ============================================================================
 
 /// Create the edge router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(EdgeState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_edge))
         .route("/batch", axum::routing::post(create_edges_batch))
@@ -211,5 +194,4 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
             "/by-participant/{entity_id}",
             axum::routing::get(list_edges_by_participant),
         )
-        .with_state(state)
 }

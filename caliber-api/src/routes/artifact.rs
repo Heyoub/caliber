@@ -18,29 +18,13 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{
         ArtifactResponse, CreateArtifactRequest, ListArtifactsRequest, ListArtifactsResponse,
         SearchRequest, SearchResponse, UpdateArtifactRequest,
     },
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for artifact routes.
-#[derive(Clone)]
-pub struct ArtifactState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl ArtifactState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -63,7 +47,8 @@ impl ArtifactState {
     )
 )]
 pub async fn create_artifact(
-    State(state): State<Arc<ArtifactState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateArtifactRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -88,10 +73,10 @@ pub async fn create_artifact(
     }
 
     // Create artifact via database client with tenant_id for isolation
-    let artifact = state.db.artifact_create(&req, auth.tenant_id).await?;
+    let artifact = db.artifact_create(&req, auth.tenant_id).await?;
 
     // Broadcast ArtifactCreated event
-    state.ws.broadcast(WsEvent::ArtifactCreated {
+    ws.broadcast(WsEvent::ArtifactCreated {
         artifact: artifact.clone(),
     });
 
@@ -123,7 +108,7 @@ pub async fn create_artifact(
     )
 )]
 pub async fn list_artifacts(
-    State(state): State<Arc<ArtifactState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListArtifactsRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -131,7 +116,9 @@ pub async fn list_artifacts(
 
     if let Some(scope_id) = params.scope_id {
         // Filter by scope and tenant
-        let artifacts = state.db.artifact_list_by_scope_and_tenant(scope_id, auth.tenant_id).await?;
+        let artifacts = db
+            .artifact_list_by_scope_and_tenant(scope_id, auth.tenant_id)
+            .await?;
 
         // Apply additional filters if needed
         let mut filtered = artifacts;
@@ -171,7 +158,9 @@ pub async fn list_artifacts(
         Ok(Json(response))
     } else if let Some(trajectory_id) = params.trajectory_id {
         // Filter by trajectory and tenant
-        let artifacts = state.db.artifact_list_by_trajectory_and_tenant(trajectory_id, auth.tenant_id).await?;
+        let artifacts = db
+            .artifact_list_by_trajectory_and_tenant(trajectory_id, auth.tenant_id)
+            .await?;
 
         // Apply additional filters if needed
         let mut filtered = artifacts;
@@ -231,12 +220,11 @@ pub async fn list_artifacts(
     )
 )]
 pub async fn get_artifact(
-    State(state): State<Arc<ArtifactState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let artifact = state
-        .db
+    let artifact = db
         .artifact_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
@@ -268,7 +256,8 @@ pub async fn get_artifact(
     )
 )]
 pub async fn update_artifact(
-    State(state): State<Arc<ArtifactState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateArtifactRequest>,
@@ -300,15 +289,14 @@ pub async fn update_artifact(
     }
 
     // First verify the artifact exists and belongs to this tenant
-    let existing = state
-        .db
+    let existing = db
         .artifact_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    let artifact = state.db.artifact_update(id, &req, auth.tenant_id).await?;
-    state.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
+    let artifact = db.artifact_update(id, &req, auth.tenant_id).await?;
+    ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
     Ok(Json(artifact))
 }
 
@@ -331,20 +319,20 @@ pub async fn update_artifact(
     )
 )]
 pub async fn delete_artifact(
-    State(state): State<Arc<ArtifactState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // First verify the artifact exists and belongs to this tenant
-    let artifact = state
-        .db
+    let artifact = db
         .artifact_get(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, artifact.tenant_id)?;
 
-    state.db.artifact_delete(id).await?;
-    state.ws.broadcast(WsEvent::ArtifactDeleted {
+    db.artifact_delete(id).await?;
+    ws.broadcast(WsEvent::ArtifactDeleted {
         tenant_id: auth.tenant_id,
         id,
     });
@@ -368,7 +356,7 @@ pub async fn delete_artifact(
     )
 )]
 pub async fn search_artifacts(
-    State(state): State<Arc<ArtifactState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<SearchRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -385,7 +373,7 @@ pub async fn search_artifacts(
     }
 
     // Perform tenant-isolated search
-    let response = state.db.search(&req, auth.tenant_id).await?;
+    let response = db.search(&req, auth.tenant_id).await?;
 
     Ok(Json(response))
 }
@@ -395,9 +383,7 @@ pub async fn search_artifacts(
 // ============================================================================
 
 /// Create the artifact routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(ArtifactState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_artifact))
         .route("/", axum::routing::get(list_artifacts))
@@ -405,7 +391,6 @@ pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
         .route("/:id", axum::routing::patch(update_artifact))
         .route("/:id", axum::routing::delete(delete_artifact))
         .route("/search", axum::routing::post(search_artifacts))
-        .with_state(state)
 }
 
 #[cfg(test)]

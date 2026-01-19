@@ -18,26 +18,10 @@ use crate::{
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
+    state::AppState,
     types::{CreateHandoffRequest, HandoffResponse},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for handoff routes.
-#[derive(Clone)]
-pub struct HandoffState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl HandoffState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -60,7 +44,8 @@ impl HandoffState {
     )
 )]
 pub async fn create_handoff(
-    State(state): State<Arc<HandoffState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateHandoffRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -101,10 +86,10 @@ pub async fn create_handoff(
     }
 
     // Create handoff via database client with tenant_id for isolation
-    let handoff = state.db.handoff_create(&req, auth.tenant_id).await?;
+    let handoff = db.handoff_create(&req, auth.tenant_id).await?;
 
     // Broadcast HandoffCreated event
-    state.ws.broadcast(WsEvent::HandoffCreated {
+    ws.broadcast(WsEvent::HandoffCreated {
         handoff: handoff.clone(),
     });
 
@@ -130,12 +115,11 @@ pub async fn create_handoff(
     )
 )]
 pub async fn get_handoff(
-    State(state): State<Arc<HandoffState>>,
+    State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let handoff = state
-        .db
+    let handoff = db
         .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
@@ -169,14 +153,14 @@ pub async fn get_handoff(
     )
 )]
 pub async fn accept_handoff(
-    State(state): State<Arc<HandoffState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
     Json(req): Json<AcceptHandoffRequest>,
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in initiated state
-    let handoff = state
-        .db
+    let handoff = db
         .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
@@ -199,13 +183,10 @@ pub async fn accept_handoff(
     }
 
     // Accept handoff via database client
-    let _ = state
-        .db
-        .handoff_accept(id, req.accepting_agent_id)
-        .await?;
+    let _ = db.handoff_accept(id, req.accepting_agent_id).await?;
 
     // Broadcast HandoffAccepted event with tenant_id for filtering
-    state.ws.broadcast(WsEvent::HandoffAccepted {
+    ws.broadcast(WsEvent::HandoffAccepted {
         tenant_id: auth.tenant_id,
         handoff_id: id,
     });
@@ -233,13 +214,13 @@ pub async fn accept_handoff(
     )
 )]
 pub async fn complete_handoff(
-    State(state): State<Arc<HandoffState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in accepted state
-    let handoff = state
-        .db
+    let handoff = db
         .handoff_get(id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
@@ -255,10 +236,10 @@ pub async fn complete_handoff(
     }
 
     // Complete handoff via database client
-    let updated = state.db.handoff_complete(id).await?;
+    let updated = db.handoff_complete(id).await?;
 
     // Broadcast HandoffCompleted event
-    state.ws.broadcast(WsEvent::HandoffCompleted { handoff: updated });
+    ws.broadcast(WsEvent::HandoffCompleted { handoff: updated });
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -281,15 +262,12 @@ pub struct AcceptHandoffRequest {
 // ============================================================================
 
 /// Create the handoff routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(HandoffState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::post(create_handoff))
         .route("/:id", axum::routing::get(get_handoff))
         .route("/:id/accept", axum::routing::post(accept_handoff))
         .route("/:id/complete", axum::routing::post(complete_handoff))
-        .with_state(state)
 }
 
 #[cfg(test)]

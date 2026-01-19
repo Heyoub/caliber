@@ -13,6 +13,7 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 | Date | @prime | @plan-feature | @execute | @implement-crate | @code-review | @code-review-hackathon | @update-devlog |
 |------|--------|---------------|----------|------------------|--------------|------------------------|----------------|
 | 2026-01-13 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| 2026-01-19 | n/a | n/a | n/a | n/a | n/a | n/a | 1 |
 
 ---
 
@@ -5409,3 +5410,29 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 **Time Spent:** ~1–2 hours (setup + verification)
 
 **Status:** WSL bootstrap mostly complete; DB + pgrx tests still blocked on sudo and upstream.
+
+---
+
+### January 19, 2026 — AppState Router Unification
+
+**Completed:**
+- [x] Added shared `AppState` with `FromRef` extractors for Axum
+- [x] Centralized router state initialization (webhooks, GraphQL, billing)
+- [x] Migrated route modules to app-wide state extraction
+- [x] Removed per-module router state builders
+- [x] Resolved Axum `Router<S>` type mismatch from `/ws` state
+
+**Decisions:**
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-01-19 | Use shared `AppState` + `FromRef` for route state | Avoids `Router<()>` vs `Router<Arc<WsState>>` mismatch and simplifies state wiring |
+
+**Challenges:**
+- Challenge: Many route modules had embedded state structs and `.with_state()` calls.
+  - Solution: Converted handlers to extract `DbClient`, `WsState`, `PCPRuntime`, and singleton state from `AppState`.
+
+**Next Steps:**
+- [ ] Run `cargo test --workspace --exclude caliber-pg` and fix any regressions
+- [ ] Check for any lingering unused imports or warnings
+
+**Time Spent:** ~2 hours

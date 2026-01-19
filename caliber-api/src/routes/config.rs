@@ -14,26 +14,10 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    state::AppState,
     types::{ConfigResponse, UpdateConfigRequest, ValidateConfigRequest},
     ws::WsState,
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for config routes.
-#[derive(Clone)]
-pub struct ConfigState {
-    pub db: DbClient,
-    pub ws: Arc<WsState>,
-}
-
-impl ConfigState {
-    pub fn new(db: DbClient, ws: Arc<WsState>) -> Self {
-        Self { db, ws }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -54,9 +38,9 @@ impl ConfigState {
     )
 )]
 pub async fn get_config(
-    State(state): State<Arc<ConfigState>>,
+    State(db): State<DbClient>,
 ) -> ApiResult<impl IntoResponse> {
-    let response = state.db.config_get().await?;
+    let response = db.config_get().await?;
     Ok(Json(response))
 }
 
@@ -77,7 +61,8 @@ pub async fn get_config(
     )
 )]
 pub async fn update_config(
-    State(state): State<Arc<ConfigState>>,
+    State(db): State<DbClient>,
+    State(ws): State<Arc<WsState>>,
     Json(req): Json<UpdateConfigRequest>,
 ) -> ApiResult<Json<ConfigResponse>> {
     // Validate that config is not empty
@@ -90,8 +75,8 @@ pub async fn update_config(
         return Err(ApiError::invalid_input("config must be a JSON object"));
     }
 
-    let response = state.db.config_update(&req).await?;
-    state.ws.broadcast(WsEvent::ConfigUpdated {
+    let response = db.config_update(&req).await?;
+    ws.broadcast(WsEvent::ConfigUpdated {
         config: response.clone(),
     });
     Ok(Json(response))
@@ -114,7 +99,7 @@ pub async fn update_config(
     )
 )]
 pub async fn validate_config(
-    State(state): State<Arc<ConfigState>>,
+    State(db): State<DbClient>,
     Json(req): Json<ValidateConfigRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that config is not empty
@@ -127,7 +112,7 @@ pub async fn validate_config(
         return Err(ApiError::invalid_input("config must be a JSON object"));
     }
 
-    let response = state.db.config_validate(&req).await?;
+    let response = db.config_validate(&req).await?;
     Ok(Json(response))
 }
 
@@ -136,14 +121,11 @@ pub async fn validate_config(
 // ============================================================================
 
 /// Create the config routes router.
-pub fn create_router(db: DbClient, ws: Arc<WsState>) -> axum::Router {
-    let state = Arc::new(ConfigState::new(db, ws));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::get(get_config))
         .route("/", axum::routing::patch(update_config))
         .route("/validate", axum::routing::post(validate_config))
-        .with_state(state)
 }
 
 #[cfg(test)]

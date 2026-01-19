@@ -27,6 +27,7 @@ use crate::workos_auth::{
 
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
+use crate::state::AppState;
 use axum::Router;
 use serde::{Deserialize, Serialize};
 
@@ -38,44 +39,8 @@ use axum::{
     Json,
 };
 
-#[cfg(feature = "workos")]
-use std::sync::Arc;
-
 #[cfg(not(feature = "workos"))]
 use axum::routing::get;
-
-// ============================================================================
-// STATE
-// ============================================================================
-
-/// State for SSO routes.
-#[derive(Clone)]
-pub struct SsoState {
-    /// Database client (for future session storage)
-    pub db: DbClient,
-
-    /// WorkOS configuration
-    #[cfg(feature = "workos")]
-    pub workos_config: Arc<WorkOsConfig>,
-}
-
-impl SsoState {
-    /// Create new SSO state.
-    #[cfg(feature = "workos")]
-    pub fn new(db: DbClient, workos_config: WorkOsConfig) -> Self {
-        Self {
-            db,
-            workos_config: Arc::new(workos_config),
-        }
-    }
-
-    /// Create SSO state from environment.
-    #[cfg(feature = "workos")]
-    pub fn from_env(db: DbClient) -> ApiResult<Self> {
-        let workos_config = WorkOsConfig::from_env()?;
-        Ok(Self::new(db, workos_config))
-    }
-}
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
@@ -172,7 +137,7 @@ impl IntoResponse for CallbackResponse {
 /// - `redirect_uri`: Redirect URI for web clients (token returned via redirect)
 #[cfg(feature = "workos")]
 async fn authorize(
-    State(state): State<SsoState>,
+    State(workos_config): State<WorkOsConfig>,
     Query(params): Query<AuthorizeParams>,
 ) -> impl IntoResponse {
     // Generate CSRF token
@@ -202,7 +167,7 @@ async fn authorize(
         state: Some(state_value),
     };
 
-    let auth_url = generate_authorization_url(&state.workos_config, &auth_params);
+    let auth_url = generate_authorization_url(&workos_config, &auth_params);
 
     if auth_url.is_empty() {
         return Err(ApiError::internal_error("Failed to generate authorization URL"));
@@ -228,7 +193,8 @@ async fn authorize(
 /// - For web clients (redirect_uri in state): Redirects to the provided URI with token
 #[cfg(feature = "workos")]
 async fn callback(
-    State(state): State<SsoState>,
+    State(db): State<DbClient>,
+    State(workos_config): State<WorkOsConfig>,
     Query(params): Query<SsoCallbackParams>,
 ) -> ApiResult<CallbackResponse> {
     // Try to decode state to check for redirect_uri
@@ -241,16 +207,16 @@ async fn callback(
     });
 
     // Exchange authorization code for profile and token
-    let (_access_token, claims) = exchange_code_for_profile(&state.workos_config, &params.code).await?;
+    let (_access_token, claims) = exchange_code_for_profile(&workos_config, &params.code).await?;
 
     // Resolve or create tenant (automatic provisioning)
-    let tenant_id = resolve_or_create_tenant(&state.db, &claims).await?;
+    let tenant_id = resolve_or_create_tenant(&db, &claims).await?;
 
     // Determine member role (first member = admin, others = member)
-    let role = determine_member_role(&state.db, tenant_id, &claims).await?;
+    let role = determine_member_role(&db, tenant_id, &claims).await?;
 
     // Upsert tenant member
-    state.db.tenant_member_upsert(
+    db.tenant_member_upsert(
         tenant_id,
         &claims.user_id,
         &claims.email,
@@ -389,10 +355,11 @@ fn capitalize_domain(domain: &str) -> String {
 /// Alternative POST handler for the callback (some IdPs use POST).
 #[cfg(feature = "workos")]
 async fn callback_post(
-    State(state): State<SsoState>,
+    State(db): State<DbClient>,
+    State(workos_config): State<WorkOsConfig>,
     Query(params): Query<SsoCallbackParams>,
 ) -> ApiResult<CallbackResponse> {
-    callback(State(state), Query(params)).await
+    callback(State(db), State(workos_config), Query(params)).await
 }
 
 // ============================================================================
@@ -434,20 +401,17 @@ async fn callback_post() -> ApiResult<()> {
 /// - GET /callback - Handle OAuth callback
 /// - POST /callback - Handle OAuth callback (alternative)
 #[cfg(feature = "workos")]
-pub fn create_router(db: DbClient, workos_config: WorkOsConfig) -> Router {
-    let state = SsoState::new(db, workos_config);
-
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/authorize", get(authorize))
         .route("/callback", get(callback).post(callback_post))
-        .with_state(state)
 }
 
 /// Create a stub router when workos feature is not enabled.
 ///
 /// All routes return an error indicating SSO is not available.
 #[cfg(not(feature = "workos"))]
-pub fn create_router(_db: DbClient) -> Router {
+pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/authorize", get(authorize))
         .route("/callback", get(callback).post(callback_post))

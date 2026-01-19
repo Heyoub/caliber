@@ -8,30 +8,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    state::AppState,
     types::{ListTenantsResponse, TenantInfo},
 };
-
-// ============================================================================
-// SHARED STATE
-// ============================================================================
-
-/// Shared application state for tenant routes.
-#[derive(Clone)]
-pub struct TenantState {
-    pub db: DbClient,
-}
-
-impl TenantState {
-    pub fn new(db: DbClient) -> Self {
-        Self { db }
-    }
-}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -52,9 +36,9 @@ impl TenantState {
     )
 )]
 pub async fn list_tenants(
-    State(state): State<Arc<TenantState>>,
+    State(db): State<DbClient>,
 ) -> ApiResult<impl IntoResponse> {
-    let tenants = state.db.tenant_list().await?;
+    let tenants = db.tenant_list().await?;
     let response = ListTenantsResponse { tenants };
     Ok(Json(response))
 }
@@ -78,10 +62,12 @@ pub async fn list_tenants(
     )
 )]
 pub async fn get_tenant(
-    State(state): State<Arc<TenantState>>,
+    State(db): State<DbClient>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let tenant = state.db.tenant_get(id).await?
+    let tenant = db
+        .tenant_get(id)
+        .await?
         .ok_or_else(|| ApiError::entity_not_found("Tenant", id))?;
     Ok(Json(tenant))
 }
@@ -91,13 +77,10 @@ pub async fn get_tenant(
 // ============================================================================
 
 /// Create the tenant routes router.
-pub fn create_router(db: DbClient) -> axum::Router {
-    let state = Arc::new(TenantState::new(db));
-
+pub fn create_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::get(list_tenants))
         .route("/:id", axum::routing::get(get_tenant))
-        .with_state(state)
 }
 
 #[cfg(test)]

@@ -56,6 +56,7 @@ use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::{auth_middleware, rate_limit_middleware, AuthMiddlewareState, RateLimitState};
 use crate::openapi::ApiDoc;
+use crate::state::AppState;
 use crate::ws::{ws_handler, WsState};
 
 // Re-export route creation functions for convenience
@@ -197,30 +198,30 @@ impl SecureRouterBuilder {
     }
 
     /// Build the entity CRUD routes (require authentication).
-    fn build_entity_routes(&self) -> ApiResult<Router> {
+    fn build_entity_routes(&self) -> ApiResult<Router<AppState>> {
         Ok(Router::new()
             .route("/ws", get(ws_handler))
-            .nest("/trajectories", trajectory::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/scopes", scope::create_router(self.db.clone(), self.ws.clone(), self.pcp.clone()))
-            .nest("/artifacts", artifact::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/search", search::create_router(self.db.clone()))
-            .nest("/notes", note::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/turns", turn::create_router(self.db.clone(), self.ws.clone(), self.pcp.clone()))
-            .nest("/agents", agent::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/locks", lock::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/messages", message::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/delegations", delegation::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/handoffs", handoff::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/dsl", dsl::create_router(self.db.clone()))
-            .nest("/config", config::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/tenants", tenant::create_router(self.db.clone()))
-            .nest("/users", user::create_router(self.db.clone()))
-            .nest("/billing", billing::create_router(self.db.clone()))
-            .nest("/batch", batch::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/webhooks", webhooks::create_router(self.db.clone(), self.ws.clone())?)
-            .nest("/graphql", graphql::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/edges", edge::create_router(self.db.clone(), self.ws.clone()))
-            .nest("/summarization-policies", summarization_policy::create_router(self.db.clone(), self.ws.clone())))
+            .nest("/trajectories", trajectory::create_router())
+            .nest("/scopes", scope::create_router())
+            .nest("/artifacts", artifact::create_router())
+            .nest("/search", search::create_router())
+            .nest("/notes", note::create_router())
+            .nest("/turns", turn::create_router())
+            .nest("/agents", agent::create_router())
+            .nest("/locks", lock::create_router())
+            .nest("/messages", message::create_router())
+            .nest("/delegations", delegation::create_router())
+            .nest("/handoffs", handoff::create_router())
+            .nest("/dsl", dsl::create_router())
+            .nest("/config", config::create_router())
+            .nest("/tenants", tenant::create_router())
+            .nest("/users", user::create_router())
+            .nest("/billing", billing::create_router())
+            .nest("/batch", batch::create_router())
+            .nest("/webhooks", webhooks::create_router())
+            .nest("/graphql", graphql::create_router())
+            .nest("/edges", edge::create_router())
+            .nest("/summarization-policies", summarization_policy::create_router()))
     }
 
     /// Build the complete router with full security stack.
@@ -234,18 +235,44 @@ impl SecureRouterBuilder {
         use crate::telemetry::{middleware::observability_middleware, metrics_handler};
         use axum::middleware::from_fn;
 
+        let webhook_state = Arc::new(
+            webhooks::WebhookState::new(self.db.clone(), self.ws.clone())
+                .map_err(|e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)))?,
+        );
+        webhooks::start_webhook_delivery_task(webhook_state.clone());
+
+        let graphql_schema = graphql::create_schema(self.db.clone(), self.ws.clone());
+        let billing_state = Arc::new(billing::BillingState::new(self.db.clone()));
+        let mcp_state = Arc::new(mcp::McpState::new(self.db.clone(), self.ws.clone()));
+
+        #[cfg(feature = "workos")]
+        let workos_config = crate::workos_auth::WorkOsConfig::from_env().ok();
+
+        let app_state = AppState {
+            db: self.db.clone(),
+            ws: self.ws.clone(),
+            pcp: self.pcp.clone(),
+            webhook_state,
+            graphql_schema,
+            billing_state,
+            mcp_state,
+            start_time: std::time::Instant::now(),
+            #[cfg(feature = "workos")]
+            workos_config,
+        };
+
         // Protected API routes (auth required)
         let api_routes = self
             .build_entity_routes()?
             .layer(from_fn_with_state(self.auth_state.clone(), auth_middleware));
 
         // Build the main router
-        let mut router = Router::new()
+        let mut router: Router<AppState> = Router::new()
             .nest("/api/v1", api_routes)
             // MCP server (not under /api/v1 - uses its own protocol)
-            .nest("/mcp", mcp::create_router(self.db.clone(), self.ws.clone()))
+            .nest("/mcp", mcp::create_router())
             // Health checks (no auth required)
-            .nest("/health", health::create_router(self.db.clone()))
+            .nest("/health", health::create_router())
             // Metrics endpoint (no auth, but rate-limited)
             .route("/metrics", get(metrics_handler))
             // OpenAPI spec
@@ -254,9 +281,8 @@ impl SecureRouterBuilder {
         // Add SSO routes when workos feature is enabled
         #[cfg(feature = "workos")]
         {
-            use crate::workos_auth::WorkOsConfig;
-            if let Ok(workos_config) = WorkOsConfig::from_env() {
-                router = router.nest("/auth/sso", sso::create_router(self.db.clone(), workos_config));
+            if app_state.workos_config.is_some() {
+                router = router.nest("/auth/sso", sso::create_router());
             }
         }
 
@@ -284,7 +310,8 @@ impl SecureRouterBuilder {
         Ok(router
             .layer(from_fn_with_state(self.rate_limit_state, rate_limit_middleware))
             .layer(from_fn(observability_middleware))
-            .layer(cors))
+            .layer(cors)
+            .with_state(app_state))
     }
 }
 
@@ -402,41 +429,67 @@ pub fn create_api_router_unauthenticated(
     use crate::telemetry::{middleware::observability_middleware, metrics_handler};
     use axum::middleware::from_fn;
 
+    let webhook_state = Arc::new(
+        webhooks::WebhookState::new(db.clone(), ws.clone())
+            .map_err(|e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)))?,
+    );
+    webhooks::start_webhook_delivery_task(webhook_state.clone());
+
+    let graphql_schema = graphql::create_schema(db.clone(), ws.clone());
+    let billing_state = Arc::new(billing::BillingState::new(db.clone()));
+    let mcp_state = Arc::new(mcp::McpState::new(db.clone(), ws.clone()));
+
+    #[cfg(feature = "workos")]
+    let workos_config = crate::workos_auth::WorkOsConfig::from_env().ok();
+
+    let app_state = AppState {
+        db: db.clone(),
+        ws: ws.clone(),
+        pcp: pcp.clone(),
+        webhook_state,
+        graphql_schema,
+        billing_state,
+        mcp_state,
+        start_time: std::time::Instant::now(),
+        #[cfg(feature = "workos")]
+        workos_config,
+    };
+
     // Entity CRUD routes (NO AUTH)
     let api_routes = Router::new()
-        .nest("/trajectories", trajectory::create_router(db.clone(), ws.clone()))
-        .nest("/scopes", scope::create_router(db.clone(), ws.clone(), pcp.clone()))
-        .nest("/artifacts", artifact::create_router(db.clone(), ws.clone()))
-        .nest("/notes", note::create_router(db.clone(), ws.clone()))
-        .nest("/turns", turn::create_router(db.clone(), ws.clone(), pcp.clone()))
-        .nest("/agents", agent::create_router(db.clone(), ws.clone()))
-        .nest("/locks", lock::create_router(db.clone(), ws.clone()))
-        .nest("/messages", message::create_router(db.clone(), ws.clone()))
-        .nest("/delegations", delegation::create_router(db.clone(), ws.clone()))
-        .nest("/handoffs", handoff::create_router(db.clone(), ws.clone()))
-        .nest("/dsl", dsl::create_router(db.clone()))
-        .nest("/config", config::create_router(db.clone(), ws.clone()))
-        .nest("/tenants", tenant::create_router(db.clone()))
-        .nest("/users", user::create_router(db.clone()))
-        .nest("/billing", billing::create_router(db.clone()))
-        .nest("/batch", batch::create_router(db.clone(), ws.clone()))
-        .nest("/webhooks", webhooks::create_router(db.clone(), ws.clone())?)
-        .nest("/graphql", graphql::create_router(db.clone(), ws.clone()))
-        .nest("/edges", edge::create_router(db.clone(), ws.clone()))
-        .nest("/summarization-policies", summarization_policy::create_router(db.clone(), ws.clone()));
+        .nest("/trajectories", trajectory::create_router())
+        .nest("/scopes", scope::create_router())
+        .nest("/artifacts", artifact::create_router())
+        .nest("/notes", note::create_router())
+        .nest("/turns", turn::create_router())
+        .nest("/agents", agent::create_router())
+        .nest("/locks", lock::create_router())
+        .nest("/messages", message::create_router())
+        .nest("/delegations", delegation::create_router())
+        .nest("/handoffs", handoff::create_router())
+        .nest("/dsl", dsl::create_router())
+        .nest("/config", config::create_router())
+        .nest("/tenants", tenant::create_router())
+        .nest("/users", user::create_router())
+        .nest("/billing", billing::create_router())
+        .nest("/batch", batch::create_router())
+        .nest("/webhooks", webhooks::create_router())
+        .nest("/graphql", graphql::create_router())
+        .nest("/edges", edge::create_router())
+        .nest("/summarization-policies", summarization_policy::create_router());
 
-    let mut router = Router::new()
+    let mut router: Router<AppState> = Router::new()
         .nest("/api/v1", api_routes)
-        .nest("/mcp", mcp::create_router(db.clone(), ws.clone()))
-        .nest("/health", health::create_router(db.clone()))
+        .nest("/mcp", mcp::create_router())
+        .nest("/health", health::create_router())
         .route("/metrics", get(metrics_handler))
         .route("/openapi.json", get(openapi_json));
 
     #[cfg(feature = "workos")]
     {
         use crate::workos_auth::WorkOsConfig;
-        if let Ok(workos_config) = WorkOsConfig::from_env() {
-            router = router.nest("/auth/sso", sso::create_router(db.clone(), workos_config));
+        if app_state.workos_config.is_some() {
+            router = router.nest("/auth/sso", sso::create_router());
         }
     }
 
@@ -458,7 +511,8 @@ pub fn create_api_router_unauthenticated(
 
     Ok(router
         .layer(from_fn(observability_middleware))
-        .layer(cors))
+        .layer(cors)
+        .with_state(app_state))
 }
 
 /// Create a minimal router for testing without WebSocket support.
@@ -481,21 +535,21 @@ mod tests {
     #[test]
     fn test_route_modules_compile() {
         // This test simply verifies all route modules are properly exported
-        let _ = trajectory::TrajectoryState::new;
-        let _ = scope::ScopeState::new;
-        let _ = artifact::ArtifactState::new;
-        let _ = note::NoteState::new;
-        let _ = turn::TurnState::new;
-        let _ = agent::AgentState::new;
-        let _ = lock::LockState::new;
-        let _ = message::MessageState::new;
-        let _ = delegation::DelegationState::new;
-        let _ = handoff::HandoffState::new;
-        let _ = dsl::DslState::new;
-        let _ = config::ConfigState::new;
-        let _ = tenant::TenantState::new;
+        let _ = trajectory::create_router;
+        let _ = scope::create_router;
+        let _ = artifact::create_router;
+        let _ = note::create_router;
+        let _ = turn::create_router;
+        let _ = agent::create_router;
+        let _ = lock::create_router;
+        let _ = message::create_router;
+        let _ = delegation::create_router;
+        let _ = handoff::create_router;
+        let _ = dsl::create_router;
+        let _ = config::create_router;
+        let _ = tenant::create_router;
         // Battle Intel modules
-        let _ = edge::EdgeState::new;
-        let _ = summarization_policy::SummarizationPolicyState::new;
+        let _ = edge::create_router;
+        let _ = summarization_policy::create_router;
     }
 }
