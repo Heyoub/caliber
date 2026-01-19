@@ -117,9 +117,7 @@ fn optional_metadata_strategy() -> impl Strategy<Value = Option<serde_json::Valu
 }
 
 /// Strategy for generating a complete CreateScopeRequest.
-/// TODO: Wire this into tests that could benefit from full request generation
-#[allow(dead_code)]
-fn create_scope_request_strategy(trajectory_id: EntityId) -> impl Strategy<Value = CreateScopeRequest> {
+fn create_scope_request_strategy() -> impl Strategy<Value = CreateScopeRequest> {
     (
         scope_name_strategy(),
         purpose_strategy(),
@@ -128,7 +126,7 @@ fn create_scope_request_strategy(trajectory_id: EntityId) -> impl Strategy<Value
     )
         .prop_map(move |(name, purpose, token_budget, metadata)| {
             CreateScopeRequest {
-                trajectory_id,
+                trajectory_id: Uuid::nil(),
                 parent_scope_id: None,
                 name,
                 purpose,
@@ -139,8 +137,6 @@ fn create_scope_request_strategy(trajectory_id: EntityId) -> impl Strategy<Value
 }
 
 /// Strategy for generating an UpdateScopeRequest.
-/// TODO: Wire this into update-focused property tests
-#[allow(dead_code)]
 fn update_scope_request_strategy() -> impl Strategy<Value = UpdateScopeRequest> {
     (
         prop::option::of(scope_name_strategy()),
@@ -182,10 +178,8 @@ proptest! {
     /// **Validates: Requirements 1.1**
     #[test]
     fn prop_scope_crud_cycle(
-        name in scope_name_strategy(),
-        purpose in purpose_strategy(),
-        token_budget in token_budget_strategy(),
-        metadata in optional_metadata_strategy(),
+        create_req in create_scope_request_strategy(),
+        update_req in update_scope_request_strategy(),
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -195,14 +189,8 @@ proptest! {
             // Create a test trajectory first
             let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
-            let create_req = CreateScopeRequest {
-                trajectory_id,
-                parent_scope_id: None,
-                name: name.clone(),
-                purpose: purpose.clone(),
-                token_budget,
-                metadata: metadata.clone(),
-            };
+            let mut create_req = create_req;
+            create_req.trajectory_id = trajectory_id;
 
             // ================================================================
             // STEP 1: CREATE - Create a new scope
@@ -214,9 +202,9 @@ proptest! {
             prop_assert_ne!(created.scope_id, nil_id);
 
             // Verify the created scope matches the request
-            prop_assert_eq!(&created.name, &name);
-            prop_assert_eq!(&created.purpose, &purpose);
-            prop_assert_eq!(created.token_budget, token_budget);
+            prop_assert_eq!(&created.name, &create_req.name);
+            prop_assert_eq!(&created.purpose, &create_req.purpose);
+            prop_assert_eq!(created.token_budget, create_req.token_budget);
             prop_assert_eq!(created.trajectory_id, trajectory_id);
             
             // Should be active by default
@@ -249,22 +237,28 @@ proptest! {
             // ================================================================
             // STEP 3: UPDATE - Update the scope
             // ================================================================
-            let update_req = UpdateScopeRequest {
-                name: Some(format!("{} Updated", name)),
-                purpose: Some("Updated purpose for testing".to_string()),
-                token_budget: Some(token_budget + 1000),
-                metadata: Some(serde_json::json!({"updated": true})),
-            };
-
             let updated = db.scope_update(created.scope_id, &update_req, auth.tenant_id).await?;
 
             // Verify the ID hasn't changed
             prop_assert_eq!(updated.scope_id, created.scope_id);
 
             // Verify updated fields changed
-            prop_assert_eq!(&updated.name, &format!("{} Updated", name));
-            prop_assert_eq!(&updated.purpose, &Some("Updated purpose for testing".to_string()));
-            prop_assert_eq!(updated.token_budget, token_budget + 1000);
+            match &update_req.name {
+                Some(name) => prop_assert_eq!(&updated.name, name),
+                None => prop_assert_eq!(&updated.name, &create_req.name),
+            }
+            match &update_req.purpose {
+                Some(purpose) => prop_assert_eq!(&updated.purpose, &Some(purpose.clone())),
+                None => prop_assert_eq!(&updated.purpose, &create_req.purpose),
+            }
+            match update_req.token_budget {
+                Some(token_budget) => prop_assert_eq!(updated.token_budget, token_budget),
+                None => prop_assert_eq!(updated.token_budget, create_req.token_budget),
+            }
+            match &update_req.metadata {
+                Some(metadata) => prop_assert_eq!(&updated.metadata, &Some(metadata.clone())),
+                None => prop_assert_eq!(&updated.metadata, &create_req.metadata),
+            }
 
             // Created timestamp should not change
             prop_assert_eq!(updated.created_at, created.created_at);
@@ -318,8 +312,7 @@ proptest! {
     /// **Validates: Requirements 1.1**
     #[test]
     fn prop_scope_create_generates_unique_ids(
-        name in scope_name_strategy(),
-        token_budget in token_budget_strategy(),
+        mut create_req in create_scope_request_strategy(),
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -327,14 +320,7 @@ proptest! {
             let auth = test_auth_context();
             let trajectory_id = create_test_trajectory(&db, auth.tenant_id).await;
 
-            let create_req = CreateScopeRequest {
-                trajectory_id,
-                parent_scope_id: None,
-                name: name.clone(),
-                purpose: None,
-                token_budget,
-                metadata: None,
-            };
+            create_req.trajectory_id = trajectory_id;
 
             // Create two scopes with the same data
             let scope1 = db.scope_create(&create_req, auth.tenant_id).await?;
@@ -349,7 +335,7 @@ proptest! {
 
             // Property: Both should have the same name (from request)
             prop_assert_eq!(&scope1.name, &scope2.name);
-            prop_assert_eq!(&scope1.name, &name);
+            prop_assert_eq!(&scope1.name, &create_req.name);
 
             Ok(())
         })?;
@@ -389,19 +375,13 @@ proptest! {
     #[test]
     fn prop_scope_update_nonexistent_returns_error(
         random_id_bytes in any::<[u8; 16]>(),
+        update_req in update_scope_request_strategy(),
     ) {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
             let random_id = Uuid::from_bytes(random_id_bytes);
-
-            let update_req = UpdateScopeRequest {
-                name: Some("Updated Name".to_string()),
-                purpose: None,
-                token_budget: None,
-                metadata: None,
-            };
 
             // Try to update a scope with a random ID
             let result = db.scope_update(random_id, &update_req, auth.tenant_id).await;

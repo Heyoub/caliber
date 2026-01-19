@@ -51,7 +51,7 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 | Decision | Rationale |
 |----------|-----------|
 | `resolver = "2"` | Required for Rust 2021 edition, better feature resolution |
-| Locked dependency versions | Reproducible builds: pgrx 0.12.9, uuid 1.11, chrono 0.4.39, etc. |
+| Locked dependency versions | Reproducible builds: pgrx 0.16, uuid 1.11, chrono 0.4.39, etc. |
 | Profile optimizations | `opt-level = 2` for deps in dev mode speeds up iteration |
 | `workspace = true` for deps | Single source of truth for versions, easier updates |
 | No lib.rs stubs | AI-native approach: create source files WITH implementations |
@@ -679,7 +679,7 @@ The `PgStorage` struct implements the full `StorageTrait` interface:
 
 The pgrx crate requires PostgreSQL to be installed and configured via `cargo pgrx init`. The code is syntactically correct and passes IDE diagnostics, but full compilation requires:
 
-1. Install PostgreSQL 13-17
+1. Install PostgreSQL 18+
 2. Run `cargo pgrx init`
 3. Set `PGRX_HOME` environment variable
 
