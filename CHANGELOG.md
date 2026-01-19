@@ -15,11 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stripe payment integration (alternative to LemonSqueezy)
 - Mutation testing (planned)
 - Test coverage reporting (planned)
+- WSL-specific setup notes in README for Linux filesystem and tooling
 
 ### Fixed
 
 - Hardened heap row-to-domain conversions and added unit tests to prevent
   storage trait type mismatches across heap modules
+- Auth config production-validation tests now isolate environment variables
+- Smoke test network error handling now tolerates non-throwing fetch runtimes
 
 ## [0.4.0] - 2026-01-17
 
