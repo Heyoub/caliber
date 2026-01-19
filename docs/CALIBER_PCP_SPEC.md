@@ -739,6 +739,42 @@ impl CaliberConfig {
 }
 ```
 
+### 1.6 Preset-First Configuration Philosophy (Config-Driven Knobs)
+
+CALIBER does not ship implicit defaults. Instead, it encourages explicit
+selection of validated presets for numeric knobs to prevent unsafe states.
+
+**Principles:**
+- Presets are explicit, versioned, and validated.
+- Invalid combinations are rejected (no silent fallback).
+- Overrides are allowed but must be explicit.
+
+**Preset catalog (draft):**
+
+- Deduplication TTL (bitemporal):
+  - strict: wall 6h, event 24h
+  - balanced: wall 24h, event 7d
+  - relaxed: wall 72h, event 30d
+- Ack timeout mapping (backoff profiles):
+  - fast: base 200ms, max 30s, attempts 4, ack timeout 30s
+  - safe: base 1s, max 2m, attempts 4, ack timeout 2m
+  - conservative: base 2s, max 5m, attempts 5, ack timeout 5m
+- Compatibility window (protocol versions):
+  - short: 90d
+  - balanced: 180d
+  - long: 365d
+- Vector clock TTL (tiered):
+  - lean: 256=6h, 1024=48h, 4096=7d
+  - balanced: 256=24h, 1024=7d, 4096=30d
+  - safe: 256=7d, 1024=30d, 4096=90d
+- Error redaction templates:
+  - core: redact secrets, credentials, tokens, and keys
+  - extended: core + financial, location, biometric
+  - strict: extended + tag-required exposure (untagged fields redacted)
+
+This philosophy applies to any numeric-only knob exposed in config. Presets
+are always explicit; there are no implicit runtime defaults.
+
 ---
 
 ## 2. DSL SPECIFICATION

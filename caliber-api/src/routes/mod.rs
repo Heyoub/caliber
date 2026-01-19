@@ -27,6 +27,7 @@ pub mod mcp;
 pub mod message;
 pub mod note;
 pub mod scope;
+pub mod search;
 pub mod sso;
 pub mod summarization_policy;
 pub mod tenant;
@@ -55,7 +56,7 @@ use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::{auth_middleware, rate_limit_middleware, AuthMiddlewareState, RateLimitState};
 use crate::openapi::ApiDoc;
-use crate::ws::WsState;
+use crate::ws::{ws_handler, WsState};
 
 // Re-export route creation functions for convenience
 pub use agent::create_router as agent_router;
@@ -73,6 +74,7 @@ pub use mcp::create_router as mcp_router;
 pub use message::create_router as message_router;
 pub use note::create_router as note_router;
 pub use scope::create_router as scope_router;
+pub use search::create_router as search_router;
 pub use tenant::create_router as tenant_router;
 pub use trajectory::create_router as trajectory_router;
 pub use turn::create_router as turn_router;
@@ -197,9 +199,11 @@ impl SecureRouterBuilder {
     /// Build the entity CRUD routes (require authentication).
     fn build_entity_routes(&self) -> ApiResult<Router> {
         Ok(Router::new()
+            .route("/ws", get(ws_handler))
             .nest("/trajectories", trajectory::create_router(self.db.clone(), self.ws.clone()))
             .nest("/scopes", scope::create_router(self.db.clone(), self.ws.clone(), self.pcp.clone()))
             .nest("/artifacts", artifact::create_router(self.db.clone(), self.ws.clone()))
+            .nest("/search", search::create_router(self.db.clone()))
             .nest("/notes", note::create_router(self.db.clone(), self.ws.clone()))
             .nest("/turns", turn::create_router(self.db.clone(), self.ws.clone(), self.pcp.clone()))
             .nest("/agents", agent::create_router(self.db.clone(), self.ws.clone()))

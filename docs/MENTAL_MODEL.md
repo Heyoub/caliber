@@ -399,7 +399,7 @@ CALIBER supports linking entities with typed relationships:
 | Messages | `POST /messages`, `GET`, `POST :id/acknowledge` |
 | Delegations | `POST /delegations`, `POST :id/accept`, `POST :id/reject`, `POST :id/complete` |
 | Handoffs | `POST /handoffs`, `POST :id/accept`, `POST :id/complete` |
-| Search | `POST /search` |
+| Search | `POST /api/v1/search` |
 | DSL | `POST /dsl/validate`, `POST /dsl/parse` |
 
 ---

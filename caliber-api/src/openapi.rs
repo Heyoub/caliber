@@ -12,8 +12,8 @@ use crate::types::*;
 
 // Import route modules for path references
 use crate::routes::{
-    agent, artifact, config, delegation, dsl, handoff, lock, message, note, scope, tenant,
-    trajectory, turn,
+    agent, artifact, config, delegation, dsl, handoff, lock, message, note, scope, search,
+    tenant, trajectory, turn,
 };
 
 // Import domain types from caliber-core
@@ -64,6 +64,7 @@ use caliber_pcp::ConflictResolution;
         (name = "Messages", description = "Inter-agent communication"),
         (name = "Delegations", description = "Task delegation between agents"),
         (name = "Handoffs", description = "Context handoff between agents"),
+        (name = "Search", description = "Global search across entities"),
         (name = "DSL", description = "Domain-specific language validation and parsing"),
         (name = "Config", description = "System configuration"),
         (name = "Tenants", description = "Multi-tenant management")
@@ -94,6 +95,9 @@ use caliber_pcp::ConflictResolution;
         artifact::update_artifact,
         artifact::delete_artifact,
         artifact::search_artifacts,
+
+        // === Search Routes ===
+        search::search,
 
         // === Note Routes ===
         note::create_note,
