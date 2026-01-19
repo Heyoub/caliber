@@ -5359,3 +5359,53 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 **Time Spent:** ~1 hour
 
 **Status:** Conversions standardized and tests in place.
+
+---
+
+### January 19, 2026 — WSL Bootstrap and Full Verification
+
+**Objective:** Re-establish full test/verification workflow after moving the repo to WSL.
+
+**Completed:**
+
+- ✅ Added WSL notes to README (Linux filesystem requirement, build deps, inotify hint)
+- ✅ Installed Bun in WSL and confirmed Rust toolchain + cargo-pgrx availability
+- ✅ Rust build + clippy passed (workspace excluding `caliber-pg`)
+- ✅ Fixed auth test flakiness from shared env vars (isolated with guard + mutex)
+- ✅ Adjusted smoke test network error handling for runtimes that resolve fetch
+
+**Issues Encountered:**
+
+- `caliber-api/tests/agent_property_tests.rs` fails without a working DB connection
+- `cargo pgrx install` needs sudo to write to `/usr/share/postgresql/18/extension`
+- `cargo pgrx test` fails due to upstream `pgrx-tests` incompatibility with PG18
+- Playwright tests failed until browsers are installed (`bunx playwright install`)
+
+**Next Steps:**
+
+- [ ] Use sudo for `cargo pgrx install` and create extension in the test database
+- [ ] Re-run Rust tests with `CALIBER_DB_*` configured
+- [ ] Skip `pgrx-tests` until upstream PG18 compatibility is fixed
+- [ ] Re-run Bun tests and Playwright after browser install
+
+**Commits:**
+
+- `08b7540` - refactor: Standardize test configurations and improve assertions
+- `d894372` - refactor: Improve error handling and code consistency in tests
+- `c3e6987` - refactor: Enhance error handling and result propagation in tests
+- `fae617d` - refactor: Update API and database interactions for tenant management
+- `1d7bc43` - fix: Harden heap row-to-domain conversions and add unit tests
+- `f3764c3` - feat: Enhance tenant management across database operations
+- `2bc9c92` - feat: Enhance tenant isolation and validation across API routes
+- `19d082d` - chore: Update WorkOS integration for compatibility with version 0.8
+- `8c003fd` - Update dependencies and enhance tenant management features
+- `3fd81f3` - feat: Implement tenant management and rate limiting features
+- `c5af8ad` - fix: Version sync (0.3.2) + npm workflow + repo URLs
+- `8012cfc` - docs: Update DEVLOG and CHANGELOG for v0.3.2
+- `f84d16f` - SDK codegen pipeline + lint cleanup + repo hygiene
+- `f281c31` - Add email and name fields to AuthContext in test support
+- `c6287bd` - Refactor BillingPlan and enhance API client methods
+
+**Time Spent:** ~1–2 hours (setup + verification)
+
+**Status:** WSL bootstrap mostly complete; DB + pgrx tests still blocked on sudo and upstream.
