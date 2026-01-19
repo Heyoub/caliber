@@ -234,7 +234,7 @@ mod tests {
         let metrics = METRICS
             .as_ref()
             .map_err(|e| format!("Metrics init failed: {}", e.message))?;
-        assert!(metrics.http_requests_total.desc().len() > 0);
+        assert!(!metrics.http_requests_total.desc().is_empty());
         Ok(())
     }
 

@@ -87,7 +87,7 @@ fn auth_header_strategy() -> impl Strategy<Value = AuthHeader> {
         Just(AuthHeader::ValidApiKey("valid_api_key_123".to_string())),
         Just(AuthHeader::ValidApiKey("valid_api_key_456".to_string())),
         // Invalid API keys
-        "[a-z0-9_]{10,30}".prop_map(|s| AuthHeader::InvalidApiKey(s)),
+        "[a-z0-9_]{10,30}".prop_map(AuthHeader::InvalidApiKey),
         // Valid JWT (will be generated with proper signature)
         ("[a-z0-9]{5,20}", any::<[u8; 16]>()).prop_map(|(user_id, bytes)| {
             let tenant_id = Uuid::from_bytes(bytes);
@@ -95,9 +95,9 @@ fn auth_header_strategy() -> impl Strategy<Value = AuthHeader> {
         }),
         // Invalid JWT tokens
         "[A-Za-z0-9_-]{20,100}\\.[A-Za-z0-9_-]{20,100}\\.[A-Za-z0-9_-]{20,100}"
-            .prop_map(|s| AuthHeader::InvalidJwt(s)),
+            .prop_map(AuthHeader::InvalidJwt),
         // Malformed auth headers
-        "[A-Za-z]+ [A-Za-z0-9_-]{20,50}".prop_map(|s| AuthHeader::MalformedAuth(s)),
+        "[A-Za-z]+ [A-Za-z0-9_-]{20,50}".prop_map(AuthHeader::MalformedAuth),
         // No authentication
         Just(AuthHeader::None),
     ]
@@ -124,7 +124,7 @@ fn tenant_header_strategy() -> impl Strategy<Value = TenantHeader> {
         // Valid tenant IDs
         any::<[u8; 16]>().prop_map(|bytes| TenantHeader::Valid(Uuid::from_bytes(bytes))),
         // Invalid tenant IDs
-        "[a-z0-9-]{10,40}".prop_map(|s| TenantHeader::Invalid(s)),
+        "[a-z0-9-]{10,40}".prop_map(TenantHeader::Invalid),
         // No tenant header
         Just(TenantHeader::None),
     ]
@@ -178,7 +178,7 @@ proptest! {
                     let token = generate_jwt_token(
                         &auth_config,
                         user_id.clone(),
-                        Some((*tenant_id).into()),
+                        Some(*tenant_id),
                         vec![],
                     )
                     .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
@@ -286,7 +286,7 @@ proptest! {
             let token = generate_jwt_token(
                 &auth_config,
                 user_id.clone(),
-                Some(tenant_id.into()),
+                Some(tenant_id),
                 vec![],
             )
             .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
@@ -414,7 +414,7 @@ proptest! {
             let token = generate_jwt_token(
                 &auth_config,
                 user_id.clone(),
-                Some(tenant_id.into()),
+                Some(tenant_id),
                 vec![],
             )
             .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
@@ -550,7 +550,7 @@ mod edge_cases {
         let token = generate_jwt_token(
             &auth_config,
             "user123".to_string(),
-            Some(Uuid::now_v7().into()),
+            Some(Uuid::now_v7()),
             vec![],
         )
         .map_err(|e| e.message)?;

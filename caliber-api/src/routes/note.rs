@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn test_note_type_variants() {
         // Verify all note types are accessible
-        let types = vec![
+        let types = [
             NoteType::Convention,
             NoteType::Strategy,
             NoteType::Gotcha,
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn test_ttl_variants() {
         // Verify TTL variants work correctly
-        let ttls = vec![
+        let ttls = [
             TTL::Persistent,
             TTL::Session,
             TTL::Scope,

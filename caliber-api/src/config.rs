@@ -191,11 +191,13 @@ mod tests {
 
     #[test]
     fn test_origin_allowed_production() {
-        let mut config = ApiConfig::default();
-        config.cors_origins = vec![
-            "https://caliber.run".to_string(),
-            "https://app.caliber.run".to_string(),
-        ];
+        let config = ApiConfig {
+            cors_origins: vec![
+                "https://caliber.run".to_string(),
+                "https://app.caliber.run".to_string(),
+            ],
+            ..Default::default()
+        };
 
         assert!(config.is_origin_allowed("https://caliber.run"));
         assert!(config.is_origin_allowed("https://app.caliber.run"));
@@ -205,8 +207,10 @@ mod tests {
 
     #[test]
     fn test_wildcard_subdomain() {
-        let mut config = ApiConfig::default();
-        config.cors_origins = vec!["*.caliber.run".to_string()];
+        let config = ApiConfig {
+            cors_origins: vec!["*.caliber.run".to_string()],
+            ..Default::default()
+        };
 
         assert!(config.is_origin_allowed("https://app.caliber.run"));
         assert!(config.is_origin_allowed("https://api.caliber.run"));

@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_turn_role_variants() {
         // Verify all turn roles are accessible
-        let roles = vec![
+        let roles = [
             TurnRole::User,
             TurnRole::Assistant,
             TurnRole::System,

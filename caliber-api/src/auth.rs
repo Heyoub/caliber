@@ -816,8 +816,11 @@ mod tests {
     #[test]
     fn test_production_validation_allows_secure_secret() {
         std::env::set_var("CALIBER_ENVIRONMENT", "production");
-        let mut config = AuthConfig::default();
-        config.jwt_secret = "this-is-a-very-secure-secret-that-is-at-least-32-characters-long".to_string();
+        let config = AuthConfig {
+            jwt_secret: "this-is-a-very-secure-secret-that-is-at-least-32-characters-long"
+                .to_string(),
+            ..Default::default()
+        };
 
         // Should succeed
         assert!(config.validate_for_production().is_ok());
@@ -839,8 +842,10 @@ mod tests {
     #[test]
     fn test_production_validation_rejects_short_secret() {
         std::env::set_var("CALIBER_ENVIRONMENT", "production");
-        let mut config = AuthConfig::default();
-        config.jwt_secret = "short".to_string(); // Too short
+        let config = AuthConfig {
+            jwt_secret: "short".to_string(), // Too short
+            ..Default::default()
+        };
 
         // Should fail
         assert!(config.validate_for_production().is_err());

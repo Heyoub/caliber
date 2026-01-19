@@ -545,7 +545,7 @@ pub fn artifact_update_heap(
         .into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Artifact,
-            id: artifact_id,
+            id,
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     
