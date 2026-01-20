@@ -1,12 +1,37 @@
 //! CALIBER LLM - Vector Abstraction Layer (VAL)
 //!
 //! Provider-agnostic async traits for embeddings and summarization.
-//! Features:
+//!
+//! # Features
 //! - Async traits with tokio support
 //! - ProviderAdapter with Echo/Ping discovery
 //! - EventListener pattern for request/response hooks
 //! - Circuit breaker for health management
 //! - Routing strategies (RoundRobin, LeastLatency, etc.)
+//! - **Real provider implementations**: OpenAI, Anthropic (Claude), Ollama
+//!
+//! # Providers
+//! - [`providers::OpenAIEmbeddingProvider`] - OpenAI embeddings (text-embedding-3-small)
+//! - [`providers::OpenAISummarizationProvider`] - OpenAI completions (gpt-4o-mini)
+//! - [`providers::AnthropicSummarizationProvider`] - Anthropic Claude (claude-3-5-sonnet)
+//! - [`providers::OllamaEmbeddingProvider`] - Local Ollama embeddings (nomic-embed-text)
+//!
+//! # Example
+//! ```rust,ignore
+//! use caliber_llm::providers::OpenAIEmbeddingProvider;
+//! use caliber_llm::EmbeddingProvider;
+//!
+//! let provider = OpenAIEmbeddingProvider::with_default_model(api_key);
+//! let embedding = provider.embed("Hello world").await?;
+//! ```
+
+pub mod providers;
+
+// Re-export provider implementations for convenience
+pub use providers::{
+    AnthropicClient, AnthropicSummarizationProvider, OllamaEmbeddingProvider, OpenAIClient,
+    OpenAIEmbeddingProvider, OpenAISummarizationProvider,
+};
 
 use async_trait::async_trait;
 use caliber_core::{ArtifactType, CaliberError, CaliberResult, EmbeddingVector, LlmError};
@@ -97,14 +122,8 @@ pub enum ProviderCapability {
     ContradictionDetection,
 }
 
-/// Health status of a provider.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum HealthStatus {
-    Healthy,
-    Degraded,
-    Unhealthy,
-    Unknown,
-}
+// Re-export HealthStatus from core for unified health checks
+pub use caliber_core::health::HealthStatus;
 
 // ============================================================================
 // ECHO/PING DISCOVERY

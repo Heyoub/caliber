@@ -9,15 +9,18 @@
 
 pub mod auth;
 pub mod config;
+pub mod constants;
 pub mod db;
 pub mod error;
 pub mod events;
 pub mod grpc;
+pub mod macros;
 pub mod middleware;
 pub mod openapi;
 pub mod routes;
 pub mod state;
 pub mod telemetry;
+pub mod traits;
 pub mod types;
 pub mod ws;
 

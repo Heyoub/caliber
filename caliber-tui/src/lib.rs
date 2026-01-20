@@ -11,5 +11,6 @@ pub mod persistence;
 pub mod realtime;
 pub mod state;
 pub mod theme;
+pub mod traits;
 pub mod views;
 pub mod widgets;

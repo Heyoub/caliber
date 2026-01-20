@@ -4,7 +4,7 @@ use caliber_tui::api_client::ApiClient;
 use caliber_tui::config::TuiConfig;
 use caliber_tui::error::TuiError;
 use caliber_tui::events::TuiEvent;
-use caliber_tui::keys::{map_key, Action};
+use caliber_tui::keys::{map_key, KeyAction};
 use caliber_tui::persistence::{self, PersistedState};
 use caliber_tui::state::App;
 use caliber_tui::views::render_view;
@@ -158,39 +158,39 @@ async fn handle_event(app: &mut App, event: TuiEvent) -> Result<bool, TuiError> 
     Ok(false)
 }
 
-async fn handle_action(app: &mut App, action: Action) -> Result<bool, TuiError> {
+async fn handle_action(app: &mut App, action: KeyAction) -> Result<bool, TuiError> {
     match action {
-        Action::Quit => return Ok(true),
-        Action::NextView => app.active_view = app.active_view.next(),
-        Action::PrevView => app.active_view = app.active_view.previous(),
-        Action::SwitchView(index) => {
+        KeyAction::Quit => return Ok(true),
+        KeyAction::NextView => app.active_view = app.active_view.next(),
+        KeyAction::PrevView => app.active_view = app.active_view.previous(),
+        KeyAction::SwitchView(index) => {
             if let Some(view) = caliber_tui::nav::View::from_index(index) {
                 app.active_view = view;
             }
         }
-        Action::MoveDown => app.select_next(),
-        Action::MoveUp => app.select_previous(),
-        Action::ToggleExpand => app.toggle_expand(),
-        Action::PauseUpdates => {
+        KeyAction::MoveDown => app.select_next(),
+        KeyAction::MoveUp => app.select_previous(),
+        KeyAction::ToggleExpand => app.toggle_expand(),
+        KeyAction::PauseUpdates => {
             app.updates_paused = !app.updates_paused;
             if !app.updates_paused {
                 app.flush_queued_events();
             }
         }
-        Action::Refresh => refresh_view(app).await?,
-        Action::OpenHelp => app.modal = Some(caliber_tui::state::Modal {
+        KeyAction::Refresh => refresh_view(app).await?,
+        KeyAction::OpenHelp => app.modal = Some(caliber_tui::state::Modal {
             title: "Keybindings".to_string(),
             message: "Use h/j/k/l or arrows to move, Tab to switch views, q to quit.".to_string(),
         }),
-        Action::OpenSearch => app.search = Some(caliber_tui::state::GlobalSearch { query: String::new() }),
-        Action::OpenCommand => app.command_palette = Some(caliber_tui::state::CommandPalette {
+        KeyAction::OpenSearch => app.search = Some(caliber_tui::state::GlobalSearch { query: String::new() }),
+        KeyAction::OpenCommand => app.command_palette = Some(caliber_tui::state::CommandPalette {
             input: String::new(),
             suggestions: Vec::new(),
         }),
-        Action::NewItem | Action::EditItem | Action::DeleteItem => {
-            app.notify(caliber_tui::notifications::NotificationLevel::Info, "Action queued.");
+        KeyAction::NewItem | KeyAction::EditItem | KeyAction::DeleteItem => {
+            app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
         }
-        Action::Confirm | Action::Cancel | Action::Select | Action::MoveLeft | Action::MoveRight => {}
+        KeyAction::Confirm | KeyAction::Cancel | KeyAction::Select | KeyAction::MoveLeft | KeyAction::MoveRight => {}
     }
     Ok(false)
 }

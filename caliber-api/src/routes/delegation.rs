@@ -159,7 +159,14 @@ pub async fn accept_delegation(
     }
 
     // Accept delegation via database client
-    let _ = db.delegation_accept(id, req.accepting_agent_id).await?;
+    let accepted_delegation = db.delegation_accept(id, req.accepting_agent_id).await?;
+
+    tracing::info!(
+        delegation_id = %id,
+        accepted_by = %req.accepting_agent_id,
+        tenant_id = %auth.tenant_id,
+        "Delegation accepted"
+    );
 
     // Broadcast DelegationAccepted event with tenant_id for filtering
     ws.broadcast(WsEvent::DelegationAccepted {

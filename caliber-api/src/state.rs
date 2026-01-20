@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::extract::FromRef;
+use axum::extract::{FromRef, FromRequestParts};
+use axum::http::request::Parts;
 use caliber_pcp::PCPRuntime;
 
 use crate::db::DbClient;
@@ -27,60 +28,39 @@ pub struct AppState {
     pub workos_config: Option<crate::workos_auth::WorkOsConfig>,
 }
 
-impl FromRef<AppState> for DbClient {
-    fn from_ref(state: &AppState) -> Self {
-        state.db.clone()
-    }
-}
+// Use macro to reduce boilerplate for FromRef implementations
+crate::impl_from_ref!(DbClient, db);
+crate::impl_from_ref!(Arc<WsState>, ws);
+crate::impl_from_ref!(Arc<PCPRuntime>, pcp);
+crate::impl_from_ref!(Arc<WebhookState>, webhook_state);
+crate::impl_from_ref!(CaliberSchema, graphql_schema);
+crate::impl_from_ref!(Arc<BillingState>, billing_state);
+crate::impl_from_ref!(Arc<McpState>, mcp_state);
+crate::impl_from_ref!(std::time::Instant, start_time);
 
-impl FromRef<AppState> for Arc<WsState> {
-    fn from_ref(state: &AppState) -> Self {
-        state.ws.clone()
-    }
-}
-
-impl FromRef<AppState> for Arc<PCPRuntime> {
-    fn from_ref(state: &AppState) -> Self {
-        state.pcp.clone()
-    }
-}
-
-impl FromRef<AppState> for Arc<WebhookState> {
-    fn from_ref(state: &AppState) -> Self {
-        state.webhook_state.clone()
-    }
-}
-
-impl FromRef<AppState> for CaliberSchema {
-    fn from_ref(state: &AppState) -> Self {
-        state.graphql_schema.clone()
-    }
-}
-
-impl FromRef<AppState> for Arc<BillingState> {
-    fn from_ref(state: &AppState) -> Self {
-        state.billing_state.clone()
-    }
-}
-
-impl FromRef<AppState> for Arc<McpState> {
-    fn from_ref(state: &AppState) -> Self {
-        state.mcp_state.clone()
-    }
-}
-
-impl FromRef<AppState> for std::time::Instant {
-    fn from_ref(state: &AppState) -> Self {
-        state.start_time
-    }
-}
+// WorkOS configuration extractor - returns error instead of panicking
+#[cfg(feature = "workos")]
+pub struct WorkOsConfigExtractor(pub crate::workos_auth::WorkOsConfig);
 
 #[cfg(feature = "workos")]
-impl FromRef<AppState> for crate::workos_auth::WorkOsConfig {
-    fn from_ref(state: &AppState) -> Self {
-        state
+impl<S> FromRequestParts<S> for WorkOsConfigExtractor
+where
+    AppState: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = crate::error::ApiError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+        app_state
             .workos_config
             .clone()
-            .expect("WorkOS config missing from AppState")
+            .map(WorkOsConfigExtractor)
+            .ok_or_else(|| {
+                crate::error::ApiError::internal_error(
+                    "WorkOS authentication enabled but not configured. \
+                     Set CALIBER_WORKOS_CLIENT_ID and CALIBER_WORKOS_API_KEY environment variables.",
+                )
+            })
     }
 }
