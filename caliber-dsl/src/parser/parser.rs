@@ -58,7 +58,7 @@ impl Parser {
 
     /// Parse an index definition.
     pub(crate) fn parse_index_def(&mut self) -> Result<IndexDef, ParseError> {
-        let field = self.expect_identifier()?;
+        let field = self.expect_field_name()?;
         self.expect(TokenKind::Colon)?;
         let index_type = self.parse_index_type()?;
         let mut options = Vec::new();

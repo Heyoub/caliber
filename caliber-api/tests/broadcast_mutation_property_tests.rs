@@ -1,3 +1,4 @@
+#![cfg(feature = "db-tests")]
 //! Property-Based Tests for Mutation Broadcast
 //!
 //! **Property 3: Mutation Broadcast**

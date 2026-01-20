@@ -1,3 +1,4 @@
+#![cfg(feature = "db-tests")]
 //! Property-Based Tests for Artifact API Round-Trip
 //!
 //! **Property 1: API Completeness (Artifact)**
