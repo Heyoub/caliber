@@ -1,3 +1,4 @@
+#![cfg(feature = "db-tests")]
 //! Property-Based Tests for DSL Round-Trip via API
 //!
 //! **Property 12: DSL Validation Round-Trip**

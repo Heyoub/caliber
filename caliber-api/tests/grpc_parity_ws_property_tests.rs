@@ -1,3 +1,4 @@
+#![cfg(feature = "db-tests")]
 //! Property-Based Tests for REST ↔ gRPC Parity (WS broadcast variant)
 //!
 //! **Property 2: REST-gRPC Parity**

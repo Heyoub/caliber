@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9f5df75e155b045e5c21cf3fb57d037e314834711d6f971a938c7ded2f0bd370 # shrinks to tenant_id = 00000000-0000-0000-0000-000000000000, trajectory_req = CreateTrajectoryRequest { name: "aA0 A", description: Some("Test trajectory"), parent_trajectory_id: None, agent_id: None, metadata: None }
+cc 3e70ae2daa74f1b8cccdb6767b59b5a323cfa6ee8b3f1aada27cdfecbc5f7974 # shrinks to tenant_a = 00000000-0000-0000-0000-000000000000, tenant_b = 00000000-0000-0000-0000-000000000001, trajectory_req = CreateTrajectoryRequest { name: "0aaAa", description: Some("Test trajectory"), parent_trajectory_id: None, agent_id: None, metadata: None }
+cc 6d88ce683056928c64b9c29f02bc3feb5192fb1c010345cd852b2b97e227f41f # shrinks to tenant_ids = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]], trajectory_req = CreateTrajectoryRequest { name: "AA  a", description: Some("Test trajectory"), parent_trajectory_id: None, agent_id: None, metadata: None }
+cc f002578cdb3af376041803a5d1939310740d525696c4041a9a3a6209f1660aa6 # shrinks to tenant_a = 00000000-0000-0000-0000-000000000000, tenant_b = 00000000-0000-0000-0000-000000000001, trajectory_req = CreateTrajectoryRequest { name: "a0AA0", description: Some("Test trajectory"), parent_trajectory_id: None, agent_id: None, metadata: None }

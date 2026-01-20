@@ -236,7 +236,7 @@ fn test_app(storage: TestStorage) -> Router {
         .route("/api/v1/trajectories", post(create_trajectory_handler))
         .route("/api/v1/trajectories", get(list_trajectories_handler))
         .route(
-            "/api/v1/trajectories/:id",
+            "/api/v1/trajectories/{id}",
             get(get_trajectory_handler),
         )
         .with_state(storage)

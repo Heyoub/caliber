@@ -11,6 +11,7 @@ openapi = ["caliber-core/openapi", "caliber-agents/openapi", "caliber-pcp/openap
 swagger-ui = ["dep:utoipa-swagger-ui"]
 workos = ["dep:workos"]
 dev = []  # Enables unauthenticated router for development/testing
+db-tests = [] # Enables DB-backed integration/property tests
 
 [dependencies]
 # Core CALIBER dependencies
