@@ -183,7 +183,7 @@ pub async fn accept_handoff(
     }
 
     // Accept handoff via database client
-    let accepted_handoff = db.handoff_accept(id, req.accepting_agent_id).await?;
+    db.handoff_accept(id, req.accepting_agent_id).await?;
 
     tracing::info!(
         handoff_id = %id,

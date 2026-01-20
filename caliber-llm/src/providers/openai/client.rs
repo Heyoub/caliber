@@ -17,6 +17,7 @@ pub struct OpenAIClient {
     rate_limiter: Arc<Semaphore>,
     last_request: Arc<AtomicU64>,
     min_request_interval_ms: u64,
+    start_time: Instant,
 }
 
 impl OpenAIClient {
@@ -26,8 +27,9 @@ impl OpenAIClient {
     /// * `api_key` - OpenAI API key
     /// * `requests_per_minute` - Maximum requests per minute (default: 60)
     pub fn new(api_key: impl Into<String>, requests_per_minute: u32) -> Self {
-        let permits = (requests_per_minute as usize).max(1);
-        let min_interval_ms = (60_000 / requests_per_minute as u64).max(10);
+        let rpm = requests_per_minute.max(1);
+        let permits = rpm as usize;
+        let min_interval_ms = (60_000 / rpm as u64).max(10);
 
         Self {
             client: Client::new(),
@@ -36,6 +38,7 @@ impl OpenAIClient {
             rate_limiter: Arc::new(Semaphore::new(permits)),
             last_request: Arc::new(AtomicU64::new(0)),
             min_request_interval_ms: min_interval_ms,
+            start_time: Instant::now(),
         }
     }
 
@@ -54,7 +57,7 @@ impl OpenAIClient {
         })?;
 
         // Enforce minimum interval between requests
-        let now_ms = Instant::now().elapsed().as_millis() as u64;
+        let now_ms = self.start_time.elapsed().as_millis() as u64;
         let last_ms = self.last_request.load(Ordering::Relaxed);
         let elapsed = now_ms.saturating_sub(last_ms);
 
