@@ -1885,6 +1885,7 @@ mod tests {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod prop_tests {
     use super::*;
     use proptest::prelude::*;

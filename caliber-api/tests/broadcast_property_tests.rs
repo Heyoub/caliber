@@ -414,17 +414,6 @@ proptest! {
             let pcp = test_pcp_support::test_pcp_runtime();
             let mut rx = ws.subscribe();
 
-            let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
-            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone(), pcp.clone()));
-            let artifact_state = Arc::new(artifact::ArtifactState::new(db.clone(), ws.clone()));
-            let note_state = Arc::new(note::NoteState::new(db.clone(), ws.clone()));
-            let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone(), pcp));
-            let agent_state = Arc::new(agent::AgentState::new(db.clone(), ws.clone()));
-            let lock_state = Arc::new(lock::LockState::new(db.clone(), ws.clone()));
-            let message_state = Arc::new(message::MessageState::new(db.clone(), ws.clone()));
-            let delegation_state = Arc::new(delegation::DelegationState::new(db.clone(), ws.clone()));
-            let handoff_state = Arc::new(handoff::HandoffState::new(db.clone(), ws.clone()));
-
             let expected = match case {
                 MutationCase::TrajectoryCreate => {
                     let req = CreateTrajectoryRequest {
@@ -434,7 +423,13 @@ proptest! {
                         agent_id: None,
                         metadata: None,
                     };
-                    trajectory::create_trajectory(State(trajectory_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    trajectory::create_trajectory(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::TrajectoryCreated
                 }
                 MutationCase::TrajectoryUpdate => {
@@ -446,7 +441,8 @@ proptest! {
                         metadata: None,
                     };
                     trajectory::update_trajectory(
-                        State(trajectory_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(trajectory.trajectory_id),
                         Json(req),
@@ -457,7 +453,8 @@ proptest! {
                 MutationCase::TrajectoryDelete => {
                     let trajectory = seed_trajectory(&db, "Seed Trajectory Delete", auth.tenant_id).await?;
                     trajectory::delete_trajectory(
-                        State(trajectory_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(trajectory.trajectory_id),
                     )
@@ -474,7 +471,13 @@ proptest! {
                         token_budget: 800,
                         metadata: None,
                     };
-                    scope::create_scope(State(scope_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    scope::create_scope(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::ScopeCreated
                 }
                 MutationCase::ScopeUpdate => {
@@ -487,7 +490,8 @@ proptest! {
                         metadata: None,
                     };
                     scope::update_scope(
-                        State(scope_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(scope.scope_id),
                         Json(req),
@@ -498,7 +502,14 @@ proptest! {
                 MutationCase::ScopeClose => {
                     let trajectory = seed_trajectory(&db, "Seed Trajectory Scope Close", auth.tenant_id).await?;
                     let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
-                    scope::close_scope(State(scope_state), AuthExtractor(auth.clone()), Path(scope.scope_id)).await?;
+                    scope::close_scope(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        State(pcp.clone()),
+                        AuthExtractor(auth.clone()),
+                        Path(scope.scope_id),
+                    )
+                    .await?;
                     ExpectedEvent::ScopeClosed(scope.scope_id)
                 }
                 MutationCase::ArtifactCreate => {
@@ -516,7 +527,13 @@ proptest! {
                         ttl: TTL::Persistent,
                         metadata: None,
                     };
-                    artifact::create_artifact(State(artifact_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    artifact::create_artifact(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::ArtifactCreated
                 }
                 MutationCase::NoteCreate => {
@@ -530,7 +547,13 @@ proptest! {
                         ttl: TTL::LongTerm,
                         metadata: None,
                     };
-                    note::create_note(State(note_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    note::create_note(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::NoteCreated
                 }
                 MutationCase::TurnCreate => {
@@ -546,7 +569,14 @@ proptest! {
                         tool_results: None,
                         metadata: None,
                     };
-                    turn::create_turn(State(turn_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    turn::create_turn(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        State(pcp.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::TurnCreated
                 }
                 MutationCase::AgentRegister => {
@@ -557,7 +587,13 @@ proptest! {
                         can_delegate_to: vec![],
                         reports_to: None,
                     };
-                    agent::register_agent(State(agent_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    agent::register_agent(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::AgentRegistered
                 }
                 MutationCase::AgentUpdate => {
@@ -570,7 +606,8 @@ proptest! {
                         memory_access: None,
                     };
                     agent::update_agent(
-                        State(agent_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(agent.agent_id),
                         Json(req),
@@ -581,7 +618,8 @@ proptest! {
                 MutationCase::AgentUnregister => {
                     let agent = seed_agent(&db, "seed-unregister", auth.tenant_id).await?;
                     agent::unregister_agent(
-                        State(agent_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(agent.agent_id),
                     )
@@ -598,7 +636,13 @@ proptest! {
                         timeout_ms: 30_000,
                         mode: "exclusive".to_string(),
                     };
-                    lock::acquire_lock(State(lock_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    lock::acquire_lock(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::LockAcquired
                 }
                 MutationCase::LockRelease => {
@@ -606,7 +650,8 @@ proptest! {
                     let resource_id: EntityId = Uuid::now_v7();
                     let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await?;
                     lock::release_lock(
-                        State(lock_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(lock.lock_id),
                     )
@@ -628,7 +673,13 @@ proptest! {
                         priority: "Normal".to_string(),
                         expires_at: None,
                     };
-                    message::send_message(State(message_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    message::send_message(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::MessageSent
                 }
                 MutationCase::MessageAcknowledge => {
@@ -636,7 +687,8 @@ proptest! {
                     let receiver = seed_agent(&db, "ack-receiver", auth.tenant_id).await?;
                     let message = seed_message(&db, sender.agent_id, receiver.agent_id, None, None, auth.tenant_id).await?;
                     message::acknowledge_message(
-                        State(message_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(message.message_id),
                     )
@@ -657,7 +709,13 @@ proptest! {
                         expected_completion: None,
                         context: None,
                     };
-                    delegation::create_delegation(State(delegation_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    delegation::create_delegation(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::DelegationCreated
                 }
                 MutationCase::DelegationAccept => {
@@ -670,7 +728,8 @@ proptest! {
                         accepting_agent_id: to_agent.agent_id,
                     };
                     delegation::accept_delegation(
-                        State(delegation_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(delegation.delegation_id),
                         Json(req),
@@ -694,7 +753,8 @@ proptest! {
                         },
                     };
                     delegation::complete_delegation(
-                        State(delegation_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(delegation.delegation_id),
                         Json(req),
@@ -715,7 +775,13 @@ proptest! {
                         reason: "CapabilityMismatch".to_string(),
                         context_snapshot: vec![1, 2, 3],
                     };
-                    handoff::create_handoff(State(handoff_state), AuthExtractor(auth.clone()), Json(req)).await?;
+                    handoff::create_handoff(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Json(req),
+                    )
+                    .await?;
                     ExpectedEvent::HandoffCreated
                 }
                 MutationCase::HandoffAccept => {
@@ -728,7 +794,8 @@ proptest! {
                         accepting_agent_id: to_agent.agent_id,
                     };
                     handoff::accept_handoff(
-                        State(handoff_state),
+                        State(db.clone()),
+                        State(ws.clone()),
                         AuthExtractor(auth.clone()),
                         Path(handoff.handoff_id),
                         Json(req),
@@ -743,15 +810,23 @@ proptest! {
                     let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
                     db.handoff_accept(handoff.handoff_id, to_agent.agent_id).await?;
-                    handoff::complete_handoff(State(handoff_state), AuthExtractor(auth.clone()), Path(handoff.handoff_id)).await?;
+                    handoff::complete_handoff(
+                        State(db.clone()),
+                        State(ws.clone()),
+                        AuthExtractor(auth.clone()),
+                        Path(handoff.handoff_id),
+                    )
+                    .await?;
                     ExpectedEvent::HandoffCompleted(handoff.handoff_id)
                 }
             };
 
-            let event = timeout(Duration::from_millis(100), rx.recv()).await
-                .map_err(|_| TestCaseError::fail("Timed out waiting for broadcast event"))?;
-            let event = event
-                .map_err(|err| TestCaseError::fail(format!("Broadcast channel error: {:?}", err)))?;
+            let event: WsEvent = timeout(Duration::from_millis(100), rx.recv())
+                .await
+                .map_err(|_| TestCaseError::fail("Timed out waiting for broadcast event"))?
+                .map_err(|err| {
+                    TestCaseError::fail(format!("Broadcast channel error: {:?}", err))
+                })?;
 
             assert_event(expected, event)?;
 

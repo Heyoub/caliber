@@ -1,5 +1,5 @@
-use caliber_tui::config::{AuthConfig, ReconnectConfig, ThemeConfig, TuiConfig};
-use caliber_tui::keys::{map_key, Action};
+use caliber_tui::config::{ClientCredentials, ReconnectConfig, ThemeConfig, TuiConfig};
+use caliber_tui::keys::{map_key, KeyAction};
 use caliber_tui::theme::{
     agent_status_color, message_priority_color, trajectory_status_color, turn_role_color,
     utilization_color, SynthBruteTheme,
@@ -21,7 +21,7 @@ fn base_config() -> TuiConfig {
         grpc_endpoint: "http://localhost:50051".to_string(),
         ws_endpoint: "ws://localhost:8080/ws".to_string(),
         tenant_id: Uuid::new_v4(),
-        auth: AuthConfig {
+        auth: ClientCredentials {
             api_key: Some("test-key".to_string()),
             jwt: None,
         },
@@ -44,7 +44,7 @@ fn base_config() -> TuiConfig {
 #[test]
 fn config_requires_auth() {
     let mut config = base_config();
-    config.auth = AuthConfig {
+    config.auth = ClientCredentials {
         api_key: None,
         jwt: None,
     };
@@ -87,7 +87,7 @@ proptest! {
             _ => None,
         };
         if let Some(index) = expected_index {
-            prop_assert!(matches!(action, Some(Action::SwitchView(i)) if i == index));
+            prop_assert!(matches!(action, Some(KeyAction::SwitchView(i)) if i == index));
         } else {
             prop_assert!(action.is_none());
         }
@@ -131,7 +131,7 @@ proptest! {
             KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)
         };
         let action = map_key(key);
-        prop_assert!(matches!(action, Some(Action::MoveDown)));
+        prop_assert!(matches!(action, Some(KeyAction::MoveDown)));
     }
 
     /// Property: All action keys are mapped to actions
@@ -145,7 +145,7 @@ proptest! {
     fn tab_switches_views(_ignored in Just(())) {
         let event = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
         let action = map_key(event);
-        prop_assert!(matches!(action, Some(Action::NextView)));
+        prop_assert!(matches!(action, Some(KeyAction::NextView)));
     }
 
     // ========================================================================

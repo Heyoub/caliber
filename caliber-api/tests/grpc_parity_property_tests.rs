@@ -21,7 +21,6 @@ use caliber_api::proto::trajectory_service_server::TrajectoryService;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
-use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tonic::metadata::MetadataValue;
 use tonic::Request;
@@ -32,8 +31,6 @@ mod test_auth_support;
 mod test_db_support;
 #[path = "support/ws.rs"]
 mod test_ws_support;
-#[path = "support/pcp.rs"]
-mod test_pcp_support;
 use test_auth_support::test_auth_context;
 
 // ============================================================================
@@ -145,7 +142,6 @@ proptest! {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
             let ws = test_ws_support::test_ws_state(64);
-            let rest_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
             let grpc_service = grpc::TrajectoryServiceImpl::new(db.clone(), ws.clone());
 
             // REST create → gRPC get
@@ -158,7 +154,8 @@ proptest! {
             };
             let rest_created: TrajectoryResponse = extract_json(
                 trajectory::create_trajectory(
-                    State(rest_state.clone()),
+                    State(db.clone()),
+                    State(ws.clone()),
                     AuthExtractor(auth.clone()),
                     Json(rest_req),
                 )
@@ -199,7 +196,7 @@ proptest! {
                 .map_err(|e| TestCaseError::fail(format!("invalid uuid: {}", e)))?;
             let rest_get: TrajectoryResponse = extract_json(
                 trajectory::get_trajectory(
-                    State(rest_state),
+                    State(db.clone()),
                     AuthExtractor(auth.clone()),
                     Path(trajectory_id),
                 )
@@ -225,9 +222,6 @@ proptest! {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
             let ws = test_ws_support::test_ws_state(64);
-            let pcp = test_pcp_support::test_pcp_runtime();
-            let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
-            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone(), pcp));
             let grpc_service = grpc::ScopeServiceImpl::new(db.clone(), ws.clone());
 
             // Create a trajectory to attach scopes to
@@ -240,7 +234,8 @@ proptest! {
             };
             let trajectory: TrajectoryResponse = extract_json(
                 trajectory::create_trajectory(
-                    State(trajectory_state),
+                    State(db.clone()),
+                    State(ws.clone()),
                     AuthExtractor(auth.clone()),
                     Json(trajectory_req),
                 )
@@ -259,7 +254,8 @@ proptest! {
             };
             let rest_created: ScopeResponse = extract_json(
                 scope::create_scope(
-                    State(scope_state.clone()),
+                    State(db.clone()),
+                    State(ws.clone()),
                     AuthExtractor(auth.clone()),
                     Json(rest_scope_req),
                 )
@@ -301,7 +297,7 @@ proptest! {
                 .map_err(|e| TestCaseError::fail(format!("invalid uuid: {}", e)))?;
             let rest_get: ScopeResponse = extract_json(
                 scope::get_scope(
-                    State(scope_state),
+                    State(db.clone()),
                     AuthExtractor(auth.clone()),
                     Path(scope_id),
                 )

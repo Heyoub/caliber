@@ -53,6 +53,11 @@ impl JwtSecret {
         self.0.expose_secret().len()
     }
 
+    /// Check if the secret is empty without exposing it.
+    pub fn is_empty(&self) -> bool {
+        self.0.expose_secret().is_empty()
+    }
+
     /// Check if the secret is the insecure default.
     pub fn is_insecure_default(&self) -> bool {
         self.0.expose_secret() == "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION"
@@ -930,8 +935,10 @@ mod tests {
         let _env_lock = ENV_MUTEX.lock().unwrap();
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig {
-            jwt_secret: "this-is-a-very-secure-secret-that-is-at-least-32-characters-long"
-                .to_string(),
+            jwt_secret: JwtSecret::new(
+                "this-is-a-very-secure-secret-that-is-at-least-32-characters-long".to_string(),
+            )
+            .expect("test secret should be valid"),
             ..Default::default()
         };
 
@@ -955,7 +962,7 @@ mod tests {
         let _env_lock = ENV_MUTEX.lock().unwrap();
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig {
-            jwt_secret: "short".to_string(), // Too short
+            jwt_secret: JwtSecret::new("short".to_string()).expect("test secret should be valid"),
             ..Default::default()
         };
 

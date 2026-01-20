@@ -605,6 +605,7 @@ pub async fn rate_limit_middleware(
 mod tests {
     use super::*;
     use crate::auth::AuthConfig;
+    use crate::auth::JwtSecret;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -618,7 +619,8 @@ mod tests {
     fn test_auth_config() -> AuthConfig {
         let mut config = AuthConfig::default();
         config.add_api_key("test_key_123".to_string());
-        config.jwt_secret = "test_secret".to_string();
+        config.jwt_secret = JwtSecret::new("test_secret".to_string())
+            .expect("test secret should be valid");
         config.require_tenant_header = true;
         config
     }

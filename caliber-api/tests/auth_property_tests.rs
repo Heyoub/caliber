@@ -17,7 +17,7 @@ use axum::{
     Router,
 };
 use caliber_api::{
-    auth::{generate_jwt_token, AuthConfig},
+    auth::{generate_jwt_token, AuthConfig, JwtSecret},
     middleware::{auth_middleware, AuthMiddlewareState},
 };
 use proptest::prelude::*;
@@ -34,7 +34,8 @@ fn test_auth_config() -> AuthConfig {
     let mut config = AuthConfig::default();
     config.add_api_key("valid_api_key_123".to_string());
     config.add_api_key("valid_api_key_456".to_string());
-    config.jwt_secret = "test_secret_for_property_tests".to_string();
+    config.jwt_secret = JwtSecret::new("test_secret_for_property_tests".to_string())
+        .expect("test secret should be valid");
     config.require_tenant_header = true;
     config
 }

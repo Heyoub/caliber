@@ -8,21 +8,18 @@
 //! **Validates: Requirements 11.6, 11.7**
 
 use axum::{body::to_bytes, extract::State, response::IntoResponse, Json};
+use caliber_api::db::DbClient;
 use caliber_api::routes::dsl;
 use caliber_api::types::{ValidateDslRequest, ValidateDslResponse};
 use caliber_dsl::{parse, pretty_print, CaliberAst};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use std::sync::Arc;
 
 #[path = "support/db.rs"]
 mod test_db_support;
 
-async fn call_parse_endpoint(
-    state: Arc<dsl::DslState>,
-    source: String,
-) -> Result<ValidateDslResponse, String> {
-    let response = dsl::parse_dsl(State(state), Json(ValidateDslRequest { source }))
+async fn call_parse_endpoint(db: DbClient, source: String) -> Result<ValidateDslResponse, String> {
+    let response = dsl::parse_dsl(State(db), Json(ValidateDslRequest { source }))
         .await
         .map_err(|e| format!("Parse endpoint failed: {}", e.message))?;
 
@@ -93,9 +90,8 @@ proptest! {
             .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
-            let state = Arc::new(dsl::DslState::new(db));
 
-            let response = call_parse_endpoint(state, source.clone())
+            let response = call_parse_endpoint(db.clone(), source.clone())
                 .await
                 .map_err(TestCaseError::fail)?;
             prop_assert!(response.valid, "Expected valid DSL response");
