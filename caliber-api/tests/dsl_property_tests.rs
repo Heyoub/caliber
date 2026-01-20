@@ -18,7 +18,6 @@ use caliber_dsl::{pretty_print, CaliberAst};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
-use std::sync::Arc;
 #[path = "support/db.rs"]
 mod test_db_support;
 
@@ -99,12 +98,10 @@ proptest! {
             .map_err(|e| TestCaseError::fail(format!("Failed to create runtime: {}", e)))?;
         rt.block_on(async {
             let db = test_db_support::test_db_client();
-            let state = Arc::new(dsl::DslState::new(db));
-
             // Parse original source through API
             let parsed: ValidateDslResponse = extract_json(
                 dsl::parse_dsl(
-                    State(state.clone()),
+                    State(db.clone()),
                     Json(ValidateDslRequest { source: source.clone() })
                 )
                 .await?
@@ -121,7 +118,7 @@ proptest! {
             let pretty = pretty_print(&ast);
             let reparsed: ValidateDslResponse = extract_json(
                 dsl::parse_dsl(
-                    State(state),
+                    State(db.clone()),
                     Json(ValidateDslRequest { source: pretty })
                 )
                 .await?

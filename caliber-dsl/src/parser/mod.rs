@@ -1,6 +1,7 @@
 //! Parser module for CALIBER DSL
 
 pub mod ast;
+#[allow(clippy::module_inception)]
 pub mod parser;
 
 pub use ast::*;

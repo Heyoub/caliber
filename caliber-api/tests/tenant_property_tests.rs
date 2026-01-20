@@ -18,7 +18,7 @@ use axum::{
     Json, Router,
 };
 use caliber_api::{
-    auth::{generate_jwt_token, AuthConfig},
+    auth::{generate_jwt_token, AuthConfig, JwtSecret},
     error::ApiError,
     middleware::{auth_middleware, extract_auth_context, AuthMiddlewareState},
     types::{CreateTrajectoryRequest, ListTrajectoriesResponse, TrajectoryResponse},
@@ -140,7 +140,8 @@ impl TestStorage {
 fn test_auth_config() -> AuthConfig {
     let mut config = AuthConfig::default();
     config.add_api_key("test_api_key".to_string());
-    config.jwt_secret = "test_secret_for_tenant_isolation".to_string();
+    config.jwt_secret = JwtSecret::new("test_secret_for_tenant_isolation".to_string())
+        .expect("test secret should be valid");
     config.require_tenant_header = true;
     config
 }

@@ -70,7 +70,6 @@ proptest! {
             // REST handler setup
             let ws_rest = test_ws_support::test_ws_state(50);
             let mut rx_rest = ws_rest.subscribe();
-            let rest_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws_rest.clone()));
 
             // gRPC service setup
             let ws_grpc = Arc::new(WsState::new(50));
@@ -85,7 +84,8 @@ proptest! {
                 metadata: None,
             };
             let _ = trajectory::create_trajectory(
-                State(rest_state),
+                State(db.clone()),
+                State(ws_rest.clone()),
                 AuthExtractor(auth.clone()),
                 Json(rest_req),
             )

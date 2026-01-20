@@ -18,7 +18,6 @@ use caliber_api::types::{
 use caliber_core::{ArtifactType, ExtractionMethod, NoteType, TTL, TurnRole};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
 
@@ -80,7 +79,6 @@ proptest! {
             // ------------------------------------------------------------
             // Trajectory Created
             // ------------------------------------------------------------
-            let trajectory_state = Arc::new(trajectory::TrajectoryState::new(db.clone(), ws.clone()));
             let create_traj = CreateTrajectoryRequest {
                 name: trajectory_name.clone(),
                 description: None,
@@ -88,7 +86,13 @@ proptest! {
                 agent_id: None,
                 metadata: None,
             };
-            let _ = trajectory::create_trajectory(State(trajectory_state), AuthExtractor(auth.clone()), Json(create_traj)).await?;
+            let _ = trajectory::create_trajectory(
+                State(db.clone()),
+                State(ws.clone()),
+                AuthExtractor(auth.clone()),
+                Json(create_traj),
+            )
+            .await?;
 
             let trajectory = match recv_event(&mut rx, "TrajectoryCreated").await {
                 WsEvent::TrajectoryCreated { trajectory } => trajectory,
@@ -101,7 +105,6 @@ proptest! {
             // ------------------------------------------------------------
             // Scope Created
             // ------------------------------------------------------------
-            let scope_state = Arc::new(scope::ScopeState::new(db.clone(), ws.clone(), pcp.clone()));
             let create_scope = CreateScopeRequest {
                 trajectory_id: trajectory.trajectory_id,
                 parent_scope_id: None,
@@ -110,7 +113,13 @@ proptest! {
                 token_budget,
                 metadata: None,
             };
-            let _ = scope::create_scope(State(scope_state), AuthExtractor(auth.clone()), Json(create_scope)).await?;
+            let _ = scope::create_scope(
+                State(db.clone()),
+                State(ws.clone()),
+                AuthExtractor(auth.clone()),
+                Json(create_scope),
+            )
+            .await?;
 
             let scope = match recv_event(&mut rx, "ScopeCreated").await {
                 WsEvent::ScopeCreated { scope } => scope,
@@ -123,7 +132,6 @@ proptest! {
             // ------------------------------------------------------------
             // Artifact Created
             // ------------------------------------------------------------
-            let artifact_state = Arc::new(artifact::ArtifactState::new(db.clone(), ws.clone()));
             let create_artifact = CreateArtifactRequest {
                 trajectory_id: trajectory.trajectory_id,
                 scope_id: scope.scope_id,
@@ -136,7 +144,13 @@ proptest! {
                 ttl: TTL::Session,
                 metadata: None,
             };
-            let _ = artifact::create_artifact(State(artifact_state), AuthExtractor(auth.clone()), Json(create_artifact)).await?;
+            let _ = artifact::create_artifact(
+                State(db.clone()),
+                State(ws.clone()),
+                AuthExtractor(auth.clone()),
+                Json(create_artifact),
+            )
+            .await?;
 
             match recv_event(&mut rx, "ArtifactCreated").await {
                 WsEvent::ArtifactCreated { .. } => {}
@@ -146,7 +160,6 @@ proptest! {
             // ------------------------------------------------------------
             // Note Created
             // ------------------------------------------------------------
-            let note_state = Arc::new(note::NoteState::new(db.clone(), ws.clone()));
             let create_note = CreateNoteRequest {
                 note_type: NoteType::Fact,
                 title: note_title.clone(),
@@ -156,7 +169,13 @@ proptest! {
                 ttl: TTL::Session,
                 metadata: None,
             };
-            let _ = note::create_note(State(note_state), AuthExtractor(auth.clone()), Json(create_note)).await?;
+            let _ = note::create_note(
+                State(db.clone()),
+                State(ws.clone()),
+                AuthExtractor(auth.clone()),
+                Json(create_note),
+            )
+            .await?;
 
             match recv_event(&mut rx, "NoteCreated").await {
                 WsEvent::NoteCreated { .. } => {}
@@ -166,7 +185,6 @@ proptest! {
             // ------------------------------------------------------------
             // Turn Created
             // ------------------------------------------------------------
-            let turn_state = Arc::new(turn::TurnState::new(db.clone(), ws.clone(), pcp));
             let create_turn = CreateTurnRequest {
                 scope_id: scope.scope_id,
                 sequence: 0,
@@ -177,7 +195,14 @@ proptest! {
                 tool_results: None,
                 metadata: None,
             };
-            let _ = turn::create_turn(State(turn_state), AuthExtractor(auth.clone()), Json(create_turn)).await?;
+            let _ = turn::create_turn(
+                State(db.clone()),
+                State(ws.clone()),
+                State(pcp.clone()),
+                AuthExtractor(auth.clone()),
+                Json(create_turn),
+            )
+            .await?;
 
             match recv_event(&mut rx, "TurnCreated").await {
                 WsEvent::TurnCreated { .. } => {}
