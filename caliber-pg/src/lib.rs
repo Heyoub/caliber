@@ -1313,10 +1313,11 @@ fn caliber_artifact_create(
         "tool_result" => ArtifactType::ToolResult,
         "intermediate_output" => ArtifactType::IntermediateOutput,
         "custom" => ArtifactType::Custom,
+        "model" => ArtifactType::Model,
         _ => {
             let validation_err = ValidationError::InvalidValue {
                 field: "artifact_type".to_string(),
-                reason: format!("unknown value '{}'. Valid values: error_log, code_patch, design_decision, user_preference, fact, constraint, tool_result, intermediate_output, custom", artifact_type),
+                reason: format!("unknown value '{}'. Valid values: error_log, code_patch, design_decision, user_preference, fact, constraint, tool_result, intermediate_output, custom, model", artifact_type),
             };
             pgrx::warning!("CALIBER: {:?}", validation_err);
             return None;
@@ -1429,6 +1430,7 @@ fn caliber_artifact_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::J
                     ArtifactType::Code => "code",
                     ArtifactType::Document => "document",
                     ArtifactType::Data => "data",
+                    ArtifactType::Model => "model",
                     ArtifactType::Config => "config",
                     ArtifactType::Log => "log",
                     ArtifactType::Summary => "summary",
@@ -1480,6 +1482,7 @@ fn caliber_artifact_query_by_type(
         "code" => ArtifactType::Code,
         "document" => ArtifactType::Document,
         "data" => ArtifactType::Data,
+        "model" => ArtifactType::Model,
         "config" => ArtifactType::Config,
         "log" => ArtifactType::Log,
         "summary" => ArtifactType::Summary,
@@ -1508,6 +1511,7 @@ fn caliber_artifact_query_by_type(
                             ArtifactType::Code => "code",
                             ArtifactType::Document => "document",
                             ArtifactType::Data => "data",
+                            ArtifactType::Model => "model",
                             ArtifactType::Config => "config",
                             ArtifactType::Log => "log",
                             ArtifactType::Summary => "summary",
@@ -1579,6 +1583,7 @@ fn caliber_artifact_query_by_scope(scope_id: pgrx::Uuid, tenant_id: pgrx::Uuid) 
                             ArtifactType::Code => "code",
                             ArtifactType::Document => "document",
                             ArtifactType::Data => "data",
+                            ArtifactType::Model => "model",
                             ArtifactType::Config => "config",
                             ArtifactType::Log => "log",
                             ArtifactType::Summary => "summary",
@@ -1648,6 +1653,7 @@ fn caliber_artifact_query_by_trajectory(trajectory_id: pgrx::Uuid, tenant_id: pg
                             ArtifactType::Code => "code",
                             ArtifactType::Document => "document",
                             ArtifactType::Data => "data",
+                            ArtifactType::Model => "model",
                             ArtifactType::Config => "config",
                             ArtifactType::Log => "log",
                             ArtifactType::Summary => "summary",
@@ -1720,6 +1726,7 @@ fn caliber_artifact_query_by_scope_and_tenant(
                             ArtifactType::Code => "code",
                             ArtifactType::Document => "document",
                             ArtifactType::Data => "data",
+                            ArtifactType::Model => "model",
                             ArtifactType::Config => "config",
                             ArtifactType::Log => "log",
                             ArtifactType::Summary => "summary",
@@ -1792,6 +1799,7 @@ fn caliber_artifact_query_by_trajectory_and_tenant(
                             ArtifactType::Code => "code",
                             ArtifactType::Document => "document",
                             ArtifactType::Data => "data",
+                            ArtifactType::Model => "model",
                             ArtifactType::Config => "config",
                             ArtifactType::Log => "log",
                             ArtifactType::Summary => "summary",

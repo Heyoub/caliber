@@ -21,4 +21,3 @@ pub mod pretty_printer;
 // Re-export key types for convenience
 pub use lexer::*;
 pub use parser::*;
-pub use pretty_printer::*;

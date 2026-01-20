@@ -1,8 +1,12 @@
 //! MCP resource handlers
 
-use super::types::*;
+use super::tools::get_available_resources;
+use super::{types::*, McpState};
 use crate::*;
-use axum::*;
+use axum::{extract::State, response::IntoResponse, Json};
+use caliber_core::EntityId;
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub async fn list_resources(
     State(state): State<Arc<McpState>>,

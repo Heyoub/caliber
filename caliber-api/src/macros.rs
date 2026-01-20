@@ -56,7 +56,7 @@ macro_rules! impl_entity {
             }
 
             fn tenant_id(&self) -> Option<caliber_core::EntityId> {
-                self.$tenant_field
+                $crate::traits::normalize_tenant_id(self.$tenant_field)
             }
         }
     };

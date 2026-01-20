@@ -1,7 +1,8 @@
 //! OpenAI HTTP client with rate limiting
 
 use super::types::ApiError;
-use caliber_core::{CaliberError, CaliberResult, LlmError};
+use crate::providers::{invalid_response, rate_limited, request_failed};
+use caliber_core::CaliberResult;
 use reqwest::{Client, StatusCode};
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -49,12 +50,11 @@ impl OpenAIClient {
         body: Req,
     ) -> CaliberResult<Res> {
         // Rate limiting: acquire permit
-        let _permit = self.rate_limiter.acquire().await.map_err(|e| {
-            CaliberError::Llm(LlmError::ProviderError {
-                provider: "openai".to_string(),
-                message: format!("Rate limiter error: {}", e),
-            })
-        })?;
+        let _permit = self
+            .rate_limiter
+            .acquire()
+            .await
+            .map_err(|e| request_failed("openai", 0, format!("Rate limiter error: {}", e)))?;
 
         // Enforce minimum interval between requests
         let now_ms = self.start_time.elapsed().as_millis() as u64;
@@ -78,23 +78,17 @@ impl OpenAIClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| {
-                CaliberError::Llm(LlmError::ProviderError {
-                    provider: "openai".to_string(),
-                    message: format!("HTTP request failed: {}", e),
-                })
-            })?;
+            .map_err(|e| request_failed("openai", 0, format!("HTTP request failed: {}", e)))?;
 
         // Handle response
         let status = response.status();
+        let retry_after_ms = parse_retry_after_ms(response.headers()).unwrap_or(0);
 
         if status.is_success() {
-            response.json().await.map_err(|e| {
-                CaliberError::Llm(LlmError::ProviderError {
-                    provider: "openai".to_string(),
-                    message: format!("Failed to parse response: {}", e),
-                })
-            })
+            response
+                .json()
+                .await
+                .map_err(|e| invalid_response("openai", format!("Failed to parse response: {}", e)))
         } else {
             // Parse error response
             let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
@@ -106,17 +100,19 @@ impl OpenAIClient {
             };
 
             Err(match status {
-                StatusCode::TOO_MANY_REQUESTS => CaliberError::Llm(LlmError::RateLimited),
-                StatusCode::UNAUTHORIZED => CaliberError::Llm(LlmError::InvalidApiKey {
-                    provider: "openai".to_string(),
-                }),
-                _ => CaliberError::Llm(LlmError::ProviderError {
-                    provider: "openai".to_string(),
-                    message: error_msg,
-                }),
+                StatusCode::TOO_MANY_REQUESTS => rate_limited("openai", retry_after_ms),
+                _ => request_failed("openai", status.as_u16() as i32, error_msg),
             })
         }
     }
+}
+
+fn parse_retry_after_ms(headers: &reqwest::header::HeaderMap) -> Option<i64> {
+    headers
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<f64>().ok())
+        .map(|seconds| (seconds * 1000.0) as i64)
 }
 
 impl std::fmt::Debug for OpenAIClient {

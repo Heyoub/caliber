@@ -25,7 +25,6 @@ use crate::workos_auth::{
     SsoAuthorizationParams, SsoCallbackParams, WorkOsConfig,
 };
 
-use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use axum::Router;

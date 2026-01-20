@@ -171,7 +171,7 @@ Content-Type: application/json
 {
   "trajectory_id": "uuid",
   "scope_id": "uuid",
-  "artifact_type": "Code",  // Code, Document, Decision, Summary, etc.
+  "artifact_type": "Code",  // Code, Document, Model, Decision, Summary, etc.
   "name": "auth-handler.ts",
   "content": "export function authenticate() {...}",
   "source_turn": 5,
@@ -677,7 +677,7 @@ All errors follow this format:
 `User`, `Assistant`, `System`, `Tool`
 
 ### ArtifactType
-`Code`, `Document`, `Data`, `Config`, `Log`, `Summary`, `Decision`, `Plan`, `ErrorLog`, `CodePatch`, `DesignDecision`, `UserPreference`, `Fact`, `Constraint`, `ToolResult`, `IntermediateOutput`, `Custom`
+`Code`, `Document`, `Data`, `Model`, `Config`, `Log`, `Summary`, `Decision`, `Plan`, `ErrorLog`, `CodePatch`, `DesignDecision`, `UserPreference`, `Fact`, `Constraint`, `ToolResult`, `IntermediateOutput`, `Custom`
 
 ### NoteType
 `Convention`, `Strategy`, `Gotcha`, `Fact`, `Preference`, `Relationship`, `Procedure`, `Meta`, `Insight`, `Correction`, `Summary`

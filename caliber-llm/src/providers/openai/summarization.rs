@@ -2,6 +2,7 @@
 
 use super::client::OpenAIClient;
 use super::types::{CompletionRequest, CompletionResponse, Message};
+use crate::providers::invalid_response;
 use crate::{ExtractedArtifact, SummarizationProvider, SummarizeConfig, SummarizeStyle};
 use async_trait::async_trait;
 use caliber_core::{ArtifactType, CaliberResult};
@@ -80,13 +81,8 @@ impl SummarizationProvider for OpenAISummarizationProvider {
             .choices
             .into_iter()
             .next()
-            .and_then(|choice| Some(choice.message.content))
-            .ok_or_else(|| {
-                caliber_core::CaliberError::Llm(caliber_core::LlmError::ProviderError {
-                    provider: "openai".to_string(),
-                    message: "No completion in response".to_string(),
-                })
-            })?;
+            .map(|choice| choice.message.content)
+            .ok_or_else(|| invalid_response("openai", "No completion in response"))?;
 
         Ok(summary)
     }
@@ -131,12 +127,7 @@ impl SummarizationProvider for OpenAISummarizationProvider {
             .into_iter()
             .next()
             .map(|c| c.message.content)
-            .ok_or_else(|| {
-                caliber_core::CaliberError::Llm(caliber_core::LlmError::ProviderError {
-                    provider: "openai".to_string(),
-                    message: "No completion in response".to_string(),
-                })
-            })?;
+            .ok_or_else(|| invalid_response("openai", "No completion in response"))?;
 
         // Try to parse JSON response
         #[derive(serde::Deserialize)]
@@ -200,12 +191,7 @@ impl SummarizationProvider for OpenAISummarizationProvider {
             .into_iter()
             .next()
             .map(|c| c.message.content.to_lowercase())
-            .ok_or_else(|| {
-                caliber_core::CaliberError::Llm(caliber_core::LlmError::ProviderError {
-                    provider: "openai".to_string(),
-                    message: "No completion in response".to_string(),
-                })
-            })?;
+            .ok_or_else(|| invalid_response("openai", "No completion in response"))?;
 
         Ok(answer.contains("yes"))
     }

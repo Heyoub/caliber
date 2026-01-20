@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 
-use axum::extract::{FromRef, FromRequestParts};
-use axum::http::request::Parts;
 use caliber_pcp::PCPRuntime;
 
 use crate::db::DbClient;
@@ -43,14 +41,17 @@ crate::impl_from_ref!(std::time::Instant, start_time);
 pub struct WorkOsConfigExtractor(pub crate::workos_auth::WorkOsConfig);
 
 #[cfg(feature = "workos")]
-impl<S> FromRequestParts<S> for WorkOsConfigExtractor
+impl<S> axum::extract::FromRequestParts<S> for WorkOsConfigExtractor
 where
-    AppState: FromRef<S>,
+    AppState: axum::extract::FromRef<S>,
     S: Send + Sync,
 {
     type Rejection = crate::error::ApiError;
 
-    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        _parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
         let app_state = AppState::from_ref(state);
         app_state
             .workos_config

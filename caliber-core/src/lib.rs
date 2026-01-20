@@ -3,16 +3,6 @@
 //! Pure data structures with no behavior. All other crates depend on this.
 //! This crate contains ONLY data types - no business logic.
 
-// Import external dependencies
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::fmt;
-use std::str::FromStr;
-use std::time::Duration;
-use thiserror::Error;
-use uuid::Uuid;
-
 // Core modules
 mod identity;
 mod enums;

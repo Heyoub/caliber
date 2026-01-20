@@ -4,7 +4,7 @@ use caliber_core::{EntityId, EntityType};
 use serde::{Deserialize, Serialize};
 
 // Re-export FilterExpr from core for unified filtering
-pub use caliber_core::filter::FilterExpr;
+pub use caliber_core::FilterExpr;
 
 /// Request to search entities.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
