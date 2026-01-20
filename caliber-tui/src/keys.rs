@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
+pub enum KeyAction {
     Quit,
     NextView,
     PrevView,
@@ -26,36 +26,36 @@ pub enum Action {
     Cancel,
 }
 
-pub fn map_key(event: KeyEvent) -> Option<Action> {
+pub fn map_key(event: KeyEvent) -> Option<KeyAction> {
     let KeyEvent { code, modifiers, .. } = event;
 
     if modifiers.contains(KeyModifiers::CONTROL) {
         return match code {
-            KeyCode::Char('c') => Some(Action::Cancel),
-            KeyCode::Char('r') => Some(Action::Refresh),
+            KeyCode::Char('c') => Some(KeyAction::Cancel),
+            KeyCode::Char('r') => Some(KeyAction::Refresh),
             _ => None,
         };
     }
 
     match code {
-        KeyCode::Char('q') => Some(Action::Quit),
-        KeyCode::Char('?') => Some(Action::OpenHelp),
-        KeyCode::Char('/') => Some(Action::OpenSearch),
-        KeyCode::Char(':') => Some(Action::OpenCommand),
-        KeyCode::Char('p') => Some(Action::PauseUpdates),
-        KeyCode::Char('n') => Some(Action::NewItem),
-        KeyCode::Char('e') => Some(Action::EditItem),
-        KeyCode::Char('d') => Some(Action::DeleteItem),
-        KeyCode::Enter => Some(Action::Confirm),
-        KeyCode::Esc => Some(Action::Cancel),
-        KeyCode::Tab => Some(Action::NextView),
-        KeyCode::BackTab => Some(Action::PrevView),
-        KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveUp),
-        KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveDown),
-        KeyCode::Left | KeyCode::Char('h') => Some(Action::MoveLeft),
-        KeyCode::Right | KeyCode::Char('l') => Some(Action::MoveRight),
-        KeyCode::Char(' ') => Some(Action::Select),
-        KeyCode::Char('x') => Some(Action::ToggleExpand),
+        KeyCode::Char('q') => Some(KeyAction::Quit),
+        KeyCode::Char('?') => Some(KeyAction::OpenHelp),
+        KeyCode::Char('/') => Some(KeyAction::OpenSearch),
+        KeyCode::Char(':') => Some(KeyAction::OpenCommand),
+        KeyCode::Char('p') => Some(KeyAction::PauseUpdates),
+        KeyCode::Char('n') => Some(KeyAction::NewItem),
+        KeyCode::Char('e') => Some(KeyAction::EditItem),
+        KeyCode::Char('d') => Some(KeyAction::DeleteItem),
+        KeyCode::Enter => Some(KeyAction::Confirm),
+        KeyCode::Esc => Some(KeyAction::Cancel),
+        KeyCode::Tab => Some(KeyAction::NextView),
+        KeyCode::BackTab => Some(KeyAction::PrevView),
+        KeyCode::Up | KeyCode::Char('k') => Some(KeyAction::MoveUp),
+        KeyCode::Down | KeyCode::Char('j') => Some(KeyAction::MoveDown),
+        KeyCode::Left | KeyCode::Char('h') => Some(KeyAction::MoveLeft),
+        KeyCode::Right | KeyCode::Char('l') => Some(KeyAction::MoveRight),
+        KeyCode::Char(' ') => Some(KeyAction::Select),
+        KeyCode::Char('x') => Some(KeyAction::ToggleExpand),
         KeyCode::Char(c) if c.is_ascii_digit() => {
             let idx = match c {
                 '1' => 0,
@@ -70,7 +70,7 @@ pub fn map_key(event: KeyEvent) -> Option<Action> {
                 '0' => 9,
                 _ => return None,
             };
-            Some(Action::SwitchView(idx))
+            Some(KeyAction::SwitchView(idx))
         }
         _ => None,
     }

@@ -20,7 +20,7 @@
 //! use crate::heap_ops::*;
 //!
 //! // Open relation with row-exclusive lock for writes
-//! let rel = open_relation("caliber_trajectory", LockMode::RowExclusive)?;
+//! let rel = open_relation("caliber_trajectory", PgLockMode::RowExclusive)?;
 //!
 //! // Form tuple from values
 //! let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -44,7 +44,7 @@ use caliber_core::{CaliberError, CaliberResult, EntityType, StorageError};
 /// Lock modes for relation access.
 /// Maps to PostgreSQL's LOCKMODE enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LockMode {
+pub enum PgLockMode {
     /// For read-only operations (SELECT)
     AccessShare,
     /// For SELECT FOR UPDATE
@@ -63,19 +63,19 @@ pub enum LockMode {
     AccessExclusive,
 }
 
-impl LockMode {
+impl PgLockMode {
     /// Convert to PostgreSQL's LOCKMODE value.
     #[inline]
     pub fn to_pg_lockmode(self) -> pg_sys::LOCKMODE {
         match self {
-            LockMode::AccessShare => pg_sys::AccessShareLock as pg_sys::LOCKMODE,
-            LockMode::RowShare => pg_sys::RowShareLock as pg_sys::LOCKMODE,
-            LockMode::RowExclusive => pg_sys::RowExclusiveLock as pg_sys::LOCKMODE,
-            LockMode::ShareUpdateExclusive => pg_sys::ShareUpdateExclusiveLock as pg_sys::LOCKMODE,
-            LockMode::Share => pg_sys::ShareLock as pg_sys::LOCKMODE,
-            LockMode::ShareRowExclusive => pg_sys::ShareRowExclusiveLock as pg_sys::LOCKMODE,
-            LockMode::Exclusive => pg_sys::ExclusiveLock as pg_sys::LOCKMODE,
-            LockMode::AccessExclusive => pg_sys::AccessExclusiveLock as pg_sys::LOCKMODE,
+            PgLockMode::AccessShare => pg_sys::AccessShareLock as pg_sys::LOCKMODE,
+            PgLockMode::RowShare => pg_sys::RowShareLock as pg_sys::LOCKMODE,
+            PgLockMode::RowExclusive => pg_sys::RowExclusiveLock as pg_sys::LOCKMODE,
+            PgLockMode::ShareUpdateExclusive => pg_sys::ShareUpdateExclusiveLock as pg_sys::LOCKMODE,
+            PgLockMode::Share => pg_sys::ShareLock as pg_sys::LOCKMODE,
+            PgLockMode::ShareRowExclusive => pg_sys::ShareRowExclusiveLock as pg_sys::LOCKMODE,
+            PgLockMode::Exclusive => pg_sys::ExclusiveLock as pg_sys::LOCKMODE,
+            PgLockMode::AccessExclusive => pg_sys::AccessExclusiveLock as pg_sys::LOCKMODE,
         }
     }
 }
@@ -85,7 +85,7 @@ impl LockMode {
 pub struct HeapRelation {
     inner: PgRelation,
     #[allow(dead_code)]
-    lock_mode: LockMode,
+    lock_mode: PgLockMode,
 }
 
 impl AsRef<PgRelation> for HeapRelation {
@@ -127,9 +127,9 @@ impl HeapRelation {
 ///
 /// # Example
 /// ```ignore
-/// let rel = open_relation("caliber_trajectory", LockMode::RowExclusive)?;
+/// let rel = open_relation("caliber_trajectory", PgLockMode::RowExclusive)?;
 /// ```
-pub fn open_relation(name: &str, lock_mode: LockMode) -> CaliberResult<HeapRelation> {
+pub fn open_relation(name: &str, lock_mode: PgLockMode) -> CaliberResult<HeapRelation> {
     // Use PgRelation's safe wrapper which handles the lock acquisition
     // In pgrx 0.16+, this returns Result<PgRelation, &str>
     let rel = PgRelation::open_with_name_and_share_lock(name)
@@ -159,7 +159,7 @@ pub fn open_relation(name: &str, lock_mode: LockMode) -> CaliberResult<HeapRelat
 /// # Returns
 /// * `Ok(HeapRelation)` - The opened relation
 /// * `Err(CaliberError)` - If the relation cannot be opened
-pub fn open_relation_by_oid(oid: pg_sys::Oid, lock_mode: LockMode) -> CaliberResult<HeapRelation> {
+pub fn open_relation_by_oid(oid: pg_sys::Oid, lock_mode: PgLockMode) -> CaliberResult<HeapRelation> {
     let rel = unsafe {
         PgRelation::with_lock(oid, lock_mode.to_pg_lockmode())
     };
@@ -513,11 +513,11 @@ mod tests {
     #[test]
     fn test_lock_mode_conversion() {
         assert_eq!(
-            LockMode::AccessShare.to_pg_lockmode(),
+            PgLockMode::AccessShare.to_pg_lockmode(),
             pg_sys::AccessShareLock as pg_sys::LOCKMODE
         );
         assert_eq!(
-            LockMode::RowExclusive.to_pg_lockmode(),
+            PgLockMode::RowExclusive.to_pg_lockmode(),
             pg_sys::RowExclusiveLock as pg_sys::LOCKMODE
         );
     }

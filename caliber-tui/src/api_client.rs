@@ -350,7 +350,7 @@ struct AuthHeaders {
 }
 
 impl AuthHeaders {
-    fn from_config(config: &crate::config::AuthConfig) -> Result<Self, ApiClientError> {
+    fn from_config(config: &crate::config::ClientCredentials) -> Result<Self, ApiClientError> {
         Ok(Self {
             api_key: config.api_key.clone(),
             jwt: config.jwt.clone(),
@@ -380,7 +380,7 @@ impl AuthHeaders {
     }
 }
 
-fn build_auth_headers(auth: &crate::config::AuthConfig) -> Result<HeaderMap, ApiClientError> {
+fn build_auth_headers(auth: &crate::config::ClientCredentials) -> Result<HeaderMap, ApiClientError> {
     let mut headers = HeaderMap::new();
     if let Some(api_key) = &auth.api_key {
         headers.insert(

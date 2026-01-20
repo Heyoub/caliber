@@ -11,11 +11,59 @@
 //! Requirements: 1.5, 1.6
 
 use crate::error::{ApiError, ApiResult};
-use caliber_core::EntityId;
+use caliber_core::{CaliberError, ConfigError, EntityId};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
+
+// ============================================================================
+// JWT SECRET (TYPE-SAFE)
+// ============================================================================
+
+/// Type-safe JWT secret that prevents accidental logging.
+///
+/// This wraps the secret in a `secrecy::Secret` to ensure it's never
+/// accidentally logged or displayed.
+#[derive(Clone)]
+pub struct JwtSecret(Secret<String>);
+
+impl JwtSecret {
+    /// Create a new JWT secret with validation.
+    ///
+    /// # Errors
+    /// Returns error if the secret is empty.
+    pub fn new(secret: String) -> Result<Self, CaliberError> {
+        if secret.is_empty() {
+            return Err(CaliberError::Config(ConfigError::MissingRequired {
+                field: "jwt_secret".to_string(),
+            }));
+        }
+        Ok(Self(Secret::new(secret)))
+    }
+
+    /// Expose the secret value (use sparingly, only for cryptographic operations).
+    pub fn expose(&self) -> &str {
+        self.0.expose_secret()
+    }
+
+    /// Get the length of the secret without exposing it.
+    pub fn len(&self) -> usize {
+        self.0.expose_secret().len()
+    }
+
+    /// Check if the secret is the insecure default.
+    pub fn is_insecure_default(&self) -> bool {
+        self.0.expose_secret() == "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION"
+    }
+}
+
+impl std::fmt::Debug for JwtSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "JwtSecret([REDACTED, {} chars])", self.len())
+    }
+}
 
 // ============================================================================
 // CONFIGURATION
@@ -47,13 +95,13 @@ impl std::str::FromStr for AuthProvider {
 }
 
 /// Authentication configuration.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthConfig {
     /// Valid API keys (in production, load from secure storage)
     pub api_keys: HashSet<String>,
 
     /// JWT secret key for signing and verification
-    pub jwt_secret: String,
+    pub jwt_secret: JwtSecret,
 
     /// JWT algorithm (default: HS256)
     pub jwt_algorithm: Algorithm,
@@ -77,12 +125,31 @@ pub struct AuthConfig {
     pub auth_provider: AuthProvider,
 }
 
+impl std::fmt::Debug for AuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthConfig")
+            .field("api_keys", &format!("[{} keys]", self.api_keys.len()))
+            .field("jwt_secret", &self.jwt_secret)
+            .field("jwt_algorithm", &self.jwt_algorithm)
+            .field("jwt_expiration_secs", &self.jwt_expiration_secs)
+            .field("require_tenant_header", &self.require_tenant_header)
+            .field("workos_client_id", &self.workos_client_id.as_ref().map(|_| "[REDACTED]"))
+            .field("workos_api_key", &self.workos_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("workos_redirect_uri", &self.workos_redirect_uri)
+            .field("auth_provider", &self.auth_provider)
+            .finish()
+    }
+}
+
 impl Default for AuthConfig {
     fn default() -> Self {
+        let secret_str = std::env::var("CALIBER_JWT_SECRET")
+            .unwrap_or_else(|_| "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string());
+
         Self {
             api_keys: HashSet::new(),
-            jwt_secret: std::env::var("CALIBER_JWT_SECRET")
-                .unwrap_or_else(|_| "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string()),
+            jwt_secret: JwtSecret::new(secret_str)
+                .expect("Default JWT secret should never be empty"),
             jwt_algorithm: Algorithm::HS256,
             jwt_expiration_secs: 3600, // 1 hour
             require_tenant_header: true,
@@ -125,10 +192,13 @@ impl AuthConfig {
             .and_then(|s| s.parse().ok())
             .unwrap_or_default();
 
+        let secret_str = std::env::var("CALIBER_JWT_SECRET")
+            .unwrap_or_else(|_| "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string());
+
         Self {
             api_keys,
-            jwt_secret: std::env::var("CALIBER_JWT_SECRET")
-                .unwrap_or_else(|_| "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string()),
+            jwt_secret: JwtSecret::new(secret_str)
+                .expect("JWT secret from environment should never be empty"),
             jwt_algorithm: Algorithm::HS256,
             jwt_expiration_secs: std::env::var("CALIBER_JWT_EXPIRATION_SECS")
                 .ok()
@@ -157,7 +227,7 @@ impl AuthConfig {
 
         if environment == "production" || environment == "prod" {
             // Verify JWT secret is not the insecure default
-            if self.jwt_secret == "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION" {
+            if self.jwt_secret.is_insecure_default() {
                 return Err(ApiError::invalid_input(format!(
                     "Cannot start server in production with insecure JWT secret. \
                      Set CALIBER_JWT_SECRET to a secure value. \
@@ -375,7 +445,7 @@ pub fn validate_api_key(config: &AuthConfig, api_key: &str) -> ApiResult<()> {
 ///
 /// Returns the claims if the token is valid, Err otherwise.
 pub fn validate_jwt_token(config: &AuthConfig, token: &str) -> ApiResult<Claims> {
-    let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
+    let decoding_key = DecodingKey::from_secret(config.jwt_secret.expose().as_bytes());
     
     let mut validation = Validation::new(config.jwt_algorithm);
     validation.validate_exp = true;
@@ -413,7 +483,7 @@ pub fn generate_jwt_token(
 ) -> ApiResult<String> {
     let claims = Claims::new(user_id, tenant_id, config.jwt_expiration_secs).with_roles(roles);
     
-    let encoding_key = EncodingKey::from_secret(config.jwt_secret.as_bytes());
+    let encoding_key = EncodingKey::from_secret(config.jwt_secret.expose().as_bytes());
     let header = Header::new(config.jwt_algorithm);
     
     encode(&header, &claims, &encoding_key)
@@ -621,7 +691,8 @@ mod tests {
     fn test_config() -> AuthConfig {
         let mut config = AuthConfig::default();
         config.add_api_key("test_key_123".to_string());
-        config.jwt_secret = "test_secret".to_string();
+        config.jwt_secret = JwtSecret::new("test_secret".to_string())
+            .expect("Test secret should be valid");
         config.require_tenant_header = false;
         config
     }

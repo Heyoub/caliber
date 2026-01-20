@@ -48,6 +48,7 @@ serde_yaml = "0.9"
 
 # Authentication
 jsonwebtoken = "9.3"
+secrecy = "0.8"
 workos = { version = "0.8", optional = true }
 
 # Error handling

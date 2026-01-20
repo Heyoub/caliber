@@ -3,6 +3,10 @@
 //! Defines the storage abstraction layer for CALIBER entities.
 //! The actual pgrx implementation lives in caliber-pg.
 
+pub mod async_trait;
+
+pub use async_trait::{AsyncStorageTrait, StorageStatistics};
+
 use caliber_core::{
     AbstractionLevel, Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, Edge,
     EdgeType, EmbeddingVector, EntityId, EntityType, Note, Scope, StorageError, Trajectory,

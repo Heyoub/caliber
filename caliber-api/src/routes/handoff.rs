@@ -183,7 +183,14 @@ pub async fn accept_handoff(
     }
 
     // Accept handoff via database client
-    let _ = db.handoff_accept(id, req.accepting_agent_id).await?;
+    let accepted_handoff = db.handoff_accept(id, req.accepting_agent_id).await?;
+
+    tracing::info!(
+        handoff_id = %id,
+        accepted_by = %req.accepting_agent_id,
+        tenant_id = %auth.tenant_id,
+        "Handoff accepted"
+    );
 
     // Broadcast HandoffAccepted event with tenant_id for filtering
     ws.broadcast(WsEvent::HandoffAccepted {

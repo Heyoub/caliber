@@ -12,7 +12,7 @@ pub struct TuiConfig {
     pub grpc_endpoint: String,
     pub ws_endpoint: String,
     pub tenant_id: uuid::Uuid,
-    pub auth: AuthConfig,
+    pub auth: ClientCredentials,
     pub request_timeout_ms: u64,
     pub refresh_interval_ms: u64,
     pub persistence_path: PathBuf,
@@ -23,7 +23,7 @@ pub struct TuiConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AuthConfig {
+pub struct ClientCredentials {
     pub api_key: Option<String>,
     pub jwt: Option<String>,
 }
