@@ -159,7 +159,7 @@ pub async fn accept_delegation(
     }
 
     // Accept delegation via database client
-    let accepted_delegation = db.delegation_accept(id, req.accepting_agent_id).await?;
+    db.delegation_accept(id, req.accepting_agent_id).await?;
 
     tracing::info!(
         delegation_id = %id,

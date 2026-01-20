@@ -148,8 +148,7 @@ impl Default for AuthConfig {
 
         Self {
             api_keys: HashSet::new(),
-            jwt_secret: JwtSecret::new(secret_str)
-                .expect("Default JWT secret should never be empty"),
+            jwt_secret: build_jwt_secret(secret_str),
             jwt_algorithm: Algorithm::HS256,
             jwt_expiration_secs: 3600, // 1 hour
             require_tenant_header: true,
@@ -197,8 +196,7 @@ impl AuthConfig {
 
         Self {
             api_keys,
-            jwt_secret: JwtSecret::new(secret_str)
-                .expect("JWT secret from environment should never be empty"),
+            jwt_secret: build_jwt_secret(secret_str),
             jwt_algorithm: Algorithm::HS256,
             jwt_expiration_secs: std::env::var("CALIBER_JWT_EXPIRATION_SECS")
                 .ok()
@@ -257,6 +255,21 @@ impl AuthConfig {
     /// Check if an API key is valid.
     pub fn is_valid_api_key(&self, key: &str) -> bool {
         self.api_keys.contains(key)
+    }
+}
+
+fn build_jwt_secret(secret_str: String) -> JwtSecret {
+    let normalized = if secret_str.trim().is_empty() {
+        "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string()
+    } else {
+        secret_str
+    };
+
+    match JwtSecret::new(normalized) {
+        Ok(secret) => secret,
+        Err(_) => JwtSecret(Secret::new(
+            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string(),
+        )),
     }
 }
 
