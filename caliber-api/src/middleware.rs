@@ -313,11 +313,13 @@ impl std::ops::Deref for AuthExtractor {
 ///
 /// ```rust,no_run
 /// use axum::extract::Request;
+/// use caliber_api::error::ApiResult;
 /// use caliber_api::middleware::extract_auth_context;
 ///
-/// async fn my_handler(request: Request) {
-///     let auth_context = extract_auth_context(&request);
+/// async fn my_handler(request: Request) -> ApiResult<()> {
+///     let auth_context = extract_auth_context(&request)?;
 ///     println!("User: {}, Tenant: {}", auth_context.user_id, auth_context.tenant_id);
+///     Ok(())
 /// }
 /// ```
 pub fn extract_auth_context(request: &Request) -> ApiResult<&AuthContext> {
