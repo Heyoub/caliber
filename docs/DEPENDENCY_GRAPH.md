@@ -82,7 +82,7 @@ pub enum MemoryCategory { Ephemeral, Working, Episodic, Semantic, Procedural, Me
 pub enum TrajectoryStatus { Active, Completed, Failed, Suspended }
 pub enum OutcomeStatus { Success, Partial, Failure }
 pub enum TurnRole { User, Assistant, System, Tool }
-pub enum ArtifactType { ErrorLog, CodePatch, DesignDecision, UserPreference, Fact, Constraint, ToolResult, IntermediateOutput, Custom, Code, Document, Data, Config, Log, Summary, Decision, Plan }
+pub enum ArtifactType { ErrorLog, CodePatch, DesignDecision, UserPreference, Fact, Constraint, ToolResult, IntermediateOutput, Custom, Code, Document, Data, Model, Config, Log, Summary, Decision, Plan }
 pub enum ExtractionMethod { Explicit, Inferred, UserProvided }
 pub enum NoteType { Convention, Strategy, Gotcha, Fact, Preference, Relationship, Procedure, Meta, Insight, Correction, Summary }
 

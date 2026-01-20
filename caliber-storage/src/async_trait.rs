@@ -4,10 +4,10 @@
 //! It's designed for use with async runtimes like tokio and enables better
 //! integration with async web frameworks.
 
-use async_trait::async_trait;
+use ::async_trait::async_trait;
 use caliber_core::{
-    Artifact, ArtifactType, CaliberResult, EntityId, EntityType, Note, NoteType, Scope, Timestamp,
-    Trajectory, TrajectoryStatus, Turn,
+    Artifact, CaliberResult, EntityId, EntityType, Note, NoteType, Scope, Trajectory,
+    TrajectoryStatus, Turn,
 };
 
 /// Async storage trait for database operations.

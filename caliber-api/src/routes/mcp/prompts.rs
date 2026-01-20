@@ -1,9 +1,12 @@
 //! MCP prompt handlers
 
-use super::types::*;
+use super::{types::*, McpState};
 use crate::*;
-use axum::*;
+use axum::{extract::State, response::IntoResponse, Json};
+use caliber_core::EntityId;
 use std::collections::HashMap;
+use std::sync::Arc;
+use uuid::Uuid;
 
 /// POST /mcp/prompts/list - List available prompts
 pub async fn list_prompts(

@@ -2,7 +2,8 @@
 
 use super::client::OpenAIClient;
 use super::types::{EmbeddingRequest, EmbeddingResponse};
-use crate::{EmbeddingProvider, ProviderAdapter, ProviderCapability};
+use crate::providers::invalid_response;
+use crate::EmbeddingProvider;
 use async_trait::async_trait;
 use caliber_core::{CaliberResult, EmbeddingVector};
 
@@ -46,10 +47,7 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
         let response: EmbeddingResponse = self.client.request("embeddings", request).await?;
 
         let embedding_data = response.data.into_iter().next().ok_or_else(|| {
-            caliber_core::CaliberError::Llm(caliber_core::LlmError::ProviderError {
-                provider: "openai".to_string(),
-                message: "No embedding data in response".to_string(),
-            })
+            invalid_response("openai", "No embedding data in response")
         })?;
 
         Ok(EmbeddingVector::new(embedding_data.embedding, self.model.clone()))
@@ -64,7 +62,7 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
 
         let response: EmbeddingResponse = self.client.request("embeddings", request).await?;
 
-        let mut embeddings: Vec<_> = response
+        let embeddings: Vec<_> = response
             .data
             .into_iter()
             .map(|data| EmbeddingVector::new(data.embedding, self.model.clone()))
@@ -72,14 +70,10 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
 
         // Ensure ordering matches input
         if embeddings.len() != texts.len() {
-            return Err(caliber_core::CaliberError::Llm(caliber_core::LlmError::ProviderError {
-                provider: "openai".to_string(),
-                message: format!(
-                    "Expected {} embeddings but got {}",
-                    texts.len(),
-                    embeddings.len()
-                ),
-            }));
+            return Err(invalid_response(
+                "openai",
+                format!("Expected {} embeddings but got {}", texts.len(), embeddings.len()),
+            ));
         }
 
         Ok(embeddings)

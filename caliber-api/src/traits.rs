@@ -29,3 +29,28 @@ pub trait HasTimestamps {
         None
     }
 }
+
+/// Normalize tenant IDs to an optional value.
+///
+/// This allows entity responses to use either `EntityId` or `Option<EntityId>`
+/// while still implementing `Entity::tenant_id`.
+pub trait IntoTenantId {
+    fn into_option(self) -> Option<EntityId>;
+}
+
+impl IntoTenantId for EntityId {
+    fn into_option(self) -> Option<EntityId> {
+        Some(self)
+    }
+}
+
+impl IntoTenantId for Option<EntityId> {
+    fn into_option(self) -> Option<EntityId> {
+        self
+    }
+}
+
+/// Convert a tenant ID field into `Option<EntityId>`.
+pub fn normalize_tenant_id<T: IntoTenantId>(value: T) -> Option<EntityId> {
+    value.into_option()
+}

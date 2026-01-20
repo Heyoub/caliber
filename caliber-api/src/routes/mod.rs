@@ -199,7 +199,7 @@ impl SecureRouterBuilder {
 
     /// Build the entity CRUD routes (require authentication).
     fn build_entity_routes(&self) -> ApiResult<Router<AppState>> {
-        Ok(Router::new()
+        Ok(Router::<AppState>::new()
             .route("/ws", get(ws_handler))
             .nest("/trajectories", trajectory::create_router())
             .nest("/scopes", scope::create_router())

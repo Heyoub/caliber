@@ -3,15 +3,9 @@
 use super::ast::*;
 use crate::lexer::*;
 
-                self.advance();
-                Ok(Retention::Max(n))
-            }
-            _ => Err(self.error("Expected retention type")),
-        }
-    }
-
+impl Parser {
     /// Parse a lifecycle configuration.
-    fn parse_lifecycle(&mut self) -> Result<Lifecycle, ParseError> {
+    pub(crate) fn parse_lifecycle(&mut self) -> Result<Lifecycle, ParseError> {
         match &self.current().kind {
             TokenKind::Explicit => {
                 self.advance();
@@ -29,7 +23,7 @@ use crate::lexer::*;
     }
 
     /// Parse a trigger.
-    fn parse_trigger(&mut self) -> Result<Trigger, ParseError> {
+    pub(crate) fn parse_trigger(&mut self) -> Result<Trigger, ParseError> {
         match &self.current().kind {
             TokenKind::TaskStart => {
                 self.advance();
@@ -63,7 +57,7 @@ use crate::lexer::*;
     }
 
     /// Parse an index definition.
-    fn parse_index_def(&mut self) -> Result<IndexDef, ParseError> {
+    pub(crate) fn parse_index_def(&mut self) -> Result<IndexDef, ParseError> {
         let field = self.expect_identifier()?;
         self.expect(TokenKind::Colon)?;
         let index_type = self.parse_index_type()?;
@@ -91,7 +85,7 @@ use crate::lexer::*;
     }
 
     /// Parse an index type.
-    fn parse_index_type(&mut self) -> Result<IndexType, ParseError> {
+    pub(crate) fn parse_index_type(&mut self) -> Result<IndexType, ParseError> {
         match &self.current().kind {
             TokenKind::Btree => {
                 self.advance();
@@ -118,7 +112,7 @@ use crate::lexer::*;
     }
 
     /// Parse a policy definition (Task 4.5).
-    fn parse_policy(&mut self) -> Result<PolicyDef, ParseError> {
+    pub(crate) fn parse_policy(&mut self) -> Result<PolicyDef, ParseError> {
         self.expect(TokenKind::Policy)?;
         let name = self.expect_identifier()?;
         self.expect(TokenKind::LBrace)?;
@@ -151,7 +145,7 @@ use crate::lexer::*;
     }
 
     /// Parse an action.
-    fn parse_action(&mut self) -> Result<Action, ParseError> {
+    pub(crate) fn parse_action(&mut self) -> Result<Action, ParseError> {
         match &self.current().kind {
             TokenKind::Summarize => {
                 self.advance();
@@ -235,7 +229,7 @@ use crate::lexer::*;
 
     /// Parse an injection definition (Task 4.6).
     /// Requires: priority (no defaults per REQ-5)
-    fn parse_injection(&mut self) -> Result<InjectionDef, ParseError> {
+    pub(crate) fn parse_injection(&mut self) -> Result<InjectionDef, ParseError> {
         self.expect(TokenKind::Inject)?;
         let source = self.expect_field_name()?;
         self.expect(TokenKind::Into)?;
@@ -276,7 +270,7 @@ use crate::lexer::*;
     }
 
     /// Parse an injection mode.
-    fn parse_injection_mode(&mut self) -> Result<InjectionMode, ParseError> {
+    pub(crate) fn parse_injection_mode(&mut self) -> Result<InjectionMode, ParseError> {
         match &self.current().kind {
             TokenKind::Full => {
                 self.advance();
@@ -319,7 +313,7 @@ use crate::lexer::*;
     ///     metrics: ["latency", "throughput"]
     /// }
     /// ```
-    fn parse_evolution(&mut self) -> Result<EvolutionDef, ParseError> {
+    pub(crate) fn parse_evolution(&mut self) -> Result<EvolutionDef, ParseError> {
         self.expect(TokenKind::Evolve)?;
 
         // Parse the evolution name (string literal)
@@ -399,7 +393,7 @@ use crate::lexer::*;
     ///     create_edges: true
     /// }
     /// ```
-    fn parse_summarization_policy(&mut self) -> Result<SummarizationPolicyDef, ParseError> {
+    pub(crate) fn parse_summarization_policy(&mut self) -> Result<SummarizationPolicyDef, ParseError> {
         self.expect(TokenKind::SummarizationPolicy)?;
 
         // Parse the policy name (string literal)
@@ -480,7 +474,7 @@ use crate::lexer::*;
     /// - turn_count(5)       -> TurnCount { count: 5 }
     /// - artifact_count(10)  -> ArtifactCount { count: 10 }
     /// - manual              -> Manual
-    fn parse_summarization_trigger(&mut self) -> Result<SummarizationTriggerDsl, ParseError> {
+    pub(crate) fn parse_summarization_trigger(&mut self) -> Result<SummarizationTriggerDsl, ParseError> {
         match &self.current().kind {
             TokenKind::DosageReached => {
                 self.advance();
@@ -532,7 +526,7 @@ use crate::lexer::*;
     /// - raw       -> AbstractionLevelDsl::Raw
     /// - summary   -> AbstractionLevelDsl::Summary
     /// - principle -> AbstractionLevelDsl::Principle
-    fn parse_abstraction_level(&mut self) -> Result<AbstractionLevelDsl, ParseError> {
+    pub(crate) fn parse_abstraction_level(&mut self) -> Result<AbstractionLevelDsl, ParseError> {
         match &self.current().kind {
             TokenKind::Raw => {
                 self.advance();
@@ -551,7 +545,7 @@ use crate::lexer::*;
     }
 
     /// Parse a boolean value (true or false).
-    fn parse_bool(&mut self) -> Result<bool, ParseError> {
+    pub(crate) fn parse_bool(&mut self) -> Result<bool, ParseError> {
         match &self.current().kind {
             TokenKind::Identifier(s) if s == "true" => {
                 self.advance();
@@ -566,11 +560,11 @@ use crate::lexer::*;
     }
 
     /// Parse a filter expression (Task 4.7).
-    fn parse_filter_expr(&mut self) -> Result<FilterExpr, ParseError> {
+    pub(crate) fn parse_filter_expr(&mut self) -> Result<FilterExpr, ParseError> {
         self.parse_or_expr()
     }
 
-    fn parse_or_expr(&mut self) -> Result<FilterExpr, ParseError> {
+    pub(crate) fn parse_or_expr(&mut self) -> Result<FilterExpr, ParseError> {
         let mut left = self.parse_and_expr()?;
 
         while self.check(&TokenKind::Or) {
@@ -582,7 +576,7 @@ use crate::lexer::*;
         Ok(left)
     }
 
-    fn parse_and_expr(&mut self) -> Result<FilterExpr, ParseError> {
+    pub(crate) fn parse_and_expr(&mut self) -> Result<FilterExpr, ParseError> {
         let mut left = self.parse_comparison()?;
 
         while self.check(&TokenKind::And) {
@@ -594,7 +588,7 @@ use crate::lexer::*;
         Ok(left)
     }
 
-    fn parse_comparison(&mut self) -> Result<FilterExpr, ParseError> {
+    pub(crate) fn parse_comparison(&mut self) -> Result<FilterExpr, ParseError> {
         if self.check(&TokenKind::Not) {
             self.advance();
             let expr = self.parse_comparison()?;
@@ -615,7 +609,7 @@ use crate::lexer::*;
         Ok(FilterExpr::Comparison { field, op, value })
     }
 
-    fn parse_compare_op(&mut self) -> Result<CompareOp, ParseError> {
+    pub(crate) fn parse_compare_op(&mut self) -> Result<CompareOp, ParseError> {
         match &self.current().kind {
             TokenKind::Eq => {
                 self.advance();
@@ -657,7 +651,7 @@ use crate::lexer::*;
         }
     }
 
-    fn parse_filter_value(&mut self) -> Result<FilterValue, ParseError> {
+    pub(crate) fn parse_filter_value(&mut self) -> Result<FilterValue, ParseError> {
         match &self.current().kind {
             TokenKind::String(s) => {
                 let s = s.clone();
@@ -717,25 +711,25 @@ use crate::lexer::*;
     // Helper methods
     // ========================================================================
 
-    fn current(&self) -> &Token {
+    pub(crate) fn current(&self) -> &Token {
         &self.tokens[self.pos]
     }
 
-    fn advance(&mut self) {
+    pub(crate) fn advance(&mut self) {
         if !self.is_at_end() {
             self.pos += 1;
         }
     }
 
-    fn is_at_end(&self) -> bool {
+    pub(crate) fn is_at_end(&self) -> bool {
         self.current().kind == TokenKind::Eof
     }
 
-    fn check(&self, kind: &TokenKind) -> bool {
+    pub(crate) fn check(&self, kind: &TokenKind) -> bool {
         std::mem::discriminant(&self.current().kind) == std::mem::discriminant(kind)
     }
 
-    fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError> {
+    pub(crate) fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError> {
         if self.check(&kind) {
             self.advance();
             Ok(())
@@ -744,7 +738,7 @@ use crate::lexer::*;
         }
     }
 
-    fn expect_identifier(&mut self) -> Result<String, ParseError> {
+    pub(crate) fn expect_identifier(&mut self) -> Result<String, ParseError> {
         match &self.current().kind {
             TokenKind::Identifier(s) => {
                 let s = s.clone();
@@ -757,7 +751,7 @@ use crate::lexer::*;
 
     /// Expect an identifier or a keyword that can be used as a field name.
     /// Many keywords in the DSL can also be used as field names (type, mode, filter, etc.)
-    fn expect_field_name(&mut self) -> Result<String, ParseError> {
+    pub(crate) fn expect_field_name(&mut self) -> Result<String, ParseError> {
         let name = match &self.current().kind {
             TokenKind::Identifier(s) => s.clone(),
             // Keywords that can be used as field names
@@ -859,7 +853,7 @@ use crate::lexer::*;
         Ok(name)
     }
 
-    fn expect_string(&mut self) -> Result<String, ParseError> {
+    pub(crate) fn expect_string(&mut self) -> Result<String, ParseError> {
         match &self.current().kind {
             TokenKind::String(s) => {
                 let s = s.clone();
@@ -870,7 +864,7 @@ use crate::lexer::*;
         }
     }
 
-    fn expect_number(&mut self) -> Result<f64, ParseError> {
+    pub(crate) fn expect_number(&mut self) -> Result<f64, ParseError> {
         match self.current().kind {
             TokenKind::Number(n) => {
                 self.advance();
@@ -880,7 +874,7 @@ use crate::lexer::*;
         }
     }
 
-    fn expect_string_or_number(&mut self) -> Result<String, ParseError> {
+    pub(crate) fn expect_string_or_number(&mut self) -> Result<String, ParseError> {
         match &self.current().kind {
             TokenKind::String(s) => {
                 let s = s.clone();
@@ -896,13 +890,13 @@ use crate::lexer::*;
         }
     }
 
-    fn optional_comma(&mut self) {
+    pub(crate) fn optional_comma(&mut self) {
         if self.check(&TokenKind::Comma) {
             self.advance();
         }
     }
 
-    fn error(&self, msg: &str) -> ParseError {
+    pub(crate) fn error(&self, msg: &str) -> ParseError {
         let span = self.current().span;
         ParseError {
             message: msg.to_string(),
@@ -1287,7 +1281,7 @@ fn pretty_print_filter_value(value: &FilterValue) -> String {
     }
 }
 
-fn escape_string(s: &str) -> String {
+pub(crate) fn escape_string(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
@@ -1602,4 +1596,513 @@ mod tests {
             }
         "#;
         let ast = parse(source)?;
+        if let Definition::Injection(injection) = &ast.definitions[0] {
+            assert!(injection.filter.is_some());
+            // The filter should be an Or expression
+            if let Some(FilterExpr::Or(_)) = &injection.filter {
+                // OK
+            } else {
+                return Err(test_parse_error("Expected Or filter expression"));
+            }
+        } else {
+            return Err(test_parse_error("Expected injection definition"));
+        }
+        Ok(())
+    }
 
+    #[test]
+    fn test_parse_schedule_trigger() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                policy scheduled_cleanup {
+                    on schedule("0 0 * * *"): [
+                        prune(old_data, age > 30d)
+                    ]
+                }
+            }
+        "#;
+        let ast = parse(source)?;
+
+        if let Definition::Policy(policy) = &ast.definitions[0] {
+            assert_eq!(policy.rules[0].trigger, Trigger::Schedule("0 0 * * *".to_string()));
+        } else {
+            return Err(test_parse_error("Expected policy definition"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_prune_action() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                policy cleanup {
+                    on task_end: [
+                        prune(artifacts, age > 7d)
+                    ]
+                }
+            }
+        "#;
+        let ast = parse(source)?;
+
+        if let Definition::Policy(policy) = &ast.definitions[0] {
+            if let Action::Prune { target, criteria } = &policy.rules[0].actions[0] {
+                assert_eq!(target, "artifacts");
+                if let FilterExpr::Comparison { field, op, .. } = criteria {
+                    assert_eq!(field, "age");
+                    assert_eq!(*op, CompareOp::Gt);
+                } else {
+                    return Err(test_parse_error("Expected comparison filter"));
+                }
+            } else {
+                return Err(test_parse_error("Expected prune action"));
+            }
+        } else {
+            return Err(test_parse_error("Expected policy definition"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_error_line_column() -> Result<(), ParseError> {
+        let source = "caliber: \"1.0\" { invalid_keyword }";
+        let result = parse(source);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.line >= 1);
+        assert!(err.column >= 1);
+        Ok(())
+    }
+
+    // ========================================================================
+    // Pretty Printer Tests
+    // ========================================================================
+
+    #[test]
+    fn test_pretty_print_minimal() {
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![],
+        };
+        let output = pretty_print(&ast);
+        assert!(output.contains("caliber: \"1.0\""));
+    }
+
+    #[test]
+    fn test_pretty_print_adapter() {
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![Definition::Adapter(AdapterDef {
+                name: "main_db".to_string(),
+                adapter_type: AdapterType::Postgres,
+                connection: "postgresql://localhost/caliber".to_string(),
+                options: vec![],
+            })],
+        };
+        let output = pretty_print(&ast);
+        assert!(output.contains("adapter main_db"));
+        assert!(output.contains("type: postgres"));
+        assert!(output.contains("connection: \"postgresql://localhost/caliber\""));
+    }
+
+    #[test]
+    fn test_pretty_print_memory() {
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![Definition::Memory(MemoryDef {
+                name: "turns".to_string(),
+                memory_type: MemoryType::Ephemeral,
+                schema: vec![FieldDef {
+                    name: "id".to_string(),
+                    field_type: FieldType::Uuid,
+                    nullable: false,
+                    default: None,
+                }],
+                retention: Retention::Scope,
+                lifecycle: Lifecycle::Explicit,
+                parent: None,
+                indexes: vec![],
+                inject_on: vec![],
+                artifacts: vec![],
+            })],
+        };
+        let output = pretty_print(&ast);
+        assert!(output.contains("memory turns"));
+        assert!(output.contains("type: ephemeral"));
+        assert!(output.contains("retention: scope"));
+    }
+
+    // ========================================================================
+    // Round-Trip Tests
+    // ========================================================================
+
+    #[test]
+    fn test_round_trip_minimal() -> Result<(), ParseError> {
+        let source = r#"caliber: "1.0" {}"#;
+        let ast1 = parse(source)?;
+        let printed = pretty_print(&ast1);
+        let ast2 = parse(&printed)?;
+
+        assert_eq!(ast1.version, ast2.version);
+        assert_eq!(ast1.definitions.len(), ast2.definitions.len());
+        Ok(())
+    }
+
+    #[test]
+    fn test_round_trip_adapter() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                adapter main_db {
+                    type: postgres
+                    connection: "postgresql://localhost/caliber"
+                }
+            }
+        "#;
+        let ast1 = parse(source)?;
+        let printed = pretty_print(&ast1);
+        let ast2 = parse(&printed)?;
+
+        assert_eq!(ast1, ast2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_round_trip_memory() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                memory turns {
+                    type: ephemeral
+                    schema: {
+                        id: uuid
+                        content: text
+                    }
+                    retention: scope
+                    lifecycle: explicit
+                }
+            }
+        "#;
+        let ast1 = parse(source)?;
+        let printed = pretty_print(&ast1);
+        let ast2 = parse(&printed)?;
+
+        assert_eq!(ast1, ast2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_defaults_and_index_options() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                memory notes {
+                    type: semantic
+                    schema: {
+                        id: uuid
+                        title: text optional = "untitled"
+                        score: float = 0.75
+                        active: bool = true
+                    }
+                    retention: persistent
+                    lifecycle: explicit
+                    index: {
+                        embedding: hnsw options: {
+                            "m": 16,
+                            "ef_construction": 64
+                        }
+                    }
+                }
+            }
+        "#;
+
+        let ast = parse(source)?;
+        let memory = match &ast.definitions[0] {
+            Definition::Memory(def) => def,
+            _ => return Err(test_parse_error("Expected memory definition")),
+        };
+
+        let title = &memory.schema[1];
+        assert!(title.nullable);
+        assert_eq!(title.default.as_deref(), Some("\"untitled\""));
+
+        let score = &memory.schema[2];
+        assert_eq!(score.default.as_deref(), Some("0.75"));
+
+        let active = &memory.schema[3];
+        assert_eq!(active.default.as_deref(), Some("true"));
+
+        let index = &memory.indexes[0];
+        assert_eq!(index.options.len(), 2);
+        assert!(index.options.iter().any(|(k, v)| k == "m" && v == "16"));
+        assert!(index.options.iter().any(|(k, v)| k == "ef_construction" && v == "64"));
+
+        let printed = pretty_print(&ast);
+        assert!(printed.contains("optional"));
+        assert!(printed.contains("= \"untitled\""));
+        assert!(printed.contains("options: {"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_round_trip_policy() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                policy cleanup {
+                    on scope_close: [
+                        summarize(turns)
+                        checkpoint(scope)
+                    ]
+                }
+            }
+        "#;
+        let ast1 = parse(source)?;
+        let printed = pretty_print(&ast1);
+        let ast2 = parse(&printed)?;
+
+        assert_eq!(ast1, ast2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_round_trip_injection() -> Result<(), ParseError> {
+        let source = r#"
+            caliber: "1.0" {
+                inject notes into context {
+                    mode: full
+                    priority: 50
+                }
+            }
+        "#;
+        let ast1 = parse(source)?;
+        let printed = pretty_print(&ast1);
+        let ast2 = parse(&printed)?;
+
+        assert_eq!(ast1, ast2);
+        Ok(())
+    }
+}
+
+// ============================================================================
+// PROPERTY-BASED TESTS (Task 4.10)
+// ============================================================================
+
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // Property 3: DSL round-trip parsing preserves semantics
+    // Feature: caliber-core-implementation, Property 3: DSL round-trip parsing preserves semantics
+    // Validates: Requirements 5.8
+    // ========================================================================
+
+    // Generators for AST types
+    fn arb_adapter_type() -> impl Strategy<Value = AdapterType> {
+        prop_oneof![
+            Just(AdapterType::Postgres),
+            Just(AdapterType::Redis),
+            Just(AdapterType::Memory),
+        ]
+    }
+
+    fn arb_memory_type() -> impl Strategy<Value = MemoryType> {
+        prop_oneof![
+            Just(MemoryType::Ephemeral),
+            Just(MemoryType::Working),
+            Just(MemoryType::Episodic),
+            Just(MemoryType::Semantic),
+            Just(MemoryType::Procedural),
+            Just(MemoryType::Meta),
+        ]
+    }
+
+    fn arb_field_type() -> impl Strategy<Value = FieldType> {
+        prop_oneof![
+            Just(FieldType::Uuid),
+            Just(FieldType::Text),
+            Just(FieldType::Int),
+            Just(FieldType::Float),
+            Just(FieldType::Bool),
+            Just(FieldType::Timestamp),
+            Just(FieldType::Json),
+            (0usize..4096).prop_map(|d| FieldType::Embedding(Some(d))),
+            Just(FieldType::Embedding(None)),
+        ]
+    }
+
+    fn arb_retention() -> impl Strategy<Value = Retention> {
+        prop_oneof![
+            Just(Retention::Persistent),
+            Just(Retention::Session),
+            Just(Retention::Scope),
+            "[0-9]+[smhdw]".prop_map(Retention::Duration),
+            (1usize..1000).prop_map(Retention::Max),
+        ]
+    }
+
+    fn arb_index_type() -> impl Strategy<Value = IndexType> {
+        prop_oneof![
+            Just(IndexType::Btree),
+            Just(IndexType::Hash),
+            Just(IndexType::Gin),
+            Just(IndexType::Hnsw),
+            Just(IndexType::Ivfflat),
+        ]
+    }
+
+    fn arb_trigger() -> impl Strategy<Value = Trigger> {
+        prop_oneof![
+            Just(Trigger::TaskStart),
+            Just(Trigger::TaskEnd),
+            Just(Trigger::ScopeClose),
+            Just(Trigger::TurnEnd),
+            Just(Trigger::Manual),
+            // Simple cron-like patterns for schedule
+            "[0-9]+ [0-9]+ \\* \\* \\*".prop_map(Trigger::Schedule),
+        ]
+    }
+
+    fn arb_injection_mode() -> impl Strategy<Value = InjectionMode> {
+        prop_oneof![
+            Just(InjectionMode::Full),
+            Just(InjectionMode::Summary),
+            (1usize..100).prop_map(InjectionMode::TopK),
+            (0.0f32..1.0f32).prop_map(InjectionMode::Relevant),
+        ]
+    }
+
+    fn arb_compare_op() -> impl Strategy<Value = CompareOp> {
+        prop_oneof![
+            Just(CompareOp::Eq),
+            Just(CompareOp::Ne),
+            Just(CompareOp::Gt),
+            Just(CompareOp::Lt),
+            Just(CompareOp::Ge),
+            Just(CompareOp::Le),
+            Just(CompareOp::Contains),
+            Just(CompareOp::In),
+        ]
+    }
+
+    fn arb_filter_value() -> impl Strategy<Value = FilterValue> {
+        prop_oneof![
+            "[a-zA-Z0-9_]+".prop_map(FilterValue::String),
+            (-1000.0f64..1000.0f64).prop_map(FilterValue::Number),
+            any::<bool>().prop_map(FilterValue::Bool),
+            Just(FilterValue::Null),
+            Just(FilterValue::CurrentTrajectory),
+            Just(FilterValue::CurrentScope),
+            Just(FilterValue::Now),
+            prop::collection::vec("[a-zA-Z0-9_]+".prop_map(FilterValue::String), 0..5)
+                .prop_map(FilterValue::Array),
+        ]
+    }
+
+    fn arb_compare_expr() -> impl Strategy<Value = FilterExpr> {
+        (
+            "[a-zA-Z_][a-zA-Z0-9_]*",
+            arb_compare_op(),
+            arb_filter_value(),
+        )
+            .prop_map(|(field, op, value)| FilterExpr::Comparison { field, op, value })
+    }
+
+    fn arb_filter_expr(depth: u32) -> BoxedStrategy<FilterExpr> {
+        let leaf = arb_compare_expr().boxed();
+        if depth == 0 {
+            return leaf;
+        }
+        let recursive = prop_oneof![
+            prop::collection::vec(arb_filter_expr(depth - 1), 1..4).prop_map(FilterExpr::And),
+            prop::collection::vec(arb_filter_expr(depth - 1), 1..4).prop_map(FilterExpr::Or),
+            arb_filter_expr(depth - 1).prop_map(|expr| FilterExpr::Not(Box::new(expr))),
+        ];
+        prop_oneof![leaf, recursive].boxed()
+    }
+
+    fn arb_field_def() -> impl Strategy<Value = FieldDef> {
+        (
+            "[a-zA-Z_][a-zA-Z0-9_]*",
+            arb_field_type(),
+            any::<bool>(),
+        )
+            .prop_map(|(name, field_type, nullable)| FieldDef {
+                name,
+                field_type,
+                nullable,
+                default: None,
+            })
+    }
+
+    fn arb_index_def() -> impl Strategy<Value = IndexDef> {
+        (
+            "[a-zA-Z_][a-zA-Z0-9_]*",
+            arb_index_type(),
+            prop::collection::vec(("[a-zA-Z_]+", "[a-zA-Z0-9_]+"), 0..3),
+        )
+            .prop_map(|(field, index_type, options)| IndexDef {
+                field,
+                index_type,
+                options,
+            })
+    }
+
+    fn arb_memory_def() -> impl Strategy<Value = MemoryDef> {
+        (
+            "[a-zA-Z_][a-zA-Z0-9_]*",
+            arb_memory_type(),
+            prop::collection::vec(arb_field_def(), 1..6),
+            arb_retention(),
+            Just(Lifecycle::Explicit),
+            prop::collection::vec(arb_index_def(), 0..3),
+        )
+            .prop_map(|(name, memory_type, schema, retention, lifecycle, indexes)| MemoryDef {
+                name,
+                memory_type,
+                schema,
+                retention,
+                lifecycle,
+                parent: None,
+                indexes,
+                inject_on: vec![],
+                artifacts: vec![],
+            })
+    }
+
+    fn arb_adapter_def() -> impl Strategy<Value = AdapterDef> {
+        (
+            "[a-zA-Z_][a-zA-Z0-9_]*",
+            arb_adapter_type(),
+            "postgresql://[a-zA-Z0-9_/]+",
+        )
+            .prop_map(|(name, adapter_type, connection)| AdapterDef {
+                name,
+                adapter_type,
+                connection,
+                options: vec![],
+            })
+    }
+
+    fn arb_definition() -> impl Strategy<Value = Definition> {
+        prop_oneof![
+            arb_adapter_def().prop_map(Definition::Adapter),
+            arb_memory_def().prop_map(Definition::Memory),
+        ]
+    }
+
+    fn arb_ast() -> impl Strategy<Value = CaliberAst> {
+        prop::collection::vec(arb_definition(), 0..5).prop_map(|definitions| CaliberAst {
+            version: "1.0".to_string(),
+            definitions,
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn prop_round_trip_ast(ast in arb_ast()) {
+            let source = pretty_print(&ast);
+            let parsed = parse(&source).expect("parse failed");
+
+            prop_assert_eq!(ast, parsed);
+        }
+    }
+}

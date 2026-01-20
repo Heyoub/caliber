@@ -1,7 +1,8 @@
 //! Abstract Syntax Tree types
 
-use caliber_core::*;
 use serde::{Deserialize, Serialize};
+use crate::lexer::{Token, TokenKind};
+use crate::parser::parser::escape_string;
 
 // ============================================================================
 // AST TYPES (Task 4.1)
@@ -351,8 +352,8 @@ impl std::error::Error for ParseError {}
 
 /// Parser for the CALIBER DSL.
 pub struct Parser {
-    tokens: Vec<Token>,
-    pos: usize,
+    pub(crate) tokens: Vec<Token>,
+    pub(crate) pos: usize,
 }
 
 impl Parser {
@@ -730,3 +731,10 @@ impl Parser {
             }
             TokenKind::Number(n) => {
                 let n = *n as usize;
+                self.advance();
+                Ok(Retention::Max(n))
+            }
+            _ => Err(self.error("Expected retention type")),
+        }
+    }
+}

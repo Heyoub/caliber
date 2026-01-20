@@ -623,6 +623,35 @@ impl DbClient {
         Ok(artifacts)
     }
 
+    /// List recent artifacts across all trajectories for a tenant.
+    pub async fn artifact_list_recent(
+        &self,
+        tenant_id: EntityId,
+        limit: usize,
+    ) -> ApiResult<Vec<ArtifactResponse>> {
+        let statuses = [
+            caliber_core::TrajectoryStatus::Active,
+            caliber_core::TrajectoryStatus::Completed,
+            caliber_core::TrajectoryStatus::Failed,
+            caliber_core::TrajectoryStatus::Suspended,
+        ];
+
+        let mut artifacts = Vec::new();
+        for status in statuses {
+            let trajectories = self.trajectory_list_by_status(status, tenant_id).await?;
+            for trajectory in trajectories {
+                let mut traj_artifacts = self
+                    .artifact_list_by_trajectory_and_tenant(trajectory.trajectory_id, tenant_id)
+                    .await?;
+                artifacts.append(&mut traj_artifacts);
+            }
+        }
+
+        artifacts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        artifacts.truncate(limit);
+        Ok(artifacts)
+    }
+
     /// Query artifacts by trajectory by calling caliber_artifact_query_by_trajectory.
     pub async fn artifact_list_by_trajectory(
         &self,

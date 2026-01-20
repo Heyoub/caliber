@@ -362,6 +362,7 @@ pub enum ArtifactType {
     ToolResult,
     IntermediateOutput,
     Custom,
+    Model,
 }
 
 #[derive(Debug, Clone, PostgresType)]
@@ -942,13 +943,13 @@ caliber: "0.1.0" {
       artifact_id: uuid,
       scope_id: uuid,
       trajectory_id: uuid,
-      artifact_type: enum("error_log", "code_patch", "design_decision", "fact", "tool_result"),
+      artifact_type: enum("error_log", "code_patch", "design_decision", "fact", "tool_result", "model"),
       content: text,
       content_embedding: embedding,
       confidence: float
     }
     retention: persistent
-    artifacts: ["error_log", "code_patch", "design_decision", "fact", "tool_result"]
+    artifacts: ["error_log", "code_patch", "design_decision", "fact", "tool_result", "model"]
     index: {
       artifact_id: btree,
       trajectory_id: btree,

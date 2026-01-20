@@ -226,7 +226,7 @@ An artifact is **extracted value** from conversation. Persists after scope close
   artifact_id: "uuid",
   trajectory_id: "uuid",
   scope_id: "uuid",
-  artifact_type: "Code" | "Document" | "Decision" | "Summary" | ...,
+  artifact_type: "Code" | "Document" | "Model" | "Decision" | "Summary" | ...,
   name: "auth-handler.ts",
   content: "export function authenticate() {...}",
   provenance: {

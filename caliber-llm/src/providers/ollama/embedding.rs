@@ -1,9 +1,10 @@
 //! Ollama embedding provider implementation (local models)
 
 use super::types::{EmbeddingRequest, EmbeddingResponse};
+use crate::providers::{invalid_response, request_failed};
 use crate::EmbeddingProvider;
 use async_trait::async_trait;
-use caliber_core::{CaliberError, CaliberResult, EmbeddingVector, LlmError};
+use caliber_core::{CaliberResult, EmbeddingVector};
 use reqwest::Client;
 
 /// Ollama embedding provider for local LLM models.
@@ -39,10 +40,7 @@ impl OllamaEmbeddingProvider {
     pub async fn check_model_available(&self) -> CaliberResult<bool> {
         let url = format!("{}/api/tags", self.base_url);
         let response = self.client.get(&url).send().await.map_err(|e| {
-            CaliberError::Llm(LlmError::ProviderError {
-                provider: "ollama".to_string(),
-                message: format!("Failed to connect to Ollama: {}", e),
-            })
+            request_failed("ollama", 0, format!("Failed to connect to Ollama: {}", e))
         })?;
 
         if !response.status().is_success() {
@@ -59,10 +57,7 @@ impl OllamaEmbeddingProvider {
         }
 
         let list: ListResponse = response.json().await.map_err(|e| {
-            CaliberError::Llm(LlmError::ProviderError {
-                provider: "ollama".to_string(),
-                message: format!("Failed to parse models list: {}", e),
-            })
+            invalid_response("ollama", format!("Failed to parse models list: {}", e))
         })?;
 
         Ok(list.models.iter().any(|m| m.name.contains(&self.model)))
@@ -84,29 +79,23 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
             .json(&request)
             .send()
             .await
-            .map_err(|e| {
-                CaliberError::Llm(LlmError::ProviderError {
-                    provider: "ollama".to_string(),
-                    message: format!("HTTP request failed: {}", e),
-                })
-            })?;
+            .map_err(|e| request_failed("ollama", 0, format!("HTTP request failed: {}", e)))?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(CaliberError::Llm(LlmError::ProviderError {
-                provider: "ollama".to_string(),
-                message: error_text,
-            }));
+            return Err(request_failed(
+                "ollama",
+                status.as_u16() as i32,
+                error_text,
+            ));
         }
 
         let embedding_response: EmbeddingResponse = response.json().await.map_err(|e| {
-            CaliberError::Llm(LlmError::ProviderError {
-                provider: "ollama".to_string(),
-                message: format!("Failed to parse response: {}", e),
-            })
+            invalid_response("ollama", format!("Failed to parse response: {}", e))
         })?;
 
         Ok(EmbeddingVector::new(

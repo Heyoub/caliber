@@ -52,6 +52,24 @@ fn extract_tenant_id<T>(request: &Request<T>) -> Result<caliber_core::EntityId, 
     Err(Status::unauthenticated("Missing tenant ID"))
 }
 
+fn parse_filter_operator(value: &str) -> Result<caliber_core::FilterOperator, Status> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "eq" => Ok(caliber_core::FilterOperator::Eq),
+        "ne" => Ok(caliber_core::FilterOperator::Ne),
+        "gt" => Ok(caliber_core::FilterOperator::Gt),
+        "lt" => Ok(caliber_core::FilterOperator::Lt),
+        "gte" => Ok(caliber_core::FilterOperator::Gte),
+        "lte" => Ok(caliber_core::FilterOperator::Lte),
+        "contains" => Ok(caliber_core::FilterOperator::Contains),
+        "in" => Ok(caliber_core::FilterOperator::In),
+        "regex" => Ok(caliber_core::FilterOperator::Regex),
+        "and" => Ok(caliber_core::FilterOperator::And),
+        "or" => Ok(caliber_core::FilterOperator::Or),
+        "not" => Ok(caliber_core::FilterOperator::Not),
+        _ => Err(Status::invalid_argument("Invalid filter operator")),
+    }
+}
+
 // Include the generated protobuf code
 pub mod proto {
     tonic::include_proto!("caliber");
@@ -824,14 +842,23 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
         }
 
         // Convert proto request to internal type
+        let filters = req.filters
+            .into_iter()
+            .map(|f| {
+                let operator = parse_filter_operator(&f.operator)?;
+                Ok(crate::types::FilterExpr {
+                    field: f.field,
+                    operator,
+                    value: serde_json::from_str(&f.value)
+                        .unwrap_or(serde_json::Value::Null),
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
         let search_req = crate::types::SearchRequest {
             query: req.query,
             entity_types: req.entity_types.into_iter().filter_map(|s| s.parse().ok()).collect(),
-            filters: req.filters.into_iter().map(|f| crate::types::FilterExpr {
-                field: f.field,
-                operator: f.operator,
-                value: serde_json::from_str(&f.value).unwrap_or(serde_json::Value::Null),
-            }).collect(),
+            filters,
             limit: req.limit,
         };
 
@@ -1004,14 +1031,23 @@ impl note_service_server::NoteService for NoteServiceImpl {
         }
 
         // Convert proto request to internal type
+        let filters = req.filters
+            .into_iter()
+            .map(|f| {
+                let operator = parse_filter_operator(&f.operator)?;
+                Ok(crate::types::FilterExpr {
+                    field: f.field,
+                    operator,
+                    value: serde_json::from_str(&f.value)
+                        .unwrap_or(serde_json::Value::Null),
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
         let search_req = crate::types::SearchRequest {
             query: req.query,
             entity_types: req.entity_types.into_iter().filter_map(|s| s.parse().ok()).collect(),
-            filters: req.filters.into_iter().map(|f| crate::types::FilterExpr {
-                field: f.field,
-                operator: f.operator,
-                value: serde_json::from_str(&f.value).unwrap_or(serde_json::Value::Null),
-            }).collect(),
+            filters,
             limit: req.limit,
         };
 
@@ -1645,14 +1681,23 @@ impl search_service_server::SearchService for SearchServiceImpl {
     async fn search(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
+        let filters = req.filters
+            .into_iter()
+            .map(|f| {
+                let operator = parse_filter_operator(&f.operator)?;
+                Ok(crate::types::FilterExpr {
+                    field: f.field,
+                    operator,
+                    value: serde_json::from_str(&f.value)
+                        .unwrap_or(serde_json::Value::Null),
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
         let search_req = crate::types::SearchRequest {
             query: req.query,
             entity_types: req.entity_types.into_iter().filter_map(|s| s.parse().ok()).collect(),
-            filters: req.filters.into_iter().map(|f| crate::types::FilterExpr {
-                field: f.field,
-                operator: f.operator,
-                value: serde_json::from_str(&f.value).unwrap_or(serde_json::Value::Null),
-            }).collect(),
+            filters,
             limit: req.limit,
         };
         let result = self.db.search(&search_req, tenant_id).await?;

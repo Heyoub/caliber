@@ -1,7 +1,7 @@
 //! MCP protocol types
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use serde_json::Value as JsonValue;
 
 // ============================================================================
 // MCP PROTOCOL TYPES

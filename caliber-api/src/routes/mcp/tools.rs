@@ -2,7 +2,7 @@
 
 use super::types::*;
 use crate::*;
-use axum::*;
+use std::sync::Arc;
 
 // ============================================================================
 // SHARED STATE
@@ -25,7 +25,7 @@ impl McpState {
 // TOOL DEFINITIONS
 // ============================================================================
 
-fn get_available_tools() -> Vec<Tool> {
+pub(super) fn get_available_tools() -> Vec<Tool> {
     vec![
         // Trajectory tools
         Tool {
@@ -148,7 +148,7 @@ fn get_available_tools() -> Vec<Tool> {
                     },
                     "artifact_type": {
                         "type": "string",
-                        "enum": ["Fact", "Code", "Document", "Data", "Config", "Log", "Summary", "Decision", "Plan"],
+                        "enum": ["Fact", "Code", "Document", "Data", "Model", "Config", "Log", "Summary", "Decision", "Plan"],
                         "description": "Type of artifact"
                     },
                     "name": {
@@ -246,7 +246,7 @@ fn get_available_tools() -> Vec<Tool> {
 // RESOURCE DEFINITIONS
 // ============================================================================
 
-fn get_available_resources() -> Vec<Resource> {
+pub(super) fn get_available_resources() -> Vec<Resource> {
     vec![
         Resource {
             uri: "caliber://trajectories".to_string(),
@@ -274,19 +274,3 @@ fn get_available_resources() -> Vec<Resource> {
         },
     ]
 }
-
-// ============================================================================
-// ROUTE HANDLERS
-// ============================================================================
-
-/// POST /mcp/initialize - Initialize MCP session
-#[utoipa::path(
-    post,
-    path = "/mcp/initialize",
-    tag = "MCP",
-    request_body = InitializeRequest,
-    responses(
-        (status = 200, description = "Session initialized", body = InitializeResponse),
-        (status = 400, description = "Invalid request", body = ApiError),
-    ),
-)]

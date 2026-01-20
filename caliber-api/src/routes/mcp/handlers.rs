@@ -2,7 +2,11 @@
 
 use super::{types::*, tools::*};
 use crate::*;
-use axum::*;
+use axum::{extract::State, response::IntoResponse, Json};
+use caliber_core::EntityId;
+use serde_json::Value as JsonValue;
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub async fn initialize(
     State(state): State<Arc<McpState>>,
@@ -403,12 +407,3 @@ async fn execute_tool(
     }
 }
 
-/// GET /mcp/resources/list - List available resources
-#[utoipa::path(
-    get,
-    path = "/mcp/resources/list",
-    tag = "MCP",
-    responses(
-        (status = 200, description = "List of available resources", body = ListResourcesResponse),
-    ),
-)]

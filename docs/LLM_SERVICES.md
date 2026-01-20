@@ -387,6 +387,7 @@ impl SummarizationProvider for AnthropicSummarizationProvider {
                 "error_log" => ArtifactType::ErrorLog,
                 "code_patch" => ArtifactType::CodePatch,
                 "design_decision" => ArtifactType::DesignDecision,
+                "model" => ArtifactType::Model,
                 "fact" => ArtifactType::Fact,
                 _ => continue,
             };
