@@ -15,7 +15,9 @@ use pgrx::spi::Spi;
 #[cfg(feature = "pg_test")]
 pub mod pg_test {
     pub fn setup(_options: Vec<&str>) {
-        // noop
+        if let Err(e) = crate::run_pending_migrations() {
+            pgrx::warning!("CALIBER: Migration check failed in pg_test setup: {}", e);
+        }
     }
 
     pub fn postgresql_conf_options() -> Vec<&'static str> {
@@ -149,6 +151,7 @@ fn opt_jsonb_datum(json: Option<&serde_json::Value>) -> DatumWithOid<'_> {
 }
 
 // Initialize pgrx extension
+#[cfg(not(feature = "pg_test"))]
 pgrx::pg_module_magic!();
 
 // ============================================================================
@@ -215,6 +218,7 @@ const SCHEMA_VERSION: i32 = 1;
 /// Extension initialization hook.
 /// Called when the extension is loaded.
 /// Runs any pending database migrations automatically.
+#[cfg(not(feature = "pg_test"))]
 #[pg_guard]
 pub extern "C-unwind" fn _PG_init() {
     pgrx::log!("CALIBER extension initializing...");
@@ -229,6 +233,7 @@ pub extern "C-unwind" fn _PG_init() {
 
 /// Extension finalization hook.
 /// Called when the extension is unloaded.
+#[cfg(not(feature = "pg_test"))]
 #[pg_guard]
 pub extern "C-unwind" fn _PG_fini() {
     pgrx::log!("CALIBER extension finalizing...");

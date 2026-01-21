@@ -627,7 +627,7 @@ mod tests {
                 let handoff = get_result.unwrap();
                 prop_assert!(handoff.is_some(), "Handoff should be found");
                 
-                let h = handoff.unwrap();
+                let h = handoff.unwrap().handoff;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(h.handoff_id, handoff_id);
@@ -744,7 +744,7 @@ mod tests {
                 // Verify initial status is Initiated
                 let get_before = handoff_get_heap(handoff_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before accept should succeed");
-                let handoff_before = get_before.unwrap().unwrap();
+                let handoff_before = get_before.unwrap().unwrap().handoff;
                 prop_assert_eq!(handoff_before.status, HandoffStatus::Initiated);
                 prop_assert!(handoff_before.accepted_at.is_none(), "accepted_at should be None before accept");
 
@@ -759,7 +759,7 @@ mod tests {
                 // Verify status, accepted_at, and to_agent_id were updated
                 let get_after = handoff_get_heap(handoff_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after accept should succeed");
-                let handoff_after = get_after.unwrap().unwrap();
+                let handoff_after = get_after.unwrap().unwrap().handoff;
                 prop_assert_eq!(handoff_after.status, HandoffStatus::Accepted, "Status should be Accepted");
                 prop_assert!(handoff_after.accepted_at.is_some(), "accepted_at should be set after accept");
                 prop_assert!(handoff_after.accepted_at.unwrap() <= chrono::Utc::now(), "accepted_at should be <= now");
@@ -835,7 +835,7 @@ mod tests {
                 // Verify initial state
                 let get_before = handoff_get_heap(handoff_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before complete should succeed");
-                let handoff_before = get_before.unwrap().unwrap();
+                let handoff_before = get_before.unwrap().unwrap().handoff;
                 prop_assert_eq!(handoff_before.status, HandoffStatus::Initiated);
                 prop_assert!(handoff_before.completed_at.is_none(), "completed_at should be None before complete");
 
@@ -847,7 +847,7 @@ mod tests {
                 // Verify status and completed_at were updated
                 let get_after = handoff_get_heap(handoff_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after complete should succeed");
-                let handoff_after = get_after.unwrap().unwrap();
+                let handoff_after = get_after.unwrap().unwrap().handoff;
                 prop_assert_eq!(handoff_after.status, HandoffStatus::Completed, "Status should be Completed");
                 prop_assert!(handoff_after.completed_at.is_some(), "completed_at should be set after complete");
                 prop_assert!(handoff_after.completed_at.unwrap() <= chrono::Utc::now(), "completed_at should be <= now");
@@ -956,7 +956,7 @@ mod tests {
                 let get_result = handoff_get_heap(handoff_id, tenant_id);
                 prop_assert!(get_result.is_ok(), "Get should succeed");
                 
-                let h = get_result.unwrap().unwrap();
+                let h = get_result.unwrap().unwrap().handoff;
                 
                 // Verify all fields are preserved
                 prop_assert_eq!(h.handoff_id, handoff_id);

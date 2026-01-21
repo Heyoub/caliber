@@ -793,6 +793,7 @@ mod tests {
             )| {
                 // Generate a new agent ID
                 let agent_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = agent_register_heap(
@@ -818,9 +819,9 @@ mod tests {
 
                 // Verify the found agent has correct data
                 let found_agent = agents.iter().find(|a| a.agent.agent_id == agent_id).unwrap();
-                prop_assert_eq!(found_agent.agent.agent_type, agent_type);
-                prop_assert_eq!(found_agent.agent.capabilities, capabilities);
-                prop_assert_eq!(found_agent.agent.can_delegate_to, can_delegate_to);
+                prop_assert_eq!(&found_agent.agent.agent_type, &agent_type);
+                prop_assert_eq!(&found_agent.agent.capabilities, &capabilities);
+                prop_assert_eq!(&found_agent.agent.can_delegate_to, &can_delegate_to);
                 prop_assert_eq!(found_agent.agent.reports_to, reports_to);
                 prop_assert_eq!(found_agent.tenant_id, Some(tenant_id));
 

@@ -607,7 +607,7 @@ mod tests {
                 let retrieved = get_result.unwrap();
                 prop_assert!(retrieved.is_some(), "Edge should be found");
 
-                let e = retrieved.unwrap();
+                let e = retrieved.unwrap().edge;
 
                 // Verify round-trip preserves data
                 prop_assert_eq!(e.edge_id, edge_id);

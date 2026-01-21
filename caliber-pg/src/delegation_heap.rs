@@ -657,7 +657,6 @@ mod tests {
                 // Generate a new delegation ID
                 let delegation_id = caliber_core::new_entity_id();
                 let tenant_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let result = delegation_create_heap(DelegationCreateParams {
@@ -780,6 +779,7 @@ mod tests {
             )| {
                 // Generate a new delegation ID
                 let delegation_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = delegation_create_heap(DelegationCreateParams {
@@ -1037,15 +1037,18 @@ mod tests {
                 
                 let delegations = list_result.unwrap();
                 prop_assert!(
-                    delegations.iter().any(|d| d.delegation_id == delegation_id),
+                    delegations.iter().any(|d| d.delegation.delegation_id == delegation_id),
                     "Inserted delegation should be found via status index"
                 );
 
                 // Verify the found delegation has correct data
-                let found_delegation = delegations.iter().find(|d| d.delegation_id == delegation_id).unwrap();
-                prop_assert_eq!(found_delegation.delegator_agent_id, delegator_agent_id);
-                prop_assert_eq!(found_delegation.task_description, task_description);
-                prop_assert_eq!(found_delegation.status, DelegationStatus::Pending);
+                let found_delegation = delegations
+                    .iter()
+                    .find(|d| d.delegation.delegation_id == delegation_id)
+                    .unwrap();
+                prop_assert_eq!(found_delegation.delegation.delegator_agent_id, delegator_agent_id);
+                prop_assert_eq!(&found_delegation.delegation.task_description, &task_description);
+                prop_assert_eq!(found_delegation.delegation.status, DelegationStatus::Pending);
 
                 Ok(())
             }).unwrap();
