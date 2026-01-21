@@ -5413,7 +5413,7 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 
 ---
 
-### January 19, 2026 — AppState Router Unification
+### January 20, 2026 — API Test and JWT Improvements
 
 **Completed:**
 - [x] Added shared `AppState` with `FromRef` extractors for Axum
@@ -5436,3 +5436,58 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 - [ ] Check for any lingering unused imports or warnings
 
 **Time Spent:** ~2 hours
+
+**Status:** AppState unification complete; follow-up test run pending.
+
+---
+
+### January 20, 2026 — API Test Hardening & JWT Secret Handling
+
+**Objective:** Improve API error handling, test reliability, and JWT secret management.
+
+**Completed:**
+
+- ✅ Introduced type-safe JWT secret handling and tightened auth config validation
+- ✅ Enabled DB-backed property tests for API flows (with explicit DB config)
+- ✅ Updated async handlers to return `ApiResult` for consistent error propagation
+- ✅ Improved test configuration defaults for reliable CI/local runs
+
+**Commits:**
+
+- `29f245a` - feat: Enhance JWT secret handling and improve test configurations
+- `96c3800` - feat: Enable DB-backed tests for property-based testing
+- `5322b8b` - feat: Update async handler to return ApiResult and improve error handling
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** API reliability improvements landed.
+
+---
+
+### January 21, 2026 — PG18 pgrx Test Compatibility Push
+
+**Objective:** Restore caliber-pg build/test compatibility on PostgreSQL 18.
+
+**Completed:**
+
+- ✅ Enabled `pgrx-tests` PG18 support via upstream develop branch
+- ✅ Rewired heap test imports to use local `pg_test` module
+- ✅ Replaced heap lock mode usage with `PgLockMode` for PG18 compatibility
+- ✅ Added missing `tenant_id` plumbing in heap tests + fixed borrow/move assertions
+- ✅ Gated `_PG_init`, `_PG_fini`, and `pg_module_magic!()` under `not(pg_test)`
+- ✅ Disabled standard Rust test/doctest harness for the extension crate
+- ✅ Ran migrations in `pg_test::setup()` to keep migration logic exercised
+- ✅ Disabled default `pgrx` features at the workspace level to avoid feature drift
+
+**Commits:**
+
+- `72399fd` - feat: Enable pgrx-tests with PG18 support via upstream develop branch
+- `665cf70` - feat: Disable default pgrx features and fix property test compilation issues
+
+**Verification:**
+
+- `cargo pgrx test -p caliber-pg --features "pg_test pg18"` builds cleanly (no tests run in harness)
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** PG18 test build unblocked; next step is running actual pgrx integration tests.

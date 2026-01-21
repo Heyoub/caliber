@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test coverage reporting (planned)
 - WSL-specific setup notes in README for Linux filesystem and tooling
 - Shared `AppState` for Axum routes with `FromRef` extractors
+- DB-backed property tests for API flows (explicit DB configuration)
+- PG18-compatible `pgrx-tests` wiring via upstream develop branch
 
 ### Fixed
 
@@ -25,11 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auth config production-validation tests now isolate environment variables
 - Smoke test network error handling now tolerates non-throwing fetch runtimes
 - Axum router state mismatch caused by `/ws` route state requirements
+- PG18 pgrx test compilation failures (heap test imports, lock mode usage)
+- Missing tenant_id plumbing in heap property tests and moved-value assertions
+- Duplicate extension symbols during pg_test builds (gated pg_module_magic/_PG_init)
+- PG18 list access mismatches in index ops (removed list_nth_* symbols; switched to pgrx List API)
 
 ### Changed
 
 - Centralized API router state initialization (webhooks, GraphQL schema, billing state)
 - Route modules now rely on shared app state instead of per-module routers
+- Async handlers now return `ApiResult` for consistent error propagation
+- JWT secret handling now type-safe with tighter auth config validation
+- `pg_test` setup now runs migrations to keep migration path exercised
+- Disabled default pgrx features/workspace defaults to avoid feature drift
+- Disabled standard Rust test/doctest harness for the extension crate during pg_test builds
+
+### Notes
+
+- Debugging journey: initially suspected linker/runtime symbol issues from the standard test harness, then traced PG18 build failures to pgrx list helpers removed from pg_sys. Final fix: disable lib test harness, update list access to pgrx List API, and tighten pg_test setup to run migrations.
 
 ## [0.4.0] - 2026-01-17
 
