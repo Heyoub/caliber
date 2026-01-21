@@ -11,6 +11,8 @@ description = "PostgreSQL 18+ extension for the CALIBER memory framework"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+test = false
+doctest = false
 
 [[bin]]
 name = "pgrx_embed_caliber_pg"

@@ -619,6 +619,7 @@ mod tests {
             runner.run(&strategy, |(resource_type, resource_id, holder_agent_id, expires_at, mode)| {
                 // Generate a new lock ID
                 let lock_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = lock_acquire_heap(
@@ -644,7 +645,7 @@ mod tests {
 
                 // Verify the found lock has correct data
                 let found_lock = locks.iter().find(|l| l.lock.lock_id == lock_id).unwrap();
-                prop_assert_eq!(found_lock.lock.resource_type, resource_type);
+                prop_assert_eq!(&found_lock.lock.resource_type, &resource_type);
                 prop_assert_eq!(found_lock.lock.resource_id, resource_id);
                 prop_assert_eq!(found_lock.lock.holder_agent_id, holder_agent_id);
                 prop_assert_eq!(found_lock.lock.mode, mode);

@@ -648,6 +648,7 @@ mod tests {
     mod pg_tests {
         use super::*;
         use crate::pg_test;
+        use crate::scope_heap::{scope_create_heap, scope_get_heap};
 
         /// Property 1: Insert-Get Round Trip (Scope)
         /// 
@@ -760,6 +761,9 @@ mod tests {
     mod update_tests {
         use super::*;
         use crate::pg_test;
+        use crate::scope_heap::{
+            scope_close_heap, scope_create_heap, scope_get_heap, scope_update_tokens_heap,
+        };
 
         /// Property 2: Close scope persists is_active=false and closed_at
         ///
@@ -932,6 +936,7 @@ mod tests {
     mod list_tests {
         use super::*;
         use crate::pg_test;
+        use crate::scope_heap::{scope_create_heap, scope_list_by_trajectory_heap};
 
         /// Property 3: List by trajectory returns all scopes for that trajectory
         ///

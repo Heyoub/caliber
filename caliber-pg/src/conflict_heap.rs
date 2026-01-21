@@ -571,7 +571,7 @@ mod tests {
                 let conflict = get_result.unwrap();
                 prop_assert!(conflict.is_some(), "Conflict should be found");
                 
-                let c = conflict.unwrap();
+                let c = conflict.unwrap().conflict;
                 
                 // Verify round-trip preserves data
                 prop_assert_eq!(c.conflict_id, conflict_id);
@@ -677,7 +677,7 @@ mod tests {
                 // Verify initial status is Detected
                 let get_before = conflict_get_heap(conflict_id, tenant_id);
                 prop_assert!(get_before.is_ok(), "Get before resolve should succeed");
-                let conflict_before = get_before.unwrap().unwrap();
+                let conflict_before = get_before.unwrap().unwrap().conflict;
                 prop_assert_eq!(conflict_before.status, ConflictStatus::Detected);
                 prop_assert!(conflict_before.resolved_at.is_none(), "resolved_at should be None before resolve");
                 prop_assert!(conflict_before.resolution.is_none(), "resolution should be None before resolve");
@@ -690,7 +690,7 @@ mod tests {
                 // Verify status, resolution, and resolved_at were updated
                 let get_after = conflict_get_heap(conflict_id, tenant_id);
                 prop_assert!(get_after.is_ok(), "Get after resolve should succeed");
-                let conflict_after = get_after.unwrap().unwrap();
+                let conflict_after = get_after.unwrap().unwrap().conflict;
                 prop_assert_eq!(conflict_after.status, ConflictStatus::Resolved, "Status should be Resolved");
                 prop_assert!(conflict_after.resolved_at.is_some(), "resolved_at should be set after resolve");
                 prop_assert!(conflict_after.resolved_at.unwrap() <= chrono::Utc::now(), "resolved_at should be <= now");
@@ -793,12 +793,17 @@ mod tests {
                 
                 let conflicts = list_result.unwrap();
                 prop_assert!(
-                    conflicts.iter().any(|c| c.conflict_id == conflict_id),
+                    conflicts.iter().any(|c| c.conflict.conflict_id == conflict_id),
                     "Inserted conflict should be found via list_pending"
                 );
 
                 // Verify the found conflict has correct data
-                let found_conflict = conflicts.iter().find(|c| c.conflict_id == conflict_id).unwrap();
+                let found_conflict = conflicts
+                    .iter()
+                    .find(|c| c.conflict.conflict_id == conflict_id)
+                    .unwrap()
+                    .conflict
+                    .clone();
                 prop_assert_eq!(found_conflict.conflict_type, conflict_type);
                 prop_assert_eq!(found_conflict.item_a_type, item_a_type);
                 prop_assert_eq!(found_conflict.item_a_id, item_a_id);
@@ -869,7 +874,10 @@ mod tests {
                 let list_before = conflict_list_pending_heap(tenant_id);
                 prop_assert!(list_before.is_ok(), "List pending before resolve should succeed");
                 prop_assert!(
-                    list_before.unwrap().iter().any(|c| c.conflict_id == conflict_id),
+                    list_before
+                        .unwrap()
+                        .iter()
+                        .any(|c| c.conflict.conflict_id == conflict_id),
                     "Conflict should be in pending list before resolve"
                 );
 
@@ -881,7 +889,10 @@ mod tests {
                 let list_after = conflict_list_pending_heap(tenant_id);
                 prop_assert!(list_after.is_ok(), "List pending after resolve should succeed");
                 prop_assert!(
-                    !list_after.unwrap().iter().any(|c| c.conflict_id == conflict_id),
+                    !list_after
+                        .unwrap()
+                        .iter()
+                        .any(|c| c.conflict.conflict_id == conflict_id),
                     "Resolved conflict should NOT be in pending list"
                 );
 

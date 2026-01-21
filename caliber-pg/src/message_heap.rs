@@ -574,7 +574,7 @@ mod tests {
 
             runner.run(&strategy, |(
                 from_agent_id,
-                to_agent_id_val,
+                _to_agent_id_val,
                 to_agent_id,
                 to_agent_type,
                 message_type,
@@ -693,7 +693,7 @@ mod tests {
 
             runner.run(&strategy, |(
                 from_agent_id,
-                to_agent_id_val,
+                _to_agent_id_val,
                 to_agent_id,
                 to_agent_type,
                 message_type,
@@ -706,6 +706,7 @@ mod tests {
             )| {
                 // Generate a new message ID
                 let message_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = message_send_heap(MessageSendParams {
@@ -777,7 +778,7 @@ mod tests {
 
             runner.run(&strategy, |(
                 from_agent_id,
-                to_agent_id_val,
+                _to_agent_id_val,
                 to_agent_id,
                 to_agent_type,
                 message_type,
