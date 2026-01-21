@@ -89,3 +89,7 @@ codegen-units = 16
 
 [profile.test]
 opt-level = 1  # Faster test compilation
+
+[patch.crates-io]
+pgrx = { git = "https://github.com/pgcentralfoundation/pgrx", branch = "develop" }
+pgrx-tests = { git = "https://github.com/pgcentralfoundation/pgrx", branch = "develop", package = "pgrx-tests" }

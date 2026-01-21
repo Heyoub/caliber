@@ -12,9 +12,16 @@ use pgrx::datum::DatumWithOid;
 use pgrx::spi::Spi;
 
 // pgrx_tests is optional - only available when pg_test feature is enabled
-// Currently broken with Postgres 18 due to Pg_magic_struct field changes
 #[cfg(feature = "pg_test")]
-pub use pgrx_tests::pg_test;
+pub mod pg_test {
+    pub fn setup(_options: Vec<&str>) {
+        // noop
+    }
+
+    pub fn postgresql_conf_options() -> Vec<&'static str> {
+        vec!["shared_preload_libraries='pgrx_tests'"]
+    }
+}
 
 // Re-export core types for use in SQL functions
 use caliber_core::{
@@ -6591,6 +6598,10 @@ fn caliber_tenant_get(tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
 mod tests {
     use pgrx::prelude::*;
 
+    fn test_tenant_id() -> pgrx::Uuid {
+        crate::caliber_new_id()
+    }
+
     #[pg_test]
     fn test_caliber_version() {
         let version = crate::caliber_version();
@@ -6610,23 +6621,26 @@ mod tests {
         // Clear storage first
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         // Create trajectory
         let traj_id = crate::caliber_trajectory_create(
             "Test Trajectory",
             Some("Test description"),
             None,
+            tenant_id,
         );
 
         // Get trajectory
-        let traj = crate::caliber_trajectory_get(traj_id);
+        let traj = crate::caliber_trajectory_get(traj_id, tenant_id);
         assert!(traj.is_some());
 
         // Update status
-        let updated = crate::caliber_trajectory_set_status(traj_id, "completed");
+        let updated = crate::caliber_trajectory_set_status(traj_id, "completed", tenant_id);
         assert_eq!(updated, Some(true));
 
         // Verify status change
-        let traj = crate::caliber_trajectory_get(traj_id);
+        let traj = crate::caliber_trajectory_get(traj_id, tenant_id);
         assert!(traj.is_some());
     }
 
@@ -6634,22 +6648,24 @@ mod tests {
     fn test_scope_lifecycle() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         // Create trajectory first
-        let traj_id = crate::caliber_trajectory_create("Test", None, None);
+        let traj_id = crate::caliber_trajectory_create("Test", None, None, tenant_id);
 
         // Create scope
-        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", None, 8000);
+        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", None, 8000, tenant_id);
 
         // Get scope
-        let scope = crate::caliber_scope_get(scope_id);
+        let scope = crate::caliber_scope_get(scope_id, tenant_id);
         assert!(scope.is_some());
 
         // Get current scope
-        let current = crate::caliber_scope_get_current(traj_id);
+        let current = crate::caliber_scope_get_current(traj_id, tenant_id);
         assert!(current.is_some());
 
         // Close scope
-        let closed = crate::caliber_scope_close(scope_id);
+        let closed = crate::caliber_scope_close(scope_id, tenant_id);
         assert!(closed);
     }
 
@@ -6657,11 +6673,13 @@ mod tests {
     fn test_scope_update() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         // Create trajectory first
-        let traj_id = crate::caliber_trajectory_create("Test", None, None);
+        let traj_id = crate::caliber_trajectory_create("Test", None, None, tenant_id);
 
         // Create scope
-        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", Some("Initial purpose"), 8000);
+        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", Some("Initial purpose"), 8000, tenant_id);
 
         // Update scope with various fields
         let updates = pgrx::JsonB(serde_json::json!({
@@ -6670,11 +6688,11 @@ mod tests {
             "tokens_used": 100,
             "metadata": {"key": "value"}
         }));
-        let updated = crate::caliber_scope_update(scope_id, updates);
+        let updated = crate::caliber_scope_update(scope_id, updates, tenant_id);
         assert!(updated);
 
         // Get scope and verify updates
-        let scope = crate::caliber_scope_get(scope_id);
+        let scope = crate::caliber_scope_get(scope_id, tenant_id);
         assert!(scope.is_some());
         let scope_data = scope.unwrap().0;
         assert_eq!(scope_data["name"].as_str(), Some("Updated Scope"));
@@ -6687,11 +6705,11 @@ mod tests {
             "purpose": null,
             "metadata": null
         }));
-        let updated_null = crate::caliber_scope_update(scope_id, null_updates);
+        let updated_null = crate::caliber_scope_update(scope_id, null_updates, tenant_id);
         assert!(updated_null);
 
         // Verify null updates
-        let scope_after_null = crate::caliber_scope_get(scope_id);
+        let scope_after_null = crate::caliber_scope_get(scope_id, tenant_id);
         assert!(scope_after_null.is_some());
         let scope_null_data = scope_after_null.unwrap().0;
         assert!(scope_null_data["purpose"].is_null());
@@ -6702,8 +6720,10 @@ mod tests {
     fn test_artifact_lifecycle() {
         crate::caliber_debug_clear();
 
-        let traj_id = crate::caliber_trajectory_create("Test", None, None);
-        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", None, 8000);
+        let tenant_id = test_tenant_id();
+
+        let traj_id = crate::caliber_trajectory_create("Test", None, None, tenant_id);
+        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", None, 8000, tenant_id);
 
         // Create artifact
         let artifact_id = crate::caliber_artifact_create(
@@ -6712,15 +6732,20 @@ mod tests {
             "fact",
             "Test Artifact",
             "Test content",
+            0,
+            "explicit",
+            Some(0.9),
+            "persistent",
+            tenant_id,
         )
         .expect("artifact should be created");
 
         // Get artifact
-        let artifact = crate::caliber_artifact_get(artifact_id);
+        let artifact = crate::caliber_artifact_get(artifact_id, tenant_id);
         assert!(artifact.is_some());
 
         // Query by type
-        let artifacts = crate::caliber_artifact_query_by_type(traj_id, "fact");
+        let artifacts = crate::caliber_artifact_query_by_type(traj_id, "fact", tenant_id);
         let arr: Vec<serde_json::Value> = serde_json::from_value(artifacts.0).unwrap();
         assert!(!arr.is_empty());
     }
@@ -6729,23 +6754,28 @@ mod tests {
     fn test_note_lifecycle() {
         crate::caliber_debug_clear();
 
-        let traj_id = crate::caliber_trajectory_create("Test", None, None);
+        let tenant_id = test_tenant_id();
+
+        let traj_id = crate::caliber_trajectory_create("Test", None, None, tenant_id);
 
         // Create note
         let note_id = crate::caliber_note_create(
             "fact",
             "Test Note",
             "Test content",
-            Some(traj_id),
+            vec![traj_id],
+            vec![],
+            "persistent",
+            tenant_id,
         )
         .expect("note should be created");
 
         // Get note
-        let note = crate::caliber_note_get(note_id);
+        let note = crate::caliber_note_get(note_id, tenant_id);
         assert!(note.is_some());
 
         // Query by trajectory
-        let notes = crate::caliber_note_query_by_trajectory(traj_id);
+        let notes = crate::caliber_note_query_by_trajectory(traj_id, tenant_id);
         let arr: Vec<serde_json::Value> = serde_json::from_value(notes.0).unwrap();
         assert!(!arr.is_empty());
     }
@@ -6754,15 +6784,17 @@ mod tests {
     fn test_turn_lifecycle() {
         crate::caliber_debug_clear();
 
-        let traj_id = crate::caliber_trajectory_create("Test", None, None);
-        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", None, 8000);
+        let tenant_id = test_tenant_id();
+
+        let traj_id = crate::caliber_trajectory_create("Test", None, None, tenant_id);
+        let scope_id = crate::caliber_scope_create(traj_id, "Test Scope", None, 8000, tenant_id);
 
         // Create turns
-        let _turn1 = crate::caliber_turn_create(scope_id, 1, "user", "Hello", 5);
-        let _turn2 = crate::caliber_turn_create(scope_id, 2, "assistant", "Hi there!", 10);
+        let _turn1 = crate::caliber_turn_create(scope_id, 1, "user", "Hello", 5, tenant_id);
+        let _turn2 = crate::caliber_turn_create(scope_id, 2, "assistant", "Hi there!", 10, tenant_id);
 
         // Get turns by scope
-        let turns = crate::caliber_turn_get_by_scope(scope_id);
+        let turns = crate::caliber_turn_get_by_scope(scope_id, tenant_id);
         let arr: Vec<serde_json::Value> = serde_json::from_value(turns.0).unwrap();
         assert_eq!(arr.len(), 2);
     }
@@ -6771,24 +6803,26 @@ mod tests {
     fn test_agent_lifecycle() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         // Register agent
         let caps = pgrx::JsonB(serde_json::json!(["rust", "python"]));
-        let agent_id = crate::caliber_agent_register("coder", caps);
+        let agent_id = crate::caliber_agent_register("coder", caps, tenant_id);
 
         // Get agent
-        let agent = crate::caliber_agent_get(agent_id);
+        let agent = crate::caliber_agent_get(agent_id, tenant_id);
         assert!(agent.is_some());
 
         // Update status
-        let updated = crate::caliber_agent_set_status(agent_id, "active");
+        let updated = crate::caliber_agent_set_status(agent_id, "active", tenant_id);
         assert!(updated);
 
         // Heartbeat
-        let heartbeat = crate::caliber_agent_heartbeat(agent_id);
+        let heartbeat = crate::caliber_agent_heartbeat(agent_id, tenant_id);
         assert!(heartbeat);
 
         // List by type
-        let agents = crate::caliber_agent_list_by_type("coder");
+        let agents = crate::caliber_agent_list_by_type("coder", tenant_id);
         let arr: Vec<serde_json::Value> = serde_json::from_value(agents.0).unwrap();
         assert!(!arr.is_empty());
     }
@@ -6797,9 +6831,11 @@ mod tests {
     fn test_message_lifecycle() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         let caps_value = serde_json::json!([]);
-        let agent1 = crate::caliber_agent_register("sender", pgrx::JsonB(caps_value.clone()));
-        let agent2 = crate::caliber_agent_register("receiver", pgrx::JsonB(caps_value));
+        let agent1 = crate::caliber_agent_register("sender", pgrx::JsonB(caps_value.clone()), tenant_id);
+        let agent2 = crate::caliber_agent_register("receiver", pgrx::JsonB(caps_value), tenant_id);
 
         // Send message
         let msg_id = crate::caliber_message_send(
@@ -6808,20 +6844,25 @@ mod tests {
             None,
             "heartbeat",
             "{}",
+            None,
+            None,
+            vec![],
             "normal",
+            None,
+            tenant_id,
         )
         .expect("message should be sent");
 
         // Get message
-        let msg = crate::caliber_message_get(msg_id);
+        let msg = crate::caliber_message_get(msg_id, tenant_id);
         assert!(msg.is_some());
 
         // Mark delivered
-        let delivered = crate::caliber_message_mark_delivered(msg_id);
+        let delivered = crate::caliber_message_mark_delivered(msg_id, tenant_id);
         assert!(delivered);
 
         // Mark acknowledged
-        let acked = crate::caliber_message_mark_acknowledged(msg_id);
+        let acked = crate::caliber_message_mark_acknowledged(msg_id, tenant_id);
         assert!(acked);
     }
 
@@ -6829,10 +6870,12 @@ mod tests {
     fn test_delegation_lifecycle() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         let caps_value = serde_json::json!([]);
-        let delegator = crate::caliber_agent_register("planner", pgrx::JsonB(caps_value.clone()));
-        let delegatee = crate::caliber_agent_register("coder", pgrx::JsonB(caps_value));
-        let traj_id = crate::caliber_trajectory_create("Parent Task", None, None);
+        let delegator = crate::caliber_agent_register("planner", pgrx::JsonB(caps_value.clone()), tenant_id);
+        let delegatee = crate::caliber_agent_register("coder", pgrx::JsonB(caps_value), tenant_id);
+        let traj_id = crate::caliber_trajectory_create("Parent Task", None, None, tenant_id);
 
         // Create delegation
         let delegation_id = crate::caliber_delegation_create(
@@ -6841,19 +6884,20 @@ mod tests {
             None,
             "Implement feature X",
             traj_id,
+            tenant_id,
         );
 
         // Get delegation
-        let delegation = crate::caliber_delegation_get(delegation_id);
+        let delegation = crate::caliber_delegation_get(delegation_id, tenant_id);
         assert!(delegation.is_some());
 
         // Accept delegation
-        let child_traj = crate::caliber_trajectory_create("Child Task", None, None);
-        let accepted = crate::caliber_delegation_accept(delegation_id, delegatee, child_traj);
+        let child_traj = crate::caliber_trajectory_create("Child Task", None, None, tenant_id);
+        let accepted = crate::caliber_delegation_accept(delegation_id, delegatee, child_traj, tenant_id);
         assert!(accepted);
 
         // Complete delegation
-        let completed = crate::caliber_delegation_complete(delegation_id, true, "Done!");
+        let completed = crate::caliber_delegation_complete(delegation_id, true, "Done!", tenant_id);
         assert!(completed);
     }
 
@@ -6861,11 +6905,13 @@ mod tests {
     fn test_handoff_lifecycle() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         let caps_value = serde_json::json!([]);
-        let agent1 = crate::caliber_agent_register("generalist", pgrx::JsonB(caps_value.clone()));
-        let agent2 = crate::caliber_agent_register("specialist", pgrx::JsonB(caps_value));
-        let traj_id = crate::caliber_trajectory_create("Task", None, None);
-        let scope_id = crate::caliber_scope_create(traj_id, "Scope", None, 8000);
+        let agent1 = crate::caliber_agent_register("generalist", pgrx::JsonB(caps_value.clone()), tenant_id);
+        let agent2 = crate::caliber_agent_register("specialist", pgrx::JsonB(caps_value), tenant_id);
+        let traj_id = crate::caliber_trajectory_create("Task", None, None, tenant_id);
+        let scope_id = crate::caliber_scope_create(traj_id, "Scope", None, 8000, tenant_id);
         let snapshot_id = crate::caliber_new_id();
 
         // Create handoff
@@ -6877,24 +6923,27 @@ mod tests {
             scope_id,
             snapshot_id,
             "specialization",
+            tenant_id,
         );
 
         // Get handoff
-        let handoff = crate::caliber_handoff_get(handoff_id);
+        let handoff = crate::caliber_handoff_get(handoff_id, tenant_id);
         assert!(handoff.is_some());
 
         // Accept handoff
-        let accepted = crate::caliber_handoff_accept(handoff_id, agent2);
+        let accepted = crate::caliber_handoff_accept(handoff_id, agent2, tenant_id);
         assert!(accepted);
 
         // Complete handoff
-        let completed = crate::caliber_handoff_complete(handoff_id);
+        let completed = crate::caliber_handoff_complete(handoff_id, tenant_id);
         assert!(completed);
     }
 
     #[pg_test]
     fn test_conflict_lifecycle() {
         crate::caliber_debug_clear();
+
+        let tenant_id = test_tenant_id();
 
         let artifact_a = crate::caliber_new_id();
         let artifact_b = crate::caliber_new_id();
@@ -6906,14 +6955,15 @@ mod tests {
             artifact_a,
             "artifact",
             artifact_b,
+            tenant_id,
         );
 
         // Get conflict
-        let conflict = crate::caliber_conflict_get(conflict_id);
+        let conflict = crate::caliber_conflict_get(conflict_id, tenant_id);
         assert!(conflict.is_some());
 
         // List unresolved
-        let unresolved = crate::caliber_conflict_list_unresolved();
+        let unresolved = crate::caliber_conflict_list_unresolved(tenant_id);
         let arr: Vec<serde_json::Value> = serde_json::from_value(unresolved.0).unwrap();
         assert!(!arr.is_empty());
 
@@ -6923,6 +6973,7 @@ mod tests {
             "highest_confidence",
             Some("a"),
             "Artifact A has higher confidence",
+            tenant_id,
         );
         assert!(resolved);
     }
@@ -6931,10 +6982,12 @@ mod tests {
     fn test_debug_stats() {
         crate::caliber_debug_clear();
 
+        let tenant_id = test_tenant_id();
+
         // Create some data
-        let _traj = crate::caliber_trajectory_create("Test", None, None);
+        let _traj = crate::caliber_trajectory_create("Test", None, None, tenant_id);
         let caps = pgrx::JsonB(serde_json::json!([]));
-        let _agent = crate::caliber_agent_register("test", caps);
+        let _agent = crate::caliber_agent_register("test", caps, tenant_id);
 
         // Get stats
         let stats = crate::caliber_debug_stats();

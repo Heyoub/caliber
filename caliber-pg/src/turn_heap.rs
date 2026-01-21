@@ -19,7 +19,7 @@ use caliber_core::{
 use crate::column_maps::turn;
 use crate::heap_ops::{
     current_timestamp, form_tuple, insert_tuple, open_relation,
-    LockMode, HeapRelation, get_active_snapshot, timestamp_to_pgrx,
+    PgLockMode as LockMode, HeapRelation, get_active_snapshot, timestamp_to_pgrx,
 };
 use crate::index_ops::{
     init_scan_key, open_index, update_indexes_for_insert,
@@ -358,7 +358,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Turn)
         /// Validates: Requirements 5.1, 5.2
@@ -430,7 +430,7 @@ mod tests {
                 prop_assert_eq!(t.turn.scope_id, scope_id);
                 prop_assert_eq!(t.turn.sequence, sequence);
                 prop_assert_eq!(t.turn.role, role);
-                prop_assert_eq!(t.turn.content, content);
+                prop_assert_eq!(t.turn.content.as_str(), content.as_str());
                 prop_assert_eq!(t.turn.token_count, token_count);
                 prop_assert!(t.turn.tool_calls.is_none());
                 prop_assert!(t.turn.tool_results.is_none());

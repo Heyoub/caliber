@@ -22,7 +22,7 @@ use caliber_core::{
 use crate::column_maps::trajectory;
 use crate::heap_ops::{
     current_timestamp, form_tuple, insert_tuple, open_relation,
-    update_tuple, LockMode, HeapRelation, get_active_snapshot,
+    update_tuple, PgLockMode as LockMode, HeapRelation, get_active_snapshot,
     timestamp_to_pgrx,
 };
 use crate::index_ops::{
@@ -732,7 +732,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Trajectory)
         /// 
@@ -832,7 +832,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod update_tests {
         use super::*;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 2: Update Persistence (Trajectory)
         ///
