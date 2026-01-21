@@ -24,6 +24,8 @@
 #[allow(unused_imports)]
 use pgrx::prelude::*;
 use pgrx::pg_sys;
+use pgrx::list::List;
+use pgrx::memcx::current_context;
 use pgrx::PgRelation;
 
 use caliber_core::{CaliberError, CaliberResult, StorageError};
@@ -187,23 +189,20 @@ pub fn open_index_by_oid(oid: pg_sys::Oid) -> CaliberResult<IndexRelation> {
 pub fn get_index_list(rel: &HeapRelation) -> Vec<pg_sys::Oid> {
     let mut indexes = Vec::new();
 
-    unsafe {
-        let list = pg_sys::RelationGetIndexList(rel.as_ref().as_ptr());
-        if list.is_null() {
-            return indexes;
-        }
-
-        // In PostgreSQL 18 / pgrx 0.16, List uses elements array instead of head/next
-        let len = (*list).length as usize;
-        for i in 0..len {
-            // list_nth_oid extracts OID at position i
-            let oid = pg_sys::list_nth_oid(list, i as i32);
-            indexes.push(oid);
-        }
-
-        // Free the list (but not the OIDs, they're just integers)
-        pg_sys::list_free(list);
+    let list = unsafe { pg_sys::RelationGetIndexList(rel.as_ref().as_ptr()) };
+    if list.is_null() {
+        return indexes;
     }
+
+    let index_list = current_context(|memcx| unsafe {
+        List::<pg_sys::Oid>::downcast_ptr_in_memcx(list, memcx)
+            .map(|list| list.iter().copied().collect::<Vec<_>>())
+            .unwrap_or_default()
+    });
+    indexes.extend(index_list);
+
+    // Free the list (but not the OIDs, they're just integers)
+    unsafe { pg_sys::list_free(list) };
 
     indexes
 }
