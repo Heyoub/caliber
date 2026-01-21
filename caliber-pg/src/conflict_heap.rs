@@ -14,7 +14,7 @@ use caliber_agents::{Conflict, ConflictStatus, ConflictType, ConflictResolutionR
 use crate::column_maps::conflict;
 use crate::heap_ops::{
     current_timestamp, form_tuple, insert_tuple, open_relation, update_tuple,
-    LockMode as HeapLockMode, HeapRelation, get_active_snapshot,
+    PgLockMode as HeapLockMode, HeapRelation, get_active_snapshot,
     timestamp_to_pgrx,
 };
 use crate::index_ops::{
@@ -508,7 +508,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Conflict)
         /// 
@@ -546,6 +546,7 @@ mod tests {
             )| {
                 // Generate a new conflict ID
                 let conflict_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let result = conflict_create_heap(ConflictCreateParams {
@@ -558,6 +559,7 @@ mod tests {
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), conflict_id);
@@ -655,6 +657,7 @@ mod tests {
             )| {
                 // Generate a new conflict ID
                 let conflict_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = conflict_create_heap(ConflictCreateParams {
@@ -667,6 +670,7 @@ mod tests {
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
@@ -766,6 +770,7 @@ mod tests {
             )| {
                 // Generate a new conflict ID
                 let conflict_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = conflict_create_heap(ConflictCreateParams {
@@ -778,6 +783,7 @@ mod tests {
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
@@ -842,6 +848,7 @@ mod tests {
             )| {
                 // Generate a new conflict ID
                 let conflict_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap
                 let insert_result = conflict_create_heap(ConflictCreateParams {
@@ -854,6 +861,7 @@ mod tests {
                     agent_a_id,
                     agent_b_id,
                     trajectory_id,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 

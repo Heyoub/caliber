@@ -14,7 +14,7 @@ use caliber_agents::{DistributedLock, LockMode};
 use crate::column_maps::lock;
 use crate::heap_ops::{
     current_timestamp, delete_tuple, form_tuple, insert_tuple, open_relation,
-    LockMode as HeapLockMode, HeapRelation, HeapScanner, get_active_snapshot,
+    PgLockMode as HeapLockMode, HeapRelation, HeapScanner, get_active_snapshot,
     timestamp_to_pgrx,
 };
 use crate::index_ops::{
@@ -412,7 +412,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Lock)
         /// 
@@ -439,7 +439,6 @@ mod tests {
             runner.run(&strategy, |(resource_type, resource_id, holder_agent_id, expires_at, mode)| {
                 // Generate a new lock ID
                 let lock_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
                 let tenant_id = caliber_core::new_entity_id();
 
                 // Insert via heap

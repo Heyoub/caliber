@@ -14,7 +14,7 @@ use caliber_agents::{AgentHandoff, HandoffStatus, HandoffReason};
 use crate::column_maps::handoff;
 use crate::heap_ops::{
     current_timestamp, form_tuple, insert_tuple, open_relation, update_tuple,
-    LockMode as HeapLockMode, HeapRelation, get_active_snapshot,
+    PgLockMode as HeapLockMode, HeapRelation, get_active_snapshot,
     timestamp_to_pgrx,
 };
 use crate::index_ops::{
@@ -554,7 +554,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Handoff)
         /// 
@@ -581,6 +581,7 @@ mod tests {
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
+                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -595,6 +596,7 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
+                tenant_id,
             )| {
                 // Generate a new handoff ID
                 let handoff_id = caliber_core::new_entity_id();
@@ -613,6 +615,7 @@ mod tests {
                     blockers: &blockers,
                     open_questions: &open_questions,
                     reason,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
                 prop_assert_eq!(result.unwrap(), handoff_id);
@@ -700,6 +703,7 @@ mod tests {
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
+                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -714,6 +718,7 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
+                tenant_id,
             )| {
                 // Generate a new handoff ID
                 let handoff_id = caliber_core::new_entity_id();
@@ -732,6 +737,7 @@ mod tests {
                     blockers: &blockers,
                     open_questions: &open_questions,
                     reason,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
@@ -788,6 +794,7 @@ mod tests {
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
+                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -802,6 +809,7 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
+                tenant_id,
             )| {
                 // Generate a new handoff ID
                 let handoff_id = caliber_core::new_entity_id();
@@ -820,6 +828,7 @@ mod tests {
                     blockers: &blockers,
                     open_questions: &open_questions,
                     reason,
+                    tenant_id,
                 });
                 prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
@@ -905,6 +914,7 @@ mod tests {
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
+                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -919,6 +929,7 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
+                tenant_id,
             )| {
                 // Generate a new handoff ID
                 let handoff_id = caliber_core::new_entity_id();
@@ -937,6 +948,7 @@ mod tests {
                     blockers: &blockers,
                     open_questions: &open_questions,
                     reason,
+                    tenant_id,
                 });
                 prop_assert!(result.is_ok(), "Insert should succeed");
 

@@ -24,7 +24,7 @@ use caliber_core::{
 use crate::column_maps::edge;
 use crate::heap_ops::{
     current_timestamp, form_tuple, insert_tuple, open_relation,
-    LockMode, HeapRelation, get_active_snapshot, timestamp_to_pgrx,
+    PgLockMode as LockMode, HeapRelation, get_active_snapshot, timestamp_to_pgrx,
 };
 use crate::index_ops::{
     init_scan_key, open_index, update_indexes_for_insert,
@@ -548,7 +548,7 @@ mod tests {
     mod pg_tests {
         use super::*;
         use caliber_core::EntityRef;
-        use pgrx_tests::pg_test;
+        use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Edge)
         #[pg_test]
@@ -566,6 +566,7 @@ mod tests {
 
             runner.run(&strategy, |(edge_type, provenance, weight)| {
                 let edge_id = caliber_core::new_entity_id();
+                let tenant_id = caliber_core::new_entity_id();
 
                 // Create two participants for a binary edge
                 let participant_a = EdgeParticipant {
@@ -595,7 +596,7 @@ mod tests {
                 };
 
                 // Insert via heap
-                let result = edge_create_heap(&edge);
+                let result = edge_create_heap(&edge, tenant_id);
                 prop_assert!(result.is_ok(), "Insert should succeed");
                 prop_assert_eq!(result.unwrap(), edge_id);
 

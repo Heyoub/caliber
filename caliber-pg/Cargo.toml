@@ -21,14 +21,14 @@ default = ["pg18"]
 # BREAKING CHANGE (v0.4.0): CALIBER requires PostgreSQL 18+
 # Older versions (pg13-pg17) are no longer supported.
 # This enables use of PG18 features and simplifies maintenance.
-pg18 = ["pgrx/pg18"]
+pg18 = ["pgrx/pg18", "pgrx-tests/pg18"]
 # pg_test feature gates pgrx-tests dependency (currently broken with PG18)
 # Once pgrx-tests is fixed upstream, enable with: cargo pgrx test pg18 --features pg_test
 pg_test = ["dep:pgrx-tests"]
 debug = []  # Enable debug endpoints (caliber_debug_*)
 
 [dependencies]
-pgrx = { workspace = true }
+pgrx = { workspace = true, default-features = false }
 caliber-core = { workspace = true }
 caliber-storage = { workspace = true }
 caliber-context = { workspace = true }
@@ -51,5 +51,6 @@ proptest = { workspace = true }
 # Tracking: https://github.com/pgcentralfoundation/pgrx/issues
 [dependencies.pgrx-tests]
 version = "0.16.1"
-features = ["pg_test"]
+default-features = false
+features = ["pg_test", "pg18"]
 optional = true
