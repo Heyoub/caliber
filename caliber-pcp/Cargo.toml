@@ -3,6 +3,11 @@ name = "caliber-pcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation.workspace = true
+description = "Persistent Context Protocol validation and checkpointing for CALIBER"
 
 [features]
 default = ["openapi"]

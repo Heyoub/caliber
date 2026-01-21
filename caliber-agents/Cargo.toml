@@ -3,6 +3,11 @@ name = "caliber-agents"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation.workspace = true
+description = "Multi-agent coordination primitives for CALIBER"
 
 [features]
 default = ["openapi"]

@@ -3,6 +3,11 @@ name = "caliber-storage"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation.workspace = true
+description = "Storage traits and mock implementation for CALIBER entities"
 
 [dependencies]
 caliber-core = { workspace = true }

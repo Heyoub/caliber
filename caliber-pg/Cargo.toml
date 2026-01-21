@@ -3,6 +3,11 @@ name = "caliber-pg"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation.workspace = true
+description = "PostgreSQL 18+ extension for the CALIBER memory framework"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -45,6 +50,6 @@ proptest = { workspace = true }
 # Currently broken with Postgres 18 (Pg_magic_struct field changes)
 # Tracking: https://github.com/pgcentralfoundation/pgrx/issues
 [dependencies.pgrx-tests]
-version = "0.16"
+version = "0.16.1"
 features = ["pg_test"]
 optional = true

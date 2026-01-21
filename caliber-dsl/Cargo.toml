@@ -2,6 +2,12 @@
 name = "caliber-dsl"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation.workspace = true
+description = "DSL lexer/parser/pretty-printer for CALIBER configuration"
 
 [dependencies]
 caliber-core = { path = "../caliber-core" }
