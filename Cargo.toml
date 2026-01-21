@@ -62,15 +62,15 @@ tui-textarea = "0.5"
 toml = "0.8"
 
 # Internal crates
-caliber-core = { path = "caliber-core" }
-caliber-storage = { path = "caliber-storage" }
-caliber-context = { path = "caliber-context" }
-caliber-pcp = { path = "caliber-pcp" }
-caliber-llm = { path = "caliber-llm" }
-caliber-agents = { path = "caliber-agents" }
-caliber-dsl = { path = "caliber-dsl" }
-caliber-test-utils = { path = "caliber-test-utils" }
-caliber-api = { path = "caliber-api" }
+caliber-core = { path = "caliber-core", version = "0.4.0" }
+caliber-storage = { path = "caliber-storage", version = "0.4.0" }
+caliber-context = { path = "caliber-context", version = "0.4.0" }
+caliber-pcp = { path = "caliber-pcp", version = "0.4.0" }
+caliber-llm = { path = "caliber-llm", version = "0.4.0" }
+caliber-agents = { path = "caliber-agents", version = "0.4.0" }
+caliber-dsl = { path = "caliber-dsl", version = "0.4.0" }
+caliber-test-utils = { path = "caliber-test-utils", version = "0.4.0" }
+caliber-api = { path = "caliber-api", version = "0.4.0" }
 
 # === PROFILE OPTIMIZATIONS ===
 

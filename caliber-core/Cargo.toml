@@ -23,6 +23,7 @@ sha2 = { workspace = true }
 
 # OpenAPI schema generation (optional)
 utoipa = { version = "5.3", features = ["uuid", "chrono"], optional = true }
+caliber-core.workspace = true
 
 [dev-dependencies]
 proptest = { workspace = true }

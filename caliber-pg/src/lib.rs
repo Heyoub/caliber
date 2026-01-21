@@ -1298,6 +1298,7 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB, tenant_id: pgrx::U
 // ============================================================================
 
 /// Create a new artifact.
+#[allow(clippy::too_many_arguments)]
 #[pg_extern]
 fn caliber_artifact_create(
     trajectory_id: pgrx::Uuid,
@@ -2729,6 +2730,7 @@ fn caliber_lock_list_active_by_tenant(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
 /// Send a message to an agent.
 /// Send a message between agents using direct heap operations.
 /// Returns None if message_type or priority is invalid.
+#[allow(clippy::too_many_arguments)]
 #[pg_extern]
 fn caliber_message_send(
     from_agent_id: pgrx::Uuid,
@@ -2969,7 +2971,7 @@ fn caliber_message_get_pending(
                 .into_iter()
                 .filter(|row| {
                     row.message.delivered_at.is_none()
-                        && row.message.expires_at.map_or(true, |expires_at| expires_at > now)
+                        && row.message.expires_at.is_none_or(|expires_at| expires_at > now)
                 })
                 .collect();
             
@@ -3736,6 +3738,7 @@ fn caliber_delegation_list_pending(agent_type: &str, tenant_id: pgrx::Uuid) -> p
 // ============================================================================
 
 /// Create an agent handoff.
+#[allow(clippy::too_many_arguments)]
 #[pg_extern]
 fn caliber_handoff_create(
     from_agent_id: pgrx::Uuid,
@@ -5150,6 +5153,7 @@ fn caliber_region_remove_writer(
 /// * `source_turn` - Turn where this edge was extracted
 /// * `extraction_method` - How edge was created: explicit, inferred, userprovided
 /// * `confidence` - Optional confidence score 0.0-1.0
+#[allow(clippy::too_many_arguments)]
 #[pg_extern]
 fn caliber_edge_create(
     edge_type: &str,
@@ -5440,6 +5444,7 @@ fn caliber_edges_by_participant(entity_id: pgrx::Uuid, tenant_id: pgrx::Uuid) ->
 /// * `max_sources` - Maximum items to summarize at once
 /// * `create_edges` - Whether to auto-create SynthesizedFrom edges
 /// * `trajectory_id` - Optional trajectory this policy applies to
+#[allow(clippy::too_many_arguments)]
 #[pg_extern]
 fn caliber_summarization_policy_create(
     name: &str,

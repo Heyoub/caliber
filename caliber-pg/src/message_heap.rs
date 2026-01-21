@@ -40,6 +40,19 @@ impl From<MessageRow> for AgentMessage {
     }
 }
 
+type OptionalMessageDatums = (
+    pg_sys::Datum,
+    pg_sys::Datum,
+    pg_sys::Datum,
+    pg_sys::Datum,
+    pg_sys::Datum,
+    bool,
+    bool,
+    bool,
+    bool,
+    bool,
+);
+
 /// Send a message by inserting a message record using direct heap operations.
 pub struct MessageSendParams<'a> {
     pub message_id: EntityId,
@@ -295,18 +308,7 @@ fn build_optional_message_datums(
     trajectory_id: Option<EntityId>,
     scope_id: Option<EntityId>,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
-) -> CaliberResult<(
-    pg_sys::Datum,
-    pg_sys::Datum,
-    pg_sys::Datum,
-    pg_sys::Datum,
-    pg_sys::Datum,
-    bool,
-    bool,
-    bool,
-    bool,
-    bool,
-)> {
+) -> CaliberResult<OptionalMessageDatums> {
     let (to_agent_datum, to_agent_null) = match to_agent_id {
         Some(id) => (option_uuid_to_datum(Some(id)), false),
         None => (pg_sys::Datum::from(0), true),
