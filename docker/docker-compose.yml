@@ -7,7 +7,7 @@
 #   docker compose down -v        # Stop and remove volumes
 #
 # Services:
-#   - caliber-pg:   PostgreSQL 16 + caliber-pg extension (port 5432)
+#   - caliber-pg:   PostgreSQL 18 + caliber-pg extension (port 5432)
 #   - caliber-api:  REST/GraphQL/MCP API (port 3000)
 #   - redis:        Cache + pub/sub (port 6379)
 #   - jaeger:       Distributed tracing (ports 16686, 4317)

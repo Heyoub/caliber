@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Terminal UI client for interacting with CALIBER"
 
 [dependencies]
 caliber-core = { workspace = true }
