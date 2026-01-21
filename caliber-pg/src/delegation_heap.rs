@@ -40,6 +40,12 @@ impl From<DelegationRow> for DelegatedTask {
     }
 }
 
+type OptionalDelegationDatums = (
+    (pg_sys::Datum, bool),
+    (pg_sys::Datum, bool),
+    (pg_sys::Datum, bool),
+);
+
 /// Create a new delegation by inserting a delegation record using direct heap operations.
 pub struct DelegationCreateParams<'a> {
     pub delegation_id: EntityId,
@@ -387,7 +393,7 @@ fn build_optional_delegation_datums(
     delegatee_agent_id: Option<EntityId>,
     child_trajectory_id: Option<EntityId>,
     deadline: Option<chrono::DateTime<chrono::Utc>>,
-) -> CaliberResult<((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool))> {
+) -> CaliberResult<OptionalDelegationDatums> {
     let delegatee = match delegatee_agent_id {
         Some(id) => (uuid_to_datum(id), false),
         None => (pg_sys::Datum::from(0), true),
