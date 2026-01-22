@@ -274,9 +274,7 @@ impl SecureRouterBuilder {
             // Health checks (no auth required)
             .nest("/health", health::create_router())
             // Metrics endpoint (no auth, but rate-limited)
-            .route("/metrics", get(metrics_handler))
-            // OpenAPI spec
-            .route("/openapi.json", get(openapi_json));
+            .route("/metrics", get(metrics_handler));
 
         // Add SSO routes when workos feature is enabled
         #[cfg(feature = "workos")]
@@ -293,6 +291,7 @@ impl SecureRouterBuilder {
         }
 
         // Add Swagger UI if swagger-ui feature is enabled
+        // Note: SwaggerUi::url() also serves the OpenAPI spec at that URL
         #[cfg(feature = "swagger-ui")]
         {
             use utoipa_swagger_ui::SwaggerUi;
@@ -300,6 +299,13 @@ impl SecureRouterBuilder {
                 SwaggerUi::new("/swagger-ui")
                     .url("/openapi.json", ApiDoc::openapi()),
             );
+        }
+
+        // Add OpenAPI JSON endpoint only when swagger-ui is NOT enabled
+        // (swagger-ui feature already serves it via SwaggerUi::url())
+        #[cfg(not(feature = "swagger-ui"))]
+        {
+            router = router.route("/openapi.json", get(openapi_json));
         }
 
         // Build CORS layer
@@ -482,8 +488,7 @@ pub fn create_api_router_unauthenticated(
         .nest("/api/v1", api_routes)
         .nest("/mcp", mcp::create_router())
         .nest("/health", health::create_router())
-        .route("/metrics", get(metrics_handler))
-        .route("/openapi.json", get(openapi_json));
+        .route("/metrics", get(metrics_handler));
 
     #[cfg(feature = "workos")]
     {
@@ -505,6 +510,11 @@ pub fn create_api_router_unauthenticated(
             SwaggerUi::new("/swagger-ui")
                 .url("/openapi.json", ApiDoc::openapi()),
         );
+    }
+
+    #[cfg(not(feature = "swagger-ui"))]
+    {
+        router = router.route("/openapi.json", get(openapi_json));
     }
 
     let cors = build_cors_layer(api_config);
