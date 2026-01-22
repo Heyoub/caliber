@@ -5,6 +5,9 @@
 set -e
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    -- Create pgvector extension (required for embedding columns)
+    CREATE EXTENSION IF NOT EXISTS vector;
+
     -- Create the caliber_pg extension
     CREATE EXTENSION IF NOT EXISTS caliber_pg;
 
