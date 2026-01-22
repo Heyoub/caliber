@@ -26,8 +26,8 @@ caliber-storage = { workspace = true }
 caliber-dsl = { workspace = true }
 
 # Web framework - Axum for REST API
-# Both 0.7 (tonic) and 0.8 (async-graphql) are in the tree - we use 0.8 directly
-axum = { version = "0.8", features = ["ws", "macros"] }
+# Keep axum aligned with async-graphql-axum 7.0.0 to avoid mixed axum versions.
+axum = { version = "0.7", features = ["ws", "macros"] }
 tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 

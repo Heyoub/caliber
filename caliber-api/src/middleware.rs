@@ -268,6 +268,7 @@ impl IntoResponse for AuthMiddlewareError {
 #[derive(Debug, Clone)]
 pub struct AuthExtractor(pub AuthContext);
 
+#[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthExtractor
 where
     S: Send + Sync,
