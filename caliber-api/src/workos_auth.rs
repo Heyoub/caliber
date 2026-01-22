@@ -3,9 +3,9 @@
 //! This module provides WorkOS SSO authentication integration for the CALIBER API.
 //! It handles:
 //! - WorkOS client initialization from environment variables
-//! - JWT token validation against WorkOS JWKS
-//! - Claims mapping from WorkOS to CALIBER's AuthContext
-//! - SSO callback handling for OIDC authorization code flow
+//! - SSO authorization URL generation
+//! - OAuth2 code exchange for profile/token
+//! - JWT session token creation and validation
 //!
 //! Enable this module with the `workos` feature flag.
 //!
@@ -26,13 +26,6 @@ use crate::error::{ApiError, ApiResult};
 use caliber_core::EntityId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use workos::organizations::OrganizationId;
-use workos::sso::{
-    AuthorizationCode, ClientId, ConnectionId, ConnectionSelector, GetAuthorizationUrl,
-    GetAuthorizationUrlParams, GetProfileAndToken, GetProfileAndTokenParams,
-    GetProfileAndTokenResponse, Provider,
-};
-use workos::{ApiKey, KnownOrUnknown, WorkOs};
 
 // ============================================================================
 // CONFIGURATION
@@ -44,10 +37,10 @@ use workos::{ApiKey, KnownOrUnknown, WorkOs};
 #[derive(Debug, Clone)]
 pub struct WorkOsConfig {
     /// WorkOS application client ID
-    pub client_id: ClientId,
+    pub client_id: String,
 
     /// WorkOS API key
-    pub api_key: ApiKey,
+    pub api_key: String,
 
     /// Redirect URI for SSO callback
     pub redirect_uri: String,
@@ -74,24 +67,23 @@ impl WorkOsConfig {
             .unwrap_or_else(|_| "/auth/sso/callback".to_string());
 
         Ok(Self {
-            client_id: ClientId::from(client_id),
-            api_key: ApiKey::from(api_key),
+            client_id,
+            api_key,
             redirect_uri,
         })
     }
 
     /// Create WorkOS configuration with explicit values.
-    pub fn new(client_id: impl Into<String>, api_key: impl Into<String>, redirect_uri: impl Into<String>) -> Self {
+    pub fn new(
+        client_id: impl Into<String>,
+        api_key: impl Into<String>,
+        redirect_uri: impl Into<String>,
+    ) -> Self {
         Self {
-            client_id: ClientId::from(client_id.into()),
-            api_key: ApiKey::from(api_key.into()),
+            client_id: client_id.into(),
+            api_key: api_key.into(),
             redirect_uri: redirect_uri.into(),
         }
-    }
-
-    /// Create a WorkOS client from this configuration.
-    pub fn create_client(&self) -> WorkOs {
-        WorkOs::new(&self.api_key)
     }
 }
 
@@ -210,6 +202,26 @@ pub struct SsoCallbackResponse {
     pub tenant_id: Option<String>,
 }
 
+/// WorkOS API response for profile and token exchange
+#[derive(Debug, Deserialize)]
+struct WorkOsProfileResponse {
+    access_token: String,
+    profile: WorkOsProfile,
+}
+
+/// WorkOS profile structure from API
+#[derive(Debug, Deserialize)]
+struct WorkOsProfile {
+    id: String,
+    email: String,
+    first_name: Option<String>,
+    last_name: Option<String>,
+    organization_id: Option<String>,
+    connection_type: String,
+    idp_id: Option<String>,
+    raw_attributes: Option<serde_json::Value>,
+}
+
 /// Exchange authorization code for profile and token.
 ///
 /// This is the core SSO callback handler that:
@@ -227,41 +239,53 @@ pub async fn exchange_code_for_profile(
     config: &WorkOsConfig,
     code: &str,
 ) -> ApiResult<(String, WorkOsClaims)> {
-    let workos = config.create_client();
-    let sso = workos.sso();
+    let client = reqwest::Client::new();
 
-    let auth_code = AuthorizationCode::from(code.to_string());
-    let params = GetProfileAndTokenParams {
-        client_id: &config.client_id,
-        code: &auth_code,
-    };
-
-    let response: GetProfileAndTokenResponse = sso
-        .get_profile_and_token(&params)
+    let response = client
+        .post("https://api.workos.com/sso/token")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .basic_auth(&config.client_id, Some(&config.api_key))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", &config.client_id),
+            ("client_secret", &config.api_key),
+            ("code", code),
+            ("redirect_uri", &config.redirect_uri),
+        ])
+        .send()
         .await
-        .map_err(|e| ApiError::unauthorized(format!("WorkOS SSO error: {}", e)))?;
+        .map_err(|e| ApiError::internal_error(format!("WorkOS API request failed: {}", e)))?;
 
-    // Extract profile information
-    let profile = response.profile;
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(ApiError::unauthorized(format!(
+            "WorkOS SSO error ({}): {}",
+            status, error_text
+        )));
+    }
 
-    // Extract connection type as string
-    let connection_type_str = match &profile.connection_type {
-        KnownOrUnknown::Known(ct) => format!("{:?}", ct),
-        KnownOrUnknown::Unknown(s) => s.clone(),
-    };
+    let profile_response: WorkOsProfileResponse = response
+        .json()
+        .await
+        .map_err(|e| ApiError::internal_error(format!("Failed to parse WorkOS response: {}", e)))?;
 
+    let profile = profile_response.profile;
     let claims = WorkOsClaims {
-        user_id: profile.id.to_string(),
-        email: profile.email.clone(),
-        first_name: profile.first_name.clone(),
-        last_name: profile.last_name.clone(),
-        organization_id: profile.organization_id.as_ref().map(|id| id.to_string()),
-        connection_type: connection_type_str,
-        idp_id: Some(profile.idp_id.clone()),
-        raw_attributes: None, // raw_attributes not available in workos 0.8
+        user_id: profile.id,
+        email: profile.email,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        organization_id: profile.organization_id,
+        connection_type: profile.connection_type,
+        idp_id: profile.idp_id,
+        raw_attributes: profile.raw_attributes,
     };
 
-    Ok((response.access_token.to_string(), claims))
+    Ok((profile_response.access_token, claims))
 }
 
 // ============================================================================
@@ -270,12 +294,11 @@ pub async fn exchange_code_for_profile(
 
 /// Validate a WorkOS access token and extract claims.
 ///
-/// This function validates the token by calling the WorkOS API to get
-/// the user profile associated with the token. In production, you might
-/// want to cache this or validate JWT tokens locally using JWKS.
+/// This function validates the token by decoding the JWT session token
+/// that was created after initial SSO authentication.
 ///
 /// # Arguments
-/// * `config` - WorkOS configuration
+/// * `_config` - WorkOS configuration (unused, kept for API compatibility)
 /// * `token` - Access token to validate
 /// * `tenant_id_header` - Optional tenant ID from X-Tenant-ID header
 ///
@@ -286,17 +309,6 @@ pub async fn validate_workos_token(
     token: &str,
     tenant_id_header: Option<&str>,
 ) -> ApiResult<AuthContext> {
-    // For WorkOS, the access token is typically a session token
-    // that we need to validate against the WorkOS API.
-    //
-    // Note: WorkOS doesn't provide a direct token validation endpoint.
-    // In production, you would typically:
-    // 1. Use the token to call WorkOS User Management API
-    // 2. Or cache the profile during SSO callback and use session management
-    //
-    // For this implementation, we'll use a JWT-based approach where
-    // the access token is a JWT that we validate locally after initial SSO.
-
     // Try to decode the token as a JWT to extract claims
     // This assumes you've stored the user info in a JWT during callback
     let claims = decode_workos_session_token(token)?;
@@ -412,42 +424,37 @@ pub struct SsoAuthorizationParams {
 /// After authentication, WorkOS will redirect back to the callback URL
 /// with an authorization code.
 pub fn generate_authorization_url(config: &WorkOsConfig, params: &SsoAuthorizationParams) -> String {
-    let workos = config.create_client();
-    let sso = workos.sso();
+    let mut url = String::from("https://api.workos.com/sso/authorize?");
 
-    // Build connection IDs from strings - need to hold them so references are valid
-    let connection_id = params
-        .connection
-        .as_ref()
-        .map(|c| ConnectionId::from(c.clone()));
-    let organization_id = params
-        .organization
-        .as_ref()
-        .map(|o| OrganizationId::from(o.clone()));
+    // Required parameters
+    url.push_str(&format!("client_id={}", urlencoding::encode(&config.client_id)));
+    url.push_str(&format!(
+        "&redirect_uri={}",
+        urlencoding::encode(&config.redirect_uri)
+    ));
+    url.push_str("&response_type=code");
 
-    // Determine connection selector based on params
-    // Default to GoogleOAuth if no connection or organization specified
-    let connection_selector = if let Some(ref conn_id) = connection_id {
-        ConnectionSelector::Connection(conn_id)
-    } else if let Some(ref org_id) = organization_id {
-        ConnectionSelector::Organization(org_id)
+    // Connection selector - priority: connection > organization > provider (Google)
+    if let Some(ref connection) = params.connection {
+        url.push_str(&format!("&connection={}", urlencoding::encode(connection)));
+    } else if let Some(ref organization) = params.organization {
+        url.push_str(&format!("&organization={}", urlencoding::encode(organization)));
     } else {
-        // Default to Google OAuth provider for demo purposes
-        ConnectionSelector::Provider(&Provider::GoogleOauth)
-    };
+        // Default to Google OAuth provider
+        url.push_str("&provider=GoogleOAuth");
+    }
 
-    let url_params = GetAuthorizationUrlParams {
-        client_id: &config.client_id,
-        redirect_uri: &config.redirect_uri,
-        connection_selector,
-        state: params.state.as_deref(),
-    };
+    // Optional parameters
+    if let Some(ref state) = params.state {
+        url.push_str(&format!("&state={}", urlencoding::encode(state)));
+    }
 
-    sso.get_authorization_url(&url_params)
-        .map(|url| url.to_string())
-        .unwrap_or_else(|_| String::new())
+    if let Some(ref login_hint) = params.login_hint {
+        url.push_str(&format!("&login_hint={}", urlencoding::encode(login_hint)));
+    }
+
+    url
 }
-
 
 // ============================================================================
 // TESTS
@@ -572,5 +579,75 @@ mod tests {
         assert_eq!(auth_context.tenant_id, tenant_id);
         assert!(auth_context.has_role("workos_user"));
         assert!(auth_context.has_role("org_member"));
+    }
+
+    #[test]
+    fn test_generate_authorization_url_with_connection() {
+        let config = WorkOsConfig::new(
+            "client_123",
+            "sk_test_abc",
+            "https://api.example.com/auth/sso/callback",
+        );
+
+        let params = SsoAuthorizationParams {
+            connection: Some("conn_456".to_string()),
+            organization: None,
+            login_hint: None,
+            state: Some("csrf_token".to_string()),
+        };
+
+        let url = generate_authorization_url(&config, &params);
+
+        assert!(url.contains("client_id=client_123"));
+        assert!(url.contains("connection=conn_456"));
+        assert!(url.contains("state=csrf_token"));
+        assert!(url.contains("response_type=code"));
+        assert!(!url.contains("provider="));
+    }
+
+    #[test]
+    fn test_generate_authorization_url_with_organization() {
+        let config = WorkOsConfig::new(
+            "client_123",
+            "sk_test_abc",
+            "https://api.example.com/auth/sso/callback",
+        );
+
+        let params = SsoAuthorizationParams {
+            connection: None,
+            organization: Some("org_789".to_string()),
+            login_hint: Some("user@example.com".to_string()),
+            state: None,
+        };
+
+        let url = generate_authorization_url(&config, &params);
+
+        assert!(url.contains("organization=org_789"));
+        assert!(url.contains("login_hint=user%40example.com"));
+        assert!(!url.contains("connection="));
+        assert!(!url.contains("provider="));
+    }
+
+    #[test]
+    fn test_generate_authorization_url_default_provider() {
+        let config = WorkOsConfig::new(
+            "client_123",
+            "sk_test_abc",
+            "https://api.example.com/auth/sso/callback",
+        );
+
+        let params = SsoAuthorizationParams {
+            connection: None,
+            organization: None,
+            login_hint: None,
+            state: None,
+        };
+
+        let url = generate_authorization_url(&config, &params);
+
+        // Should default to Google OAuth
+        assert!(url.contains("provider=GoogleOAuth"));
+        assert!(!url.contains("connection="));
+        assert!(!url.contains("organization="));
     }
 }

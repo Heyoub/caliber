@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use axum::extract::FromRef;
 use caliber_pcp::PCPRuntime;
 
 use crate::db::DbClient;
@@ -36,32 +37,5 @@ crate::impl_from_ref!(Arc<BillingState>, billing_state);
 crate::impl_from_ref!(Arc<McpState>, mcp_state);
 crate::impl_from_ref!(std::time::Instant, start_time);
 
-// WorkOS configuration extractor - returns error instead of panicking
-#[cfg(feature = "workos")]
-pub struct WorkOsConfigExtractor(pub crate::workos_auth::WorkOsConfig);
-
-#[cfg(feature = "workos")]
-impl<S> axum::extract::FromRequestParts<S> for WorkOsConfigExtractor
-where
-    AppState: axum::extract::FromRef<S>,
-    S: Send + Sync,
-{
-    type Rejection = crate::error::ApiError;
-
-    async fn from_request_parts(
-        _parts: &mut axum::http::request::Parts,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
-        let app_state = AppState::from_ref(state);
-        app_state
-            .workos_config
-            .clone()
-            .map(WorkOsConfigExtractor)
-            .ok_or_else(|| {
-                crate::error::ApiError::internal_error(
-                    "WorkOS authentication enabled but not configured. \
-                     Set CALIBER_WORKOS_CLIENT_ID and CALIBER_WORKOS_API_KEY environment variables.",
-                )
-            })
-    }
-}
+// WorkOS configuration is accessed directly from AppState in route handlers.
+// The workos_config field is an Option<WorkOsConfig> that handlers check at runtime.

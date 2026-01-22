@@ -22,7 +22,7 @@
 #[cfg(feature = "workos")]
 use crate::workos_auth::{
     create_session_token, exchange_code_for_profile, generate_authorization_url,
-    SsoAuthorizationParams, SsoCallbackParams, WorkOsConfig,
+    SsoAuthorizationParams, SsoCallbackParams, WorkOsClaims,
 };
 
 use crate::error::{ApiError, ApiResult};
@@ -136,13 +136,18 @@ impl IntoResponse for CallbackResponse {
 /// - `redirect_uri`: Redirect URI for web clients (token returned via redirect)
 #[cfg(feature = "workos")]
 async fn authorize(
-    State(workos_config): State<WorkOsConfig>,
+    State(app_state): State<AppState>,
     Query(params): Query<AuthorizeParams>,
-) -> impl IntoResponse {
+) -> Result<Redirect, ApiError> {
+    let workos_config = app_state.workos_config.as_ref().ok_or_else(|| {
+        ApiError::internal_error(
+            "WorkOS authentication enabled but not configured. \
+             Set CALIBER_WORKOS_CLIENT_ID and CALIBER_WORKOS_API_KEY environment variables.",
+        )
+    })?;
+
     // Generate CSRF token
-    let csrf = params.state.unwrap_or_else(|| {
-        uuid::Uuid::new_v4().to_string()
-    });
+    let csrf = params.state.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     // Encode redirect_uri in state if provided (for web client flow)
     let state_value = if params.redirect_uri.is_some() {
@@ -151,7 +156,7 @@ async fn authorize(
             redirect_uri: params.redirect_uri,
         };
         // Base64 encode the state to pass through OAuth flow
-        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         let state_json = serde_json::to_string(&auth_state)
             .map_err(|e| ApiError::internal_error(format!("Failed to serialize state: {}", e)))?;
         URL_SAFE_NO_PAD.encode(state_json.as_bytes())
@@ -166,10 +171,12 @@ async fn authorize(
         state: Some(state_value),
     };
 
-    let auth_url = generate_authorization_url(&workos_config, &auth_params);
+    let auth_url = generate_authorization_url(workos_config, &auth_params);
 
     if auth_url.is_empty() {
-        return Err(ApiError::internal_error("Failed to generate authorization URL"));
+        return Err(ApiError::internal_error(
+            "Failed to generate authorization URL",
+        ));
     }
 
     Ok(Redirect::temporary(&auth_url))
@@ -192,37 +199,47 @@ async fn authorize(
 /// - For web clients (redirect_uri in state): Redirects to the provided URI with token
 #[cfg(feature = "workos")]
 async fn callback(
-    State(db): State<DbClient>,
-    State(workos_config): State<WorkOsConfig>,
+    State(app_state): State<AppState>,
     Query(params): Query<SsoCallbackParams>,
 ) -> ApiResult<CallbackResponse> {
+    let workos_config = app_state.workos_config.as_ref().ok_or_else(|| {
+        ApiError::internal_error(
+            "WorkOS authentication enabled but not configured. \
+             Set CALIBER_WORKOS_CLIENT_ID and CALIBER_WORKOS_API_KEY environment variables.",
+        )
+    })?;
+
     // Try to decode state to check for redirect_uri
     let auth_state: Option<AuthState> = params.state.as_ref().and_then(|s| {
-        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-        URL_SAFE_NO_PAD.decode(s)
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        URL_SAFE_NO_PAD
+            .decode(s)
             .ok()
             .and_then(|bytes| String::from_utf8(bytes).ok())
             .and_then(|json| serde_json::from_str(&json).ok())
     });
 
     // Exchange authorization code for profile and token
-    let (_access_token, claims) = exchange_code_for_profile(&workos_config, &params.code).await?;
+    let (_access_token, claims) = exchange_code_for_profile(workos_config, &params.code).await?;
 
     // Resolve or create tenant (automatic provisioning)
-    let tenant_id = resolve_or_create_tenant(&db, &claims).await?;
+    let tenant_id = resolve_or_create_tenant(&app_state.db, &claims).await?;
 
     // Determine member role (first member = admin, others = member)
-    let role = determine_member_role(&db, tenant_id, &claims).await?;
+    let role = determine_member_role(&app_state.db, tenant_id, &claims).await?;
 
     // Upsert tenant member
-    db.tenant_member_upsert(
-        tenant_id,
-        &claims.user_id,
-        &claims.email,
-        &role,
-        claims.first_name.as_deref(),
-        claims.last_name.as_deref(),
-    ).await?;
+    app_state
+        .db
+        .tenant_member_upsert(
+            tenant_id,
+            &claims.user_id,
+            &claims.email,
+            &role,
+            claims.first_name.as_deref(),
+            claims.last_name.as_deref(),
+        )
+        .await?;
 
     // Create a session token for subsequent API calls
     let expiration_secs = std::env::var("CALIBER_JWT_EXPIRATION_SECS")
@@ -265,11 +282,9 @@ async fn callback(
 /// 4. If corporate domain, check for existing tenant or create new one
 #[cfg(feature = "workos")]
 async fn resolve_or_create_tenant(
-    db: &DbClient,
-    claims: &crate::workos_auth::WorkOsClaims,
+    db: &crate::db::DbClient,
+    claims: &WorkOsClaims,
 ) -> ApiResult<uuid::Uuid> {
-    use crate::error::ApiError;
-
     // 1. Check WorkOS organization ID first
     if let Some(org_id) = &claims.organization_id {
         if let Some(tenant) = db.tenant_get_by_workos_org(org_id).await? {
@@ -283,7 +298,8 @@ async fn resolve_or_create_tenant(
     }
 
     // 2. Extract email domain
-    let domain = claims.email
+    let domain = claims
+        .email
         .split('@')
         .nth(1)
         .ok_or_else(|| ApiError::invalid_input("Invalid email format"))?;
@@ -295,7 +311,9 @@ async fn resolve_or_create_tenant(
             "{}'s Workspace",
             claims.first_name.as_deref().unwrap_or("Personal")
         );
-        let tenant_id = db.tenant_create(&name, None, claims.organization_id.as_deref()).await?;
+        let tenant_id = db
+            .tenant_create(&name, None, claims.organization_id.as_deref())
+            .await?;
         tracing::info!(
             tenant_id = %tenant_id,
             email = %claims.email,
@@ -316,7 +334,9 @@ async fn resolve_or_create_tenant(
 
     // 5. Create new corporate tenant
     let name = capitalize_domain(domain);
-    let tenant_id = db.tenant_create(&name, Some(domain), claims.organization_id.as_deref()).await?;
+    let tenant_id = db
+        .tenant_create(&name, Some(domain), claims.organization_id.as_deref())
+        .await?;
     tracing::info!(
         tenant_id = %tenant_id,
         domain = %domain,
@@ -329,9 +349,9 @@ async fn resolve_or_create_tenant(
 /// First member of a tenant becomes admin, subsequent members are regular members.
 #[cfg(feature = "workos")]
 async fn determine_member_role(
-    db: &DbClient,
+    db: &crate::db::DbClient,
     tenant_id: uuid::Uuid,
-    _claims: &crate::workos_auth::WorkOsClaims,
+    _claims: &WorkOsClaims,
 ) -> ApiResult<String> {
     let count = db.tenant_member_count(tenant_id).await?;
     Ok(if count == 0 { "admin" } else { "member" }.to_string())
@@ -354,11 +374,10 @@ fn capitalize_domain(domain: &str) -> String {
 /// Alternative POST handler for the callback (some IdPs use POST).
 #[cfg(feature = "workos")]
 async fn callback_post(
-    State(db): State<DbClient>,
-    State(workos_config): State<WorkOsConfig>,
+    State(app_state): State<AppState>,
     Query(params): Query<SsoCallbackParams>,
 ) -> ApiResult<CallbackResponse> {
-    callback(State(db), State(workos_config), Query(params)).await
+    callback(State(app_state), Query(params)).await
 }
 
 // ============================================================================

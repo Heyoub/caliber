@@ -13,7 +13,7 @@ description = "REST/gRPC/WebSocket API layer for the CALIBER memory framework"
 default = ["openapi", "swagger-ui"]
 openapi = ["caliber-core/openapi", "caliber-agents/openapi", "caliber-pcp/openapi"]
 swagger-ui = ["dep:utoipa-swagger-ui"]
-workos = ["dep:workos"]
+workos = []  # Enables WorkOS SSO authentication
 dev = []  # Enables unauthenticated router for development/testing
 db-tests = [] # Enables DB-backed integration/property tests
 
@@ -54,7 +54,7 @@ serde_yaml = "0.9"
 # Authentication
 jsonwebtoken = "9.3"
 secrecy = "0.8"
-workos = { version = "0.8", optional = true }
+urlencoding = "2.1"  # For WorkOS URL encoding
 
 # Error handling
 thiserror = { workspace = true }
