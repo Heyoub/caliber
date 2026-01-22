@@ -18,7 +18,20 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 SDK_DIR="$ROOT_DIR/sdks"
 SPEC_FILE="$ROOT_DIR/openapi.json"
 PROTO_DIR="$ROOT_DIR/caliber-api/proto"
-SDK_VERSION="${SDK_VERSION:-0.1.0}"
+
+get_workspace_version() {
+    awk '
+        BEGIN { in_workspace = 0 }
+        /^\[workspace\.package\]/ { in_workspace = 1; next }
+        /^\[/ { if ($0 != "[workspace.package]") in_workspace = 0 }
+        in_workspace && $1 == "version" { gsub(/\"/, "", $3); print $3; exit }
+    ' "$ROOT_DIR/Cargo.toml"
+}
+
+SDK_VERSION="${SDK_VERSION:-}"
+if [[ -z "$SDK_VERSION" ]]; then
+    SDK_VERSION="$(get_workspace_version)"
+fi
 
 # Colors for output
 RED='\033[0;31m'
