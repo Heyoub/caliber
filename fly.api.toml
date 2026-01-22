@@ -3,6 +3,8 @@ primary_region = "iad"
 
 [build]
   dockerfile = "docker/Dockerfile.api"
+  [build.args]
+    FEATURES = "openapi,swagger-ui,workos"
 
 [env]
   RUST_LOG = "caliber_api=info,tower_http=info"
