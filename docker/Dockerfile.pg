@@ -50,11 +50,11 @@ RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 # Build extension for PostgreSQL 18
 RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --out-dir /build/pgrx-out
 
-# Generate SQL schema explicitly (pgrx 0.16 may not do this automatically in package)
-RUN cd caliber-pg && cargo pgrx schema pg18 --out /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
+# Generate SQL schema explicitly (pgrx 0.16 outputs to stdout by default)
+RUN cd caliber-pg && cargo pgrx schema pg18 > /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
 
-# Debug: Show what files were generated
-RUN echo "=== ALL files in pgrx-out/extension ===" && ls -la /build/pgrx-out/usr/share/postgresql/18/extension/
+# Debug: Show what files were generated and SQL file size
+RUN echo "=== Extension files ===" && ls -la /build/pgrx-out/usr/share/postgresql/18/extension/ && echo "=== First 50 lines of SQL ===" && head -50 /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
 
 # Stage 2: Runtime
 FROM postgres:18-bookworm
