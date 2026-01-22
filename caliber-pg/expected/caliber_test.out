@@ -4,12 +4,12 @@
 -- ============================================================================
 -- SETUP: Load extension and schema
 -- ============================================================================
-CREATE EXTENSION IF NOT EXISTS caliber CASCADE;
+CREATE EXTENSION IF NOT EXISTS caliber_pg CASCADE;
 -- Verify extension loaded
-SELECT extname, extversion FROM pg_extension WHERE extname = 'caliber';
- extname | extversion
----------+------------
- caliber | 0.1.0
+SELECT extname, extversion FROM pg_extension WHERE extname = 'caliber_pg';
+  extname   | extversion
+------------+------------
+ caliber_pg | 0.4.0
 (1 row)
 
 -- ============================================================================

@@ -5,7 +5,7 @@
 set -e
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Create the caliber-pg extension
+    -- Create the caliber_pg extension
     CREATE EXTENSION IF NOT EXISTS caliber_pg;
 
     -- Verify extension is loaded

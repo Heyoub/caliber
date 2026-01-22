@@ -5,10 +5,10 @@
 -- ============================================================================
 -- SETUP: Load extension and schema
 -- ============================================================================
-CREATE EXTENSION IF NOT EXISTS caliber CASCADE;
+CREATE EXTENSION IF NOT EXISTS caliber_pg CASCADE;
 
 -- Verify extension loaded
-SELECT extname, extversion FROM pg_extension WHERE extname = 'caliber';
+SELECT extname, extversion FROM pg_extension WHERE extname = 'caliber_pg';
 
 -- ============================================================================
 -- PROPERTY 1: Trajectory CRUD (Insert-Get Round Trip)

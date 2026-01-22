@@ -154,6 +154,10 @@ fn opt_jsonb_datum(json: Option<&serde_json::Value>) -> DatumWithOid<'_> {
 #[cfg(not(feature = "pg_test"))]
 pgrx::pg_module_magic!();
 
+// Include the bootstrap SQL schema for extension installation
+// This SQL runs ONCE at CREATE EXTENSION time, not in the hot path
+pgrx::extension_sql_file!("../sql/caliber_init.sql", name = "bootstrap_schema");
+
 // ============================================================================
 // DIRECT HEAP OPERATION MODULES (Hot Path - NO SQL)
 // ============================================================================

@@ -50,6 +50,9 @@ RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 # Build extension for PostgreSQL 18
 RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --out-dir /build/pgrx-out
 
+# Debug: Show what files were generated
+RUN echo "=== Extension files in pgrx-out ===" && find /build/pgrx-out -type f -ls
+
 # Stage 2: Runtime
 FROM postgres:18-bookworm
 
@@ -61,7 +64,8 @@ COPY --from=builder /build/pgrx-out/usr/lib/postgresql/18/lib/* /usr/lib/postgre
 COPY docker/init-caliber.sh /docker-entrypoint-initdb.d/01-init-caliber.sh
 RUN chmod +x /docker-entrypoint-initdb.d/01-init-caliber.sh
 
-# PostgreSQL configuration for development
-RUN echo "shared_preload_libraries = 'caliber_pg'" >> /usr/share/postgresql/postgresql.conf.sample
+# Note: Do NOT add shared_preload_libraries here - it causes initdb to fail
+# because it tries to load the extension before the database cluster exists.
+# The extension is loaded via CREATE EXTENSION in init-caliber.sh instead.
 
 EXPOSE 5432
