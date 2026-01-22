@@ -49,7 +49,10 @@ async fn main() -> ApiResult<()> {
         .await
         .map_err(|e| ApiError::internal_error(format!("Failed to bind {}: {}", addr, e)))?;
 
-    let server = axum::serve(listener, app);
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    );
     tokio::select! {
         result = server => {
             result.map_err(|e| ApiError::internal_error(format!("Server error: {}", e)))?;
