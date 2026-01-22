@@ -50,12 +50,13 @@ RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 # Build extension for PostgreSQL 18
 RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --out-dir /build/pgrx-out
 
-# Generate SQL schema - check where pgrx writes it
-RUN cd caliber-pg && cargo pgrx schema pg18 2>&1 && echo "=== Looking for generated SQL files ===" && find /build -name "*.sql" -newer /build/caliber-pg/sql/caliber_init.sql -type f 2>/dev/null
+# Run pgrx_embed binary directly to generate SQL to stdout
+RUN cd caliber-pg && cargo build --features pg18 --bin pgrx_embed_caliber_pg 2>&1 | tail -5
+RUN /build/target/debug/pgrx_embed_caliber_pg > /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
 
-# Debug: Check target directory for SQL files
-RUN echo "=== SQL files in target ===" && find /build/target -name "*.sql" -type f 2>/dev/null | head -10 || echo "No SQL in target"
-RUN echo "=== SQL files in pgrx home ===" && find ~/.pgrx -name "*.sql" -type f 2>/dev/null | head -10 || echo "No SQL in pgrx home"
+# Debug: Show generated SQL file
+RUN echo "=== SQL file size ===" && ls -la /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
+RUN echo "=== First 30 lines ===" && head -30 /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
 
 # Stage 2: Runtime
 FROM postgres:18-bookworm
