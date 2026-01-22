@@ -180,4 +180,4 @@ jobs:
         run: cargo install cargo-deny
 
       - name: Check dependencies
-        run: cargo deny check || true  # Advisory only for now
+        run: cargo deny check

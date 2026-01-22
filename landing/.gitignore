@@ -26,3 +26,11 @@ pnpm-debug.log*
 .vercel
 
 .claude
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Environment
+.env.local
+.env.*.local

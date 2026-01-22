@@ -3,8 +3,12 @@
  * Trajectories Page
  * List and manage trajectories
  */
+export const prerender = false; // SSR - auth checked by middleware
+
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
 import TrajectoryList from '../../components/svelte/TrajectoryList.svelte';
+
+const user = Astro.locals.user;
 ---
 
 <DashboardLayout title="Trajectories - CALIBER">

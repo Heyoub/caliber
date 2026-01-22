@@ -3,7 +3,12 @@
  * Dashboard Overview Page
  * Shows high-level metrics and quick actions
  */
+export const prerender = false; // SSR - auth checked by middleware
+
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
+
+// User info is available from middleware
+const user = Astro.locals.user;
 ---
 
 <DashboardLayout title="Dashboard - CALIBER">

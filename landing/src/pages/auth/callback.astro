@@ -130,6 +130,11 @@ import Layout from '../../layouts/Layout.astro';
       localStorage.setItem('caliber_token', token);
       localStorage.setItem('caliber_user', JSON.stringify(user));
 
+      // Also set cookie for server-side auth middleware
+      // Calculate days until expiration
+      const daysUntilExp = Math.ceil((payload.exp - now) / 86400);
+      document.cookie = `caliber_token=${token}; path=/; max-age=${daysUntilExp * 86400}; SameSite=Lax; Secure`;
+
       // Show success state
       showSuccess();
 

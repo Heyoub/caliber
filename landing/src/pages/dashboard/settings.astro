@@ -3,7 +3,11 @@
  * Settings Page
  * Account settings and API key management
  */
+export const prerender = false; // SSR - auth checked by middleware
+
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
+
+const user = Astro.locals.user;
 ---
 
 <DashboardLayout title="Settings - CALIBER">

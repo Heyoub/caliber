@@ -54,13 +54,15 @@ export function storeAuth(token: string, user: User): void {
 }
 
 /**
- * Clear auth data from localStorage
+ * Clear auth data from localStorage and cookie
  */
 export function clearAuth(): void {
   if (!isBrowser) return;
 
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  // Also clear the cookie used for server-side auth
+  document.cookie = 'caliber_token=; path=/; max-age=0; SameSite=Lax; Secure';
 }
 
 /**

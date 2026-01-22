@@ -1,0 +1,50 @@
+# OpenAPI Python Client Generator Configuration
+# https://github.com/openapi-generators/openapi-python-client
+
+project_name_override: caliber-sdk
+package_name_override: caliber
+
+# Python version
+python_version: "3.10"
+
+# Use modern Python features
+use_path_params_for_optional_params: true
+
+# Generate async client
+generate_async: true
+
+# Field naming
+field_prefix: ""
+
+# Class naming
+class_name_prefix: ""
+class_name_suffix: ""
+
+# Model naming
+model_name_suffix: ""
+
+# Custom templates (optional)
+# custom_template_path: ./templates
+
+# Post-processing
+post_processing:
+  - formatter: black
+  - formatter: isort
+
+# Package metadata
+meta:
+  author: "CALIBER"
+  author_email: "hello@caliber.run"
+  description: "Python SDK for CALIBER - Memory for AI Agents"
+  url: "https://github.com/caliber-run/caliber"
+  license: "MIT"
+  classifiers:
+    - "Development Status :: 4 - Beta"
+    - "Intended Audience :: Developers"
+    - "License :: OSI Approved :: MIT License"
+    - "Programming Language :: Python :: 3"
+    - "Programming Language :: Python :: 3.10"
+    - "Programming Language :: Python :: 3.11"
+    - "Programming Language :: Python :: 3.12"
+    - "Topic :: Software Development :: Libraries :: Python Modules"
+    - "Typing :: Typed"
