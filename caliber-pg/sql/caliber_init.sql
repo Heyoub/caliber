@@ -24,6 +24,68 @@ RETURNS INTEGER AS $$
 $$ LANGUAGE SQL STABLE;
 
 -- ============================================================================
+-- CONFIGURATION TABLE (Required by caliber-api)
+-- ============================================================================
+
+-- Single-row config table storing PCPConfig as JSONB
+CREATE TABLE IF NOT EXISTS caliber_config (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- Enforce single row
+    config JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Insert default configuration if not exists
+-- This matches the PCPConfig structure expected by caliber-api
+INSERT INTO caliber_config (id, config) VALUES (1, '{
+    "context_dag": {
+        "max_depth": 10,
+        "prune_strategy": "OldestFirst"
+    },
+    "recovery": {
+        "enabled": true,
+        "frequency": "OnScopeClose",
+        "max_checkpoints": 5
+    },
+    "dosage": {
+        "max_tokens_per_scope": 8000,
+        "max_artifacts_per_scope": 100,
+        "max_notes_per_trajectory": 500
+    },
+    "anti_sprawl": {
+        "max_trajectory_depth": 5,
+        "max_concurrent_scopes": 10
+    },
+    "grounding": {
+        "require_artifact_backing": true,
+        "contradiction_threshold": 0.8,
+        "conflict_resolution": "HighestConfidence"
+    },
+    "linting": {
+        "enabled": true,
+        "max_artifact_size": 10000
+    },
+    "staleness": {
+        "enabled": true,
+        "threshold_seconds": 3600
+    }
+}'::jsonb) ON CONFLICT DO NOTHING;
+
+-- Get current configuration (called by caliber-api at startup)
+CREATE OR REPLACE FUNCTION caliber_config_get()
+RETURNS JSONB AS $$
+    SELECT config FROM caliber_config WHERE id = 1;
+$$ LANGUAGE SQL STABLE;
+
+-- Update configuration (called by caliber-api for config changes)
+CREATE OR REPLACE FUNCTION caliber_config_update(new_config JSONB)
+RETURNS BOOLEAN AS $$
+    UPDATE caliber_config
+    SET config = new_config, updated_at = NOW()
+    WHERE id = 1;
+    SELECT TRUE;
+$$ LANGUAGE SQL;
+
+-- ============================================================================
 -- TENANT TABLES (Multi-tenancy support)
 -- ============================================================================
 
