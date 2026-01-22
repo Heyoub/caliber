@@ -47,22 +47,18 @@ COPY caliber-tui ./caliber-tui
 # Remove pgrx git patches for extension build (use crates.io release)
 RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 
-# Build extension for PostgreSQL 18
-RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --out-dir /build/pgrx-out
+# Install extension directly to PostgreSQL in builder
+RUN cd caliber-pg && cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
 
-# Debug: Check what pgrx_embed outputs
-RUN cd caliber-pg && cargo build --features pg18 --bin pgrx_embed_caliber_pg 2>&1 | tail -5
-RUN echo "=== Running pgrx_embed ===" && /build/target/debug/pgrx_embed_caliber_pg 2>&1 | head -100 || echo "pgrx_embed exited with error"
-
-# Check if there's a --help flag
-RUN /build/target/debug/pgrx_embed_caliber_pg --help 2>&1 | head -20 || echo "No help available"
+# Debug: Show installed extension files
+RUN echo "=== Installed extension files ===" && ls -la /usr/share/postgresql/18/extension/caliber* && ls -la /usr/lib/postgresql/18/lib/caliber*
 
 # Stage 2: Runtime
 FROM postgres:18-bookworm
 
-# Copy extension files from builder
-COPY --from=builder /build/pgrx-out/usr/share/postgresql/18/extension/* /usr/share/postgresql/18/extension/
-COPY --from=builder /build/pgrx-out/usr/lib/postgresql/18/lib/* /usr/lib/postgresql/18/lib/
+# Copy extension files from builder's PostgreSQL installation
+COPY --from=builder /usr/share/postgresql/18/extension/caliber* /usr/share/postgresql/18/extension/
+COPY --from=builder /usr/lib/postgresql/18/lib/caliber* /usr/lib/postgresql/18/lib/
 
 # Copy initialization script
 COPY docker/init-caliber.sh /docker-entrypoint-initdb.d/01-init-caliber.sh
