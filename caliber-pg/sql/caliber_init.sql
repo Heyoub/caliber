@@ -61,12 +61,11 @@ INSERT INTO caliber_config (id, config) VALUES (1, '{
         "conflict_resolution": "HighestConfidence"
     },
     "linting": {
-        "enabled": true,
-        "max_artifact_size": 10000
+        "max_artifact_size": 1048576,
+        "min_confidence_threshold": 0.3
     },
     "staleness": {
-        "enabled": true,
-        "threshold_seconds": 3600
+        "stale_hours": 720
     }
 }'::jsonb) ON CONFLICT DO NOTHING;
 
