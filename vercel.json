@@ -1,0 +1,6 @@
+{
+  "framework": "astro",
+  "installCommand": "cd landing && bun install",
+  "buildCommand": "cd landing && bun run build",
+  "outputDirectory": "landing/.vercel/output"
+}
