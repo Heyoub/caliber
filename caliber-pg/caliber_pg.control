@@ -1,0 +1,5 @@
+comment = 'CALIBER: PostgreSQL-native memory framework for AI agents'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/caliber_pg'
+relocatable = false
+superuser = false
