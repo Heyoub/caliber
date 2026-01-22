@@ -50,8 +50,12 @@ RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 # Install extension directly to PostgreSQL in builder
 RUN cd caliber-pg && cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
 
+# WORKAROUND: pgrx 0.16 doesn't generate SQL file properly
+# Manually copy the bootstrap SQL as the extension installation script
+RUN cp /build/caliber-pg/sql/caliber_init.sql /usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
+
 # Debug: Show installed extension files
-RUN echo "=== Installed extension files ===" && ls -la /usr/share/postgresql/18/extension/caliber* && ls -la /usr/lib/postgresql/18/lib/caliber*
+RUN echo "=== Installed extension files ===" && ls -la /usr/share/postgresql/18/extension/caliber*
 
 # Stage 2: Runtime
 FROM postgres:18-bookworm
