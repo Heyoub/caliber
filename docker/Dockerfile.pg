@@ -50,13 +50,12 @@ RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 # Build extension for PostgreSQL 18
 RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --out-dir /build/pgrx-out
 
-# Run pgrx_embed binary directly to generate SQL to stdout
+# Debug: Check what pgrx_embed outputs
 RUN cd caliber-pg && cargo build --features pg18 --bin pgrx_embed_caliber_pg 2>&1 | tail -5
-RUN /build/target/debug/pgrx_embed_caliber_pg > /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
+RUN echo "=== Running pgrx_embed ===" && /build/target/debug/pgrx_embed_caliber_pg 2>&1 | head -100 || echo "pgrx_embed exited with error"
 
-# Debug: Show generated SQL file
-RUN echo "=== SQL file size ===" && ls -la /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
-RUN echo "=== First 30 lines ===" && head -30 /build/pgrx-out/usr/share/postgresql/18/extension/caliber_pg--0.4.0.sql
+# Check if there's a --help flag
+RUN /build/target/debug/pgrx_embed_caliber_pg --help 2>&1 | head -20 || echo "No help available"
 
 # Stage 2: Runtime
 FROM postgres:18-bookworm
