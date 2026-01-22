@@ -76,9 +76,9 @@ utoipa-swagger-ui = { workspace = true, optional = true }
 # Streaming support
 tokio-stream = { workspace = true, features = ["sync"] }
 
-# GraphQL (7.0 for axum 0.7 compatibility)
-async-graphql = { version = "7.0", features = ["uuid", "chrono"] }
-async-graphql-axum = "7.0"
+# GraphQL (pin 7.0.x to stay compatible with rustc 1.85.x)
+async-graphql = { version = "~7.0", features = ["uuid", "chrono"] }
+async-graphql-axum = { version = "~7.0" }
 async-stream = "0.3"
 futures-util = "0.3"
 

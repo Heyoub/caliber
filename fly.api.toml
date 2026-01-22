@@ -1,0 +1,30 @@
+app = "caliber-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "docker/Dockerfile.api"
+
+[env]
+  RUST_LOG = "caliber_api=info,tower_http=info"
+  CALIBER_DB_HOST = "caliber-pg.internal"
+  CALIBER_DB_PORT = "5432"
+  CALIBER_DB_NAME = "caliber"
+  CALIBER_DB_USER = "caliber"
+  CALIBER_ENVIRONMENT = "production"
+  CALIBER_METRICS_ENABLED = "true"
+  CALIBER_CORS_ALLOW_CREDENTIALS = "false"
+  CALIBER_RATE_LIMIT_ENABLED = "true"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health/live"

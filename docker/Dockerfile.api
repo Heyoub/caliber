@@ -9,7 +9,7 @@
 #   docker build -f docker/Dockerfile.api --build-arg FEATURES=openapi -t caliber-api .
 
 # Stage 1: Build
-FROM rust:1.83-bookworm AS builder
+FROM rust:1.85-bookworm AS builder
 
 ARG FEATURES=openapi,swagger-ui
 
@@ -32,6 +32,11 @@ COPY caliber-agents ./caliber-agents
 COPY caliber-pcp ./caliber-pcp
 COPY caliber-test-utils ./caliber-test-utils
 COPY caliber-api ./caliber-api
+COPY caliber-pg ./caliber-pg
+COPY caliber-tui ./caliber-tui
+
+# Remove pgrx git patches for API build (not needed for caliber-api)
+RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 
 # Build release binary with specified features
 RUN cargo build --release -p caliber-api --features "${FEATURES}"

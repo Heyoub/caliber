@@ -1,0 +1,16 @@
+app = "caliber-pg"
+primary_region = "iad"
+
+[build]
+  dockerfile = "docker/Dockerfile.pg"
+
+[env]
+  POSTGRES_USER = "caliber"
+  POSTGRES_DB = "caliber"
+
+[[services]]
+  internal_port = 5432
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 5432
