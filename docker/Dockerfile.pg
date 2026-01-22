@@ -51,7 +51,8 @@ RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 RUN cd caliber-pg && cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --out-dir /build/pgrx-out
 
 # Debug: Show what files were generated
-RUN echo "=== Extension files in pgrx-out ===" && find /build/pgrx-out -type f -ls
+RUN echo "=== ALL files in pgrx-out ===" && find /build/pgrx-out -ls
+RUN echo "=== Checking target dir for SQL ===" && find /build -name "*.sql" -type f 2>/dev/null | head -20 || echo "No SQL files found"
 
 # Stage 2: Runtime
 FROM postgres:18-bookworm
