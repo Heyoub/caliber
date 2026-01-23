@@ -185,7 +185,7 @@ impl<T> Effect<T> {
     }
 
     /// Map the success value.
-    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Effect<U> {
+    pub fn map<U, F: Fn(T) -> U>(self, f: F) -> Effect<U> {
         match self {
             Effect::Ok(v) => Effect::Ok(f(v)),
             Effect::Err(e) => Effect::Err(e),
@@ -204,7 +204,7 @@ impl<T> Effect<T> {
     pub fn unwrap(self) -> T {
         match self {
             Effect::Ok(v) => v,
-            other => panic!("Called unwrap on non-Ok effect: {:?}", std::any::type_name::<Self>()),
+            _ => panic!("Called unwrap on non-Ok effect: {:?}", std::any::type_name::<Self>()),
         }
     }
 

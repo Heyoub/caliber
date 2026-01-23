@@ -243,8 +243,7 @@ impl fmt::Display for EventKind {
 
 bitflags! {
     /// Flags for event processing hints.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct EventFlags: u8 {
         /// Event requires acknowledgment
         const REQUIRES_ACK = 0b0000_0001;
@@ -280,15 +279,15 @@ impl Default for EventFlags {
 /// This structure is 64 bytes and cache-line aligned for optimal performance.
 /// The payload is stored separately and referenced by the header.
 ///
-/// Layout (64 bytes total):
+/// Layout (64 bytes total, ordered by alignment to minimize padding):
 /// - event_id: 16 bytes (UUIDv7)
-/// - position: 12 bytes (DagPosition)
-/// - timestamp: 8 bytes (microseconds since epoch)
-/// - event_kind: 2 bytes (EventKind)
 /// - correlation_id: 16 bytes (UUIDv7)
-/// - flags: 1 byte (EventFlags)
+/// - timestamp: 8 bytes (microseconds since epoch)
+/// - position: 12 bytes (DagPosition)
 /// - payload_size: 4 bytes (u32)
-/// - _reserved: 5 bytes (padding for alignment)
+/// - event_kind: 2 bytes (EventKind)
+/// - flags: 1 byte (EventFlags)
+/// - _reserved: 5 bytes (padding to 64)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[repr(C, align(64))]
@@ -296,20 +295,20 @@ pub struct EventHeader {
     /// Unique event identifier (UUIDv7 for timestamp-sortable IDs)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub event_id: EventId,
-    /// Position in the event DAG
-    pub position: DagPosition,
-    /// Timestamp in microseconds since Unix epoch
-    pub timestamp: i64,
-    /// Event kind (category + type)
-    pub event_kind: EventKind,
     /// Correlation ID for tracing related events
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub correlation_id: EventId,
-    /// Processing flags
-    pub flags: EventFlags,
+    /// Timestamp in microseconds since Unix epoch
+    pub timestamp: i64,
+    /// Position in the event DAG
+    pub position: DagPosition,
     /// Size of the payload in bytes
     pub payload_size: u32,
-    /// Reserved for future use (padding)
+    /// Event kind (category + type)
+    pub event_kind: EventKind,
+    /// Processing flags
+    pub flags: EventFlags,
+    /// Reserved for future use (padding to 64 bytes)
     #[serde(skip)]
     _reserved: [u8; 5],
 }
@@ -322,21 +321,21 @@ impl EventHeader {
     /// Create a new event header.
     pub fn new(
         event_id: EventId,
-        position: DagPosition,
-        timestamp: i64,
-        event_kind: EventKind,
         correlation_id: EventId,
-        flags: EventFlags,
+        timestamp: i64,
+        position: DagPosition,
         payload_size: u32,
+        event_kind: EventKind,
+        flags: EventFlags,
     ) -> Self {
         Self {
             event_id,
-            position,
-            timestamp,
-            event_kind,
             correlation_id,
-            flags,
+            timestamp,
+            position,
             payload_size,
+            event_kind,
+            flags,
             _reserved: [0; 5],
         }
     }
@@ -523,12 +522,12 @@ mod tests {
         let correlation_id = Uuid::now_v7();
         let header = EventHeader::new(
             event_id,
-            DagPosition::root(),
-            1234567890,
-            EventKind::TRAJECTORY_CREATED,
             correlation_id,
-            EventFlags::REQUIRES_ACK,
+            1234567890,
+            DagPosition::root(),
             100,
+            EventKind::TRAJECTORY_CREATED,
+            EventFlags::REQUIRES_ACK,
         );
 
         assert_eq!(header.event_id, event_id);

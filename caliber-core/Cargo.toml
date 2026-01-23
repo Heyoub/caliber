@@ -20,7 +20,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
-bitflags = "2"
+bitflags = { version = "2", features = ["serde"] }
 
 # OpenAPI schema generation (optional)
 utoipa = { version = "5.3", features = ["uuid", "chrono"], optional = true }
