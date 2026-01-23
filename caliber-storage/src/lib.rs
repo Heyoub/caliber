@@ -4,6 +4,7 @@
 //! The actual pgrx implementation lives in caliber-pg.
 
 pub mod async_trait;
+pub mod cache;
 
 pub use async_trait::{AsyncStorageTrait, StorageStatistics};
 

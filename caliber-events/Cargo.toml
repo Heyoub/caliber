@@ -1,5 +1,5 @@
 [package]
-name = "caliber-context"
+name = "caliber-events"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation.workspace = true
-description = "Context assembly and token budget management for CALIBER"
+description = "Event DAG trait and operations for CALIBER"
 
 [features]
 default = ["openapi"]
@@ -15,10 +15,9 @@ openapi = ["dep:utoipa", "caliber-core/openapi"]
 
 [dependencies]
 caliber-core = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+uuid = { workspace = true }
 
 # OpenAPI schema generation (optional)
 utoipa = { version = "5.3", features = ["uuid", "chrono"], optional = true }

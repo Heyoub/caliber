@@ -15,7 +15,11 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true }
 async-trait = "0.1"
+heed = "0.20"
 
 [dev-dependencies]
 proptest = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3"

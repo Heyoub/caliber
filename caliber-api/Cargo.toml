@@ -11,7 +11,7 @@ description = "REST/gRPC/WebSocket API layer for the CALIBER memory framework"
 
 [features]
 default = ["openapi", "swagger-ui"]
-openapi = ["caliber-core/openapi", "caliber-agents/openapi", "caliber-pcp/openapi"]
+openapi = ["caliber-core/openapi", "caliber-context/openapi", "caliber-agents/openapi", "caliber-pcp/openapi"]
 swagger-ui = ["dep:utoipa-swagger-ui"]
 workos = []  # Enables WorkOS SSO authentication
 dev = []  # Enables unauthenticated router for development/testing
@@ -20,6 +20,7 @@ db-tests = [] # Enables DB-backed integration/property tests
 [dependencies]
 # Core CALIBER dependencies
 caliber-core = { workspace = true }
+caliber-context = { workspace = true }
 caliber-agents = { workspace = true }
 caliber-pcp = { workspace = true }
 caliber-storage = { workspace = true }

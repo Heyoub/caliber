@@ -16,6 +16,7 @@ pub mod artifact;
 pub mod batch;
 pub mod billing;
 pub mod config;
+pub mod context;
 pub mod delegation;
 pub mod dsl;
 pub mod edge;
@@ -65,6 +66,7 @@ pub use artifact::create_router as artifact_router;
 pub use batch::create_router as batch_router;
 pub use billing::create_router as billing_router;
 pub use config::create_router as config_router;
+pub use context::context_router;
 pub use delegation::create_router as delegation_router;
 pub use dsl::create_router as dsl_router;
 pub use graphql::create_router as graphql_router;
@@ -221,7 +223,9 @@ impl SecureRouterBuilder {
             .nest("/webhooks", webhooks::create_router())
             .nest("/graphql", graphql::create_router())
             .nest("/edges", edge::create_router())
-            .nest("/summarization-policies", summarization_policy::create_router()))
+            .nest("/summarization-policies", summarization_policy::create_router())
+            // Context assembly (wires caliber-context crate)
+            .nest("/context", context::context_router()))
     }
 
     /// Build the complete router with full security stack.

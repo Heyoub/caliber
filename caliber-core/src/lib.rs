@@ -2,6 +2,18 @@
 //!
 //! Pure data structures with no behavior. All other crates depend on this.
 //! This crate contains ONLY data types - no business logic.
+//!
+//! # Type Dictionary
+//!
+//! This crate serves as the "type dictionary" for CALIBER. All types visible
+//! here form the vocabulary of the system:
+//!
+//! - **Identity**: `EntityId`, `EventId`, `Timestamp`, `ContentHash`
+//! - **Enums**: Status types, entity types, categories
+//! - **Entities**: Core domain entities (Trajectory, Scope, Artifact, Note, Turn)
+//! - **Typestate**: Compile-time safe Lock, Handoff, Delegation lifecycles
+//! - **Events**: Event DAG types (EventHeader, DagPosition, EventKind)
+//! - **Effects**: Error-as-effects pattern (Effect<T>, ErrorEffect)
 
 // Core modules
 mod identity;
@@ -13,6 +25,15 @@ mod error;
 mod config;
 mod filter;
 mod health;
+
+// Typestate modules (compile-time safety for critical paths)
+mod lock;
+mod handoff;
+mod delegation;
+
+// Event DAG modules
+mod event;
+mod effect;
 
 // Re-export identity types
 pub use identity::*;
@@ -40,3 +61,14 @@ pub use filter::*;
 
 // Re-export health types
 pub use health::*;
+
+// Re-export typestate types (Lock, Handoff, Delegation)
+pub use lock::*;
+pub use handoff::*;
+pub use delegation::*;
+
+// Re-export event DAG types
+pub use event::*;
+
+// Re-export effect types
+pub use effect::*;

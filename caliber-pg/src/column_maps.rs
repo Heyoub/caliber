@@ -444,7 +444,8 @@ pub mod agent {
 ///     acquired_at TIMESTAMPTZ NOT NULL,         -- 5
 ///     expires_at TIMESTAMPTZ NOT NULL,          -- 6
 ///     mode TEXT NOT NULL,                       -- 7
-///     tenant_id UUID                            -- 8
+///     tenant_id UUID,                           -- 8
+///     version BIGINT NOT NULL                   -- 9 (V3: CAS)
 /// );
 /// ```
 pub mod lock {
@@ -464,9 +465,11 @@ pub mod lock {
     pub const MODE: i16 = 7;
     /// tenant_id UUID (FK)
     pub const TENANT_ID: i16 = 8;
+    /// version BIGINT NOT NULL (V3: Compare-And-Swap version for optimistic locking)
+    pub const VERSION: i16 = 9;
 
     /// Total number of columns in the lock table
-    pub const NUM_COLS: usize = 8;
+    pub const NUM_COLS: usize = 9;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_lock";
@@ -576,7 +579,10 @@ pub mod message {
 ///     created_at TIMESTAMPTZ NOT NULL,          -- 15
 ///     accepted_at TIMESTAMPTZ,                  -- 16
 ///     completed_at TIMESTAMPTZ,                 -- 17
-///     tenant_id UUID                            -- 18
+///     tenant_id UUID,                           -- 18
+///     version BIGINT NOT NULL,                  -- 19 (V3: CAS)
+///     timeout_at TIMESTAMPTZ,                   -- 20 (V3: saga timeout)
+///     last_progress_at TIMESTAMPTZ              -- 21 (V3: saga heartbeat)
 /// );
 /// ```
 pub mod delegation {
@@ -616,9 +622,15 @@ pub mod delegation {
     pub const COMPLETED_AT: i16 = 17;
     /// tenant_id UUID (FK)
     pub const TENANT_ID: i16 = 18;
+    /// version BIGINT NOT NULL (V3: Compare-And-Swap version for optimistic locking)
+    pub const VERSION: i16 = 19;
+    /// timeout_at TIMESTAMPTZ (V3: explicit saga timeout deadline)
+    pub const TIMEOUT_AT: i16 = 20;
+    /// last_progress_at TIMESTAMPTZ (V3: saga heartbeat timestamp)
+    pub const LAST_PROGRESS_AT: i16 = 21;
 
     /// Total number of columns in the delegation table
-    pub const NUM_COLS: usize = 18;
+    pub const NUM_COLS: usize = 21;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_delegation";
@@ -630,6 +642,10 @@ pub mod delegation {
     pub const STATUS_INDEX: &str = "idx_delegation_status";
     /// Pending index name
     pub const PENDING_INDEX: &str = "idx_delegation_pending";
+    /// Timeout index name (V3)
+    pub const TIMEOUT_INDEX: &str = "idx_delegation_timeout";
+    /// Progress index name (V3)
+    pub const PROGRESS_INDEX: &str = "idx_delegation_progress";
 }
 
 
@@ -658,7 +674,10 @@ pub mod delegation {
 ///     accepted_at TIMESTAMPTZ,                  -- 14
 ///     completed_at TIMESTAMPTZ,                 -- 15
 ///     reason TEXT NOT NULL,                     -- 16
-///     tenant_id UUID                            -- 17
+///     tenant_id UUID,                           -- 17
+///     version BIGINT NOT NULL,                  -- 18 (V3: CAS)
+///     timeout_at TIMESTAMPTZ,                   -- 19 (V3: saga timeout)
+///     last_progress_at TIMESTAMPTZ              -- 20 (V3: saga heartbeat)
 /// );
 /// ```
 pub mod handoff {
@@ -696,9 +715,15 @@ pub mod handoff {
     pub const REASON: i16 = 16;
     /// tenant_id UUID (FK)
     pub const TENANT_ID: i16 = 17;
+    /// version BIGINT NOT NULL (V3: Compare-And-Swap version for optimistic locking)
+    pub const VERSION: i16 = 18;
+    /// timeout_at TIMESTAMPTZ (V3: explicit saga timeout deadline)
+    pub const TIMEOUT_AT: i16 = 19;
+    /// last_progress_at TIMESTAMPTZ (V3: saga heartbeat timestamp)
+    pub const LAST_PROGRESS_AT: i16 = 20;
 
     /// Total number of columns in the handoff table
-    pub const NUM_COLS: usize = 17;
+    pub const NUM_COLS: usize = 20;
 
     /// Table name
     pub const TABLE_NAME: &str = "caliber_handoff";
@@ -710,6 +735,10 @@ pub mod handoff {
     pub const TO_AGENT_INDEX: &str = "idx_handoff_to";
     /// Status index name
     pub const STATUS_INDEX: &str = "idx_handoff_status";
+    /// Timeout index name (V3)
+    pub const TIMEOUT_INDEX: &str = "idx_handoff_timeout";
+    /// Progress index name (V3)
+    pub const PROGRESS_INDEX: &str = "idx_handoff_progress";
 }
 
 // ============================================================================
@@ -1023,6 +1052,102 @@ pub mod summarization_policy {
 }
 
 // ============================================================================
+// CHANGE JOURNAL TABLE COLUMNS (Cache Invalidation)
+// ============================================================================
+
+/// Column mappings for `caliber_changes` table.
+///
+/// Schema:
+/// ```sql
+/// CREATE TABLE caliber_changes (
+///     change_id BIGSERIAL PRIMARY KEY,          -- 1
+///     tenant_id UUID NOT NULL,                  -- 2
+///     entity_type TEXT NOT NULL,                -- 3
+///     entity_id UUID NOT NULL,                  -- 4
+///     operation TEXT NOT NULL,                  -- 5
+///     changed_at TIMESTAMPTZ NOT NULL           -- 6
+/// );
+/// ```
+pub mod changes {
+    /// change_id BIGSERIAL PRIMARY KEY
+    pub const CHANGE_ID: i16 = 1;
+    /// tenant_id UUID NOT NULL
+    pub const TENANT_ID: i16 = 2;
+    /// entity_type TEXT NOT NULL
+    pub const ENTITY_TYPE: i16 = 3;
+    /// entity_id UUID NOT NULL
+    pub const ENTITY_ID: i16 = 4;
+    /// operation TEXT NOT NULL ('INSERT', 'UPDATE', 'DELETE')
+    pub const OPERATION: i16 = 5;
+    /// changed_at TIMESTAMPTZ NOT NULL
+    pub const CHANGED_AT: i16 = 6;
+
+    /// Total number of columns in the changes table
+    pub const NUM_COLS: usize = 6;
+
+    /// Table name
+    pub const TABLE_NAME: &str = "caliber_changes";
+    /// Primary key index name
+    pub const PK_INDEX: &str = "caliber_changes_pkey";
+    /// Tenant+sequence index name
+    pub const TENANT_SEQ_INDEX: &str = "idx_changes_tenant_seq";
+    /// Entity index name
+    pub const ENTITY_INDEX: &str = "idx_changes_entity";
+    /// Time index name
+    pub const TIME_INDEX: &str = "idx_changes_time";
+}
+
+// ============================================================================
+// IDEMPOTENCY KEY TABLE COLUMNS (V3: Distributed Correctness)
+// ============================================================================
+
+/// Column mappings for `caliber_idempotency_key` table.
+///
+/// Schema:
+/// ```sql
+/// CREATE TABLE caliber_idempotency_key (
+///     idempotency_key TEXT PRIMARY KEY,          -- 1
+///     tenant_id UUID NOT NULL,                   -- 2
+///     operation TEXT NOT NULL,                   -- 3
+///     request_hash BYTEA NOT NULL,               -- 4
+///     response_status INTEGER NOT NULL,          -- 5
+///     response_body JSONB,                       -- 6
+///     created_at TIMESTAMPTZ NOT NULL,           -- 7
+///     expires_at TIMESTAMPTZ NOT NULL            -- 8
+/// );
+/// ```
+pub mod idempotency_key {
+    /// idempotency_key TEXT PRIMARY KEY
+    pub const IDEMPOTENCY_KEY: i16 = 1;
+    /// tenant_id UUID NOT NULL
+    pub const TENANT_ID: i16 = 2;
+    /// operation TEXT NOT NULL
+    pub const OPERATION: i16 = 3;
+    /// request_hash BYTEA NOT NULL
+    pub const REQUEST_HASH: i16 = 4;
+    /// response_status INTEGER NOT NULL
+    pub const RESPONSE_STATUS: i16 = 5;
+    /// response_body JSONB
+    pub const RESPONSE_BODY: i16 = 6;
+    /// created_at TIMESTAMPTZ NOT NULL
+    pub const CREATED_AT: i16 = 7;
+    /// expires_at TIMESTAMPTZ NOT NULL
+    pub const EXPIRES_AT: i16 = 8;
+
+    /// Total number of columns in the idempotency_key table
+    pub const NUM_COLS: usize = 8;
+
+    /// Table name
+    pub const TABLE_NAME: &str = "caliber_idempotency_key";
+    /// Primary key index name
+    pub const PK_INDEX: &str = "caliber_idempotency_key_pkey";
+    /// Expires index name
+    pub const EXPIRES_INDEX: &str = "idx_idempotency_expires";
+    /// Tenant+operation index name
+    pub const TENANT_INDEX: &str = "idx_idempotency_tenant";
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -1062,7 +1187,7 @@ mod tests {
 
     #[test]
     fn test_lock_column_count() {
-        assert_eq!(lock::NUM_COLS, 8);
+        assert_eq!(lock::NUM_COLS, 9); // Updated for V3: +version
     }
 
     #[test]
@@ -1072,12 +1197,12 @@ mod tests {
 
     #[test]
     fn test_delegation_column_count() {
-        assert_eq!(delegation::NUM_COLS, 18);
+        assert_eq!(delegation::NUM_COLS, 21); // Updated for V3: +version, timeout_at, last_progress_at
     }
 
     #[test]
     fn test_handoff_column_count() {
-        assert_eq!(handoff::NUM_COLS, 17);
+        assert_eq!(handoff::NUM_COLS, 20); // Updated for V3: +version, timeout_at, last_progress_at
     }
 
     #[test]
@@ -1106,5 +1231,17 @@ mod tests {
     #[test]
     fn test_summarization_policy_column_count() {
         assert_eq!(summarization_policy::NUM_COLS, 10);
+    }
+
+    // Cache Invalidation: Change Journal
+    #[test]
+    fn test_changes_column_count() {
+        assert_eq!(changes::NUM_COLS, 6);
+    }
+
+    // V3 Distributed Correctness: Idempotency Keys
+    #[test]
+    fn test_idempotency_key_column_count() {
+        assert_eq!(idempotency_key::NUM_COLS, 8);
     }
 }

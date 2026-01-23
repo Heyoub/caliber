@@ -71,6 +71,14 @@ pub use edge::*;
 mod summarization;
 pub use summarization::*;
 
+// API Key types
+mod api_key;
+pub use api_key::*;
+
+// Webhook types
+mod webhook;
+pub use webhook::*;
+
 // ============================================================================
 // Entity trait implementations using macros
 // ============================================================================
@@ -91,3 +99,7 @@ crate::impl_entity!(HandoffResponse, handoff_id, tenant_id);
 
 // Battle Intel types
 crate::impl_entity!(EdgeResponse, edge_id);
+
+// Admin/Infrastructure types
+crate::impl_entity!(ApiKeyResponse, api_key_id, tenant_id);
+crate::impl_entity!(WebhookResponse, webhook_id, tenant_id);

@@ -8,12 +8,15 @@
 //! which internally use direct heap operations for maximum performance.
 
 pub mod auth;
+pub mod component;
+pub mod components;
 pub mod config;
 pub mod constants;
 pub mod db;
 pub mod error;
 pub mod events;
 pub mod grpc;
+pub mod jobs;
 pub mod macros;
 pub mod middleware;
 pub mod openapi;
@@ -55,10 +58,19 @@ pub use grpc::{create_services, proto};
 pub use middleware::{
     auth_middleware, extract_auth_context, extract_auth_context_owned, rate_limit_middleware,
     tenant_access_middleware, AuthExtractor, AuthMiddlewareState, RateLimitKey, RateLimitState,
+    // Idempotency middleware (V3: Distributed Correctness)
+    idempotency_middleware, IdempotencyConfig, IdempotencyState, IDEMPOTENCY_KEY_HEADER,
 };
+
+// Background jobs (V3: Distributed Correctness)
+pub use jobs::{saga_cleanup_task, SagaCleanupConfig, SagaCleanupMetrics};
 pub use openapi::ApiDoc;
 pub use routes::create_api_router;
 pub use state::AppState;
 pub use telemetry::{init_tracer, metrics_handler, shutdown_tracer, CaliberMetrics, TelemetryConfig, METRICS};
 pub use types::*;
 pub use ws::{should_deliver_event, tenant_id_from_event, WsState};
+
+// Re-export ECS component types
+pub use component::{Component, Listable, ListFilter, NoFilter, SqlParam, TenantScoped};
+pub use components::{ScopeListFilter, TrajectoryListFilter};

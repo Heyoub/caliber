@@ -3054,5 +3054,378 @@ impl DbClient {
             created_at,
         })
     }
+
+    // ========================================================================
+    // CHANGE JOURNAL OPERATIONS (Cache Invalidation)
+    // ========================================================================
+
+    /// Get the current watermark (highest change_id) for a tenant.
+    ///
+    /// This is used to establish a baseline for cache invalidation polling.
+    /// Returns 0 if no changes have been recorded for the tenant.
+    pub async fn current_watermark(&self, tenant_id: EntityId) -> ApiResult<i64> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_current_watermark($1)",
+                &[&tenant_id],
+            )
+            .await?;
+
+        let watermark: i64 = row.get(0);
+        Ok(watermark)
+    }
+
+    /// Check if there are any changes since the given watermark.
+    ///
+    /// This is a lightweight check that can be used for efficient polling.
+    /// Optionally filter by entity types for selective cache invalidation.
+    pub async fn has_changes_since(
+        &self,
+        tenant_id: EntityId,
+        watermark: i64,
+        entity_types: Option<&[&str]>,
+    ) -> ApiResult<bool> {
+        let conn = self.get_conn().await?;
+
+        let entity_types_arr: Option<Vec<String>> = entity_types.map(|types| {
+            types.iter().map(|s| s.to_string()).collect()
+        });
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_has_changes_since($1, $2, $3)",
+                &[&tenant_id, &watermark, &entity_types_arr],
+            )
+            .await?;
+
+        let has_changes: bool = row.get(0);
+        Ok(has_changes)
+    }
+
+    /// Get all changes since the given watermark.
+    ///
+    /// Returns a list of change records in ascending order by change_id.
+    /// Use the limit parameter to paginate through large result sets.
+    pub async fn changes_since(
+        &self,
+        tenant_id: EntityId,
+        watermark: i64,
+        limit: i32,
+    ) -> ApiResult<Vec<crate::types::ChangeRecord>> {
+        let conn = self.get_conn().await?;
+
+        let rows = conn
+            .query(
+                "SELECT change_id, entity_type, entity_id, operation, changed_at
+                 FROM caliber_changes_since($1, $2, $3)",
+                &[&tenant_id, &watermark, &limit],
+            )
+            .await?;
+
+        let mut changes = Vec::with_capacity(rows.len());
+        for row in rows {
+            let change_id: i64 = row.get(0);
+            let entity_type: String = row.get(1);
+            let entity_id: Uuid = row.get(2);
+            let operation_str: String = row.get(3);
+            let changed_at: chrono::DateTime<chrono::Utc> = row.get(4);
+
+            let operation = operation_str.parse::<crate::types::ChangeOperation>()
+                .map_err(|e| ApiError::internal_error(format!("Invalid operation: {}", e)))?;
+
+            changes.push(crate::types::ChangeRecord {
+                change_id,
+                tenant_id,
+                entity_type,
+                entity_id,
+                operation,
+                changed_at,
+            });
+        }
+
+        Ok(changes)
+    }
+
+    /// Get changes since watermark with response metadata.
+    ///
+    /// This is a convenience method that also returns the new watermark
+    /// and whether there are more changes beyond the limit.
+    pub async fn changes_since_with_metadata(
+        &self,
+        tenant_id: EntityId,
+        watermark: i64,
+        limit: i32,
+    ) -> ApiResult<crate::types::ChangesResponse> {
+        let changes = self.changes_since(tenant_id, watermark, limit).await?;
+
+        // Calculate new watermark (highest change_id in results, or input watermark)
+        let new_watermark = changes.iter()
+            .map(|c| c.change_id)
+            .max()
+            .unwrap_or(watermark);
+
+        // Check if there are more changes
+        let has_more = if changes.len() as i32 >= limit {
+            self.has_changes_since(tenant_id, new_watermark, None).await?
+        } else {
+            false
+        };
+
+        Ok(crate::types::ChangesResponse {
+            changes,
+            watermark: new_watermark,
+            has_more,
+        })
+    }
+
+    /// Cleanup old change journal entries.
+    ///
+    /// Deletes entries older than the specified retention period.
+    /// Returns the number of entries deleted.
+    pub async fn cleanup_change_journal(&self, retention_days: i32) -> ApiResult<i64> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT caliber_cleanup_change_journal($1)",
+                &[&retention_days],
+            )
+            .await?;
+
+        let deleted: i64 = row.get(0);
+        Ok(deleted)
+    }
+}
+
+// ============================================================================
+// GENERIC CRUD OPERATIONS (Component Trait Based)
+// ============================================================================
+
+use crate::component::{Component, Listable, ListFilter, SqlParam, TenantScoped};
+
+impl DbClient {
+    /// Generic create operation for any Component type.
+    ///
+    /// Creates a new entity by calling the appropriate stored procedure
+    /// (e.g., `caliber_trajectory_create`) with parameters built from the
+    /// Component trait implementation.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `req`: The create request containing the entity data
+    /// - `tenant_id`: The tenant ID for isolation
+    ///
+    /// # Returns
+    ///
+    /// The created entity on success, or an error on failure.
+    pub async fn create<C>(&self, req: &C::Create, tenant_id: EntityId) -> ApiResult<C>
+    where
+        C: Component + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
+        let params = C::create_params(req, tenant_id);
+        let sql_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_to_sql()).collect();
+
+        let sql = format!(
+            "SELECT row_to_json(t.*) FROM {}($1{}) AS t",
+            C::sql_function("create"),
+            (2..=params.len())
+                .map(|i| format!(", ${}", i))
+                .collect::<String>()
+        );
+
+        let row = conn
+            .query_one(&sql, &sql_params[..])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        let json: serde_json::Value = row.get(0);
+        C::from_json(&json).map_err(|e| ApiError::internal_error(e.to_string()))
+    }
+
+    /// Generic get operation for any Component type.
+    ///
+    /// Retrieves an entity by ID by calling the appropriate stored procedure
+    /// (e.g., `caliber_trajectory_get`).
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `id`: The entity ID to retrieve
+    /// - `tenant_id`: The tenant ID for isolation
+    ///
+    /// # Returns
+    ///
+    /// `Some(entity)` if found, `None` if not found, or an error on failure.
+    pub async fn get<C>(&self, id: EntityId, tenant_id: EntityId) -> ApiResult<Option<C>>
+    where
+        C: Component + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
+        let sql = format!(
+            "SELECT row_to_json(t.*) FROM {}($1, $2) AS t",
+            C::sql_function("get")
+        );
+
+        let row = conn
+            .query_opt(&sql, &[&id, &tenant_id])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        match row {
+            Some(r) => {
+                let json: serde_json::Value = r.get(0);
+                if json.is_null() {
+                    Ok(None)
+                } else {
+                    C::from_json(&json)
+                        .map(Some)
+                        .map_err(|e| ApiError::internal_error(e.to_string()))
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Generic update operation for any Component type.
+    ///
+    /// Updates an existing entity by calling the appropriate stored procedure
+    /// (e.g., `caliber_trajectory_update`) with a JSON object containing the
+    /// fields to update.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `id`: The entity ID to update
+    /// - `req`: The update request containing fields to modify
+    /// - `tenant_id`: The tenant ID for isolation
+    ///
+    /// # Returns
+    ///
+    /// The updated entity on success, or an error if not found or on failure.
+    pub async fn update<C>(&self, id: EntityId, req: &C::Update, tenant_id: EntityId) -> ApiResult<C>
+    where
+        C: Component + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
+        let updates = C::build_updates(req);
+
+        let sql = format!(
+            "SELECT row_to_json(t.*) FROM {}($1, $2, $3) AS t",
+            C::sql_function("update")
+        );
+
+        let row = conn
+            .query_opt(&sql, &[&id, &updates, &tenant_id])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        match row {
+            Some(r) => {
+                let json: serde_json::Value = r.get(0);
+                if json.is_null() {
+                    Err(C::not_found_error(id))
+                } else {
+                    C::from_json(&json).map_err(|e| ApiError::internal_error(e.to_string()))
+                }
+            }
+            None => Err(C::not_found_error(id)),
+        }
+    }
+
+    /// Generic delete operation for any Component type.
+    ///
+    /// Deletes an entity by calling the appropriate stored procedure
+    /// (e.g., `caliber_trajectory_delete`).
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `id`: The entity ID to delete
+    /// - `tenant_id`: The tenant ID for isolation
+    ///
+    /// # Returns
+    ///
+    /// `true` if the entity was deleted, `false` if not found.
+    pub async fn delete<C>(&self, id: EntityId, tenant_id: EntityId) -> ApiResult<bool>
+    where
+        C: Component + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
+        let sql = format!("SELECT {}($1, $2)", C::sql_function("delete"));
+
+        let row = conn
+            .query_one(&sql, &[&id, &tenant_id])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        let deleted: bool = row.get(0);
+        Ok(deleted)
+    }
+
+    /// Generic list operation for any Component type.
+    ///
+    /// Lists entities with optional filtering by calling a direct SQL query
+    /// on the entity's table with the WHERE clause built from the filter.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + Listable + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `filter`: The filter to apply to the query
+    /// - `tenant_id`: The tenant ID for isolation
+    ///
+    /// # Returns
+    ///
+    /// A vector of matching entities, ordered by `created_at DESC`.
+    pub async fn list<C>(&self, filter: &C::ListFilter, tenant_id: EntityId) -> ApiResult<Vec<C>>
+    where
+        C: Component + Listable + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
+        let (where_clause, params) = filter.build_where(tenant_id);
+
+        let sql_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            params.iter().map(|p| p.as_to_sql()).collect();
+
+        let where_sql = where_clause.unwrap_or_else(|| "TRUE".to_string());
+        let sql = format!(
+            "SELECT row_to_json(t.*) FROM caliber_{} t WHERE {} ORDER BY created_at DESC LIMIT {} OFFSET {}",
+            C::ENTITY_NAME,
+            where_sql,
+            filter.limit(),
+            filter.offset()
+        );
+
+        let rows = conn
+            .query(&sql, &sql_params[..])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        rows.into_iter()
+            .map(|row| {
+                let json: serde_json::Value = row.get(0);
+                C::from_json(&json).map_err(|e| ApiError::internal_error(e.to_string()))
+            })
+            .collect()
+    }
 }
 

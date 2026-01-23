@@ -89,6 +89,12 @@ pub enum ErrorCode {
     
     /// Requested message does not exist
     MessageNotFound,
+
+    /// Requested API key does not exist
+    ApiKeyNotFound,
+
+    /// Requested webhook does not exist
+    WebhookNotFound,
     
     // ========================================================================
     // Conflict Errors (409)
@@ -157,7 +163,9 @@ impl ErrorCode {
             | ErrorCode::NoteNotFound
             | ErrorCode::AgentNotFound
             | ErrorCode::LockNotFound
-            | ErrorCode::MessageNotFound => StatusCode::NOT_FOUND,
+            | ErrorCode::MessageNotFound
+            | ErrorCode::ApiKeyNotFound
+            | ErrorCode::WebhookNotFound => StatusCode::NOT_FOUND,
             
             // Conflict errors
             ErrorCode::EntityAlreadyExists
@@ -205,6 +213,8 @@ impl ErrorCode {
             ErrorCode::AgentNotFound => "Agent not found",
             ErrorCode::LockNotFound => "Lock not found",
             ErrorCode::MessageNotFound => "Message not found",
+            ErrorCode::ApiKeyNotFound => "API key not found",
+            ErrorCode::WebhookNotFound => "Webhook not found",
             
             // Conflict
             ErrorCode::EntityAlreadyExists => "Entity already exists",
@@ -415,6 +425,22 @@ impl ApiError {
         Self::new(
             ErrorCode::MessageNotFound,
             format!("Message {} not found", message_id),
+        )
+    }
+
+    /// Create an ApiKeyNotFound error.
+    pub fn api_key_not_found(api_key_id: impl fmt::Display) -> Self {
+        Self::new(
+            ErrorCode::ApiKeyNotFound,
+            format!("API key {} not found", api_key_id),
+        )
+    }
+
+    /// Create a WebhookNotFound error.
+    pub fn webhook_not_found(webhook_id: impl fmt::Display) -> Self {
+        Self::new(
+            ErrorCode::WebhookNotFound,
+            format!("Webhook {} not found", webhook_id),
         )
     }
     

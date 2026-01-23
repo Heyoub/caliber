@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "caliber-core",
+    "caliber-events",
     "caliber-dsl",
     "caliber-llm",
     "caliber-context",
@@ -72,6 +73,7 @@ caliber-agents = { path = "caliber-agents", version = "0.4.0" }
 caliber-dsl = { path = "caliber-dsl", version = "0.4.0" }
 caliber-test-utils = { path = "caliber-test-utils", version = "0.4.0" }
 caliber-api = { path = "caliber-api", version = "0.4.0" }
+caliber-events = { path = "caliber-events", version = "0.4.0" }
 
 # === PROFILE OPTIMIZATIONS ===
 
