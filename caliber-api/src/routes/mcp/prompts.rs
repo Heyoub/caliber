@@ -1,6 +1,7 @@
 //! MCP prompt handlers
 
 use super::{types::*, McpState};
+use crate::types::TrajectoryResponse;
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
 use caliber_core::EntityId;
@@ -82,7 +83,7 @@ async fn execute_prompt(
             let trajectory_id = parse_uuid(&args, "trajectory_id")?;
             let trajectory = state
                 .db
-                .trajectory_get(trajectory_id, tenant_id)
+                .get::<TrajectoryResponse>(trajectory_id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(trajectory_id))?;
 
@@ -141,7 +142,7 @@ async fn execute_prompt(
             let trajectory_id = parse_uuid(&args, "trajectory_id")?;
             let trajectory = state
                 .db
-                .trajectory_get(trajectory_id, tenant_id)
+                .get::<TrajectoryResponse>(trajectory_id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(trajectory_id))?;
 
@@ -171,7 +172,7 @@ async fn execute_prompt(
             let trajectory_id = parse_uuid(&args, "trajectory_id")?;
             let trajectory = state
                 .db
-                .trajectory_get(trajectory_id, tenant_id)
+                .get::<TrajectoryResponse>(trajectory_id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(trajectory_id))?;
 

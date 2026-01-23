@@ -1,6 +1,8 @@
 //! MCP handler functions
 
 use super::{types::*, tools::*};
+use crate::components::TrajectoryListFilter;
+use crate::types::{ArtifactResponse, TrajectoryResponse};
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
 use caliber_core::EntityId;
@@ -131,7 +133,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let trajectory = state.db.trajectory_create(&req, tenant_id).await?;
+            let trajectory = state.db.create::<crate::types::TrajectoryResponse>(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::TrajectoryCreated {
                 trajectory: trajectory.clone(),
             });
@@ -151,7 +153,7 @@ async fn execute_tool(
 
             let trajectory = state
                 .db
-                .trajectory_get(id, tenant_id)
+                .get::<TrajectoryResponse>(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -174,7 +176,11 @@ async fn execute_tool(
                 _ => return Err(ApiError::invalid_input("Invalid status")),
             };
 
-            let trajectories = state.db.trajectory_list_by_status(status, tenant_id).await?;
+            let filter = TrajectoryListFilter {
+                status: Some(status),
+                ..Default::default()
+            };
+            let trajectories = state.db.list::<TrajectoryResponse>(&filter, tenant_id).await?;
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&trajectories)
@@ -222,7 +228,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let note = state.db.note_create(&req, tenant_id).await?;
+            let note = state.db.create::<crate::types::NoteResponse>(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
 
             Ok(vec![ContentBlock::Text {
@@ -300,7 +306,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let artifact = state.db.artifact_create(&req, tenant_id).await?;
+            let artifact = state.db.create::<crate::types::ArtifactResponse>(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::ArtifactCreated {
                 artifact: artifact.clone(),
             });
@@ -320,7 +326,7 @@ async fn execute_tool(
 
             let artifact = state
                 .db
-                .artifact_get(id, tenant_id)
+                .get::<ArtifactResponse>(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
@@ -353,7 +359,7 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let scope = state.db.scope_create(&req, tenant_id).await?;
+            let scope = state.db.create::<crate::types::ScopeResponse>(&req, tenant_id).await?;
             state.ws.broadcast(WsEvent::ScopeCreated { scope: scope.clone() });
 
             Ok(vec![ContentBlock::Text {

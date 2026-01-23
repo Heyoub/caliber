@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::AgentListFilter,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -105,33 +106,21 @@ pub async fn list_agents(
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListAgentsRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // List agents filtered by tenant for isolation
-    let agents = if let Some(agent_type) = params.agent_type {
-        // Filter by agent type and tenant
-        db.agent_list_by_type_and_tenant(&agent_type, auth.tenant_id).await?
-    } else if params.active_only.unwrap_or(false) {
-        // Filter by active status and tenant
-        db.agent_list_active_by_tenant(auth.tenant_id).await?
-    } else {
-        // List all agents for tenant
-        db.agent_list_all_by_tenant(auth.tenant_id).await?
+    // Build filter from query params - all filtering handled by generic list
+    let filter = AgentListFilter {
+        agent_type: params.agent_type,
+        status: params.status,
+        trajectory_id: params.trajectory_id,
+        active_only: params.active_only,
+        limit: None,
+        offset: None,
     };
 
-    // Apply additional filters if needed
-    let mut filtered = agents;
-
-    if let Some(status) = params.status {
-        filtered.retain(|a| a.status == status);
-    }
-
-    if let Some(trajectory_id) = params.trajectory_id {
-        filtered.retain(|a| a.current_trajectory_id == Some(trajectory_id));
-    }
-
-    let total = filtered.len() as i32;
+    let agents = db.list::<AgentResponse>(&filter, auth.tenant_id).await?;
+    let total = agents.len() as i32;
 
     let response = ListAgentsResponse {
-        agents: filtered,
+        agents,
         total,
     };
 
@@ -161,13 +150,11 @@ pub async fn get_agent(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let agent = db
-        .agent_get(id)
+        .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
-
-    // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
 
     Ok(Json(agent))
 }
@@ -232,13 +219,12 @@ pub async fn update_agent(
 
     // First verify the agent exists and belongs to this tenant
     let existing = db
-        .agent_get(id)
+        .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
-    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update agent via database client
-    let agent = db.agent_update(id, &req).await?;
+    let agent = db.update::<AgentResponse>(id, &req, auth.tenant_id).await?;
 
     // Broadcast AgentStatusChanged when status updates are included
     if let Some(status) = &req.status {
@@ -279,13 +265,12 @@ pub async fn unregister_agent(
 ) -> ApiResult<StatusCode> {
     // First verify the agent exists and belongs to this tenant
     let agent = db
-        .agent_get(id)
+        .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
-    validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
 
     // Check if agent is currently active
-    if agent.status.to_lowercase() == "active" {
+    if agent.status == caliber_core::AgentStatus::Active {
         return Err(ApiError::invalid_input(
             "Cannot unregister an active agent. Set status to idle first.",
         ));
@@ -328,13 +313,12 @@ pub async fn agent_heartbeat(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the agent exists and belongs to this tenant
-    let agent = db
-        .agent_get(id)
+    let _agent = db
+        .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
-    validate_tenant_ownership(&auth, Some(agent.tenant_id))?;
 
-    // Update heartbeat via database client
+    // Update heartbeat via database client (custom function)
     db.agent_heartbeat(id).await?;
 
     // Broadcast AgentHeartbeat event with tenant_id for filtering
@@ -346,7 +330,7 @@ pub async fn agent_heartbeat(
 
     // Return the updated agent
     let updated_agent = db
-        .agent_get(id)
+        .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 

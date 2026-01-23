@@ -86,7 +86,7 @@ pub async fn create_handoff(
     }
 
     // Create handoff via database client with tenant_id for isolation
-    let handoff = db.handoff_create(&req, auth.tenant_id).await?;
+    let handoff = db.create::<HandoffResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast HandoffCreated event
     ws.broadcast(WsEvent::HandoffCreated {
@@ -119,13 +119,11 @@ pub async fn get_handoff(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let handoff = db
-        .handoff_get(id)
+        .get::<HandoffResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
-
-    // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, Some(handoff.tenant_id))?;
 
     Ok(Json(handoff))
 }
@@ -161,16 +159,13 @@ pub async fn accept_handoff(
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in initiated state
     let handoff = db
-        .handoff_get(id)
+        .get::<HandoffResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
-    // Validate tenant ownership
-    validate_tenant_ownership(&auth, Some(handoff.tenant_id))?;
-
-    if handoff.status.to_lowercase() != "initiated" {
+    if handoff.status != caliber_core::HandoffStatus::Initiated {
         return Err(ApiError::state_conflict(format!(
-            "Handoff is in '{}' state, cannot accept",
+            "Handoff is in '{:?}' state, cannot accept",
             handoff.status
         )));
     }
@@ -228,16 +223,13 @@ pub async fn complete_handoff(
 ) -> ApiResult<StatusCode> {
     // Verify the handoff exists and is in accepted state
     let handoff = db
-        .handoff_get(id)
+        .get::<HandoffResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
-    // Validate tenant ownership
-    validate_tenant_ownership(&auth, Some(handoff.tenant_id))?;
-
-    if handoff.status.to_lowercase() != "accepted" {
+    if handoff.status != caliber_core::HandoffStatus::Accepted {
         return Err(ApiError::state_conflict(format!(
-            "Handoff is in '{}' state, cannot complete",
+            "Handoff is in '{:?}' state, cannot complete",
             handoff.status
         )));
     }

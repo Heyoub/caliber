@@ -62,7 +62,7 @@ pub async fn create_delegation(
     }
 
     // Create delegation via database client with tenant_id for isolation
-    let delegation = db.delegation_create(&req, auth.tenant_id).await?;
+    let delegation = db.create::<DelegationResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast DelegationCreated event
     ws.broadcast(WsEvent::DelegationCreated {
@@ -95,13 +95,11 @@ pub async fn get_delegation(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let delegation = db
-        .delegation_get(id)
+        .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
-
-    // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, delegation.tenant_id)?;
 
     Ok(Json(delegation))
 }
@@ -137,16 +135,13 @@ pub async fn accept_delegation(
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
     let delegation = db
-        .delegation_get(id)
+        .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
-    // Validate tenant ownership
-    validate_tenant_ownership(&auth, delegation.tenant_id)?;
-
-    if delegation.status.to_lowercase() != "pending" {
+    if delegation.status != caliber_core::DelegationStatus::Pending {
         return Err(ApiError::state_conflict(format!(
-            "Delegation is in '{}' state, cannot accept",
+            "Delegation is in '{:?}' state, cannot accept",
             delegation.status
         )));
     }
@@ -208,16 +203,13 @@ pub async fn reject_delegation(
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in pending state
     let delegation = db
-        .delegation_get(id)
+        .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
-    // Validate tenant ownership
-    validate_tenant_ownership(&auth, delegation.tenant_id)?;
-
-    if delegation.status.to_lowercase() != "pending" {
+    if delegation.status != caliber_core::DelegationStatus::Pending {
         return Err(ApiError::state_conflict(format!(
-            "Delegation is in '{}' state, cannot reject",
+            "Delegation is in '{:?}' state, cannot reject",
             delegation.status
         )));
     }
@@ -267,17 +259,17 @@ pub async fn complete_delegation(
 ) -> ApiResult<StatusCode> {
     // Verify the delegation exists and is in accepted/in-progress state
     let delegation = db
-        .delegation_get(id)
+        .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
-    // Validate tenant ownership
-    validate_tenant_ownership(&auth, delegation.tenant_id)?;
-
-    let status_lower = delegation.status.to_lowercase();
-    if status_lower != "accepted" && status_lower != "inprogress" {
+    let can_complete = matches!(
+        delegation.status,
+        caliber_core::DelegationStatus::Accepted | caliber_core::DelegationStatus::InProgress
+    );
+    if !can_complete {
         return Err(ApiError::state_conflict(format!(
-            "Delegation is in '{}' state, cannot complete",
+            "Delegation is in '{:?}' state, cannot complete",
             delegation.status
         )));
     }

@@ -18,12 +18,13 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::{ArtifactListFilter, TurnListFilter},
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
     middleware::AuthExtractor,
     state::AppState,
-    types::{CreateTurnRequest, TurnResponse},
+    types::{ArtifactResponse, CreateTurnRequest, ScopeResponse, TurnResponse},
     ws::WsState,
 };
 
@@ -69,13 +70,13 @@ pub async fn create_turn(
 
     // Validate scope belongs to this tenant before creating turn
     let scope = db
-        .scope_get(req.scope_id, auth.tenant_id)
+        .get::<ScopeResponse>(req.scope_id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
     // Create turn via database client with tenant_id for isolation
-    let turn = db.turn_create(&req, auth.tenant_id).await?;
+    let turn = db.create::<TurnResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast TurnCreated event
     ws.broadcast(WsEvent::TurnCreated {
@@ -86,23 +87,31 @@ pub async fn create_turn(
     // BATTLE INTEL: Check summarization triggers after turn creation
     // =========================================================================
     // Get the scope to check trigger conditions
-    if let Ok(Some(scope)) = db.scope_get(req.scope_id, auth.tenant_id).await {
+    if let Ok(Some(scope)) = db.get::<ScopeResponse>(req.scope_id, auth.tenant_id).await {
         // Get the trajectory ID from the scope for fetching policies
         let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
 
-        // Fetch summarization policies for this trajectory
+        // Fetch summarization policies for this trajectory (custom function)
         if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
             if !policies.is_empty() {
-                // Get turn count for this scope
+                // Get turn count for this scope using generic list
+                let turn_filter = TurnListFilter {
+                    scope_id: Some(req.scope_id),
+                    ..Default::default()
+                };
                 let turn_count = db
-                    .turn_list_by_scope(req.scope_id, auth.tenant_id)
+                    .list::<TurnResponse>(&turn_filter, auth.tenant_id)
                     .await
                     .map(|turns| turns.len() as i32)
                     .unwrap_or(0);
 
-                // Get artifact count for this scope
+                // Get artifact count for this scope using generic list
+                let artifact_filter = ArtifactListFilter {
+                    scope_id: Some(req.scope_id),
+                    ..Default::default()
+                };
                 let artifact_count = db
-                    .artifact_list_by_scope(req.scope_id, auth.tenant_id)
+                    .list::<ArtifactResponse>(&artifact_filter, auth.tenant_id)
                     .await
                     .map(|artifacts| artifacts.len() as i32)
                     .unwrap_or(0);
@@ -194,13 +203,11 @@ pub async fn get_turn(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TurnResponse>> {
+    // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let turn = db
-        .turn_get(id)
+        .get::<TurnResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Turn", id.to_string()))?;
-
-    // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, turn.tenant_id)?;
 
     Ok(Json(turn))
 }

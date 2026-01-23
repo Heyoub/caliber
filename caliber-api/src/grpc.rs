@@ -15,6 +15,9 @@ use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tonic::{Request, Response, Status};
 
 use crate::{
+    components::{
+        ArtifactListFilter, NoteListFilter, ScopeListFilter, TrajectoryListFilter, TurnListFilter,
+    },
     db::DbClient,
     error::ApiError,
     events::WsEvent,
@@ -174,7 +177,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         };
 
         // Reuse REST handler logic
-        let trajectory = self.db.trajectory_create(&create_req, tenant_id).await?;
+        let trajectory = self.db.create::<crate::types::TrajectoryResponse>(&create_req, tenant_id).await?;
         
         // Broadcast event
         self.ws.broadcast(WsEvent::TrajectoryCreated {
@@ -194,7 +197,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         let req = request.into_inner();
         let id = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
         
-        let trajectory = self.db.trajectory_get(id, tenant_id).await?
+        let trajectory = self.db.get::<crate::types::TrajectoryResponse>(id, tenant_id).await?
             .ok_or_else(|| Status::not_found("Trajectory not found"))?;
         
         let response = trajectory_to_proto(&trajectory);
@@ -217,24 +220,20 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
             offset: req.offset,
         };
         
-        // For now, require status filter
-        let status = list_req.status.ok_or_else(|| Status::invalid_argument("status filter required"))?;
-        let mut trajectories = self.db.trajectory_list_by_status(status, tenant_id).await?;
-        
-        // Apply filters
-        if let Some(agent_id) = list_req.agent_id {
-            trajectories.retain(|t| t.agent_id == Some(agent_id));
-        }
-        if let Some(parent_id) = list_req.parent_id {
-            trajectories.retain(|t| t.parent_trajectory_id == Some(parent_id));
-        }
-        
-        // Apply pagination
+        // Use generic list with filter
+        let filter = TrajectoryListFilter {
+            status: list_req.status,
+            agent_id: list_req.agent_id,
+            parent_id: list_req.parent_id,
+            limit: list_req.limit,
+            offset: list_req.offset,
+        };
+        let trajectories = self.db.list::<crate::types::TrajectoryResponse>(&filter, tenant_id).await?;
+
+        // Calculate total (note: this is approximate since filter was applied)
         let total = trajectories.len() as i32;
-        let offset = list_req.offset.unwrap_or(0) as usize;
-        let limit = list_req.limit.unwrap_or(100) as usize;
-        
-        let paginated: Vec<_> = trajectories.into_iter().skip(offset).take(limit).collect();
+
+        let paginated = trajectories;
         
         let response = ListTrajectoriesResponse {
             trajectories: paginated.into_iter().map(|t| trajectory_to_proto(&t)).collect(),
@@ -259,7 +258,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
         
-        let trajectory = self.db.trajectory_update(id, &update_req, tenant_id).await?;
+        let trajectory = self.db.update::<crate::types::TrajectoryResponse>(id, &update_req, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::TrajectoryUpdated {
             trajectory: trajectory.clone(),
@@ -273,10 +272,11 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<DeleteTrajectoryRequest>,
     ) -> Result<Response<Empty>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
 
-        self.db.trajectory_delete(id).await?;
+        self.db.delete::<crate::types::TrajectoryResponse>(id, tenant_id).await?;
         Ok(Response::new(Empty {}))
     }
 
@@ -284,10 +284,15 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<ListTrajectoryScopesRequest>,
     ) -> Result<Response<ListScopesResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
 
-        let scopes = self.db.scope_list_by_trajectory(id).await?;
+        let filter = ScopeListFilter {
+            trajectory_id: Some(id),
+            ..Default::default()
+        };
+        let scopes = self.db.list::<crate::types::ScopeResponse>(&filter, tenant_id).await?;
         let response = ListScopesResponse {
             scopes: scopes.into_iter().map(|s| scope_to_proto(&s)).collect()
         };
@@ -298,10 +303,15 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
         &self,
         request: Request<ListTrajectoryChildrenRequest>,
     ) -> Result<Response<ListTrajectoriesResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
 
-        let children = self.db.trajectory_list_children(id).await?;
+        let filter = TrajectoryListFilter {
+            parent_id: Some(id),
+            ..Default::default()
+        };
+        let children = self.db.list::<crate::types::TrajectoryResponse>(&filter, tenant_id).await?;
         let response = ListTrajectoriesResponse {
             trajectories: children.iter().map(trajectory_to_proto).collect(),
             total: children.len() as i32,
@@ -343,7 +353,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
 
-        let scope = self.db.scope_create(&create_req, tenant_id).await?;
+        let scope = self.db.create::<crate::types::ScopeResponse>(&create_req, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::ScopeCreated {
             scope: scope.clone(),
@@ -361,7 +371,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let scope = self.db.scope_get(id, tenant_id).await?
+        let scope = self.db.get::<crate::types::ScopeResponse>(id, tenant_id).await?
             .ok_or_else(|| Status::not_found("Scope not found"))?;
         
         let response = scope_to_proto(&scope);
@@ -383,7 +393,7 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
         
-        let scope = self.db.scope_update(id, &update_req, tenant_id).await?;
+        let scope = self.db.update::<crate::types::ScopeResponse>(id, &update_req, tenant_id).await?;
         
         self.ws.broadcast(WsEvent::ScopeUpdated {
             scope: scope.clone(),
@@ -442,7 +452,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let turns = self.db.turn_list_by_scope(id, tenant_id).await?;
+        let filter = TurnListFilter {
+            scope_id: Some(id),
+            ..Default::default()
+        };
+        let turns = self.db.list::<crate::types::TurnResponse>(&filter, tenant_id).await?;
         
         let response = ListTurnsResponse {
             turns: turns.into_iter().map(|t| turn_to_proto(&t)).collect(),
@@ -459,7 +473,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let artifacts = self.db.artifact_list_by_scope(id, tenant_id).await?;
+        let filter = ArtifactListFilter {
+            scope_id: Some(id),
+            ..Default::default()
+        };
+        let artifacts = self.db.list::<crate::types::ArtifactResponse>(&filter, tenant_id).await?;
         let total = artifacts.len() as i32;
         
         let response = ListArtifactsResponse {
@@ -784,7 +802,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
             ttl: serde_json::from_str(&req.ttl).map_err(|_| Status::invalid_argument("Invalid TTL"))?,
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let artifact = self.db.artifact_create(&create_req, tenant_id).await?;
+        let artifact = self.db.create::<crate::types::ArtifactResponse>(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::ArtifactCreated { artifact: artifact.clone() });
         Ok(Response::new(artifact_to_proto(&artifact)))
     }
@@ -792,7 +810,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     async fn get_artifact(&self, request: Request<GetArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
-        let artifact = self.db.artifact_get(id, tenant_id).await?.ok_or_else(|| Status::not_found("Artifact not found"))?;
+        let artifact = self.db.get::<crate::types::ArtifactResponse>(id, tenant_id).await?.ok_or_else(|| Status::not_found("Artifact not found"))?;
         Ok(Response::new(artifact_to_proto(&artifact)))
     }
 
@@ -800,7 +818,11 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let scope_id = req.scope_id.ok_or_else(|| Status::invalid_argument("scope_id required"))?.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
-        let artifacts = self.db.artifact_list_by_scope(scope_id, tenant_id).await?;
+        let filter = ArtifactListFilter {
+            scope_id: Some(scope_id),
+            ..Default::default()
+        };
+        let artifacts = self.db.list::<crate::types::ArtifactResponse>(&filter, tenant_id).await?;
         let total = artifacts.len() as i32;
         Ok(Response::new(ListArtifactsResponse {
             artifacts: artifacts.into_iter().map(|a| artifact_to_proto(&a)).collect(),
@@ -819,7 +841,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
             ttl: req.ttl.and_then(|s| serde_json::from_str(&s).ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let artifact = self.db.artifact_update(id, &update_req, tenant_id).await?;
+        let artifact = self.db.update::<crate::types::ArtifactResponse>(id, &update_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
         Ok(Response::new(artifact_to_proto(&artifact)))
     }
@@ -827,7 +849,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     async fn delete_artifact(&self, request: Request<DeleteArtifactRequest>) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id: caliber_core::EntityId = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
-        self.db.artifact_delete(id).await?;
+        self.db.delete::<crate::types::ArtifactResponse>(id, tenant_id).await?;
         self.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id, id });
         Ok(Response::new(Empty {}))
     }
@@ -911,7 +933,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
             ttl: serde_json::from_str(&req.ttl).map_err(|_| Status::invalid_argument("Invalid TTL"))?,
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let note = self.db.note_create(&create_req, tenant_id).await?;
+        let note = self.db.create::<crate::types::NoteResponse>(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
         Ok(Response::new(note_to_proto(&note)))
     }
@@ -919,7 +941,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
     async fn get_note(&self, request: Request<GetNoteRequest>) -> Result<Response<NoteResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
-        let note = self.db.note_get(id, tenant_id).await?.ok_or_else(|| Status::not_found("Note not found"))?;
+        let note = self.db.get::<crate::types::NoteResponse>(id, tenant_id).await?.ok_or_else(|| Status::not_found("Note not found"))?;
         Ok(Response::new(note_to_proto(&note)))
     }
 
@@ -930,7 +952,11 @@ impl note_service_server::NoteService for NoteServiceImpl {
         if let Some(source_trajectory_id) = req.source_trajectory_id {
             // Filter by source trajectory
             let trajectory_id = source_trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid source_trajectory_id"))?;
-            let notes = self.db.note_list_by_trajectory(trajectory_id, tenant_id).await?;
+            let filter = NoteListFilter {
+                source_trajectory_id: Some(trajectory_id),
+                ..Default::default()
+            };
+            let notes = self.db.list::<crate::types::NoteResponse>(&filter, tenant_id).await?;
 
             // Apply additional filters if needed
             let mut filtered = notes;
@@ -967,7 +993,12 @@ impl note_service_server::NoteService for NoteServiceImpl {
             let limit = req.limit.unwrap_or(100);
             let offset = req.offset.unwrap_or(0);
 
-            let notes = self.db.note_list_all_by_tenant(limit, offset, tenant_id).await?;
+            let filter = NoteListFilter {
+                limit: Some(limit),
+                offset: Some(offset),
+                ..Default::default()
+            };
+            let notes = self.db.list::<crate::types::NoteResponse>(&filter, tenant_id).await?;
 
             // Apply additional filters if needed
             let mut filtered = notes;
@@ -1008,7 +1039,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
             ttl: req.ttl.and_then(|s| serde_json::from_str(&s).ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let note = self.db.note_update(id, &update_req, tenant_id).await?;
+        let note = self.db.update::<crate::types::NoteResponse>(id, &update_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
         Ok(Response::new(note_to_proto(&note)))
     }
@@ -1016,7 +1047,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
     async fn delete_note(&self, request: Request<DeleteNoteRequest>) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id: caliber_core::EntityId = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
-        self.db.note_delete(id).await?;
+        self.db.delete::<crate::types::NoteResponse>(id, tenant_id).await?;
         self.ws.broadcast(WsEvent::NoteDeleted { tenant_id, id });
         Ok(Response::new(Empty {}))
     }
@@ -1101,14 +1132,15 @@ impl turn_service_server::TurnService for TurnServiceImpl {
             tool_results: req.tool_results.and_then(|s| serde_json::from_str(&s).ok()),
             metadata: req.metadata.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let turn = self.db.turn_create(&create_req, tenant_id).await?;
+        let turn = self.db.create::<crate::types::TurnResponse>(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::TurnCreated { turn: turn.clone() });
         Ok(Response::new(turn_to_proto(&turn)))
     }
 
     async fn get_turn(&self, request: Request<GetTurnRequest>) -> Result<Response<TurnResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().turn_id.parse().map_err(|_| Status::invalid_argument("Invalid turn_id"))?;
-        let turn = self.db.turn_get(id).await?.ok_or_else(|| Status::not_found("Turn not found"))?;
+        let turn = self.db.get::<crate::types::TurnResponse>(id, tenant_id).await?.ok_or_else(|| Status::not_found("Turn not found"))?;
         Ok(Response::new(turn_to_proto(&turn)))
     }
 }
@@ -1155,8 +1187,9 @@ impl agent_service_server::AgentService for AgentServiceImpl {
     }
 
     async fn get_agent(&self, request: Request<GetAgentRequest>) -> Result<Response<AgentResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
-        let agent = self.db.agent_get(id).await?.ok_or_else(|| Status::not_found("Agent not found"))?;
+        let agent = self.db.get::<crate::types::AgentResponse>(id, tenant_id).await?.ok_or_else(|| Status::not_found("Agent not found"))?;
         Ok(Response::new(agent_to_proto(&agent)))
     }
 
@@ -1208,7 +1241,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
             current_scope_id: req.current_scope_id.and_then(|s| s.parse().ok()),
             memory_access,
         };
-        let agent = self.db.agent_update(id, &update_req).await?;
+        let agent = self.db.update::<crate::types::AgentResponse>(id, &update_req, tenant_id).await?;
         let status = agent.status.clone();
         self.ws.broadcast(WsEvent::AgentStatusChanged { tenant_id, agent_id: id, status });
         Ok(Response::new(agent_to_proto(&agent)))
@@ -1419,7 +1452,7 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
             expected_completion: parse_optional_timestamp_millis(req.expected_completion, "expected_completion")?,
             context: req.context.and_then(|s| serde_json::from_str(&s).ok()),
         };
-        let delegation = self.db.delegation_create(&create_req, tenant_id).await?;
+        let delegation = self.db.create::<crate::types::DelegationResponse>(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::DelegationCreated {
             delegation: delegation.clone(),
         });
@@ -1427,8 +1460,9 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
     }
 
     async fn get_delegation(&self, request: Request<GetDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
-        let delegation = self.db.delegation_get(id).await?.ok_or_else(|| Status::not_found("Delegation not found"))?;
+        let delegation = self.db.get::<crate::types::DelegationResponse>(id, tenant_id).await?.ok_or_else(|| Status::not_found("Delegation not found"))?;
         Ok(Response::new(delegation_to_proto(&delegation)))
     }
 
@@ -1501,7 +1535,7 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
             reason: req.reason,
             context_snapshot: req.context_snapshot,
         };
-        let handoff = self.db.handoff_create(&create_req, tenant_id).await?;
+        let handoff = self.db.create::<crate::types::HandoffResponse>(&create_req, tenant_id).await?;
         self.ws.broadcast(WsEvent::HandoffCreated {
             handoff: handoff.clone(),
         });
@@ -1509,8 +1543,9 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
     }
 
     async fn get_handoff(&self, request: Request<GetHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
-        let handoff = self.db.handoff_get(id).await?.ok_or_else(|| Status::not_found("Handoff not found"))?;
+        let handoff = self.db.get::<crate::types::HandoffResponse>(id, tenant_id).await?.ok_or_else(|| Status::not_found("Handoff not found"))?;
         Ok(Response::new(handoff_to_proto(&handoff)))
     }
 

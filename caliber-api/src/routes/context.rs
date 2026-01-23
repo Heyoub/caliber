@@ -28,9 +28,11 @@
 //! }
 //! ```
 
+use crate::components::{ArtifactListFilter, NoteListFilter};
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::AuthContext;
+use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse};
 use axum::{extract::State, Extension, Json};
 use caliber_context::{
     ContextAssembler, ContextPackage, ContextWindow, KernelConfig, ScopeSummary, SessionMarkers,
@@ -210,13 +212,13 @@ pub async fn assemble_context(
 
     // Validate trajectory exists and belongs to tenant
     let _trajectory = db
-        .trajectory_get(req.trajectory_id, tenant_id)
+        .get::<TrajectoryResponse>(req.trajectory_id, tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(req.trajectory_id))?;
 
     // Validate scope exists and belongs to tenant
     let _scope = db
-        .scope_get(req.scope_id, tenant_id)
+        .get::<ScopeResponse>(req.scope_id, tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
 
@@ -246,9 +248,11 @@ pub async fn assemble_context(
     let mut notes_count = 0;
     if req.include_notes {
         let max_notes = req.max_notes.unwrap_or(10) as usize;
-        let notes = db
-            .note_list_by_trajectory(req.trajectory_id, tenant_id)
-            .await?;
+        let filter = NoteListFilter {
+            source_trajectory_id: Some(req.trajectory_id),
+            ..Default::default()
+        };
+        let notes = db.list::<NoteResponse>(&filter, tenant_id).await?;
 
         // Apply limit
         let limited_notes: Vec<_> = notes.into_iter().take(max_notes).collect();
@@ -266,9 +270,11 @@ pub async fn assemble_context(
     let mut artifacts_count = 0;
     if req.include_artifacts {
         let max_artifacts = req.max_artifacts.unwrap_or(5) as usize;
-        let artifacts = db
-            .artifact_list_by_scope(req.scope_id, tenant_id)
-            .await?;
+        let filter = ArtifactListFilter {
+            scope_id: Some(req.scope_id),
+            ..Default::default()
+        };
+        let artifacts = db.list::<ArtifactResponse>(&filter, tenant_id).await?;
 
         // Apply limit
         let limited_artifacts: Vec<_> = artifacts.into_iter().take(max_artifacts).collect();

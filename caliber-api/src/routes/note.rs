@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::NoteListFilter,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -62,7 +63,7 @@ pub async fn create_note(
     }
 
     // Create note via database client with tenant_id for isolation
-    let note = db.note_create(&req, auth.tenant_id).await?;
+    let note = db.create::<NoteResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast NoteCreated event
     ws.broadcast(WsEvent::NoteCreated {
@@ -100,73 +101,31 @@ pub async fn list_notes(
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListNotesRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Filter by source trajectory and tenant for isolation
+    // Build filter from query params - all filtering handled by generic list
+    let filter = NoteListFilter {
+        note_type: params.note_type,
+        source_trajectory_id: params.source_trajectory_id,
+        limit: params.limit,
+        offset: params.offset,
+    };
 
-    if let Some(source_trajectory_id) = params.source_trajectory_id {
-        // Filter by source trajectory and tenant
-        let notes = db
-            .note_list_by_trajectory_and_tenant(source_trajectory_id, auth.tenant_id)
-            .await?;
+    let mut notes = db.list::<NoteResponse>(&filter, auth.tenant_id).await?;
 
-        // Apply additional filters if needed
-        let mut filtered = notes;
-
-        if let Some(note_type) = params.note_type {
-            filtered.retain(|n| n.note_type == note_type);
-        }
-
-        if let Some(created_after) = params.created_after {
-            filtered.retain(|n| n.created_at >= created_after);
-        }
-
-        if let Some(created_before) = params.created_before {
-            filtered.retain(|n| n.created_at <= created_before);
-        }
-
-        // Apply pagination
-        let total = filtered.len() as i32;
-        let offset = params.offset.unwrap_or(0) as usize;
-        let limit = params.limit.unwrap_or(100) as usize;
-
-        let paginated: Vec<_> = filtered.into_iter().skip(offset).take(limit).collect();
-
-        let response = ListNotesResponse {
-            notes: paginated,
-            total,
-        };
-
-        Ok(Json(response))
-    } else {
-        // No trajectory filter - return all notes for tenant with pagination
-        let limit = params.limit.unwrap_or(100);
-        let offset = params.offset.unwrap_or(0);
-
-        let notes = db.note_list_all_by_tenant(limit, offset, auth.tenant_id).await?;
-
-        // Apply additional filters if needed
-        let mut filtered = notes;
-
-        if let Some(note_type) = params.note_type {
-            filtered.retain(|n| n.note_type == note_type);
-        }
-
-        if let Some(created_after) = params.created_after {
-            filtered.retain(|n| n.created_at >= created_after);
-        }
-
-        if let Some(created_before) = params.created_before {
-            filtered.retain(|n| n.created_at <= created_before);
-        }
-
-        let total = filtered.len() as i32;
-
-        let response = ListNotesResponse {
-            notes: filtered,
-            total,
-        };
-
-        Ok(Json(response))
+    // Apply date filters in Rust (not supported in filter)
+    if let Some(created_after) = params.created_after {
+        notes.retain(|n| n.created_at >= created_after);
     }
+    if let Some(created_before) = params.created_before {
+        notes.retain(|n| n.created_at <= created_before);
+    }
+
+    let total = notes.len() as i32;
+    let response = ListNotesResponse {
+        notes,
+        total,
+    };
+
+    Ok(Json(response))
 }
 
 /// GET /api/v1/notes/{id} - Get note by ID
@@ -193,7 +152,7 @@ pub async fn get_note(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let note = db
-        .note_get(id, auth.tenant_id)
+        .get::<NoteResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
@@ -258,12 +217,12 @@ pub async fn update_note(
 
     // First verify the note exists and belongs to this tenant
     let existing = db
-        .note_get(id, auth.tenant_id)
+        .get::<NoteResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    let note = db.note_update(id, &req, auth.tenant_id).await?;
+    let note = db.update::<NoteResponse>(id, &req, auth.tenant_id).await?;
     ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
     Ok(Json(note))
 }
@@ -294,12 +253,12 @@ pub async fn delete_note(
 ) -> ApiResult<StatusCode> {
     // First verify the note exists and belongs to this tenant
     let note = db
-        .note_get(id, auth.tenant_id)
+        .get::<NoteResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
     validate_tenant_ownership(&auth, note.tenant_id)?;
 
-    db.note_delete(id).await?;
+    db.delete::<NoteResponse>(id, auth.tenant_id).await?;
     ws.broadcast(WsEvent::NoteDeleted {
         tenant_id: auth.tenant_id,
         id,

@@ -108,7 +108,7 @@ async fn process_trajectory_item(
                 };
             }
 
-            match db.trajectory_create(&create_req, auth.tenant_id).await {
+            match db.create::<TrajectoryResponse>(&create_req, auth.tenant_id).await {
                 Ok(trajectory) => {
                     ws.broadcast(WsEvent::TrajectoryCreated {
                         trajectory: trajectory.clone(),
@@ -131,7 +131,7 @@ async fn process_trajectory_item(
             };
 
             // Validate tenant ownership before update
-            match db.trajectory_get(id, auth.tenant_id).await {
+            match db.get::<TrajectoryResponse>(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -172,7 +172,7 @@ async fn process_trajectory_item(
                 };
             }
 
-            match db.trajectory_update(id, &update_req, auth.tenant_id).await {
+            match db.update::<TrajectoryResponse>(id, &update_req, auth.tenant_id).await {
                 Ok(trajectory) => {
                     ws.broadcast(WsEvent::TrajectoryUpdated {
                         trajectory: trajectory.clone(),
@@ -195,7 +195,7 @@ async fn process_trajectory_item(
             };
 
             // First get the trajectory to validate ownership and return in response
-            match db.trajectory_get(id, auth.tenant_id).await {
+            match db.get::<TrajectoryResponse>(id, auth.tenant_id).await {
                 Ok(Some(trajectory)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, trajectory.tenant_id).is_err() {
@@ -205,7 +205,7 @@ async fn process_trajectory_item(
                         };
                     }
 
-                    match db.trajectory_delete(id).await {
+                    match db.delete::<TrajectoryResponse>(id, auth.tenant_id).await {
                         Ok(_) => {
                             ws.broadcast(WsEvent::TrajectoryDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: trajectory }
@@ -326,7 +326,7 @@ async fn process_artifact_item(
                 }
             }
 
-            match db.artifact_create(&create_req, auth.tenant_id).await {
+            match db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await {
                 Ok(artifact) => {
                     ws.broadcast(WsEvent::ArtifactCreated {
                         artifact: artifact.clone(),
@@ -349,7 +349,7 @@ async fn process_artifact_item(
             };
 
             // Validate tenant ownership before update
-            match db.artifact_get(id, auth.tenant_id).await {
+            match db.get::<ArtifactResponse>(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -391,7 +391,7 @@ async fn process_artifact_item(
                 };
             }
 
-            match db.artifact_update(id, &update_req, auth.tenant_id).await {
+            match db.update::<ArtifactResponse>(id, &update_req, auth.tenant_id).await {
                 Ok(artifact) => {
                     ws.broadcast(WsEvent::ArtifactUpdated {
                         artifact: artifact.clone(),
@@ -413,7 +413,7 @@ async fn process_artifact_item(
                 };
             };
 
-            match db.artifact_get(id, auth.tenant_id).await {
+            match db.get::<ArtifactResponse>(id, auth.tenant_id).await {
                 Ok(Some(artifact)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, artifact.tenant_id).is_err() {
@@ -423,7 +423,7 @@ async fn process_artifact_item(
                         };
                     }
 
-                    match db.artifact_delete(id).await {
+                    match db.delete::<ArtifactResponse>(id, auth.tenant_id).await {
                         Ok(_) => {
                             ws.broadcast(WsEvent::ArtifactDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: artifact }
@@ -527,7 +527,7 @@ async fn process_note_item(
                 };
             }
 
-            match db.note_create(&create_req, auth.tenant_id).await {
+            match db.create::<NoteResponse>(&create_req, auth.tenant_id).await {
                 Ok(note) => {
                     ws.broadcast(WsEvent::NoteCreated {
                         note: note.clone(),
@@ -550,7 +550,7 @@ async fn process_note_item(
             };
 
             // Validate tenant ownership before update
-            match db.note_get(id, auth.tenant_id).await {
+            match db.get::<NoteResponse>(id, auth.tenant_id).await {
                 Ok(Some(existing)) => {
                     if validate_tenant_ownership(auth, existing.tenant_id).is_err() {
                         return BatchItemResult::Error {
@@ -592,7 +592,7 @@ async fn process_note_item(
                 };
             }
 
-            match db.note_update(id, &update_req, auth.tenant_id).await {
+            match db.update::<NoteResponse>(id, &update_req, auth.tenant_id).await {
                 Ok(note) => {
                     ws.broadcast(WsEvent::NoteUpdated {
                         note: note.clone(),
@@ -614,7 +614,7 @@ async fn process_note_item(
                 };
             };
 
-            match db.note_get(id, auth.tenant_id).await {
+            match db.get::<NoteResponse>(id, auth.tenant_id).await {
                 Ok(Some(note)) => {
                     // Validate tenant ownership before delete
                     if validate_tenant_ownership(auth, note.tenant_id).is_err() {
@@ -624,7 +624,7 @@ async fn process_note_item(
                         };
                     }
 
-                    match db.note_delete(id).await {
+                    match db.delete::<NoteResponse>(id, auth.tenant_id).await {
                         Ok(_) => {
                             ws.broadcast(WsEvent::NoteDeleted { tenant_id: auth.tenant_id, id });
                             BatchItemResult::Success { data: note }

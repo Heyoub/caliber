@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::EdgeListFilter,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -64,7 +65,7 @@ pub async fn create_edge(
     }
 
     // Create edge via database client with tenant_id for isolation
-    let edge = db.edge_create(&req, auth.tenant_id).await?;
+    let edge = db.create::<EdgeResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast EdgeCreated event
     ws.broadcast(WsEvent::EdgeCreated {
@@ -106,7 +107,7 @@ pub async fn create_edges_batch(
             continue;
         }
 
-        match db.edge_create(&req, auth.tenant_id).await {
+        match db.create::<EdgeResponse>(&req, auth.tenant_id).await {
             Ok(edge) => edges.push(edge),
             Err(_) => continue, // Skip failed creations
         }
@@ -141,8 +142,9 @@ pub async fn get_edge(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    // Edge doesn't enforce tenant filtering, so validate ownership after get
     let edge = db
-        .edge_get(id)
+        .get::<EdgeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Edge", id))?;
 
@@ -174,8 +176,13 @@ pub async fn list_edges_by_participant(
     AuthExtractor(auth): AuthExtractor,
     Path(entity_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // List edges filtered by tenant for isolation
-    let edges = db.edge_list_by_participant_and_tenant(entity_id, auth.tenant_id).await?;
+    // List edges filtered by participant and tenant for isolation
+    let filter = EdgeListFilter {
+        participant_id: Some(entity_id),
+        tenant_id: Some(auth.tenant_id),
+        ..Default::default()
+    };
+    let edges = db.list::<EdgeResponse>(&filter, auth.tenant_id).await?;
 
     Ok(Json(ListEdgesResponse { edges }))
 }

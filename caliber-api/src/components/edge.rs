@@ -50,6 +50,10 @@ pub struct EdgeListFilter {
     pub source_id: Option<EntityId>,
     /// Filter by target entity ID (any participant with "target" role)
     pub target_id: Option<EntityId>,
+    /// Filter by any participant entity ID (regardless of role)
+    pub participant_id: Option<EntityId>,
+    /// Filter by tenant ID for cross-tenant edges
+    pub tenant_id: Option<EntityId>,
     /// Filter by edge type
     pub edge_type: Option<EdgeType>,
     /// Filter by trajectory context
@@ -65,6 +69,13 @@ impl ListFilter for EdgeListFilter {
         let mut params = Vec::new();
         let mut param_idx = 1;
 
+        // Filter by tenant_id (for cross-tenant edge filtering)
+        if let Some(tenant_id) = self.tenant_id {
+            conditions.push(format!("tenant_id = ${}", param_idx));
+            params.push(SqlParam::Uuid(tenant_id));
+            param_idx += 1;
+        }
+
         if let Some(edge_type) = &self.edge_type {
             conditions.push(format!("edge_type = ${}", param_idx));
             params.push(SqlParam::String(format!("{:?}", edge_type)));
@@ -74,6 +85,16 @@ impl ListFilter for EdgeListFilter {
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("trajectory_id = ${}", param_idx));
             params.push(SqlParam::Uuid(trajectory_id));
+            param_idx += 1;
+        }
+
+        // Filter by any participant (regardless of role)
+        if let Some(participant_id) = self.participant_id {
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements(participants) p WHERE p->>'entity_id' = ${})",
+                param_idx
+            ));
+            params.push(SqlParam::String(participant_id.to_string()));
             param_idx += 1;
         }
 

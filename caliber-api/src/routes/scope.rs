@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::{ArtifactListFilter, TurnListFilter},
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -66,7 +67,7 @@ pub async fn create_scope(
     }
 
     // Create scope via database client with tenant_id for isolation
-    let scope = db.scope_create(&req, auth.tenant_id).await?;
+    let scope = db.create::<ScopeResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast ScopeCreated event
     ws.broadcast(WsEvent::ScopeCreated {
@@ -100,7 +101,7 @@ pub async fn get_scope(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let scope = db
-        .scope_get(id, auth.tenant_id)
+        .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
 
@@ -157,13 +158,13 @@ pub async fn update_scope(
 
     // First verify the scope exists and belongs to this tenant
     let existing = db
-        .scope_get(id, auth.tenant_id)
+        .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update scope via database client
-    let scope = db.scope_update(id, &req, auth.tenant_id).await?;
+    let scope = db.update::<ScopeResponse>(id, &req, auth.tenant_id).await?;
 
     // Broadcast ScopeUpdated event
     ws.broadcast(WsEvent::ScopeUpdated {
@@ -208,12 +209,12 @@ pub async fn create_checkpoint(
 
     // First verify the scope exists and belongs to this tenant
     let scope = db
-        .scope_get(id, auth.tenant_id)
+        .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
-    // Create checkpoint via database client
+    // Create checkpoint via database client (custom function - not generic CRUD)
     let checkpoint = db
         .scope_create_checkpoint(id, &req, auth.tenant_id)
         .await?;
@@ -249,12 +250,12 @@ pub async fn close_scope(
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
     let existing = db
-        .scope_get(id, auth.tenant_id)
+        .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    // Close scope via database client
+    // Close scope via database client (custom function - not generic CRUD)
     let scope = db.scope_close(id, auth.tenant_id).await?;
 
     // Broadcast ScopeClosed event
@@ -270,16 +271,24 @@ pub async fn close_scope(
     // Fetch summarization policies for this trajectory
     if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
         if !policies.is_empty() {
-            // Get turn count for this scope
+            // Get turn count for this scope using generic list
+            let turn_filter = TurnListFilter {
+                scope_id: Some(id),
+                ..Default::default()
+            };
             let turn_count = db
-                .turn_list_by_scope(id, auth.tenant_id)
+                .list::<TurnResponse>(&turn_filter, auth.tenant_id)
                 .await
                 .map(|turns| turns.len() as i32)
                 .unwrap_or(0);
 
-            // Get artifact count for this scope
+            // Get artifact count for this scope using generic list
+            let artifact_filter = ArtifactListFilter {
+                scope_id: Some(id),
+                ..Default::default()
+            };
             let artifact_count = db
-                .artifact_list_by_scope(id, auth.tenant_id)
+                .list::<ArtifactResponse>(&artifact_filter, auth.tenant_id)
                 .await
                 .map(|artifacts| artifacts.len() as i32)
                 .unwrap_or(0);
@@ -373,13 +382,17 @@ pub async fn list_scope_turns(
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
     let scope = db
-        .scope_get(id, auth.tenant_id)
+        .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
-    // Get turns for this scope
-    let turns = db.turn_list_by_scope(id, auth.tenant_id).await?;
+    // Get turns for this scope using generic list with filter
+    let filter = TurnListFilter {
+        scope_id: Some(id),
+        ..Default::default()
+    };
+    let turns = db.list::<TurnResponse>(&filter, auth.tenant_id).await?;
 
     Ok(Json(turns))
 }
@@ -409,13 +422,17 @@ pub async fn list_scope_artifacts(
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
     let scope = db
-        .scope_get(id, auth.tenant_id)
+        .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
-    // Get artifacts for this scope
-    let artifacts = db.artifact_list_by_scope(id, auth.tenant_id).await?;
+    // Get artifacts for this scope using generic list with filter
+    let filter = ArtifactListFilter {
+        scope_id: Some(id),
+        ..Default::default()
+    };
+    let artifacts = db.list::<ArtifactResponse>(&filter, auth.tenant_id).await?;
 
     Ok(Json(artifacts))
 }

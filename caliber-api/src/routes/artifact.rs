@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::ArtifactListFilter,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -73,7 +74,7 @@ pub async fn create_artifact(
     }
 
     // Create artifact via database client with tenant_id for isolation
-    let artifact = db.artifact_create(&req, auth.tenant_id).await?;
+    let artifact = db.create::<ArtifactResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast ArtifactCreated event
     ws.broadcast(WsEvent::ArtifactCreated {
@@ -112,93 +113,39 @@ pub async fn list_artifacts(
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListArtifactsRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Filter by scope or trajectory with tenant isolation
-
-    if let Some(scope_id) = params.scope_id {
-        // Filter by scope and tenant
-        let artifacts = db
-            .artifact_list_by_scope_and_tenant(scope_id, auth.tenant_id)
-            .await?;
-
-        // Apply additional filters if needed
-        let mut filtered = artifacts;
-
-        if let Some(artifact_type) = params.artifact_type {
-            filtered.retain(|a| a.artifact_type == artifact_type);
-        }
-
-        if let Some(trajectory_id) = params.trajectory_id {
-            filtered.retain(|a| a.trajectory_id == trajectory_id);
-        }
-
-        if let Some(created_after) = params.created_after {
-            filtered.retain(|a| a.created_at >= created_after);
-        }
-
-        if let Some(created_before) = params.created_before {
-            filtered.retain(|a| a.created_at <= created_before);
-        }
-
-        // Apply pagination
-        let total = filtered.len() as i32;
-        let offset = params.offset.unwrap_or(0) as usize;
-        let limit = params.limit.unwrap_or(100) as usize;
-
-        let paginated: Vec<_> = filtered
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
-
-        let response = ListArtifactsResponse {
-            artifacts: paginated,
-            total,
-        };
-
-        Ok(Json(response))
-    } else if let Some(trajectory_id) = params.trajectory_id {
-        // Filter by trajectory and tenant
-        let artifacts = db
-            .artifact_list_by_trajectory_and_tenant(trajectory_id, auth.tenant_id)
-            .await?;
-
-        // Apply additional filters if needed
-        let mut filtered = artifacts;
-
-        if let Some(artifact_type) = params.artifact_type {
-            filtered.retain(|a| a.artifact_type == artifact_type);
-        }
-
-        if let Some(created_after) = params.created_after {
-            filtered.retain(|a| a.created_at >= created_after);
-        }
-
-        if let Some(created_before) = params.created_before {
-            filtered.retain(|a| a.created_at <= created_before);
-        }
-
-        // Apply pagination
-        let total = filtered.len() as i32;
-        let offset = params.offset.unwrap_or(0) as usize;
-        let limit = params.limit.unwrap_or(100) as usize;
-
-        let paginated: Vec<_> = filtered
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
-
-        let response = ListArtifactsResponse {
-            artifacts: paginated,
-            total,
-        };
-
-        Ok(Json(response))
-    } else {
-        Err(ApiError::invalid_input(
+    // Build filter from query params - require scope_id or trajectory_id
+    if params.scope_id.is_none() && params.trajectory_id.is_none() {
+        return Err(ApiError::invalid_input(
             "Either scope_id or trajectory_id filter is required",
-        ))
+        ));
     }
+
+    // Use generic list with ArtifactListFilter
+    let filter = ArtifactListFilter {
+        trajectory_id: params.trajectory_id,
+        scope_id: params.scope_id,
+        artifact_type: params.artifact_type,
+        limit: params.limit,
+        offset: params.offset,
+    };
+
+    let mut artifacts = db.list::<ArtifactResponse>(&filter, auth.tenant_id).await?;
+
+    // Apply date filters in Rust (not supported in filter)
+    if let Some(created_after) = params.created_after {
+        artifacts.retain(|a| a.created_at >= created_after);
+    }
+    if let Some(created_before) = params.created_before {
+        artifacts.retain(|a| a.created_at <= created_before);
+    }
+
+    let total = artifacts.len() as i32;
+    let response = ListArtifactsResponse {
+        artifacts,
+        total,
+    };
+
+    Ok(Json(response))
 }
 
 /// GET /api/v1/artifacts/{id} - Get artifact by ID
@@ -225,7 +172,7 @@ pub async fn get_artifact(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let artifact = db
-        .artifact_get(id, auth.tenant_id)
+        .get::<ArtifactResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
@@ -290,12 +237,12 @@ pub async fn update_artifact(
 
     // First verify the artifact exists and belongs to this tenant
     let existing = db
-        .artifact_get(id, auth.tenant_id)
+        .get::<ArtifactResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    let artifact = db.artifact_update(id, &req, auth.tenant_id).await?;
+    let artifact = db.update::<ArtifactResponse>(id, &req, auth.tenant_id).await?;
     ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
     Ok(Json(artifact))
 }
@@ -326,12 +273,12 @@ pub async fn delete_artifact(
 ) -> ApiResult<StatusCode> {
     // First verify the artifact exists and belongs to this tenant
     let artifact = db
-        .artifact_get(id, auth.tenant_id)
+        .get::<ArtifactResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, artifact.tenant_id)?;
 
-    db.artifact_delete(id).await?;
+    db.delete::<ArtifactResponse>(id, auth.tenant_id).await?;
     ws.broadcast(WsEvent::ArtifactDeleted {
         tenant_id: auth.tenant_id,
         id,

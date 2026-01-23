@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
+    components::{ScopeListFilter, TrajectoryListFilter},
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -58,7 +59,7 @@ pub async fn create_trajectory(
     }
 
     // Create trajectory via database client with tenant_id for isolation
-    let trajectory = db.trajectory_create(&req, auth.tenant_id).await?;
+    let trajectory = db.create::<TrajectoryResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast TrajectoryCreated event
     ws.broadcast(WsEvent::TrajectoryCreated {
@@ -95,45 +96,24 @@ pub async fn list_trajectories(
     AuthExtractor(auth): AuthExtractor,
     Query(params): Query<ListTrajectoriesRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    if let Some(status) = params.status {
-        // Filter by status and tenant (tenant isolation enforced at DB level)
-        let trajectories = db
-            .trajectory_list_by_status_and_tenant(status, auth.tenant_id)
-            .await?;
+    // Build filter from query params - all filtering handled by the generic list
+    let filter = TrajectoryListFilter {
+        status: params.status,
+        agent_id: params.agent_id,
+        parent_id: params.parent_id,
+        limit: params.limit,
+        offset: params.offset,
+    };
 
-        // Apply additional filters if needed
-        let mut filtered = trajectories;
+    let trajectories = db.list::<TrajectoryResponse>(&filter, auth.tenant_id).await?;
+    let total = trajectories.len() as i32;
 
-        if let Some(agent_id) = params.agent_id {
-            filtered.retain(|t| t.agent_id == Some(agent_id));
-        }
+    let response = ListTrajectoriesResponse {
+        trajectories,
+        total,
+    };
 
-        if let Some(parent_id) = params.parent_id {
-            filtered.retain(|t| t.parent_trajectory_id == Some(parent_id));
-        }
-
-        // Apply pagination
-        let total = filtered.len() as i32;
-        let offset = params.offset.unwrap_or(0) as usize;
-        let limit = params.limit.unwrap_or(100) as usize;
-
-        let paginated: Vec<_> = filtered
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
-
-        let response = ListTrajectoriesResponse {
-            trajectories: paginated,
-            total,
-        };
-
-        Ok(Json(response))
-    } else {
-        Err(ApiError::invalid_input(
-            "status filter is required (for now - full listing coming soon)",
-        ))
-    }
+    Ok(Json(response))
 }
 
 /// GET /api/v1/trajectories/{id} - Get trajectory by ID
@@ -160,7 +140,7 @@ pub async fn get_trajectory(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let trajectory = db
-        .trajectory_get(id, auth.tenant_id)
+        .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -210,13 +190,13 @@ pub async fn update_trajectory(
 
     // First verify the trajectory exists and belongs to this tenant
     let existing = db
-        .trajectory_get(id, auth.tenant_id)
+        .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
     // Update trajectory via database client
-    let trajectory = db.trajectory_update(id, &req, auth.tenant_id).await?;
+    let trajectory = db.update::<TrajectoryResponse>(id, &req, auth.tenant_id).await?;
 
     // Broadcast TrajectoryUpdated event
     ws.broadcast(WsEvent::TrajectoryUpdated {
@@ -252,13 +232,13 @@ pub async fn delete_trajectory(
 ) -> ApiResult<StatusCode> {
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = db
-        .trajectory_get(id, auth.tenant_id)
+        .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
     // Delete trajectory via database client
-    db.trajectory_delete(id).await?;
+    db.delete::<TrajectoryResponse>(id, auth.tenant_id).await?;
 
     // Broadcast TrajectoryDeleted event with tenant_id for filtering
     ws.broadcast(WsEvent::TrajectoryDeleted {
@@ -294,13 +274,17 @@ pub async fn list_trajectory_scopes(
 ) -> ApiResult<impl IntoResponse> {
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = db
-        .trajectory_get(id, auth.tenant_id)
+        .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
-    // Get scopes for this trajectory
-    let scopes = db.scope_list_by_trajectory(id).await?;
+    // Get scopes for this trajectory using generic list with filter
+    let filter = ScopeListFilter {
+        trajectory_id: Some(id),
+        ..Default::default()
+    };
+    let scopes = db.list::<ScopeResponse>(&filter, auth.tenant_id).await?;
 
     Ok(Json(scopes))
 }
@@ -330,15 +314,17 @@ pub async fn list_trajectory_children(
 ) -> ApiResult<impl IntoResponse> {
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = db
-        .trajectory_get(id, auth.tenant_id)
+        .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
-    // Get child trajectories (only those belonging to this tenant)
-    let children = db
-        .trajectory_list_children_by_tenant(id, auth.tenant_id)
-        .await?;
+    // Get child trajectories using generic list with parent filter
+    let filter = TrajectoryListFilter {
+        parent_id: Some(id),
+        ..Default::default()
+    };
+    let children = db.list::<TrajectoryResponse>(&filter, auth.tenant_id).await?;
 
     Ok(Json(children))
 }

@@ -2,6 +2,8 @@
 
 use super::tools::get_available_resources;
 use super::{types::*, McpState};
+use crate::components::{NoteListFilter, TrajectoryListFilter};
+use crate::types::{ArtifactResponse, NoteResponse, TrajectoryResponse};
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
 use caliber_core::EntityId;
@@ -53,10 +55,11 @@ async fn read_resource_content(
 ) -> ApiResult<ResourceContent> {
     match uri {
         "caliber://trajectories" => {
-            let trajectories = state
-                .db
-                .trajectory_list_by_status(caliber_core::TrajectoryStatus::Active, tenant_id)
-                .await?;
+            let filter = TrajectoryListFilter {
+                status: Some(caliber_core::TrajectoryStatus::Active),
+                ..Default::default()
+            };
+            let trajectories = state.db.list::<TrajectoryResponse>(&filter, tenant_id).await?;
 
             Ok(ResourceContent {
                 uri: uri.to_string(),
@@ -79,7 +82,12 @@ async fn read_resource_content(
 
         "caliber://notes" => {
             // Fetch recent notes for this tenant
-            let notes = state.db.note_list_all_by_tenant(100, 0, tenant_id).await?;
+            let filter = NoteListFilter {
+                limit: Some(100),
+                offset: Some(0),
+                ..Default::default()
+            };
+            let notes = state.db.list::<NoteResponse>(&filter, tenant_id).await?;
 
             #[derive(serde::Serialize)]
             struct NoteResourceView {
@@ -148,7 +156,7 @@ async fn read_resource_content(
 
             let trajectory = state
                 .db
-                .trajectory_get(id, tenant_id)
+                .get::<TrajectoryResponse>(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -167,7 +175,7 @@ async fn read_resource_content(
 
             let note = state
                 .db
-                .note_get(id, tenant_id)
+                .get::<NoteResponse>(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::note_not_found(id))?;
 
@@ -186,7 +194,7 @@ async fn read_resource_content(
 
             let artifact = state
                 .db
-                .artifact_get(id, tenant_id)
+                .get::<ArtifactResponse>(id, tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
