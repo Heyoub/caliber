@@ -1,6 +1,6 @@
 //! Delegation-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{DelegationResultStatus, DelegationStatus, EntityId, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// Request to create a delegation.
@@ -47,7 +47,7 @@ pub struct DelegationResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
     pub task_description: String,
-    pub status: String,
+    pub status: DelegationStatus,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
@@ -65,7 +65,7 @@ pub struct DelegationResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationResultResponse {
-    pub status: String,
+    pub status: DelegationResultStatus,
     pub output: Option<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub artifacts: Vec<EntityId>,
@@ -77,7 +77,7 @@ pub struct DelegationResultResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationResultRequest {
     /// Result status
-    pub status: String,
+    pub status: DelegationResultStatus,
     /// Output from the delegated task
     pub output: Option<String>,
     /// Artifacts produced during delegation

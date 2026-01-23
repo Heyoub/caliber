@@ -1,6 +1,6 @@
 //! Agent-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{AgentStatus, EntityId, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// Request to register a new agent.
@@ -47,7 +47,7 @@ pub struct MemoryPermissionRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateAgentRequest {
     /// New status (if changing)
-    pub status: Option<String>,
+    pub status: Option<AgentStatus>,
     /// New current trajectory (if changing)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub current_trajectory_id: Option<EntityId>,
@@ -71,7 +71,7 @@ pub struct AgentResponse {
     pub agent_type: String,
     pub capabilities: Vec<String>,
     pub memory_access: MemoryAccessResponse,
-    pub status: String,
+    pub status: AgentStatus,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub current_trajectory_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]

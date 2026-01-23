@@ -1,6 +1,6 @@
 //! Handoff-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{EntityId, HandoffStatus, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// Request to create a handoff.
@@ -43,7 +43,7 @@ pub struct HandoffResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub scope_id: EntityId,
     pub reason: String,
-    pub status: String,
+    pub status: HandoffStatus,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]

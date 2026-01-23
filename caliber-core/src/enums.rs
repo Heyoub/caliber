@@ -84,6 +84,75 @@ pub enum OutcomeStatus {
     Failure,
 }
 
+/// Status of an agent in the system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum AgentStatus {
+    /// Agent is registered but not actively working
+    #[default]
+    Idle,
+    /// Agent is actively processing a task
+    Active,
+    /// Agent is blocked waiting on something (lock, delegation, etc.)
+    Blocked,
+    /// Agent has failed and requires attention
+    Failed,
+}
+
+impl AgentStatus {
+    /// Convert to database string representation.
+    pub fn as_db_str(&self) -> &'static str {
+        match self {
+            AgentStatus::Idle => "Idle",
+            AgentStatus::Active => "Active",
+            AgentStatus::Blocked => "Blocked",
+            AgentStatus::Failed => "Failed",
+        }
+    }
+
+    /// Parse from database string representation.
+    pub fn from_db_str(s: &str) -> Result<Self, AgentStatusParseError> {
+        match s.to_lowercase().as_str() {
+            "idle" => Ok(AgentStatus::Idle),
+            "active" => Ok(AgentStatus::Active),
+            "blocked" => Ok(AgentStatus::Blocked),
+            "failed" => Ok(AgentStatus::Failed),
+            _ => Err(AgentStatusParseError(s.to_string())),
+        }
+    }
+
+    /// Check if the agent can accept new work.
+    pub fn can_accept_work(&self) -> bool {
+        matches!(self, AgentStatus::Idle)
+    }
+}
+
+impl fmt::Display for AgentStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_db_str())
+    }
+}
+
+impl FromStr for AgentStatus {
+    type Err = AgentStatusParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_db_str(s)
+    }
+}
+
+/// Error when parsing an invalid agent status string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentStatusParseError(pub String);
+
+impl fmt::Display for AgentStatusParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Invalid agent status: {}", self.0)
+    }
+}
+
+impl std::error::Error for AgentStatusParseError {}
+
 /// Role of a turn in conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
