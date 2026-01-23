@@ -15,8 +15,9 @@
 //! ```
 
 use caliber_core::{
-    DagPosition, Effect, EntityId, Event, EventHeader, EventId, EventKind, UpstreamSignal,
+    DagPosition, Effect, EntityId, Event, EventFlags, EventHeader, EventId, EventKind, UpstreamSignal,
 };
+use uuid::Uuid;
 
 /// Trait for Event DAG operations.
 ///
@@ -190,8 +191,17 @@ pub trait EventDagExt: EventDag {
             other => return other.map(|_| unreachable!()),
         };
 
+        let event_id = Uuid::now_v7();
         let event = Event {
-            header: EventHeader::new(EventKind::Data, position),
+            header: EventHeader::new(
+                event_id,
+                event_id,
+                chrono::Utc::now().timestamp_micros(),
+                position,
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
             payload,
         };
         self.append(event)
@@ -213,8 +223,17 @@ pub trait EventDagExt: EventDag {
             other => return other.map(|_| unreachable!()),
         };
 
+        let event_id = Uuid::now_v7();
         let event = Event {
-            header: EventHeader::new(EventKind::Data, position),
+            header: EventHeader::new(
+                event_id,
+                parent_event.header.correlation_id,
+                chrono::Utc::now().timestamp_micros(),
+                position,
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
             payload,
         };
         self.append(event)
@@ -224,14 +243,29 @@ pub trait EventDagExt: EventDag {
     ///
     /// Creates a new event in a new lane at depth + 1.
     fn fork(&self, parent: EventId, new_lane: u32, payload: Self::Payload) -> Effect<EventId> {
+        let parent_event = match self.read(parent) {
+            Effect::Ok(e) => e,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
         let position = match self.next_position(Some(parent), new_lane) {
             Effect::Ok(pos) => pos,
             Effect::Err(e) => return Effect::Err(e),
             other => return other.map(|_| unreachable!()),
         };
 
+        let event_id = Uuid::now_v7();
         let event = Event {
-            header: EventHeader::new(EventKind::Data, position),
+            header: EventHeader::new(
+                event_id,
+                parent_event.header.correlation_id,
+                chrono::Utc::now().timestamp_micros(),
+                position,
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
             payload,
         };
         self.append(event)
@@ -256,7 +290,7 @@ pub trait EventDagExt: EventDag {
         };
 
         for event in ancestors {
-            if event.header.id == ancestor {
+            if event.header.event_id == ancestor {
                 return Effect::Ok(true);
             }
         }

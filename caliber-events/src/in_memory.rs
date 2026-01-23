@@ -84,15 +84,15 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         let mut seq = self.next_sequence.write().unwrap();
 
         // Assign a new ID if not already set (ID is zero)
-        if event.header.id == Uuid::nil() {
-            event.header.id = Uuid::now_v7();
+        if event.header.event_id == Uuid::nil() {
+            event.header.event_id = Uuid::now_v7();
         }
 
         // Set sequence number
-        event.header.position.sequence = *seq;
+        event.header.position.sequence = *seq as u32;
         *seq += 1;
 
-        let id = event.header.id;
+        let id = event.header.event_id;
         events.insert(id, event);
         Effect::Ok(id)
     }
@@ -252,7 +252,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(DagPosition {
             depth,
             lane,
-            sequence: *seq,
+            sequence: *seq as u32,
         })
     }
 
@@ -268,7 +268,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         let mut result: Vec<Event<Self::Payload>> = events
             .values()
             .filter(|e| {
-                e.header.kind == kind
+                e.header.event_kind == kind
                     && e.header.position.depth >= min_depth
                     && e.header.position.depth <= max_depth
             })
@@ -307,7 +307,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
             .values()
             .filter(|e| {
                 e.header.flags.contains(EventFlags::REQUIRES_ACK)
-                    && !acknowledged.contains(&e.header.id)
+                    && !acknowledged.contains(&e.header.event_id)
             })
             .take(limit)
             .cloned()
@@ -364,8 +364,16 @@ mod tests {
 
         // Create event requiring ack
         let position = dag.next_position(None, 0).unwrap();
-        let mut header = EventHeader::new(EventKind::Data, position);
-        header.flags |= EventFlags::REQUIRES_ACK;
+        let event_id_val = Uuid::now_v7();
+        let header = EventHeader::new(
+            event_id_val,
+            event_id_val,
+            chrono::Utc::now().timestamp_micros(),
+            position,
+            0,
+            EventKind::DATA,
+            EventFlags::REQUIRES_ACK,
+        );
         let event = Event {
             header,
             payload: "needs ack".to_string(),
@@ -392,7 +400,7 @@ mod tests {
         dag.append_root("event1".to_string()).unwrap();
         dag.append_root("event2".to_string()).unwrap();
 
-        let found = dag.find_by_kind(EventKind::Data, 0, 10, 100).unwrap();
+        let found = dag.find_by_kind(EventKind::DATA, 0, 10, 100).unwrap();
         assert_eq!(found.len(), 2);
     }
 }

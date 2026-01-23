@@ -173,9 +173,7 @@ impl<T> Effect<T> {
             Effect::Batch(effects) => {
                 // Return first error or last success
                 for effect in effects {
-                    if let Err(e) = effect.into_result() {
-                        return Err(e);
-                    }
+                    effect.into_result()?;
                 }
                 Err(ErrorEffect::Operational(OperationalError::Internal {
                     message: "Empty batch".to_string(),
@@ -185,7 +183,7 @@ impl<T> Effect<T> {
     }
 
     /// Map the success value.
-    pub fn map<U, F: Fn(T) -> U>(self, f: F) -> Effect<U> {
+    pub fn map<U, F: FnOnce(T) -> U + Clone>(self, f: F) -> Effect<U> {
         match self {
             Effect::Ok(v) => Effect::Ok(f(v)),
             Effect::Err(e) => Effect::Err(e),
@@ -196,7 +194,7 @@ impl<T> Effect<T> {
             Effect::Pending { waiting_for, resume_token } => {
                 Effect::Pending { waiting_for, resume_token }
             }
-            Effect::Batch(effects) => Effect::Batch(effects.into_iter().map(|e| e.map(&f)).collect()),
+            Effect::Batch(effects) => Effect::Batch(effects.into_iter().map(|e| e.map(f.clone())).collect()),
         }
     }
 

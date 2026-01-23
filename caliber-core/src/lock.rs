@@ -232,7 +232,7 @@ impl Lock<Acquired> {
     pub fn extend(mut self, additional: Duration) -> Self {
         let additional_chrono = chrono::Duration::from_std(additional)
             .unwrap_or_else(|_| chrono::Duration::milliseconds(additional.as_millis() as i64));
-        self.data.expires_at = self.data.expires_at + additional_chrono;
+        self.data.expires_at += additional_chrono;
         self
     }
 
@@ -242,7 +242,7 @@ impl Lock<Acquired> {
     pub fn extend_ms(self, additional_ms: i64) -> Self {
         let additional = chrono::Duration::milliseconds(additional_ms);
         let mut lock = self;
-        lock.data.expires_at = lock.data.expires_at + additional;
+        lock.data.expires_at += additional;
         lock
     }
 

@@ -118,6 +118,9 @@ impl fmt::Display for DagPosition {
 pub struct EventKind(pub u16);
 
 impl EventKind {
+    // Generic data event (neutral/unspecified kind)
+    pub const DATA: Self = Self(0x0000);
+
     // System events (0x0xxx)
     pub const SYSTEM_INIT: Self = Self(0x0001);
     pub const SYSTEM_SHUTDOWN: Self = Self(0x0002);
@@ -267,6 +270,41 @@ bitflags! {
 impl Default for EventFlags {
     fn default() -> Self {
         Self::empty()
+    }
+}
+
+// Manual serde implementation for EventFlags (bitflags 2.x + serde)
+impl Serialize for EventFlags {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.bits().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EventFlags {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bits = u8::deserialize(deserializer)?;
+        Self::from_bits(bits).ok_or_else(|| {
+            serde::de::Error::custom(format!("invalid EventFlags bits: {:#04x}", bits))
+        })
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for EventFlags {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("EventFlags")
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::PartialSchema for EventFlags {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::SchemaType::Type(utoipa::openapi::schema::Type::Integer))
+            .description(Some("Event processing flags as a u8 bitfield (0-255)"))
+            .minimum(Some(0.0))
+            .maximum(Some(255.0))
+            .into()
     }
 }
 
