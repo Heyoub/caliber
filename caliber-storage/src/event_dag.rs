@@ -3,10 +3,9 @@
 //! This module provides a simple in-memory implementation of the EventDag trait
 //! suitable for unit tests and development scenarios.
 
-use crate::{EventDag, EventDagExt};
 use caliber_core::{
-    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventFlags,
-    EventHeader, EventId, EventKind, UpstreamSignal,
+    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag,
+    EventDagExt, EventFlags, EventHeader, EventId, EventKind, UpstreamSignal,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -21,10 +20,11 @@ use uuid::Uuid;
 /// # Example
 ///
 /// ```rust,ignore
-/// use caliber_events::{InMemoryEventDag, EventDag, EventDagExt};
+/// use caliber_storage::InMemoryEventDag;
+/// use caliber_core::{EventDag, EventDagExt};
 ///
 /// let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
-/// let event_id = dag.append_root("initial event".to_string());
+/// let event_id = dag.append_root("initial event".to_string()).await;
 /// ```
 pub struct InMemoryEventDag<P: Clone + Send + Sync> {
     events: Arc<RwLock<HashMap<EventId, Event<P>>>>,
@@ -76,10 +76,11 @@ impl<P: Clone + Send + Sync> Clone for InMemoryEventDag<P> {
     }
 }
 
+#[async_trait::async_trait]
 impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     type Payload = P;
 
-    fn append(&self, mut event: Event<Self::Payload>) -> Effect<EventId> {
+    async fn append(&self, mut event: Event<Self::Payload>) -> Effect<EventId> {
         let mut events = self.events.write().unwrap();
         let mut seq = self.next_sequence.write().unwrap();
 
@@ -97,7 +98,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(id)
     }
 
-    fn read(&self, event_id: EventId) -> Effect<Event<Self::Payload>> {
+    async fn read(&self, event_id: EventId) -> Effect<Event<Self::Payload>> {
         let events = self.events.read().unwrap();
         match events.get(&event_id) {
             Some(event) => Effect::Ok(event.clone()),
@@ -113,7 +114,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         }
     }
 
-    fn walk_ancestors(
+    async fn walk_ancestors(
         &self,
         from: EventId,
         limit: usize,
@@ -154,7 +155,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(result)
     }
 
-    fn walk_descendants(
+    async fn walk_descendants(
         &self,
         from: EventId,
         limit: usize,
@@ -175,7 +176,6 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         }
 
         // In this simple implementation, we return events with higher depth
-        // This would need to be enhanced for real descendant tracking
         let from_event = events.get(&from).unwrap();
         let from_depth = from_event.header.position.depth;
 
@@ -190,7 +190,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(result)
     }
 
-    fn signal_upstream(&self, from: EventId, _signal: UpstreamSignal) -> Effect<()> {
+    async fn signal_upstream(&self, from: EventId, _signal: UpstreamSignal) -> Effect<()> {
         let events = self.events.read().unwrap();
 
         if !events.contains_key(&from) {
@@ -209,7 +209,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(())
     }
 
-    fn find_correlation_chain(
+    async fn find_correlation_chain(
         &self,
         correlation_id: EventId,
     ) -> Effect<Vec<Event<Self::Payload>>> {
@@ -225,7 +225,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(result)
     }
 
-    fn next_position(&self, parent: Option<EventId>, lane: u32) -> Effect<DagPosition> {
+    async fn next_position(&self, parent: Option<EventId>, lane: u32) -> Effect<DagPosition> {
         let events = self.events.read().unwrap();
         let seq = self.next_sequence.read().unwrap();
 
@@ -256,7 +256,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         })
     }
 
-    fn find_by_kind(
+    async fn find_by_kind(
         &self,
         kind: EventKind,
         min_depth: u32,
@@ -280,7 +280,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(result)
     }
 
-    fn acknowledge(&self, event_id: EventId, _send_upstream: bool) -> Effect<()> {
+    async fn acknowledge(&self, event_id: EventId, _send_upstream: bool) -> Effect<()> {
         let events = self.events.read().unwrap();
 
         if !events.contains_key(&event_id) {
@@ -299,7 +299,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         Effect::Ok(())
     }
 
-    fn unacknowledged(&self, limit: usize) -> Effect<Vec<Event<Self::Payload>>> {
+    async fn unacknowledged(&self, limit: usize) -> Effect<Vec<Event<Self::Payload>>> {
         let events = self.events.read().unwrap();
         let acknowledged = self.acknowledged.read().unwrap();
 
@@ -322,48 +322,48 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_append_and_read() {
+    #[tokio::test]
+    async fn test_append_and_read() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
-        let event_id = dag.append_root("test payload".to_string());
+        let event_id = dag.append_root("test payload".to_string()).await;
         assert!(event_id.is_ok());
 
         let id = event_id.unwrap();
-        let read_result = dag.read(id);
+        let read_result = dag.read(id).await;
         assert!(read_result.is_ok());
 
         let event = read_result.unwrap();
         assert_eq!(event.payload, "test payload");
     }
 
-    #[test]
-    fn test_read_nonexistent() {
+    #[tokio::test]
+    async fn test_read_nonexistent() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
         let fake_id = Uuid::now_v7();
 
-        let result = dag.read(fake_id);
+        let result = dag.read(fake_id).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_append_child() {
+    #[tokio::test]
+    async fn test_append_child() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
-        let root_id = dag.append_root("root".to_string()).unwrap();
-        let child_id = dag.append_child(root_id, "child".to_string());
+        let root_id = dag.append_root("root".to_string()).await.unwrap();
+        let child_id = dag.append_child(root_id, "child".to_string()).await;
 
         assert!(child_id.is_ok());
-        let child = dag.read(child_id.unwrap()).unwrap();
+        let child = dag.read(child_id.unwrap()).await.unwrap();
         assert_eq!(child.header.position.depth, 1);
     }
 
-    #[test]
-    fn test_acknowledge() {
+    #[tokio::test]
+    async fn test_acknowledge() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
         // Create event requiring ack
-        let position = dag.next_position(None, 0).unwrap();
+        let position = dag.next_position(None, 0).await.unwrap();
         let event_id_val = Uuid::now_v7();
         let header = EventHeader::new(
             event_id_val,
@@ -378,29 +378,29 @@ mod tests {
             header,
             payload: "needs ack".to_string(),
         };
-        let event_id = dag.append(event).unwrap();
+        let event_id = dag.append(event).await.unwrap();
 
         // Should appear in unacknowledged
-        let unacked = dag.unacknowledged(10).unwrap();
+        let unacked = dag.unacknowledged(10).await.unwrap();
         assert_eq!(unacked.len(), 1);
 
         // Acknowledge it
-        dag.acknowledge(event_id, false).unwrap();
+        dag.acknowledge(event_id, false).await.unwrap();
 
         // Should no longer appear
-        let unacked = dag.unacknowledged(10).unwrap();
+        let unacked = dag.unacknowledged(10).await.unwrap();
         assert_eq!(unacked.len(), 0);
     }
 
-    #[test]
-    fn test_find_by_kind() {
+    #[tokio::test]
+    async fn test_find_by_kind() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
         // Create a few events
-        dag.append_root("event1".to_string()).unwrap();
-        dag.append_root("event2".to_string()).unwrap();
+        dag.append_root("event1".to_string()).await.unwrap();
+        dag.append_root("event2".to_string()).await.unwrap();
 
-        let found = dag.find_by_kind(EventKind::DATA, 0, 10, 100).unwrap();
+        let found = dag.find_by_kind(EventKind::DATA, 0, 10, 100).await.unwrap();
         assert_eq!(found.len(), 2);
     }
 }

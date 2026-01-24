@@ -708,6 +708,582 @@ impl Parser {
     }
 
     // ========================================================================
+    // DSL-FIRST ARCHITECTURE: Trajectory Parser
+    // ========================================================================
+
+    /// Parse a trajectory definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// trajectory "customer_support" {
+    ///     description: "Multi-turn customer support interaction"
+    ///     agent_type: "support_agent"
+    ///     token_budget: 8000
+    ///     memory_refs: [artifacts, notes, scopes]
+    /// }
+    /// ```
+    pub(crate) fn parse_trajectory(&mut self) -> Result<TrajectoryDef, ParseError> {
+        self.expect(TokenKind::Trajectory)?;
+
+        let name = self.expect_string()?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut description: Option<String> = None;
+        let mut agent_type: Option<String> = None;
+        let mut token_budget: Option<i32> = None;
+        let mut memory_refs: Vec<String> = Vec::new();
+        let mut metadata: Option<serde_json::Value> = None;
+
+        while !self.check(&TokenKind::RBrace) {
+            let field = self.expect_field_name()?;
+            self.expect(TokenKind::Colon)?;
+
+            match field.as_str() {
+                "description" => {
+                    description = Some(self.expect_string()?);
+                }
+                "agent_type" => {
+                    agent_type = Some(self.expect_string()?);
+                }
+                "token_budget" => {
+                    token_budget = Some(self.expect_number()? as i32);
+                }
+                "memory_refs" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(&TokenKind::RBracket) {
+                        memory_refs.push(self.expect_field_name()?);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                }
+                "metadata" => {
+                    // Parse JSON object inline
+                    self.expect(TokenKind::LBrace)?;
+                    let mut map = serde_json::Map::new();
+                    while !self.check(&TokenKind::RBrace) {
+                        let key = self.expect_string()?;
+                        self.expect(TokenKind::Colon)?;
+                        let value = self.parse_json_value()?;
+                        map.insert(key, value);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                    metadata = Some(serde_json::Value::Object(map));
+                }
+                _ => return Err(self.error(&format!("unknown trajectory field: {}", field))),
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields (no defaults per REQ-5)
+        let agent_type = agent_type.ok_or_else(|| self.error("missing required field: agent_type"))?;
+        let token_budget = token_budget.ok_or_else(|| self.error("missing required field: token_budget"))?;
+
+        Ok(TrajectoryDef {
+            name,
+            description,
+            agent_type,
+            token_budget,
+            memory_refs,
+            metadata,
+        })
+    }
+
+    // ========================================================================
+    // DSL-FIRST ARCHITECTURE: Agent Parser
+    // ========================================================================
+
+    /// Parse an agent definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// agent "support_agent" {
+    ///     capabilities: ["classify_issue", "search_kb", "escalate"]
+    ///     constraints: {
+    ///         max_concurrent: 5
+    ///         timeout_ms: 30000
+    ///     }
+    ///     permissions: {
+    ///         read: [artifacts, notes, scopes]
+    ///         write: [notes, scopes]
+    ///         lock: [scopes]
+    ///     }
+    /// }
+    /// ```
+    pub(crate) fn parse_agent(&mut self) -> Result<AgentDef, ParseError> {
+        self.expect(TokenKind::Agent)?;
+
+        let name = self.expect_string()?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut capabilities: Vec<String> = Vec::new();
+        let mut constraints = AgentConstraints::default();
+        let mut permissions = PermissionMatrix::default();
+
+        while !self.check(&TokenKind::RBrace) {
+            let field = self.expect_field_name()?;
+            self.expect(TokenKind::Colon)?;
+
+            match field.as_str() {
+                "capabilities" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(&TokenKind::RBracket) {
+                        capabilities.push(self.expect_string()?);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                }
+                "constraints" => {
+                    self.expect(TokenKind::LBrace)?;
+                    while !self.check(&TokenKind::RBrace) {
+                        let constraint_field = self.expect_field_name()?;
+                        self.expect(TokenKind::Colon)?;
+                        match constraint_field.as_str() {
+                            "max_concurrent" => {
+                                constraints.max_concurrent = self.expect_number()? as i32;
+                            }
+                            "timeout_ms" => {
+                                constraints.timeout_ms = self.expect_number()? as i64;
+                            }
+                            _ => return Err(self.error(&format!("unknown constraint field: {}", constraint_field))),
+                        }
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                }
+                "permissions" => {
+                    self.expect(TokenKind::LBrace)?;
+                    while !self.check(&TokenKind::RBrace) {
+                        let perm_field = self.expect_field_name()?;
+                        self.expect(TokenKind::Colon)?;
+                        self.expect(TokenKind::LBracket)?;
+                        let mut refs = Vec::new();
+                        while !self.check(&TokenKind::RBracket) {
+                            refs.push(self.expect_field_name()?);
+                            self.optional_comma();
+                        }
+                        self.expect(TokenKind::RBracket)?;
+
+                        match perm_field.as_str() {
+                            "read" => permissions.read = refs,
+                            "write" => permissions.write = refs,
+                            "lock" => permissions.lock = refs,
+                            _ => return Err(self.error(&format!("unknown permission type: {}", perm_field))),
+                        }
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                }
+                _ => return Err(self.error(&format!("unknown agent field: {}", field))),
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(AgentDef {
+            name,
+            capabilities,
+            constraints,
+            permissions,
+        })
+    }
+
+    // ========================================================================
+    // DSL-FIRST ARCHITECTURE: Cache Parser
+    // ========================================================================
+
+    /// Parse a cache definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// cache {
+    ///     backend: lmdb
+    ///     path: "/var/caliber/cache"
+    ///     size_mb: 1024
+    ///     default_freshness: best_effort { max_staleness: 60s }
+    /// }
+    /// ```
+    pub(crate) fn parse_cache(&mut self) -> Result<CacheDef, ParseError> {
+        self.expect(TokenKind::Cache)?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut backend: Option<CacheBackendType> = None;
+        let mut path: Option<String> = None;
+        let mut size_mb: Option<i32> = None;
+        let mut default_freshness = FreshnessDef::default();
+        let mut max_entries: Option<i32> = None;
+        let mut ttl: Option<String> = None;
+
+        while !self.check(&TokenKind::RBrace) {
+            let field = self.expect_field_name()?;
+            self.expect(TokenKind::Colon)?;
+
+            match field.as_str() {
+                "backend" => {
+                    backend = Some(self.parse_cache_backend()?);
+                }
+                "path" => {
+                    path = Some(self.expect_string()?);
+                }
+                "size_mb" => {
+                    size_mb = Some(self.expect_number()? as i32);
+                }
+                "default_freshness" => {
+                    default_freshness = self.parse_freshness()?;
+                }
+                "max_entries" => {
+                    max_entries = Some(self.expect_number()? as i32);
+                }
+                "ttl" => {
+                    ttl = Some(self.expect_duration()?);
+                }
+                _ => return Err(self.error(&format!("unknown cache field: {}", field))),
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields (no defaults per REQ-5)
+        let backend = backend.ok_or_else(|| self.error("missing required field: backend"))?;
+        let size_mb = size_mb.ok_or_else(|| self.error("missing required field: size_mb"))?;
+
+        Ok(CacheDef {
+            backend,
+            path,
+            size_mb,
+            default_freshness,
+            max_entries,
+            ttl,
+        })
+    }
+
+    /// Parse cache backend type.
+    fn parse_cache_backend(&mut self) -> Result<CacheBackendType, ParseError> {
+        match &self.current().kind {
+            TokenKind::Lmdb => {
+                self.advance();
+                Ok(CacheBackendType::Lmdb)
+            }
+            TokenKind::Memory => {
+                self.advance();
+                Ok(CacheBackendType::Memory)
+            }
+            _ => Err(self.error("Expected cache backend (lmdb, memory)")),
+        }
+    }
+
+    /// Parse freshness configuration.
+    fn parse_freshness(&mut self) -> Result<FreshnessDef, ParseError> {
+        match &self.current().kind {
+            TokenKind::BestEffort => {
+                self.advance();
+                self.expect(TokenKind::LBrace)?;
+                let mut max_staleness: Option<String> = None;
+                while !self.check(&TokenKind::RBrace) {
+                    let field = self.expect_field_name()?;
+                    self.expect(TokenKind::Colon)?;
+                    match field.as_str() {
+                        "max_staleness" => {
+                            max_staleness = Some(self.expect_duration()?);
+                        }
+                        _ => return Err(self.error(&format!("unknown freshness field: {}", field))),
+                    }
+                }
+                self.expect(TokenKind::RBrace)?;
+                let max_staleness = max_staleness.ok_or_else(|| self.error("missing max_staleness in best_effort"))?;
+                Ok(FreshnessDef::BestEffort { max_staleness })
+            }
+            TokenKind::Strict => {
+                self.advance();
+                Ok(FreshnessDef::Strict)
+            }
+            _ => Err(self.error("Expected freshness (best_effort, strict)")),
+        }
+    }
+
+    /// Parse duration string (e.g., "60s", "5m").
+    fn expect_duration(&mut self) -> Result<String, ParseError> {
+        match &self.current().kind {
+            TokenKind::Duration(d) => {
+                let d = d.clone();
+                self.advance();
+                Ok(d)
+            }
+            _ => Err(self.error("Expected duration (e.g., 60s, 5m)")),
+        }
+    }
+
+    // ========================================================================
+    // DSL-FIRST ARCHITECTURE: Provider Parser
+    // ========================================================================
+
+    /// Parse a provider definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// provider "openai" {
+    ///     type: openai
+    ///     api_key: env("OPENAI_API_KEY")
+    ///     model: "text-embedding-3-small"
+    /// }
+    /// ```
+    pub(crate) fn parse_provider(&mut self) -> Result<ProviderDef, ParseError> {
+        self.expect(TokenKind::Provider)?;
+
+        let name = self.expect_string()?;
+        self.expect(TokenKind::LBrace)?;
+
+        let mut provider_type: Option<ProviderType> = None;
+        let mut api_key: Option<EnvValue> = None;
+        let mut model: Option<String> = None;
+        let mut options: Vec<(String, String)> = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) {
+            let field = self.expect_field_name()?;
+            self.expect(TokenKind::Colon)?;
+
+            match field.as_str() {
+                "type" => {
+                    provider_type = Some(self.parse_provider_type()?);
+                }
+                "api_key" => {
+                    api_key = Some(self.parse_env_value()?);
+                }
+                "model" => {
+                    model = Some(self.expect_string()?);
+                }
+                "options" => {
+                    self.expect(TokenKind::LBrace)?;
+                    while !self.check(&TokenKind::RBrace) {
+                        let key = self.expect_string()?;
+                        self.expect(TokenKind::Colon)?;
+                        let value = self.expect_string_or_number()?;
+                        options.push((key, value));
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                }
+                _ => return Err(self.error(&format!("unknown provider field: {}", field))),
+            }
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Validate required fields (no defaults per REQ-5)
+        let provider_type = provider_type.ok_or_else(|| self.error("missing required field: type"))?;
+        let api_key = api_key.ok_or_else(|| self.error("missing required field: api_key"))?;
+        let model = model.ok_or_else(|| self.error("missing required field: model"))?;
+
+        Ok(ProviderDef {
+            name,
+            provider_type,
+            api_key,
+            model,
+            options,
+        })
+    }
+
+    /// Parse provider type.
+    fn parse_provider_type(&mut self) -> Result<ProviderType, ParseError> {
+        match &self.current().kind {
+            TokenKind::Openai => {
+                self.advance();
+                Ok(ProviderType::OpenAI)
+            }
+            TokenKind::Anthropic => {
+                self.advance();
+                Ok(ProviderType::Anthropic)
+            }
+            TokenKind::Identifier(s) if s == "custom" => {
+                self.advance();
+                Ok(ProviderType::Custom)
+            }
+            _ => Err(self.error("Expected provider type (openai, anthropic, custom)")),
+        }
+    }
+
+    /// Parse env value (env("VAR") or literal string).
+    fn parse_env_value(&mut self) -> Result<EnvValue, ParseError> {
+        match &self.current().kind {
+            TokenKind::Env => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let var_name = self.expect_string()?;
+                self.expect(TokenKind::RParen)?;
+                Ok(EnvValue::Env(var_name))
+            }
+            TokenKind::String(s) => {
+                let s = s.clone();
+                self.advance();
+                Ok(EnvValue::Literal(s))
+            }
+            _ => Err(self.error("Expected env(\"VAR\") or string literal")),
+        }
+    }
+
+    /// Parse a JSON value for metadata.
+    fn parse_json_value(&mut self) -> Result<serde_json::Value, ParseError> {
+        match &self.current().kind {
+            TokenKind::String(s) => {
+                let s = s.clone();
+                self.advance();
+                Ok(serde_json::Value::String(s))
+            }
+            TokenKind::Number(n) => {
+                let n = *n;
+                self.advance();
+                Ok(serde_json::json!(n))
+            }
+            TokenKind::Identifier(s) if s == "true" => {
+                self.advance();
+                Ok(serde_json::Value::Bool(true))
+            }
+            TokenKind::Identifier(s) if s == "false" => {
+                self.advance();
+                Ok(serde_json::Value::Bool(false))
+            }
+            TokenKind::Identifier(s) if s == "null" => {
+                self.advance();
+                Ok(serde_json::Value::Null)
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let mut arr = Vec::new();
+                while !self.check(&TokenKind::RBracket) {
+                    arr.push(self.parse_json_value()?);
+                    self.optional_comma();
+                }
+                self.expect(TokenKind::RBracket)?;
+                Ok(serde_json::Value::Array(arr))
+            }
+            TokenKind::LBrace => {
+                self.advance();
+                let mut map = serde_json::Map::new();
+                while !self.check(&TokenKind::RBrace) {
+                    let key = self.expect_string()?;
+                    self.expect(TokenKind::Colon)?;
+                    let value = self.parse_json_value()?;
+                    map.insert(key, value);
+                    self.optional_comma();
+                }
+                self.expect(TokenKind::RBrace)?;
+                Ok(serde_json::Value::Object(map))
+            }
+            _ => Err(self.error("Expected JSON value")),
+        }
+    }
+
+    // ========================================================================
+    // DSL-FIRST ARCHITECTURE: Modifier Parser
+    // ========================================================================
+
+    /// Parse a modifier definition.
+    ///
+    /// Syntax:
+    /// ```text
+    /// embeddable { provider: "openai" }
+    /// summarizable { style: brief, on: [scope_close] }
+    /// lockable { mode: exclusive }
+    /// ```
+    pub(crate) fn parse_modifier(&mut self) -> Result<ModifierDef, ParseError> {
+        match &self.current().kind {
+            TokenKind::Embeddable => {
+                self.advance();
+                self.expect(TokenKind::LBrace)?;
+                let mut provider: Option<String> = None;
+                while !self.check(&TokenKind::RBrace) {
+                    let field = self.expect_field_name()?;
+                    self.expect(TokenKind::Colon)?;
+                    match field.as_str() {
+                        "provider" => {
+                            provider = Some(self.expect_string()?);
+                        }
+                        _ => return Err(self.error(&format!("unknown embeddable field: {}", field))),
+                    }
+                }
+                self.expect(TokenKind::RBrace)?;
+                let provider = provider.ok_or_else(|| self.error("missing provider in embeddable"))?;
+                Ok(ModifierDef::Embeddable { provider })
+            }
+            TokenKind::Summarizable => {
+                self.advance();
+                self.expect(TokenKind::LBrace)?;
+                let mut style: Option<SummaryStyle> = None;
+                let mut on_triggers: Vec<Trigger> = Vec::new();
+                while !self.check(&TokenKind::RBrace) {
+                    let field = self.expect_field_name()?;
+                    self.expect(TokenKind::Colon)?;
+                    match field.as_str() {
+                        "style" => {
+                            style = Some(self.parse_summary_style()?);
+                        }
+                        "on" => {
+                            self.expect(TokenKind::LBracket)?;
+                            while !self.check(&TokenKind::RBracket) {
+                                on_triggers.push(self.parse_trigger()?);
+                                self.optional_comma();
+                            }
+                            self.expect(TokenKind::RBracket)?;
+                        }
+                        _ => return Err(self.error(&format!("unknown summarizable field: {}", field))),
+                    }
+                }
+                self.expect(TokenKind::RBrace)?;
+                let style = style.ok_or_else(|| self.error("missing style in summarizable"))?;
+                Ok(ModifierDef::Summarizable { style, on_triggers })
+            }
+            TokenKind::Lockable => {
+                self.advance();
+                self.expect(TokenKind::LBrace)?;
+                let mut mode: Option<LockMode> = None;
+                while !self.check(&TokenKind::RBrace) {
+                    let field = self.expect_field_name()?;
+                    self.expect(TokenKind::Colon)?;
+                    match field.as_str() {
+                        "mode" => {
+                            mode = Some(self.parse_lock_mode()?);
+                        }
+                        _ => return Err(self.error(&format!("unknown lockable field: {}", field))),
+                    }
+                }
+                self.expect(TokenKind::RBrace)?;
+                let mode = mode.ok_or_else(|| self.error("missing mode in lockable"))?;
+                Ok(ModifierDef::Lockable { mode })
+            }
+            _ => Err(self.error("Expected modifier (embeddable, summarizable, lockable)")),
+        }
+    }
+
+    /// Parse summary style.
+    fn parse_summary_style(&mut self) -> Result<SummaryStyle, ParseError> {
+        match &self.current().kind {
+            TokenKind::Brief => {
+                self.advance();
+                Ok(SummaryStyle::Brief)
+            }
+            TokenKind::Detailed => {
+                self.advance();
+                Ok(SummaryStyle::Detailed)
+            }
+            _ => Err(self.error("Expected summary style (brief, detailed)")),
+        }
+    }
+
+    /// Parse lock mode.
+    fn parse_lock_mode(&mut self) -> Result<LockMode, ParseError> {
+        match &self.current().kind {
+            TokenKind::Exclusive => {
+                self.advance();
+                Ok(LockMode::Exclusive)
+            }
+            TokenKind::Shared => {
+                self.advance();
+                Ok(LockMode::Shared)
+            }
+            _ => Err(self.error("Expected lock mode (exclusive, shared)")),
+        }
+    }
+
+    // ========================================================================
     // Helper methods
     // ========================================================================
 
@@ -847,6 +1423,48 @@ impl Parser {
             TokenKind::Benchmark => "benchmark".to_string(),
             TokenKind::Compare => "compare".to_string(),
             TokenKind::AbstractionLevel => "abstraction_level".to_string(),
+            // DSL-first architecture: New keywords as field names
+            TokenKind::Trajectory => "trajectory".to_string(),
+            TokenKind::Agent => "agent".to_string(),
+            TokenKind::Cache => "cache".to_string(),
+            TokenKind::Provider => "provider".to_string(),
+            TokenKind::Capabilities => "capabilities".to_string(),
+            TokenKind::Constraints => "constraints".to_string(),
+            TokenKind::Permissions => "permissions".to_string(),
+            TokenKind::MaxConcurrent => "max_concurrent".to_string(),
+            TokenKind::TimeoutMs => "timeout_ms".to_string(),
+            TokenKind::Read => "read".to_string(),
+            TokenKind::Write => "write".to_string(),
+            TokenKind::Lock => "lock".to_string(),
+            TokenKind::Backend => "backend".to_string(),
+            TokenKind::Lmdb => "lmdb".to_string(),
+            TokenKind::MaxStaleness => "max_staleness".to_string(),
+            TokenKind::PollInterval => "poll_interval".to_string(),
+            TokenKind::Prefetch => "prefetch".to_string(),
+            TokenKind::MaxEntries => "max_entries".to_string(),
+            TokenKind::Ttl => "ttl".to_string(),
+            TokenKind::SizeMb => "size_mb".to_string(),
+            TokenKind::DefaultFreshness => "default_freshness".to_string(),
+            TokenKind::BestEffort => "best_effort".to_string(),
+            TokenKind::Strict => "strict".to_string(),
+            TokenKind::Modifiers => "modifiers".to_string(),
+            TokenKind::Embeddable => "embeddable".to_string(),
+            TokenKind::Summarizable => "summarizable".to_string(),
+            TokenKind::Lockable => "lockable".to_string(),
+            TokenKind::Style => "style".to_string(),
+            TokenKind::Brief => "brief".to_string(),
+            TokenKind::Detailed => "detailed".to_string(),
+            TokenKind::Exclusive => "exclusive".to_string(),
+            TokenKind::Shared => "shared".to_string(),
+            TokenKind::ApiKey => "api_key".to_string(),
+            TokenKind::Model => "model".to_string(),
+            TokenKind::Openai => "openai".to_string(),
+            TokenKind::Anthropic => "anthropic".to_string(),
+            TokenKind::Env => "env".to_string(),
+            TokenKind::Description => "description".to_string(),
+            TokenKind::AgentType => "agent_type".to_string(),
+            TokenKind::TokenBudget => "token_budget".to_string(),
+            TokenKind::MemoryRefs => "memory_refs".to_string(),
             _ => return Err(self.error("Expected identifier")),
         };
         self.advance();
@@ -934,6 +1552,11 @@ fn pretty_print_definition(def: &Definition, indent: usize) -> String {
         Definition::Evolution(e) => pretty_print_evolution(e, indent),
         // Battle Intel Feature 4: Summarization policy definitions
         Definition::SummarizationPolicy(s) => pretty_print_summarization_policy(s, indent),
+        // DSL-first architecture: New definitions
+        Definition::Trajectory(t) => pretty_print_trajectory(t, indent),
+        Definition::Agent(a) => pretty_print_agent(a, indent),
+        Definition::Cache(c) => pretty_print_cache(c, indent),
+        Definition::Provider(p) => pretty_print_provider(p, indent),
     }
 }
 
@@ -1094,6 +1717,13 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
         output.push_str(&format!("{}artifacts: [", indent_str(indent + 1)));
         let arts: Vec<String> = memory.artifacts.iter().map(|a| format!("\"{}\"", escape_string(a))).collect();
         output.push_str(&arts.join(", "));
+        output.push_str("]\n");
+    }
+
+    if !memory.modifiers.is_empty() {
+        output.push_str(&format!("{}modifiers: [", indent_str(indent + 1)));
+        let mods: Vec<String> = memory.modifiers.iter().map(pretty_print_modifier).collect();
+        output.push_str(&mods.join(", "));
         output.push_str("]\n");
     }
 
@@ -1277,6 +1907,172 @@ fn pretty_print_filter_value(value: &FilterValue) -> String {
         FilterValue::Array(values) => {
             let parts: Vec<String> = values.iter().map(pretty_print_filter_value).collect();
             format!("[{}]", parts.join(", "))
+        }
+    }
+}
+
+// ============================================================================
+// DSL-FIRST ARCHITECTURE: Pretty Printers
+// ============================================================================
+
+/// Pretty print a trajectory definition.
+fn pretty_print_trajectory(t: &TrajectoryDef, indent: usize) -> String {
+    let ind = indent_str(indent);
+    let inner_ind = indent_str(indent + 1);
+    let mut result = format!("{}trajectory \"{}\" {{\n", ind, escape_string(&t.name));
+    if let Some(desc) = &t.description {
+        result.push_str(&format!("{}description: \"{}\"\n", inner_ind, escape_string(desc)));
+    }
+    result.push_str(&format!("{}agent_type: \"{}\"\n", inner_ind, escape_string(&t.agent_type)));
+    result.push_str(&format!("{}token_budget: {}\n", inner_ind, t.token_budget));
+    if !t.memory_refs.is_empty() {
+        result.push_str(&format!("{}memory_refs: [{}]\n", inner_ind,
+            t.memory_refs.iter().map(|r| r.as_str()).collect::<Vec<_>>().join(", ")));
+    }
+    result.push_str(&format!("{}}}\n", ind));
+    result
+}
+
+/// Pretty print an agent definition.
+fn pretty_print_agent(a: &AgentDef, indent: usize) -> String {
+    let ind = indent_str(indent);
+    let inner_ind = indent_str(indent + 1);
+    let constraint_ind = indent_str(indent + 2);
+    let mut result = format!("{}agent \"{}\" {{\n", ind, escape_string(&a.name));
+
+    if !a.capabilities.is_empty() {
+        result.push_str(&format!("{}capabilities: [{}]\n", inner_ind,
+            a.capabilities.iter().map(|c| format!("\"{}\"", escape_string(c))).collect::<Vec<_>>().join(", ")));
+    }
+
+    result.push_str(&format!("{}constraints: {{\n", inner_ind));
+    result.push_str(&format!("{}max_concurrent: {}\n", constraint_ind, a.constraints.max_concurrent));
+    result.push_str(&format!("{}timeout_ms: {}\n", constraint_ind, a.constraints.timeout_ms));
+    result.push_str(&format!("{}}}\n", inner_ind));
+
+    result.push_str(&format!("{}permissions: {{\n", inner_ind));
+    if !a.permissions.read.is_empty() {
+        result.push_str(&format!("{}read: [{}]\n", constraint_ind,
+            a.permissions.read.join(", ")));
+    }
+    if !a.permissions.write.is_empty() {
+        result.push_str(&format!("{}write: [{}]\n", constraint_ind,
+            a.permissions.write.join(", ")));
+    }
+    if !a.permissions.lock.is_empty() {
+        result.push_str(&format!("{}lock: [{}]\n", constraint_ind,
+            a.permissions.lock.join(", ")));
+    }
+    result.push_str(&format!("{}}}\n", inner_ind));
+
+    result.push_str(&format!("{}}}\n", ind));
+    result
+}
+
+/// Pretty print a cache definition.
+fn pretty_print_cache(c: &CacheDef, indent: usize) -> String {
+    let ind = indent_str(indent);
+    let inner_ind = indent_str(indent + 1);
+    let freshness_ind = indent_str(indent + 2);
+    let mut result = format!("{}cache {{\n", ind);
+
+    result.push_str(&format!("{}backend: {}\n", inner_ind, pretty_print_cache_backend(&c.backend)));
+    if let Some(path) = &c.path {
+        result.push_str(&format!("{}path: \"{}\"\n", inner_ind, escape_string(path)));
+    }
+    result.push_str(&format!("{}size_mb: {}\n", inner_ind, c.size_mb));
+
+    match &c.default_freshness {
+        FreshnessDef::BestEffort { max_staleness } => {
+            result.push_str(&format!("{}default_freshness: best_effort {{\n", inner_ind));
+            result.push_str(&format!("{}max_staleness: {}\n", freshness_ind, max_staleness));
+            result.push_str(&format!("{}}}\n", inner_ind));
+        }
+        FreshnessDef::Strict => {
+            result.push_str(&format!("{}default_freshness: strict\n", inner_ind));
+        }
+    }
+
+    if let Some(max_entries) = c.max_entries {
+        result.push_str(&format!("{}max_entries: {}\n", inner_ind, max_entries));
+    }
+    if let Some(ttl) = &c.ttl {
+        result.push_str(&format!("{}ttl: {}\n", inner_ind, ttl));
+    }
+
+    result.push_str(&format!("{}}}\n", ind));
+    result
+}
+
+fn pretty_print_cache_backend(b: &CacheBackendType) -> &'static str {
+    match b {
+        CacheBackendType::Lmdb => "lmdb",
+        CacheBackendType::Memory => "memory",
+    }
+}
+
+/// Pretty print a provider definition.
+fn pretty_print_provider(p: &ProviderDef, indent: usize) -> String {
+    let ind = indent_str(indent);
+    let inner_ind = indent_str(indent + 1);
+    let mut result = format!("{}provider \"{}\" {{\n", ind, escape_string(&p.name));
+
+    result.push_str(&format!("{}type: {}\n", inner_ind, pretty_print_provider_type(&p.provider_type)));
+    result.push_str(&format!("{}api_key: {}\n", inner_ind, pretty_print_env_value(&p.api_key)));
+    result.push_str(&format!("{}model: \"{}\"\n", inner_ind, escape_string(&p.model)));
+
+    if !p.options.is_empty() {
+        result.push_str(&format!("{}options: {{\n", inner_ind));
+        for (key, value) in &p.options {
+            result.push_str(&format!("{}\"{}\": \"{}\"\n", indent_str(indent + 2),
+                escape_string(key), escape_string(value)));
+        }
+        result.push_str(&format!("{}}}\n", inner_ind));
+    }
+
+    result.push_str(&format!("{}}}\n", ind));
+    result
+}
+
+fn pretty_print_provider_type(t: &ProviderType) -> &'static str {
+    match t {
+        ProviderType::OpenAI => "openai",
+        ProviderType::Anthropic => "anthropic",
+        ProviderType::Custom => "custom",
+    }
+}
+
+fn pretty_print_env_value(v: &EnvValue) -> String {
+    match v {
+        EnvValue::Env(var) => format!("env(\"{}\")", escape_string(var)),
+        EnvValue::Literal(s) => format!("\"{}\"", escape_string(s)),
+    }
+}
+
+/// Pretty print a modifier.
+fn pretty_print_modifier(m: &ModifierDef) -> String {
+    match m {
+        ModifierDef::Embeddable { provider } => {
+            format!("embeddable {{ provider: \"{}\" }}", escape_string(provider))
+        }
+        ModifierDef::Summarizable { style, on_triggers } => {
+            let style_str = match style {
+                SummaryStyle::Brief => "brief",
+                SummaryStyle::Detailed => "detailed",
+            };
+            if on_triggers.is_empty() {
+                format!("summarizable {{ style: {} }}", style_str)
+            } else {
+                let triggers: Vec<String> = on_triggers.iter().map(pretty_print_trigger).collect();
+                format!("summarizable {{ style: {}, on: [{}] }}", style_str, triggers.join(", "))
+            }
+        }
+        ModifierDef::Lockable { mode } => {
+            let mode_str = match mode {
+                LockMode::Exclusive => "exclusive",
+                LockMode::Shared => "shared",
+            };
+            format!("lockable {{ mode: {} }}", mode_str)
         }
     }
 }
@@ -1724,6 +2520,7 @@ mod tests {
                 indexes: vec![],
                 inject_on: vec![],
                 artifacts: vec![],
+                modifiers: vec![],
             })],
         };
         let output = pretty_print(&ast);
@@ -2066,6 +2863,7 @@ mod prop_tests {
                 indexes,
                 inject_on: vec![],
                 artifacts: vec![],
+                modifiers: vec![],
             })
     }
 

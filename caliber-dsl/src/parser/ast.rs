@@ -26,6 +26,11 @@ pub enum Definition {
     Evolution(EvolutionDef),
     // Battle Intel Feature 4: Summarization policies
     SummarizationPolicy(SummarizationPolicyDef),
+    // DSL-first architecture: New definitions
+    Trajectory(TrajectoryDef),
+    Agent(AgentDef),
+    Cache(CacheDef),
+    Provider(ProviderDef),
 }
 
 /// Adapter definition for storage backends.
@@ -57,6 +62,8 @@ pub struct MemoryDef {
     pub indexes: Vec<IndexDef>,
     pub inject_on: Vec<Trigger>,
     pub artifacts: Vec<String>,
+    /// DSL-first: Memory modifiers (embeddable, summarizable, lockable)
+    pub modifiers: Vec<ModifierDef>,
 }
 
 /// Memory type categories.
@@ -323,6 +330,224 @@ pub struct SummarizationPolicyDef {
 
 
 // ============================================================================
+// DSL-FIRST ARCHITECTURE: TRAJECTORY DEFINITIONS
+// ============================================================================
+
+/// Trajectory definition for multi-turn interaction templates.
+///
+/// DSL syntax:
+/// ```text
+/// trajectory "customer_support" {
+///     description: "Multi-turn customer support interaction"
+///     agent_type: "support_agent"
+///     token_budget: 8000
+///     memory_refs: [artifacts, notes, scopes]
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrajectoryDef {
+    pub name: String,
+    pub description: Option<String>,
+    pub agent_type: String,
+    pub token_budget: i32,
+    pub memory_refs: Vec<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+
+// ============================================================================
+// DSL-FIRST ARCHITECTURE: AGENT DEFINITIONS
+// ============================================================================
+
+/// Agent definition for agent types and capabilities.
+///
+/// DSL syntax:
+/// ```text
+/// agent "support_agent" {
+///     capabilities: ["classify_issue", "search_kb", "escalate"]
+///     constraints: {
+///         max_concurrent: 5
+///         timeout_ms: 30000
+///     }
+///     permissions: {
+///         read: [artifacts, notes, scopes]
+///         write: [notes, scopes]
+///         lock: [scopes]
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentDef {
+    pub name: String,
+    pub capabilities: Vec<String>,
+    pub constraints: AgentConstraints,
+    pub permissions: PermissionMatrix,
+}
+
+/// Agent runtime constraints.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentConstraints {
+    pub max_concurrent: i32,
+    pub timeout_ms: i64,
+}
+
+impl Default for AgentConstraints {
+    fn default() -> Self {
+        Self {
+            max_concurrent: 1,
+            timeout_ms: 30000,
+        }
+    }
+}
+
+/// Permission matrix for agent access control.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PermissionMatrix {
+    pub read: Vec<String>,
+    pub write: Vec<String>,
+    pub lock: Vec<String>,
+}
+
+
+// ============================================================================
+// DSL-FIRST ARCHITECTURE: CACHE CONFIGURATION
+// ============================================================================
+
+/// Cache configuration for the Three Dragons architecture.
+///
+/// DSL syntax:
+/// ```text
+/// cache {
+///     backend: lmdb
+///     path: "/var/caliber/cache"
+///     size_mb: 1024
+///     default_freshness: best_effort { max_staleness: 60s }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CacheDef {
+    pub backend: CacheBackendType,
+    pub path: Option<String>,
+    pub size_mb: i32,
+    pub default_freshness: FreshnessDef,
+    pub max_entries: Option<i32>,
+    pub ttl: Option<String>,
+}
+
+/// Cache backend types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CacheBackendType {
+    Lmdb,
+    Memory,
+}
+
+/// Freshness policy definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum FreshnessDef {
+    /// Best-effort freshness with max staleness tolerance
+    BestEffort { max_staleness: String },
+    /// Strict freshness - always fetch from source
+    Strict,
+}
+
+impl Default for FreshnessDef {
+    fn default() -> Self {
+        FreshnessDef::BestEffort {
+            max_staleness: "60s".to_string(),
+        }
+    }
+}
+
+
+// ============================================================================
+// DSL-FIRST ARCHITECTURE: PROVIDER DEFINITIONS
+// ============================================================================
+
+/// LLM provider definition for embeddings and summarization.
+///
+/// DSL syntax:
+/// ```text
+/// provider "openai" {
+///     type: openai
+///     api_key: env("OPENAI_API_KEY")
+///     model: "text-embedding-3-small"
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProviderDef {
+    pub name: String,
+    pub provider_type: ProviderType,
+    pub api_key: EnvValue,
+    pub model: String,
+    pub options: Vec<(String, String)>,
+}
+
+/// LLM provider types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProviderType {
+    OpenAI,
+    Anthropic,
+    Custom,
+}
+
+/// Environment variable reference or literal value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum EnvValue {
+    /// Reference to environment variable: env("VAR_NAME")
+    Env(String),
+    /// Literal string value
+    Literal(String),
+}
+
+
+// ============================================================================
+// DSL-FIRST ARCHITECTURE: MEMORY MODIFIERS
+// ============================================================================
+
+/// Memory modifier types for embeddable, summarizable, lockable.
+///
+/// DSL syntax in memory definition:
+/// ```text
+/// memory artifacts {
+///     modifiers: [
+///         embeddable { provider: "openai" },
+///         summarizable { style: brief, on: [scope_close] }
+///     ]
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ModifierDef {
+    /// Embeddable modifier - enables vector embeddings
+    Embeddable {
+        provider: String,
+    },
+    /// Summarizable modifier - enables auto-summarization
+    Summarizable {
+        style: SummaryStyle,
+        on_triggers: Vec<Trigger>,
+    },
+    /// Lockable modifier - enables distributed locking
+    Lockable {
+        mode: LockMode,
+    },
+}
+
+/// Summary style for summarizable modifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SummaryStyle {
+    Brief,
+    Detailed,
+}
+
+/// Lock mode for lockable modifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LockMode {
+    Exclusive,
+    Shared,
+}
+
+
+// ============================================================================
 // PARSE ERROR (Task 4.8)
 // ============================================================================
 
@@ -403,8 +628,13 @@ impl Parser {
             TokenKind::SummarizationPolicy => {
                 self.parse_summarization_policy().map(Definition::SummarizationPolicy)
             }
+            // DSL-first architecture: New definitions
+            TokenKind::Trajectory => self.parse_trajectory().map(Definition::Trajectory),
+            TokenKind::Agent => self.parse_agent().map(Definition::Agent),
+            TokenKind::Cache => self.parse_cache().map(Definition::Cache),
+            TokenKind::Provider => self.parse_provider().map(Definition::Provider),
             _ => Err(self.error(
-                "Expected definition (adapter, memory, policy, inject, evolve, summarization_policy)",
+                "Expected definition (adapter, memory, policy, inject, evolve, summarization_policy, trajectory, agent, cache, provider)",
             )),
         }
     }
@@ -491,6 +721,7 @@ impl Parser {
         let mut indexes = Vec::new();
         let mut inject_on = Vec::new();
         let mut artifacts = Vec::new();
+        let mut modifiers = Vec::new();
 
         while !self.check(&TokenKind::RBrace) {
             let field = self.expect_field_name()?;
@@ -541,6 +772,14 @@ impl Parser {
                     }
                     self.expect(TokenKind::RBracket)?;
                 }
+                "modifiers" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(&TokenKind::RBracket) {
+                        modifiers.push(self.parse_modifier()?);
+                        self.optional_comma();
+                    }
+                    self.expect(TokenKind::RBracket)?;
+                }
                 _ => return Err(self.error(&format!("unknown field: {}", field))),
             }
         }
@@ -561,6 +800,7 @@ impl Parser {
             indexes,
             inject_on,
             artifacts,
+            modifiers,
         })
     }
 

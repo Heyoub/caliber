@@ -336,6 +336,54 @@ impl fmt::Display for LockStateError {
 
 impl std::error::Error for LockStateError {}
 
+// ============================================================================
+// LOCK KEY COMPUTATION (for PostgreSQL advisory locks)
+// ============================================================================
+
+/// Compute a stable i64 key for advisory locks using FNV-1a hash.
+///
+/// FNV-1a is deterministic across Rust versions and compilations, making it
+/// suitable for distributed lock coordination via PostgreSQL advisory locks.
+///
+/// # Arguments
+///
+/// * `resource_type` - The type of resource being locked (e.g., "trajectory", "scope")
+/// * `resource_id` - The unique identifier of the resource
+///
+/// # Returns
+///
+/// A stable i64 hash that can be used with PostgreSQL's `pg_advisory_lock()`.
+///
+/// # Example
+///
+/// ```
+/// use caliber_core::{compute_lock_key, new_entity_id};
+///
+/// let resource_id = new_entity_id();
+/// let lock_key = compute_lock_key("trajectory", resource_id);
+/// // Use lock_key with pg_advisory_lock(lock_key)
+/// ```
+pub fn compute_lock_key(resource_type: &str, resource_id: EntityId) -> i64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    let mut hash = FNV_OFFSET_BASIS;
+
+    // Hash resource type
+    for byte in resource_type.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+
+    // Hash resource ID bytes
+    for byte in resource_id.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+
+    hash as i64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,5 +462,34 @@ mod tests {
             stored.into_acquired(now),
             Err(LockStateError::Expired { .. })
         ));
+    }
+
+    #[test]
+    fn test_compute_lock_key_deterministic() {
+        let resource_id = Uuid::now_v7();
+        let resource_type = "trajectory";
+
+        let key1 = compute_lock_key(resource_type, resource_id);
+        let key2 = compute_lock_key(resource_type, resource_id);
+
+        assert_eq!(key1, key2, "Lock key should be deterministic");
+    }
+
+    #[test]
+    fn test_compute_lock_key_uniqueness() {
+        let resource_id1 = Uuid::now_v7();
+        let resource_id2 = Uuid::now_v7();
+        let resource_type1 = "trajectory";
+        let resource_type2 = "scope";
+
+        // Same type, different IDs
+        let key1 = compute_lock_key(resource_type1, resource_id1);
+        let key2 = compute_lock_key(resource_type1, resource_id2);
+        assert_ne!(key1, key2, "Different resource IDs should produce different keys");
+
+        // Different type, same ID
+        let key3 = compute_lock_key(resource_type1, resource_id1);
+        let key4 = compute_lock_key(resource_type2, resource_id1);
+        assert_ne!(key3, key4, "Different resource types should produce different keys");
     }
 }

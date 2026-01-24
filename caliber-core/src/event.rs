@@ -505,6 +505,295 @@ pub enum UpstreamSignal {
     },
 }
 
+// ============================================================================
+// EVENT DAG TRAIT (Async for PG async I/O + LMDB hot path)
+// ============================================================================
+
+use crate::Effect;
+
+/// Trait for Event DAG operations.
+///
+/// Implementations of this trait provide persistent storage and traversal
+/// of the event graph. The DAG supports:
+///
+/// - Appending new events with automatic position calculation
+/// - Reading events by ID
+/// - Walking ancestor chains for context reconstruction
+/// - Sending upstream signals for coordination
+/// - Correlation chain traversal for related event discovery
+///
+/// # Async Design
+///
+/// All methods are async to support:
+/// - LMDB hot cache (sync but fast - microseconds, safe in async context)
+/// - PostgreSQL fallback (truly async - milliseconds, non-blocking)
+///
+/// # Payload Type
+///
+/// The `Payload` associated type determines what data is stored with each event.
+/// This is typically a serializable enum of all possible event payloads.
+#[async_trait::async_trait]
+pub trait EventDag: Send + Sync {
+    /// The payload type stored with events.
+    type Payload: Clone + Send + Sync + 'static;
+
+    /// Append a new event to the DAG.
+    ///
+    /// The event's position should be set by the caller based on the parent event.
+    /// Returns the assigned event ID on success.
+    async fn append(&self, event: Event<Self::Payload>) -> Effect<EventId>;
+
+    /// Read an event by its ID.
+    async fn read(&self, event_id: EventId) -> Effect<Event<Self::Payload>>;
+
+    /// Walk the ancestor chain from a given event.
+    ///
+    /// Returns events from `from` toward the root, limited by `limit`.
+    /// The events are returned in order from most recent to oldest.
+    async fn walk_ancestors(
+        &self,
+        from: EventId,
+        limit: usize,
+    ) -> Effect<Vec<Event<Self::Payload>>>;
+
+    /// Walk descendants from a given event.
+    async fn walk_descendants(
+        &self,
+        from: EventId,
+        limit: usize,
+    ) -> Effect<Vec<Event<Self::Payload>>>;
+
+    /// Send an upstream signal from a downstream event.
+    ///
+    /// Signals propagate backward through the DAG to notify upstream
+    /// producers of acknowledgments, backpressure, or errors.
+    async fn signal_upstream(&self, from: EventId, signal: UpstreamSignal) -> Effect<()>;
+
+    /// Find all events in a correlation chain.
+    async fn find_correlation_chain(
+        &self,
+        correlation_id: EventId,
+    ) -> Effect<Vec<Event<Self::Payload>>>;
+
+    /// Get the current position for appending a new event.
+    async fn next_position(&self, parent: Option<EventId>, lane: u32) -> Effect<DagPosition>;
+
+    /// Get events by kind within a position range.
+    async fn find_by_kind(
+        &self,
+        kind: EventKind,
+        min_depth: u32,
+        max_depth: u32,
+        limit: usize,
+    ) -> Effect<Vec<Event<Self::Payload>>>;
+
+    /// Acknowledge an event.
+    async fn acknowledge(&self, event_id: EventId, send_upstream: bool) -> Effect<()>;
+
+    /// Get unacknowledged events that require acknowledgment.
+    async fn unacknowledged(&self, limit: usize) -> Effect<Vec<Event<Self::Payload>>>;
+}
+
+/// Extension trait for EventDag with convenience methods.
+#[async_trait::async_trait]
+pub trait EventDagExt: EventDag {
+    /// Append a new root event.
+    async fn append_root(&self, payload: Self::Payload) -> Effect<EventId> {
+        let position = match self.next_position(None, 0).await {
+            Effect::Ok(pos) => pos,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
+        let event_id = uuid::Uuid::now_v7();
+        let event = Event {
+            header: EventHeader::new(
+                event_id,
+                event_id,
+                chrono::Utc::now().timestamp_micros(),
+                position,
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            payload,
+        };
+        self.append(event).await
+    }
+
+    /// Append a child event to an existing event.
+    async fn append_child(&self, parent: EventId, payload: Self::Payload) -> Effect<EventId> {
+        let parent_event = match self.read(parent).await {
+            Effect::Ok(e) => e,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
+        let position = match self.next_position(Some(parent), parent_event.header.position.lane).await {
+            Effect::Ok(pos) => pos,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
+        let event_id = uuid::Uuid::now_v7();
+        let event = Event {
+            header: EventHeader::new(
+                event_id,
+                parent_event.header.correlation_id,
+                chrono::Utc::now().timestamp_micros(),
+                position,
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            payload,
+        };
+        self.append(event).await
+    }
+
+    /// Fork a new lane from an existing event.
+    async fn fork(&self, parent: EventId, new_lane: u32, payload: Self::Payload) -> Effect<EventId> {
+        let parent_event = match self.read(parent).await {
+            Effect::Ok(e) => e,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
+        let position = match self.next_position(Some(parent), new_lane).await {
+            Effect::Ok(pos) => pos,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
+        let event_id = uuid::Uuid::now_v7();
+        let event = Event {
+            header: EventHeader::new(
+                event_id,
+                parent_event.header.correlation_id,
+                chrono::Utc::now().timestamp_micros(),
+                position,
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            payload,
+        };
+        self.append(event).await
+    }
+
+    /// Get the depth of an event in the DAG.
+    async fn depth(&self, event_id: EventId) -> Effect<u32> {
+        match self.read(event_id).await {
+            Effect::Ok(event) => Effect::Ok(event.header.position.depth),
+            Effect::Err(e) => Effect::Err(e),
+            other => other.map(|_| unreachable!()),
+        }
+    }
+
+    /// Check if one event is an ancestor of another.
+    async fn is_ancestor(&self, ancestor: EventId, descendant: EventId) -> Effect<bool> {
+        let ancestors = match self.walk_ancestors(descendant, 1000).await {
+            Effect::Ok(events) => events,
+            Effect::Err(e) => return Effect::Err(e),
+            other => return other.map(|_| unreachable!()),
+        };
+
+        for event in ancestors {
+            if event.header.event_id == ancestor {
+                return Effect::Ok(true);
+            }
+        }
+        Effect::Ok(false)
+    }
+}
+
+// Blanket implementation: any type implementing EventDag automatically gets EventDagExt
+impl<T: EventDag> EventDagExt for T {}
+
+/// Builder for creating events with proper positioning.
+#[derive(Debug, Clone)]
+pub struct EventBuilder<P> {
+    parent: Option<EventId>,
+    lane: u32,
+    correlation_id: Option<EventId>,
+    payload: P,
+    flags: EventFlags,
+}
+
+impl<P> EventBuilder<P> {
+    /// Create a new event builder with the given payload.
+    pub fn new(payload: P) -> Self {
+        Self {
+            parent: None,
+            lane: 0,
+            correlation_id: None,
+            payload,
+            flags: EventFlags::empty(),
+        }
+    }
+
+    /// Set the parent event.
+    pub fn parent(mut self, parent: EventId) -> Self {
+        self.parent = Some(parent);
+        self
+    }
+
+    /// Set the lane.
+    pub fn lane(mut self, lane: u32) -> Self {
+        self.lane = lane;
+        self
+    }
+
+    /// Set the correlation ID.
+    pub fn correlation(mut self, correlation_id: EventId) -> Self {
+        self.correlation_id = Some(correlation_id);
+        self
+    }
+
+    /// Mark this event as requiring acknowledgment.
+    pub fn requires_ack(mut self) -> Self {
+        self.flags |= EventFlags::REQUIRES_ACK;
+        self
+    }
+
+    /// Mark this event as critical.
+    pub fn critical(mut self) -> Self {
+        self.flags |= EventFlags::CRITICAL;
+        self
+    }
+
+    /// Mark this event as transactional.
+    pub fn transactional(mut self) -> Self {
+        self.flags |= EventFlags::TRANSACTIONAL;
+        self
+    }
+
+    /// Get the configured parent.
+    pub fn get_parent(&self) -> Option<EventId> {
+        self.parent
+    }
+
+    /// Get the configured lane.
+    pub fn get_lane(&self) -> u32 {
+        self.lane
+    }
+
+    /// Get the configured flags.
+    pub fn get_flags(&self) -> EventFlags {
+        self.flags
+    }
+
+    /// Get the correlation ID (or None).
+    pub fn get_correlation_id(&self) -> Option<EventId> {
+        self.correlation_id
+    }
+
+    /// Consume the builder and return the payload.
+    pub fn into_payload(self) -> P {
+        self.payload
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

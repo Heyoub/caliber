@@ -8,6 +8,7 @@
 //! which internally use direct heap operations for maximum performance.
 
 pub mod auth;
+pub mod cached_db;
 pub mod component;
 pub mod components;
 pub mod config;
@@ -51,6 +52,7 @@ pub use workos_auth::{
     WorkOsClaims, WorkOsConfig,
 };
 pub use config::ApiConfig;
+pub use cached_db::{CacheImpl, CachedDbClient};
 pub use db::{DbClient, DbConfig};
 pub use error::{ApiError, ApiResult, ErrorCode};
 pub use events::WsEvent;
@@ -66,7 +68,7 @@ pub use middleware::{
 pub use jobs::{saga_cleanup_task, SagaCleanupConfig, SagaCleanupMetrics};
 pub use openapi::ApiDoc;
 pub use routes::create_api_router;
-pub use state::AppState;
+pub use state::{ApiCache, ApiEventDag, AppState};
 pub use telemetry::{init_tracer, metrics_handler, shutdown_tracer, CaliberMetrics, TelemetryConfig, METRICS};
 pub use types::*;
 pub use ws::{should_deliver_event, tenant_id_from_event, WsState};

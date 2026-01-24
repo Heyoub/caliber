@@ -106,6 +106,61 @@ pub enum TokenKind {
     Triggers,              // triggers: field
     BenchmarkQueries,      // benchmark_queries: field
 
+    // DSL-first architecture: New top-level definitions
+    Trajectory,            // trajectory definition
+    Agent,                 // agent definition
+    Cache,                 // cache configuration
+    Provider,              // LLM provider definition
+
+    // Agent definition keywords
+    Capabilities,          // agent capabilities list
+    Constraints,           // agent constraints block
+    Permissions,           // agent permissions block
+    MaxConcurrent,         // constraint: max concurrent tasks
+    TimeoutMs,             // constraint: timeout in milliseconds
+    Read,                  // permission: read access
+    Write,                 // permission: write access
+    Lock,                  // permission: lock access (also memory modifier)
+
+    // Cache configuration keywords
+    Backend,               // cache backend type
+    Lmdb,                  // LMDB backend
+    MaxStaleness,          // cache max staleness duration
+    PollInterval,          // cache poll interval
+    Prefetch,              // cache prefetch setting
+    MaxEntries,            // cache max entries
+    Ttl,                   // cache TTL
+    SizeMb,                // cache size in MB
+    DefaultFreshness,      // cache default freshness
+    BestEffort,            // freshness mode
+    Strict,                // freshness mode
+
+    // Modifier keywords
+    Modifiers,             // memory modifiers list
+    Embeddable,            // embeddable modifier
+    Summarizable,          // summarizable modifier
+    Lockable,              // lockable modifier
+    Style,                 // summarization style
+    Brief,                 // summary style: brief
+    Detailed,              // summary style: detailed
+
+    // Lock mode keywords
+    Exclusive,             // exclusive lock mode
+    Shared,                // shared lock mode
+
+    // Provider keywords
+    ApiKey,                // provider API key
+    Model,                 // provider model name
+    Openai,                // OpenAI provider type
+    Anthropic,             // Anthropic provider type
+
+    // Utility keywords
+    Env,                   // environment variable reference
+    Description,           // trajectory/agent description
+    AgentType,             // trajectory agent type reference
+    TokenBudget,           // trajectory token budget
+    MemoryRefs,            // trajectory memory references
+
     // Index types
     Btree,
     Hash,

@@ -5,8 +5,23 @@
 
 pub mod async_trait;
 pub mod cache;
+pub mod event_dag;
+pub mod hybrid_dag;
 
 pub use async_trait::{AsyncStorageTrait, StorageStatistics};
+pub use event_dag::InMemoryEventDag;
+
+// Re-export HybridDag types for production event storage
+pub use hybrid_dag::{
+    ColdEventStorage, ColdStorageError, HybridDag, HybridDagError, LmdbCacheStats, LmdbEventCache,
+};
+
+// Re-export cache types for API integration
+pub use cache::{
+    CacheBackend, CacheConfig, CacheRead, CacheStats, CacheableEntity, ChangeJournal, Freshness,
+    InMemoryChangeJournal, LmdbCacheBackend, LmdbCacheError, ReadThroughCache, StorageFetcher,
+    TenantScopedKey, Watermark,
+};
 
 use caliber_core::{
     AbstractionLevel, Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, Edge,

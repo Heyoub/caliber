@@ -35,6 +35,9 @@ mod delegation;
 mod event;
 mod effect;
 
+// Context assembly module
+mod context;
+
 // Re-export identity types
 pub use identity::*;
 
@@ -72,3 +75,6 @@ pub use event::*;
 
 // Re-export effect types
 pub use effect::*;
+
+// Re-export context assembly types
+pub use context::*;

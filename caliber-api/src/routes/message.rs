@@ -215,15 +215,15 @@ pub async fn acknowledge_message(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // Verify the message exists and belongs to this tenant
+    // Get the message and verify tenant ownership
     let message = db
         .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
     validate_tenant_ownership(&auth, Some(message.tenant_id))?;
 
-    // Acknowledge message via database client
-    db.message_acknowledge(id).await?;
+    // Acknowledge via Response method (validates not already acknowledged)
+    message.acknowledge(&db).await?;
 
     // Broadcast MessageAcknowledged event with tenant_id for filtering
     ws.broadcast(WsEvent::MessageAcknowledged {
@@ -258,14 +258,15 @@ pub async fn deliver_message(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // Verify the message exists and belongs to this tenant
+    // Get the message and verify tenant ownership
     let message = db
         .message_get(id)
         .await?
         .ok_or_else(|| ApiError::message_not_found(id))?;
     validate_tenant_ownership(&auth, Some(message.tenant_id))?;
 
-    db.message_deliver(id).await?;
+    // Deliver via Response method (validates not already delivered)
+    message.deliver(&db).await?;
 
     ws.broadcast(WsEvent::MessageDelivered {
         tenant_id: auth.tenant_id,

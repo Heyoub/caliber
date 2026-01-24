@@ -635,7 +635,15 @@ impl MutationRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.scope_close(uuid, auth.tenant_id).await {
+        // Get the scope first
+        let existing = db
+            .get::<crate::types::ScopeResponse>(uuid, auth.tenant_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.message))?
+            .ok_or_else(|| async_graphql::Error::new("Scope not found"))?;
+
+        // Close via Response method
+        match existing.close(&db).await {
             Ok(scope) => {
                 ws.broadcast(WsEvent::ScopeClosed { scope: scope.clone() });
                 Ok(scope.into())

@@ -285,6 +285,61 @@ impl<'a> Lexer<'a> {
             "triggers" => TokenKind::Triggers,
             "benchmark_queries" => TokenKind::BenchmarkQueries,
 
+            // DSL-first architecture: New top-level definitions
+            "trajectory" => TokenKind::Trajectory,
+            "agent" => TokenKind::Agent,
+            "cache" => TokenKind::Cache,
+            "provider" => TokenKind::Provider,
+
+            // Agent definition keywords
+            "capabilities" => TokenKind::Capabilities,
+            "constraints" => TokenKind::Constraints,
+            "permissions" => TokenKind::Permissions,
+            "max_concurrent" => TokenKind::MaxConcurrent,
+            "timeout_ms" => TokenKind::TimeoutMs,
+            "read" => TokenKind::Read,
+            "write" => TokenKind::Write,
+            "lock" => TokenKind::Lock,
+
+            // Cache configuration keywords
+            "backend" => TokenKind::Backend,
+            "lmdb" => TokenKind::Lmdb,
+            "max_staleness" => TokenKind::MaxStaleness,
+            "poll_interval" => TokenKind::PollInterval,
+            "prefetch" => TokenKind::Prefetch,
+            "max_entries" => TokenKind::MaxEntries,
+            "ttl" => TokenKind::Ttl,
+            "size_mb" => TokenKind::SizeMb,
+            "default_freshness" => TokenKind::DefaultFreshness,
+            "best_effort" => TokenKind::BestEffort,
+            "strict" => TokenKind::Strict,
+
+            // Modifier keywords
+            "modifiers" => TokenKind::Modifiers,
+            "embeddable" => TokenKind::Embeddable,
+            "summarizable" => TokenKind::Summarizable,
+            "lockable" => TokenKind::Lockable,
+            "style" => TokenKind::Style,
+            "brief" => TokenKind::Brief,
+            "detailed" => TokenKind::Detailed,
+
+            // Lock mode keywords
+            "exclusive" => TokenKind::Exclusive,
+            "shared" => TokenKind::Shared,
+
+            // Provider keywords
+            "api_key" => TokenKind::ApiKey,
+            "model" => TokenKind::Model,
+            "openai" => TokenKind::Openai,
+            "anthropic" => TokenKind::Anthropic,
+
+            // Utility keywords
+            "env" => TokenKind::Env,
+            "description" => TokenKind::Description,
+            "agent_type" => TokenKind::AgentType,
+            "token_budget" => TokenKind::TokenBudget,
+            "memory_refs" => TokenKind::MemoryRefs,
+
             // Index types
             "btree" => TokenKind::Btree,
             "hash" => TokenKind::Hash,

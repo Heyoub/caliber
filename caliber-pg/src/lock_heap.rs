@@ -7,9 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
+    CaliberError, CaliberResult, EntityId, EntityType, LockMode, StorageError,
 };
-use caliber_agents::{DistributedLock, LockMode};
+use caliber_agents::DistributedLock;
 
 use crate::column_maps::lock;
 use crate::heap_ops::{

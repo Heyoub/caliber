@@ -157,28 +157,14 @@ pub async fn accept_handoff(
     Path(id): Path<Uuid>,
     Json(req): Json<AcceptHandoffRequest>,
 ) -> ApiResult<StatusCode> {
-    // Verify the handoff exists and is in initiated state
+    // Get the handoff
     let handoff = db
         .get::<HandoffResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
-    if handoff.status != caliber_core::HandoffStatus::Initiated {
-        return Err(ApiError::state_conflict(format!(
-            "Handoff is in '{:?}' state, cannot accept",
-            handoff.status
-        )));
-    }
-
-    // Verify the accepting agent is the target agent
-    if handoff.to_agent_id != req.accepting_agent_id {
-        return Err(ApiError::forbidden(
-            "Only the target agent can accept this handoff",
-        ));
-    }
-
-    // Accept handoff via database client
-    db.handoff_accept(id, req.accepting_agent_id).await?;
+    // Accept via Response method (validates state and permissions)
+    handoff.accept(&db, req.accepting_agent_id).await?;
 
     tracing::info!(
         handoff_id = %id,
@@ -221,21 +207,14 @@ pub async fn complete_handoff(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // Verify the handoff exists and is in accepted state
+    // Get the handoff
     let handoff = db
         .get::<HandoffResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Handoff", id))?;
 
-    if handoff.status != caliber_core::HandoffStatus::Accepted {
-        return Err(ApiError::state_conflict(format!(
-            "Handoff is in '{:?}' state, cannot complete",
-            handoff.status
-        )));
-    }
-
-    // Complete handoff via database client
-    let updated = db.handoff_complete(id).await?;
+    // Complete via Response method (validates state)
+    let updated = handoff.complete(&db).await?;
 
     // Broadcast HandoffCompleted event
     ws.broadcast(WsEvent::HandoffCompleted { handoff: updated });

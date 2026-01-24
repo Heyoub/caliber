@@ -15,7 +15,6 @@ caliber-core = { workspace = true }
 caliber-storage = { workspace = true }
 caliber-llm = { workspace = true }
 caliber-agents = { workspace = true }
-caliber-context = { workspace = true }
 caliber-pcp = { workspace = true }
 caliber-dsl = { workspace = true }
 

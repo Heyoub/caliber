@@ -133,28 +133,14 @@ pub async fn accept_delegation(
     Path(id): Path<Uuid>,
     Json(req): Json<AcceptDelegationRequest>,
 ) -> ApiResult<StatusCode> {
-    // Verify the delegation exists and is in pending state
+    // Get the delegation
     let delegation = db
         .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
-    if delegation.status != caliber_core::DelegationStatus::Pending {
-        return Err(ApiError::state_conflict(format!(
-            "Delegation is in '{:?}' state, cannot accept",
-            delegation.status
-        )));
-    }
-
-    // Verify the accepting agent is the delegatee
-    if delegation.to_agent_id != req.accepting_agent_id {
-        return Err(ApiError::forbidden(
-            "Only the delegatee can accept this delegation",
-        ));
-    }
-
-    // Accept delegation via database client
-    db.delegation_accept(id, req.accepting_agent_id).await?;
+    // Accept via Response method (validates state and permissions)
+    delegation.accept(&db, req.accepting_agent_id).await?;
 
     tracing::info!(
         delegation_id = %id,
@@ -201,27 +187,15 @@ pub async fn reject_delegation(
     Path(id): Path<Uuid>,
     Json(req): Json<RejectDelegationRequest>,
 ) -> ApiResult<StatusCode> {
-    // Verify the delegation exists and is in pending state
+    // Get the delegation
     let delegation = db
         .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
-    if delegation.status != caliber_core::DelegationStatus::Pending {
-        return Err(ApiError::state_conflict(format!(
-            "Delegation is in '{:?}' state, cannot reject",
-            delegation.status
-        )));
-    }
+    // Reject via Response method (validates state and permissions)
+    delegation.reject(&db, req.rejecting_agent_id, &req.reason).await?;
 
-    // Verify the rejecting agent is the delegatee
-    if delegation.to_agent_id != req.rejecting_agent_id {
-        return Err(ApiError::forbidden(
-            "Only the delegatee can reject this delegation",
-        ));
-    }
-
-    db.delegation_reject(id, req.reason).await?;
     ws.broadcast(WsEvent::DelegationRejected {
         tenant_id: auth.tenant_id,
         delegation_id: id,
@@ -257,37 +231,14 @@ pub async fn complete_delegation(
     Path(id): Path<Uuid>,
     Json(req): Json<CompleteDelegationRequest>,
 ) -> ApiResult<StatusCode> {
-    // Verify the delegation exists and is in accepted/in-progress state
+    // Get the delegation
     let delegation = db
         .get::<DelegationResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
-    let can_complete = matches!(
-        delegation.status,
-        caliber_core::DelegationStatus::Accepted | caliber_core::DelegationStatus::InProgress
-    );
-    if !can_complete {
-        return Err(ApiError::state_conflict(format!(
-            "Delegation is in '{:?}' state, cannot complete",
-            delegation.status
-        )));
-    }
-
-    // Validate result status
-    let valid_statuses = ["Success", "Partial", "Failure"];
-    if !valid_statuses.contains(&req.result.status.as_str()) {
-        return Err(ApiError::invalid_input(format!(
-            "result.status must be one of: {}",
-            valid_statuses.join(", ")
-        )));
-    }
-
-    // Build result JSON
-    let result_json = serde_json::to_value(&req.result)?;
-
-    // Complete delegation via database client
-    let updated = db.delegation_complete(id, result_json).await?;
+    // Complete via Response method (validates state)
+    let updated = delegation.complete(&db, &req.result).await?;
 
     // Broadcast DelegationCompleted event
     ws.broadcast(WsEvent::DelegationCompleted {

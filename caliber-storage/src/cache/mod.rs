@@ -42,7 +42,7 @@ pub mod watermark;
 
 pub use freshness::{CacheRead, Freshness};
 pub use lmdb_backend::{LmdbCacheBackend, LmdbCacheError};
-pub use read_through::{CacheConfig, ReadThroughCache};
+pub use read_through::{CacheConfig, ReadThroughCache, StorageFetcher};
 pub use tenant_key::TenantScopedKey;
 pub use traits::{CacheBackend, CacheableEntity, CacheStats};
-pub use watermark::{ChangeJournal, Watermark};
+pub use watermark::{ChangeJournal, InMemoryChangeJournal, Watermark};

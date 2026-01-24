@@ -20,6 +20,7 @@ pub mod context;
 pub mod delegation;
 pub mod dsl;
 pub mod edge;
+pub mod generic;
 pub mod graphql;
 pub mod handoff;
 pub mod health;
@@ -48,10 +49,12 @@ use axum::{
     Json, Router,
 };
 use caliber_pcp::PCPRuntime;
+use caliber_storage::{CacheConfig, InMemoryChangeJournal, LmdbCacheBackend, ReadThroughCache};
 use tower_http::cors::{Any, CorsLayer};
 use utoipa::OpenApi;
 
 use crate::auth::AuthConfig;
+use crate::cached_db::CachedDbClient;
 use crate::config::ApiConfig;
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
@@ -59,6 +62,58 @@ use crate::middleware::{auth_middleware, rate_limit_middleware, AuthMiddlewareSt
 use crate::openapi::ApiDoc;
 use crate::state::AppState;
 use crate::ws::{ws_handler, WsState};
+
+/// Default path for LMDB cache storage.
+const DEFAULT_CACHE_PATH: &str = "/tmp/caliber-cache";
+
+/// Default LMDB cache size in megabytes.
+const DEFAULT_CACHE_SIZE_MB: usize = 256;
+
+/// Initialize the read-through cache with LMDB backend.
+///
+/// Configuration via environment variables:
+/// - `CALIBER_CACHE_PATH`: Directory for LMDB files (default: /tmp/caliber-cache)
+/// - `CALIBER_CACHE_SIZE_MB`: Maximum cache size in MB (default: 256)
+fn initialize_cache() -> ApiResult<Arc<crate::state::ApiCache>> {
+    let cache_path = std::env::var("CALIBER_CACHE_PATH").unwrap_or_else(|_| DEFAULT_CACHE_PATH.to_string());
+    let cache_size_mb: usize = std::env::var("CALIBER_CACHE_SIZE_MB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_CACHE_SIZE_MB);
+
+    tracing::info!(
+        cache_path = %cache_path,
+        cache_size_mb = cache_size_mb,
+        "Initializing LMDB cache backend"
+    );
+
+    // Initialize LMDB backend
+    let lmdb_backend = LmdbCacheBackend::new(&cache_path, cache_size_mb).map_err(|e| {
+        ApiError::internal_error(format!("Failed to initialize LMDB cache backend: {}", e))
+    })?;
+
+    // Initialize in-memory change journal
+    // Note: In production with distributed deployment, this should be replaced
+    // with a PostgreSQL-backed change journal for cross-instance invalidation
+    let change_journal = InMemoryChangeJournal::new();
+
+    // Configure cache with sensible defaults
+    let cache_config = CacheConfig::new()
+        .with_max_staleness(Duration::from_secs(60))
+        .with_poll_interval(Duration::from_millis(100))
+        .with_prefetch(false)
+        .with_max_entries(10_000)
+        .with_ttl(Duration::from_secs(3600));
+
+    // Create the read-through cache
+    let cache = ReadThroughCache::new(
+        Arc::new(lmdb_backend),
+        Arc::new(change_journal),
+        cache_config,
+    );
+
+    Ok(Arc::new(cache))
+}
 
 // Re-export route creation functions for convenience
 pub use agent::create_router as agent_router;
@@ -248,12 +303,20 @@ impl SecureRouterBuilder {
         let graphql_schema = graphql::create_schema(self.db.clone(), self.ws.clone());
         let billing_state = Arc::new(billing::BillingState::new(self.db.clone()));
         let mcp_state = Arc::new(mcp::McpState::new(self.db.clone(), self.ws.clone()));
+        let event_dag = Arc::new(caliber_storage::InMemoryEventDag::new());
+
+        // Initialize the read-through cache (Three Dragons architecture)
+        let cache = initialize_cache()?;
+
+        // Create cached database client for transparent read-through caching
+        let cached_db = CachedDbClient::new(self.db.clone(), Arc::clone(&cache));
 
         #[cfg(feature = "workos")]
         let workos_config = crate::workos_auth::WorkOsConfig::from_env().ok();
 
         let app_state = AppState {
             db: self.db.clone(),
+            cached_db,
             ws: self.ws.clone(),
             pcp: self.pcp.clone(),
             webhook_state,
@@ -261,6 +324,8 @@ impl SecureRouterBuilder {
             billing_state,
             mcp_state,
             start_time: std::time::Instant::now(),
+            event_dag,
+            cache,
             #[cfg(feature = "workos")]
             workos_config,
         };
@@ -448,12 +513,20 @@ pub fn create_api_router_unauthenticated(
     let graphql_schema = graphql::create_schema(db.clone(), ws.clone());
     let billing_state = Arc::new(billing::BillingState::new(db.clone()));
     let mcp_state = Arc::new(mcp::McpState::new(db.clone(), ws.clone()));
+    let event_dag = Arc::new(caliber_storage::InMemoryEventDag::new());
+
+    // Initialize the read-through cache (Three Dragons architecture)
+    let cache = initialize_cache()?;
+
+    // Create cached database client for transparent read-through caching
+    let cached_db = CachedDbClient::new(db.clone(), Arc::clone(&cache));
 
     #[cfg(feature = "workos")]
     let workos_config = crate::workos_auth::WorkOsConfig::from_env().ok();
 
     let app_state = AppState {
         db: db.clone(),
+        cached_db,
         ws: ws.clone(),
         pcp: pcp.clone(),
         webhook_state,
@@ -461,6 +534,8 @@ pub fn create_api_router_unauthenticated(
         billing_state,
         mcp_state,
         start_time: std::time::Instant::now(),
+        event_dag,
+        cache,
         #[cfg(feature = "workos")]
         workos_config,
     };

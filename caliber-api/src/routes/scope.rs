@@ -207,17 +207,19 @@ pub async fn create_checkpoint(
         ));
     }
 
-    // First verify the scope exists and belongs to this tenant
+    // Get the scope and verify tenant ownership
     let scope = db
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, scope.tenant_id)?;
 
-    // Create checkpoint via database client (custom function - not generic CRUD)
-    let checkpoint = db
-        .scope_create_checkpoint(id, &req, auth.tenant_id)
-        .await?;
+    // Create checkpoint via Response method (validates scope is active)
+    let updated_scope = scope.create_checkpoint(&db, &req).await?;
+
+    // Extract the checkpoint from the updated scope
+    let checkpoint = updated_scope.checkpoint
+        .ok_or_else(|| ApiError::internal_error("Checkpoint was not set after creation"))?;
 
     Ok((StatusCode::CREATED, Json(checkpoint)))
 }
@@ -248,15 +250,15 @@ pub async fn close_scope(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // First verify the scope exists and belongs to this tenant
+    // Get the scope and verify tenant ownership
     let existing = db
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    // Close scope via database client (custom function - not generic CRUD)
-    let scope = db.scope_close(id, auth.tenant_id).await?;
+    // Close via Response method (validates scope is active)
+    let scope = existing.close(&db).await?;
 
     // Broadcast ScopeClosed event
     ws.broadcast(WsEvent::ScopeClosed {

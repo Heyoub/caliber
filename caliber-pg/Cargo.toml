@@ -33,7 +33,6 @@ debug = []  # Enable debug endpoints (caliber_debug_*)
 pgrx = { workspace = true, default-features = false }
 caliber-core = { workspace = true }
 caliber-storage = { workspace = true }
-caliber-context = { workspace = true }
 caliber-pcp = { workspace = true }
 caliber-llm = { workspace = true }
 caliber-agents = { workspace = true }
@@ -44,6 +43,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 once_cell = { workspace = true }
 hex = { workspace = true }
+paste = "1"
 
 [dev-dependencies]
 proptest = { workspace = true }

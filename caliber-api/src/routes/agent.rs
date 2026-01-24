@@ -263,7 +263,7 @@ pub async fn unregister_agent(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // First verify the agent exists and belongs to this tenant
+    // Get the agent
     let agent = db
         .get::<AgentResponse>(id, auth.tenant_id)
         .await?
@@ -276,8 +276,8 @@ pub async fn unregister_agent(
         ));
     }
 
-    // Unregister agent via database client
-    db.agent_unregister(id).await?;
+    // Unregister via Response method (sets status to Offline)
+    agent.unregister(&db).await?;
 
     // Broadcast AgentUnregistered event with tenant_id for filtering
     ws.broadcast(WsEvent::AgentUnregistered {
@@ -312,14 +312,14 @@ pub async fn agent_heartbeat(
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    // First verify the agent exists and belongs to this tenant
-    let _agent = db
+    // Get the agent
+    let agent = db
         .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;
 
-    // Update heartbeat via database client (custom function)
-    db.agent_heartbeat(id).await?;
+    // Update heartbeat via Response method
+    let updated_agent = agent.heartbeat(&db).await?;
 
     // Broadcast AgentHeartbeat event with tenant_id for filtering
     ws.broadcast(WsEvent::AgentHeartbeat {
@@ -327,12 +327,6 @@ pub async fn agent_heartbeat(
         agent_id: id,
         timestamp: Utc::now(),
     });
-
-    // Return the updated agent
-    let updated_agent = db
-        .get::<AgentResponse>(id, auth.tenant_id)
-        .await?
-        .ok_or_else(|| ApiError::agent_not_found(id))?;
 
     Ok(Json(updated_agent))
 }

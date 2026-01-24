@@ -34,10 +34,10 @@ use crate::error::{ApiError, ApiResult};
 use crate::middleware::AuthContext;
 use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse, TurnResponse};
 use axum::{extract::State, Extension, Json};
-use caliber_context::{
-    ContextAssembler, ContextPackage, ContextWindow, KernelConfig, ScopeSummary, SessionMarkers,
+use caliber_core::{
+    CaliberConfig, ContextAssembler, ContextPackage, ContextWindow, EntityId, KernelConfig,
+    ScopeSummary, SessionMarkers,
 };
-use caliber_core::{CaliberConfig, EntityId};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]

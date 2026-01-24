@@ -33,6 +33,15 @@ pub struct ExtendLockRequest {
     pub additional_ms: i64,
 }
 
+/// Request to release a lock.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReleaseLockRequest {
+    /// Agent releasing the lock (must be the holder)
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub releasing_agent_id: EntityId,
+}
+
 /// Lock response with full details.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -19,7 +19,7 @@ use crate::{
     events::WsEvent,
     middleware::AuthExtractor,
     state::AppState,
-    types::{AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse},
+    types::{AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse, ReleaseLockRequest},
     ws::WsState,
 };
 
@@ -85,8 +85,10 @@ pub async fn acquire_lock(
     params(
         ("id" = Uuid, Path, description = "Lock ID")
     ),
+    request_body = ReleaseLockRequest,
     responses(
         (status = 204, description = "Lock released successfully"),
+        (status = 403, description = "Not the lock holder", body = ApiError),
         (status = 404, description = "Lock not found", body = ApiError),
         (status = 401, description = "Unauthorized", body = ApiError),
     ),
@@ -100,16 +102,17 @@ pub async fn release_lock(
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
     Path(id): Path<Uuid>,
+    Json(req): Json<ReleaseLockRequest>,
 ) -> ApiResult<StatusCode> {
-    // Verify the lock exists and belongs to this tenant
+    // Get the lock and verify tenant ownership
     let lock = db
         .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
     validate_tenant_ownership(&auth, Some(lock.tenant_id))?;
 
-    // Release lock via database client
-    db.lock_release(id).await?;
+    // Release via Response method (validates ownership)
+    lock.release(&db, req.releasing_agent_id).await?;
 
     // Broadcast LockReleased event with tenant_id for filtering
     ws.broadcast(WsEvent::LockReleased {
@@ -151,15 +154,16 @@ pub async fn extend_lock(
         return Err(ApiError::invalid_range("additional_ms", 1, i64::MAX));
     }
 
-    // Verify the lock exists and belongs to this tenant
+    // Get the lock and verify tenant ownership
     let existing = db
         .lock_get(id)
         .await?
         .ok_or_else(|| ApiError::lock_not_found(id))?;
     validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
+    // Extend via Response method (validates lock is held)
     let duration = std::time::Duration::from_millis(req.additional_ms as u64);
-    let lock = db.lock_extend(id, duration).await?;
+    let lock = existing.extend(&db, duration).await?;
     Ok(Json(lock))
 }
 

@@ -29,9 +29,9 @@ pub mod pg_test {
 use caliber_core::{
     AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
     CaliberResult, Checkpoint, Edge, EdgeParticipant, EdgeType, EmbeddingVector, EntityId,
-    EntityType, ExtractionMethod, MemoryCategory, Note, NoteType, Provenance, RawContent,
+    EntityType, ExtractionMethod, LockMode, MemoryCategory, Note, NoteType, Provenance, RawContent,
     Scope, StorageError, SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome,
-    TrajectoryStatus, Turn, TurnRole, ValidationError, compute_content_hash, new_entity_id,
+    TrajectoryStatus, Turn, TurnRole, ValidationError, compute_content_hash, compute_lock_key, new_entity_id,
 };
 
 // pgrx datum types
@@ -42,8 +42,8 @@ use caliber_storage::{
 use caliber_agents::{
     Agent, AgentHandoff, AgentMessage, AgentStatus, Conflict, ConflictStatus,
     ConflictType, DelegatedTask, DelegationStatus, DistributedLock, HandoffReason,
-    HandoffStatus, LockMode, MemoryAccess, MemoryRegion, MemoryRegionConfig,
-    MessagePriority, MessageType, ResolutionStrategy, compute_lock_key,
+    HandoffStatus, MemoryAccess, MemoryRegion, MemoryRegionConfig,
+    MessagePriority, MessageType, ResolutionStrategy,
 };
 
 use chrono::Utc;
@@ -55,6 +55,10 @@ use uuid::Uuid;
 
 #[cfg(test)]
 mod row_conversion_tests;
+
+// CRUD macro helpers for generating pg_extern functions
+#[macro_use]
+mod macros;
 
 // ============================================================================
 // SPI HELPER FUNCTIONS FOR pgrx 0.16 API
@@ -722,44 +726,29 @@ fn caliber_trajectory_create(
 }
 
 /// Get a trajectory by ID.
-#[pg_extern]
-fn caliber_trajectory_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match trajectory_heap::trajectory_get_heap(entity_id, tenant_entity_id) {
-        Ok(Some(row)) => {
-            let trajectory = row.trajectory;
-            // Convert Trajectory to JSON
-            Some(pgrx::JsonB(serde_json::json!({
-                "trajectory_id": trajectory.trajectory_id.to_string(),
-                "name": trajectory.name,
-                "description": trajectory.description,
-                "status": match trajectory.status {
-                    TrajectoryStatus::Active => "active",
-                    TrajectoryStatus::Completed => "completed",
-                    TrajectoryStatus::Failed => "failed",
-                    TrajectoryStatus::Suspended => "suspended",
-                },
-                "parent_trajectory_id": trajectory.parent_trajectory_id.map(|id| id.to_string()),
-                "root_trajectory_id": trajectory.root_trajectory_id.map(|id| id.to_string()),
-                "agent_id": trajectory.agent_id.map(|id| id.to_string()),
-                "created_at": trajectory.created_at.to_rfc3339(),
-                "updated_at": trajectory.updated_at.to_rfc3339(),
-                "completed_at": trajectory.completed_at.map(|t| t.to_rfc3339()),
-                "outcome": trajectory.outcome.as_ref().map(safe_to_json),
-                "metadata": trajectory.metadata,
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get trajectory: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(trajectory, trajectory_heap, |row| {
+    let t = row.trajectory;
+    serde_json::json!({
+        "trajectory_id": t.trajectory_id.to_string(),
+        "name": t.name,
+        "description": t.description,
+        "status": match t.status {
+            TrajectoryStatus::Active => "active",
+            TrajectoryStatus::Completed => "completed",
+            TrajectoryStatus::Failed => "failed",
+            TrajectoryStatus::Suspended => "suspended",
+        },
+        "parent_trajectory_id": t.parent_trajectory_id.map(|id| id.to_string()),
+        "root_trajectory_id": t.root_trajectory_id.map(|id| id.to_string()),
+        "agent_id": t.agent_id.map(|id| id.to_string()),
+        "created_at": t.created_at.to_rfc3339(),
+        "updated_at": t.updated_at.to_rfc3339(),
+        "completed_at": t.completed_at.map(|dt| dt.to_rfc3339()),
+        "outcome": t.outcome.as_ref().map(safe_to_json),
+        "metadata": t.metadata,
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Update trajectory status.
 /// Returns None if status is invalid.
@@ -995,39 +984,24 @@ fn caliber_scope_create(
 }
 
 /// Get a scope by ID.
-#[pg_extern]
-fn caliber_scope_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match scope_heap::scope_get_heap(entity_id, tenant_entity_id) {
-        Ok(Some(row)) => {
-            let scope = row.scope;
-            // Convert Scope to JSON
-            Some(pgrx::JsonB(serde_json::json!({
-                "scope_id": scope.scope_id.to_string(),
-                "trajectory_id": scope.trajectory_id.to_string(),
-                "parent_scope_id": scope.parent_scope_id.map(|id| id.to_string()),
-                "name": scope.name,
-                "purpose": scope.purpose,
-                "is_active": scope.is_active,
-                "created_at": scope.created_at.to_rfc3339(),
-                "closed_at": scope.closed_at.map(|t| t.to_rfc3339()),
-                "checkpoint": scope.checkpoint.as_ref().map(safe_to_json),
-                "token_budget": scope.token_budget,
-                "tokens_used": scope.tokens_used,
-                "metadata": scope.metadata,
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get scope: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(scope, scope_heap, |row| {
+    let s = row.scope;
+    serde_json::json!({
+        "scope_id": s.scope_id.to_string(),
+        "trajectory_id": s.trajectory_id.to_string(),
+        "parent_scope_id": s.parent_scope_id.map(|id| id.to_string()),
+        "name": s.name,
+        "purpose": s.purpose,
+        "is_active": s.is_active,
+        "created_at": s.created_at.to_rfc3339(),
+        "closed_at": s.closed_at.map(|t| t.to_rfc3339()),
+        "checkpoint": s.checkpoint.as_ref().map(safe_to_json),
+        "token_budget": s.token_budget,
+        "tokens_used": s.tokens_used,
+        "metadata": s.metadata,
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Get the current active scope for a trajectory.
 #[pg_extern]
@@ -1421,70 +1395,55 @@ fn caliber_artifact_create(
 }
 
 /// Get an artifact by ID.
-#[pg_extern]
-fn caliber_artifact_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match artifact_heap::artifact_get_heap(entity_id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let artifact = row.artifact;
-            // Convert Artifact to JSON
-            Some(pgrx::JsonB(serde_json::json!({
-                "artifact_id": artifact.artifact_id.to_string(),
-                "trajectory_id": artifact.trajectory_id.to_string(),
-                "scope_id": artifact.scope_id.to_string(),
-                "artifact_type": match artifact.artifact_type {
-                    ArtifactType::ErrorLog => "error_log",
-                    ArtifactType::CodePatch => "code_patch",
-                    ArtifactType::DesignDecision => "design_decision",
-                    ArtifactType::UserPreference => "user_preference",
-                    ArtifactType::Fact => "fact",
-                    ArtifactType::Constraint => "constraint",
-                    ArtifactType::ToolResult => "tool_result",
-                    ArtifactType::IntermediateOutput => "intermediate_output",
-                    ArtifactType::Code => "code",
-                    ArtifactType::Document => "document",
-                    ArtifactType::Data => "data",
-                    ArtifactType::Model => "model",
-                    ArtifactType::Config => "config",
-                    ArtifactType::Log => "log",
-                    ArtifactType::Summary => "summary",
-                    ArtifactType::Decision => "decision",
-                    ArtifactType::Plan => "plan",
-                    ArtifactType::Custom => "custom",
-                },
-                "name": artifact.name,
-                "content": artifact.content,
-                "content_hash": hex::encode(artifact.content_hash),
-                "embedding": artifact.embedding,
-                "provenance": safe_to_json(&artifact.provenance),
-                "ttl": match artifact.ttl {
-                    TTL::Persistent => "persistent",
-                    TTL::Session => "session",
-                    TTL::Scope => "scope",
-                    TTL::Duration(ms) => format!("duration:{}", ms).leak(),
-                    TTL::Ephemeral => "ephemeral",
-                    TTL::ShortTerm => "short_term",
-                    TTL::MediumTerm => "medium_term",
-                    TTL::LongTerm => "long_term",
-                    TTL::Permanent => "permanent",
-                },
-                "created_at": artifact.created_at.to_rfc3339(),
-                "updated_at": artifact.updated_at.to_rfc3339(),
-                "superseded_by": artifact.superseded_by.map(|id| id.to_string()),
-                "metadata": artifact.metadata,
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get artifact: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(artifact, artifact_heap, |row| {
+    let a = row.artifact;
+    serde_json::json!({
+        "artifact_id": a.artifact_id.to_string(),
+        "trajectory_id": a.trajectory_id.to_string(),
+        "scope_id": a.scope_id.to_string(),
+        "artifact_type": match a.artifact_type {
+            ArtifactType::ErrorLog => "error_log",
+            ArtifactType::CodePatch => "code_patch",
+            ArtifactType::DesignDecision => "design_decision",
+            ArtifactType::UserPreference => "user_preference",
+            ArtifactType::Fact => "fact",
+            ArtifactType::Constraint => "constraint",
+            ArtifactType::ToolResult => "tool_result",
+            ArtifactType::IntermediateOutput => "intermediate_output",
+            ArtifactType::Code => "code",
+            ArtifactType::Document => "document",
+            ArtifactType::Data => "data",
+            ArtifactType::Model => "model",
+            ArtifactType::Config => "config",
+            ArtifactType::Log => "log",
+            ArtifactType::Summary => "summary",
+            ArtifactType::Decision => "decision",
+            ArtifactType::Plan => "plan",
+            ArtifactType::Custom => "custom",
+        },
+        "name": a.name,
+        "content": a.content,
+        "content_hash": hex::encode(a.content_hash),
+        "embedding": a.embedding,
+        "provenance": safe_to_json(&a.provenance),
+        "ttl": match a.ttl {
+            TTL::Persistent => "persistent",
+            TTL::Session => "session",
+            TTL::Scope => "scope",
+            TTL::Duration(ms) => format!("duration:{}", ms).leak(),
+            TTL::Ephemeral => "ephemeral",
+            TTL::ShortTerm => "short_term",
+            TTL::MediumTerm => "medium_term",
+            TTL::LongTerm => "long_term",
+            TTL::Permanent => "permanent",
+        },
+        "created_at": a.created_at.to_rfc3339(),
+        "updated_at": a.updated_at.to_rfc3339(),
+        "superseded_by": a.superseded_by.map(|id| id.to_string()),
+        "metadata": a.metadata,
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Query artifacts by type within a trajectory.
 #[pg_extern]
@@ -1969,68 +1928,53 @@ fn caliber_note_create(
 
 /// Get a note by ID.
 /// Updates access_count and accessed_at timestamp on each read.
-#[pg_extern]
-fn caliber_note_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match note_heap::note_get_heap(entity_id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let note = row.note;
-            // Convert Note to JSON
-            Some(pgrx::JsonB(serde_json::json!({
-                "note_id": note.note_id.to_string(),
-                "note_type": match note.note_type {
-                    NoteType::Convention => "convention",
-                    NoteType::Strategy => "strategy",
-                    NoteType::Gotcha => "gotcha",
-                    NoteType::Fact => "fact",
-                    NoteType::Preference => "preference",
-                    NoteType::Relationship => "relationship",
-                    NoteType::Procedure => "procedure",
-                    NoteType::Meta => "meta",
-                    NoteType::Insight => "insight",
-                    NoteType::Correction => "correction",
-                    NoteType::Summary => "summary",
-                },
-                "title": note.title,
-                "content": note.content,
-                "content_hash": hex::encode(note.content_hash),
-                "embedding": note.embedding,
-                "source_trajectory_ids": note.source_trajectory_ids.iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<_>>(),
-                "source_artifact_ids": note.source_artifact_ids.iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<_>>(),
-                "ttl": match note.ttl {
-                    TTL::Persistent => "persistent",
-                    TTL::Session => "session",
-                    TTL::Scope => "scope",
-                    TTL::Duration(ms) => format!("duration:{}", ms).leak(),
-                    TTL::Ephemeral => "ephemeral",
-                    TTL::ShortTerm => "short_term",
-                    TTL::MediumTerm => "medium_term",
-                    TTL::LongTerm => "long_term",
-                    TTL::Permanent => "permanent",
-                },
-                "created_at": note.created_at.to_rfc3339(),
-                "updated_at": note.updated_at.to_rfc3339(),
-                "accessed_at": note.accessed_at.to_rfc3339(),
-                "access_count": note.access_count,
-                "superseded_by": note.superseded_by.map(|id| id.to_string()),
-                "metadata": note.metadata,
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get note: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(note, note_heap, |row| {
+    let n = row.note;
+    serde_json::json!({
+        "note_id": n.note_id.to_string(),
+        "note_type": match n.note_type {
+            NoteType::Convention => "convention",
+            NoteType::Strategy => "strategy",
+            NoteType::Gotcha => "gotcha",
+            NoteType::Fact => "fact",
+            NoteType::Preference => "preference",
+            NoteType::Relationship => "relationship",
+            NoteType::Procedure => "procedure",
+            NoteType::Meta => "meta",
+            NoteType::Insight => "insight",
+            NoteType::Correction => "correction",
+            NoteType::Summary => "summary",
+        },
+        "title": n.title,
+        "content": n.content,
+        "content_hash": hex::encode(n.content_hash),
+        "embedding": n.embedding,
+        "source_trajectory_ids": n.source_trajectory_ids.iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>(),
+        "source_artifact_ids": n.source_artifact_ids.iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>(),
+        "ttl": match n.ttl {
+            TTL::Persistent => "persistent",
+            TTL::Session => "session",
+            TTL::Scope => "scope",
+            TTL::Duration(ms) => format!("duration:{}", ms).leak(),
+            TTL::Ephemeral => "ephemeral",
+            TTL::ShortTerm => "short_term",
+            TTL::MediumTerm => "medium_term",
+            TTL::LongTerm => "long_term",
+            TTL::Permanent => "permanent",
+        },
+        "created_at": n.created_at.to_rfc3339(),
+        "updated_at": n.updated_at.to_rfc3339(),
+        "accessed_at": n.accessed_at.to_rfc3339(),
+        "access_count": n.access_count,
+        "superseded_by": n.superseded_by.map(|id| id.to_string()),
+        "metadata": n.metadata,
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Query notes by trajectory.
 /// Updates access_count and accessed_at for all returned notes.
@@ -2601,36 +2545,22 @@ fn caliber_lock_check(
 }
 
 /// Get lock by ID.
-#[pg_extern]
-fn caliber_lock_get(lock_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let lid = Uuid::from_bytes(*lock_id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Get lock using direct heap operations
-    match lock_heap::lock_get_heap(lid, tenant_uuid) {
-        Ok(Some(row)) => {
-            let lock = row.lock;
-            Some(pgrx::JsonB(serde_json::json!({
-                "lock_id": lock.lock_id.to_string(),
-                "resource_type": lock.resource_type,
-                "resource_id": lock.resource_id.to_string(),
-                "holder_agent_id": lock.holder_agent_id.to_string(),
-                "acquired_at": lock.acquired_at.to_rfc3339(),
-                "expires_at": lock.expires_at.to_rfc3339(),
-                "mode": match lock.mode {
-                    LockMode::Exclusive => "exclusive",
-                    LockMode::Shared => "shared",
-                },
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: {:?}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(lock, lock_heap, |row| {
+    let l = row.lock;
+    serde_json::json!({
+        "lock_id": l.lock_id.to_string(),
+        "resource_type": l.resource_type,
+        "resource_id": l.resource_id.to_string(),
+        "holder_agent_id": l.holder_agent_id.to_string(),
+        "acquired_at": l.acquired_at.to_rfc3339(),
+        "expires_at": l.expires_at.to_rfc3339(),
+        "mode": match l.mode {
+            LockMode::Exclusive => "exclusive",
+            LockMode::Shared => "shared",
+        },
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Extend a lock's expiration time by the given milliseconds.
 #[pg_extern]
@@ -2657,38 +2587,22 @@ fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64, tenant_id: pgrx:
 }
 
 /// List all active (non-expired) locks.
-#[pg_extern]
-fn caliber_lock_list_active(tenant_id: pgrx::Uuid) -> pgrx::JsonB {
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-    match lock_heap::lock_list_active_heap(tenant_uuid) {
-        Ok(locks) => {
-            let json_locks: Vec<serde_json::Value> = locks
-                .into_iter()
-                .map(|row| {
-                    let lock = row.lock;
-                    serde_json::json!({
-                        "lock_id": lock.lock_id.to_string(),
-                        "resource_type": lock.resource_type,
-                        "resource_id": lock.resource_id.to_string(),
-                        "holder_agent_id": lock.holder_agent_id.to_string(),
-                        "acquired_at": lock.acquired_at.to_rfc3339(),
-                        "expires_at": lock.expires_at.to_rfc3339(),
-                        "mode": match lock.mode {
-                            LockMode::Exclusive => "exclusive",
-                            LockMode::Shared => "shared",
-                        },
-                        "tenant_id": row.tenant_id.map(|id| id.to_string()),
-                    })
-                })
-                .collect();
-            pgrx::JsonB(serde_json::json!(json_locks))
-        }
-        Err(e) => {
-            pgrx::warning!("CALIBER: {:?}", e);
-            pgrx::JsonB(serde_json::json!([]))
-        }
-    }
-}
+caliber_pg_list_active!(lock, lock_heap, |row| {
+    let lock = row.lock;
+    serde_json::json!({
+        "lock_id": lock.lock_id.to_string(),
+        "resource_type": lock.resource_type,
+        "resource_id": lock.resource_id.to_string(),
+        "holder_agent_id": lock.holder_agent_id.to_string(),
+        "acquired_at": lock.acquired_at.to_rfc3339(),
+        "expires_at": lock.expires_at.to_rfc3339(),
+        "mode": match lock.mode {
+            LockMode::Exclusive => "exclusive",
+            LockMode::Shared => "shared",
+        },
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// List all active (non-expired) locks for a tenant.
 #[pg_extern]
@@ -2841,54 +2755,40 @@ fn caliber_message_send(
 }
 
 /// Get a message by ID using direct heap operations.
-#[pg_extern]
-fn caliber_message_get(message_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let mid = Uuid::from_bytes(*message_id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match message_heap::message_get_heap(mid, tenant_uuid) {
-        Ok(Some(row)) => {
-            let message = row.message;
-            Some(pgrx::JsonB(serde_json::json!({
-                "message_id": message.message_id.to_string(),
-                "from_agent_id": message.from_agent_id.to_string(),
-                "to_agent_id": message.to_agent_id.map(|id| id.to_string()),
-                "to_agent_type": message.to_agent_type,
-                "message_type": match message.message_type {
-                    MessageType::TaskDelegation => "task_delegation",
-                    MessageType::TaskResult => "task_result",
-                    MessageType::ContextRequest => "context_request",
-                    MessageType::ContextShare => "context_share",
-                    MessageType::CoordinationSignal => "coordination_signal",
-                    MessageType::Handoff => "handoff",
-                    MessageType::Interrupt => "interrupt",
-                    MessageType::Heartbeat => "heartbeat",
-                },
-                "payload": message.payload,
-                "trajectory_id": message.trajectory_id.map(|id| id.to_string()),
-                "scope_id": message.scope_id.map(|id| id.to_string()),
-                "artifact_ids": message.artifact_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-                "created_at": message.created_at.to_rfc3339(),
-                "delivered_at": message.delivered_at.map(|t| t.to_rfc3339()),
-                "acknowledged_at": message.acknowledged_at.map(|t| t.to_rfc3339()),
-                "priority": match message.priority {
-                    MessagePriority::Low => "low",
-                    MessagePriority::Normal => "normal",
-                    MessagePriority::High => "high",
-                    MessagePriority::Critical => "critical",
-                },
-                "expires_at": message.expires_at.map(|t| t.to_rfc3339()),
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get message: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(message, message_heap, |row| {
+    let m = row.message;
+    serde_json::json!({
+        "message_id": m.message_id.to_string(),
+        "from_agent_id": m.from_agent_id.to_string(),
+        "to_agent_id": m.to_agent_id.map(|id| id.to_string()),
+        "to_agent_type": m.to_agent_type,
+        "message_type": match m.message_type {
+            MessageType::TaskDelegation => "task_delegation",
+            MessageType::TaskResult => "task_result",
+            MessageType::ContextRequest => "context_request",
+            MessageType::ContextShare => "context_share",
+            MessageType::CoordinationSignal => "coordination_signal",
+            MessageType::Handoff => "handoff",
+            MessageType::Interrupt => "interrupt",
+            MessageType::Heartbeat => "heartbeat",
+        },
+        "payload": m.payload,
+        "trajectory_id": m.trajectory_id.map(|id| id.to_string()),
+        "scope_id": m.scope_id.map(|id| id.to_string()),
+        "artifact_ids": m.artifact_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+        "created_at": m.created_at.to_rfc3339(),
+        "delivered_at": m.delivered_at.map(|t| t.to_rfc3339()),
+        "acknowledged_at": m.acknowledged_at.map(|t| t.to_rfc3339()),
+        "priority": match m.priority {
+            MessagePriority::Low => "low",
+            MessagePriority::Normal => "normal",
+            MessagePriority::High => "high",
+            MessagePriority::Critical => "critical",
+        },
+        "expires_at": m.expires_at.map(|t| t.to_rfc3339()),
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Mark a message as delivered.
 #[pg_extern]
@@ -3245,44 +3145,28 @@ fn caliber_agent_register(
 }
 
 /// Get an agent by ID.
-#[pg_extern]
-fn caliber_agent_get(agent_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*agent_id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match agent_heap::agent_get_heap(entity_id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let agent = row.agent;
-            // Convert Agent to JSON
-            let agent_json = serde_json::json!({
-                "agent_id": agent.agent_id.to_string(),
-                "agent_type": agent.agent_type,
-                "capabilities": agent.capabilities,
-                "memory_access": serde_json::to_value(&agent.memory_access).unwrap_or(serde_json::json!({})),
-                "status": match agent.status {
-                    AgentStatus::Idle => "idle",
-                    AgentStatus::Active => "active",
-                    AgentStatus::Blocked => "blocked",
-                    AgentStatus::Failed => "failed",
-                },
-                "current_trajectory_id": agent.current_trajectory_id.map(|id| id.to_string()),
-                "current_scope_id": agent.current_scope_id.map(|id| id.to_string()),
-                "can_delegate_to": agent.can_delegate_to,
-                "reports_to": agent.reports_to.map(|id| id.to_string()),
-                "created_at": agent.created_at.to_rfc3339(),
-                "last_heartbeat": agent.last_heartbeat.to_rfc3339(),
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            });
-            Some(pgrx::JsonB(agent_json))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get agent: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(agent, agent_heap, |row| {
+    let a = row.agent;
+    serde_json::json!({
+        "agent_id": a.agent_id.to_string(),
+        "agent_type": a.agent_type,
+        "capabilities": a.capabilities,
+        "memory_access": serde_json::to_value(&a.memory_access).unwrap_or(serde_json::json!({})),
+        "status": match a.status {
+            AgentStatus::Idle => "idle",
+            AgentStatus::Active => "active",
+            AgentStatus::Blocked => "blocked",
+            AgentStatus::Failed => "failed",
+        },
+        "current_trajectory_id": a.current_trajectory_id.map(|id| id.to_string()),
+        "current_scope_id": a.current_scope_id.map(|id| id.to_string()),
+        "can_delegate_to": a.can_delegate_to,
+        "reports_to": a.reports_to.map(|id| id.to_string()),
+        "created_at": a.created_at.to_rfc3339(),
+        "last_heartbeat": a.last_heartbeat.to_rfc3339(),
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Update agent status.
 #[pg_extern]
@@ -3585,51 +3469,36 @@ fn caliber_delegation_create(
 }
 
 /// Get a delegation by ID.
-#[pg_extern]
-fn caliber_delegation_get(delegation_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*delegation_id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    // Use direct heap operations instead of SPI
-    match delegation_heap::delegation_get_heap(entity_id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let delegation = row.delegation;
-            // Convert DelegatedTask to JSON
-            Some(pgrx::JsonB(serde_json::json!({
-                "delegation_id": delegation.delegation_id.to_string(),
-                "delegator_agent_id": delegation.delegator_agent_id.to_string(),
-                "delegatee_agent_id": delegation.delegatee_agent_id.map(|id| id.to_string()),
-                "delegatee_agent_type": delegation.delegatee_agent_type,
-                "task_description": delegation.task_description,
-                "parent_trajectory_id": delegation.parent_trajectory_id.to_string(),
-                "child_trajectory_id": delegation.child_trajectory_id.map(|id| id.to_string()),
-                "shared_artifacts": delegation.shared_artifacts.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-                "shared_notes": delegation.shared_notes.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-                "additional_context": delegation.additional_context,
-                "constraints": delegation.constraints,
-                "deadline": delegation.deadline.map(|dt| dt.to_rfc3339()),
-                "status": match delegation.status {
-                    DelegationStatus::Pending => "pending",
-                    DelegationStatus::Accepted => "accepted",
-                    DelegationStatus::Rejected => "rejected",
-                    DelegationStatus::InProgress => "in_progress",
-                    DelegationStatus::Completed => "completed",
-                    DelegationStatus::Failed => "failed",
-                },
-                "result": delegation.result.as_ref().map(safe_to_json),
-                "created_at": delegation.created_at.to_rfc3339(),
-                "accepted_at": delegation.accepted_at.map(|dt| dt.to_rfc3339()),
-                "completed_at": delegation.completed_at.map(|dt| dt.to_rfc3339()),
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            })))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get delegation: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(delegation, delegation_heap, |row| {
+    let d = row.delegation;
+    serde_json::json!({
+        "delegation_id": d.delegation_id.to_string(),
+        "delegator_agent_id": d.delegator_agent_id.to_string(),
+        "delegatee_agent_id": d.delegatee_agent_id.map(|id| id.to_string()),
+        "delegatee_agent_type": d.delegatee_agent_type,
+        "task_description": d.task_description,
+        "parent_trajectory_id": d.parent_trajectory_id.to_string(),
+        "child_trajectory_id": d.child_trajectory_id.map(|id| id.to_string()),
+        "shared_artifacts": d.shared_artifacts.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+        "shared_notes": d.shared_notes.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+        "additional_context": d.additional_context,
+        "constraints": d.constraints,
+        "deadline": d.deadline.map(|dt| dt.to_rfc3339()),
+        "status": match d.status {
+            DelegationStatus::Pending => "pending",
+            DelegationStatus::Accepted => "accepted",
+            DelegationStatus::Rejected => "rejected",
+            DelegationStatus::InProgress => "in_progress",
+            DelegationStatus::Completed => "completed",
+            DelegationStatus::Failed => "failed",
+        },
+        "result": d.result.as_ref().map(safe_to_json),
+        "created_at": d.created_at.to_rfc3339(),
+        "accepted_at": d.accepted_at.map(|dt| dt.to_rfc3339()),
+        "completed_at": d.completed_at.map(|dt| dt.to_rfc3339()),
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Accept a delegation.
 ///
@@ -3803,55 +3672,41 @@ fn caliber_handoff_create(
 }
 
 /// Get a handoff by ID.
-#[pg_extern]
-fn caliber_handoff_get(handoff_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let id = Uuid::from_bytes(*handoff_id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-    
-    match handoff_heap::handoff_get_heap(id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let handoff = row.handoff;
-            let json = serde_json::json!({
-                "handoff_id": handoff.handoff_id.to_string(),
-                "from_agent_id": handoff.from_agent_id.to_string(),
-                "to_agent_id": handoff.to_agent_id.map(|id| id.to_string()),
-                "to_agent_type": handoff.to_agent_type,
-                "trajectory_id": handoff.trajectory_id.to_string(),
-                "scope_id": handoff.scope_id.to_string(),
-                "context_snapshot_id": handoff.context_snapshot_id.to_string(),
-                "handoff_notes": handoff.handoff_notes,
-                "next_steps": handoff.next_steps,
-                "blockers": handoff.blockers,
-                "open_questions": handoff.open_questions,
-                "status": match handoff.status {
-                    HandoffStatus::Initiated => "initiated",
-                    HandoffStatus::Accepted => "accepted",
-                    HandoffStatus::Completed => "completed",
-                    HandoffStatus::Rejected => "rejected",
-                },
-                "reason": match handoff.reason {
-                    HandoffReason::CapabilityMismatch => "capability_mismatch",
-                    HandoffReason::LoadBalancing => "load_balancing",
-                    HandoffReason::Specialization => "specialization",
-                    HandoffReason::Escalation => "escalation",
-                    HandoffReason::Timeout => "timeout",
-                    HandoffReason::Failure => "failure",
-                    HandoffReason::Scheduled => "scheduled",
-                },
-                "initiated_at": handoff.initiated_at.to_rfc3339(),
-                "accepted_at": handoff.accepted_at.map(|t| t.to_rfc3339()),
-                "completed_at": handoff.completed_at.map(|t| t.to_rfc3339()),
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            });
-            Some(pgrx::JsonB(json))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get handoff: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(handoff, handoff_heap, |row| {
+    let h = row.handoff;
+    serde_json::json!({
+        "handoff_id": h.handoff_id.to_string(),
+        "from_agent_id": h.from_agent_id.to_string(),
+        "to_agent_id": h.to_agent_id.map(|id| id.to_string()),
+        "to_agent_type": h.to_agent_type,
+        "trajectory_id": h.trajectory_id.to_string(),
+        "scope_id": h.scope_id.to_string(),
+        "context_snapshot_id": h.context_snapshot_id.to_string(),
+        "handoff_notes": h.handoff_notes,
+        "next_steps": h.next_steps,
+        "blockers": h.blockers,
+        "open_questions": h.open_questions,
+        "status": match h.status {
+            HandoffStatus::Initiated => "initiated",
+            HandoffStatus::Accepted => "accepted",
+            HandoffStatus::Completed => "completed",
+            HandoffStatus::Rejected => "rejected",
+        },
+        "reason": match h.reason {
+            HandoffReason::CapabilityMismatch => "capability_mismatch",
+            HandoffReason::LoadBalancing => "load_balancing",
+            HandoffReason::Specialization => "specialization",
+            HandoffReason::Escalation => "escalation",
+            HandoffReason::Timeout => "timeout",
+            HandoffReason::Failure => "failure",
+            HandoffReason::Scheduled => "scheduled",
+        },
+        "initiated_at": h.initiated_at.to_rfc3339(),
+        "accepted_at": h.accepted_at.map(|t| t.to_rfc3339()),
+        "completed_at": h.completed_at.map(|t| t.to_rfc3339()),
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Accept a handoff.
 ///
@@ -3950,53 +3805,36 @@ fn caliber_conflict_create(
 }
 
 /// Get a conflict by ID.
-#[pg_extern]
-fn caliber_conflict_get(conflict_id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let id = Uuid::from_bytes(*conflict_id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-    
-    // Get via direct heap operations (NO SQL)
-    match conflict_heap::conflict_get_heap(id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let conflict = row.conflict;
-            let status_str = match conflict.status {
-                ConflictStatus::Detected => "detected",
-                ConflictStatus::Resolving => "resolving",
-                ConflictStatus::Resolved => "resolved",
-                ConflictStatus::Escalated => "escalated",
-            };
-            
-            let json = serde_json::json!({
-                "conflict_id": conflict.conflict_id.to_string(),
-                "conflict_type": match conflict.conflict_type {
-                    ConflictType::ConcurrentWrite => "concurrent_write",
-                    ConflictType::ContradictingFact => "contradicting_fact",
-                    ConflictType::IncompatibleDecision => "incompatible_decision",
-                    ConflictType::ResourceContention => "resource_contention",
-                    ConflictType::GoalConflict => "goal_conflict",
-                },
-                "item_a_type": conflict.item_a_type,
-                "item_a_id": conflict.item_a_id.to_string(),
-                "item_b_type": conflict.item_b_type,
-                "item_b_id": conflict.item_b_id.to_string(),
-                "agent_a_id": conflict.agent_a_id.map(|id| id.to_string()),
-                "agent_b_id": conflict.agent_b_id.map(|id| id.to_string()),
-                "trajectory_id": conflict.trajectory_id.map(|id| id.to_string()),
-                "status": status_str,
-                "resolution": conflict.resolution.as_ref().map(safe_to_json),
-                "detected_at": conflict.detected_at.to_rfc3339(),
-                "resolved_at": conflict.resolved_at.map(|t| t.to_rfc3339()),
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            });
-            Some(pgrx::JsonB(json))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get conflict: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(conflict, conflict_heap, |row| {
+    let c = row.conflict;
+    serde_json::json!({
+        "conflict_id": c.conflict_id.to_string(),
+        "conflict_type": match c.conflict_type {
+            ConflictType::ConcurrentWrite => "concurrent_write",
+            ConflictType::ContradictingFact => "contradicting_fact",
+            ConflictType::IncompatibleDecision => "incompatible_decision",
+            ConflictType::ResourceContention => "resource_contention",
+            ConflictType::GoalConflict => "goal_conflict",
+        },
+        "item_a_type": c.item_a_type,
+        "item_a_id": c.item_a_id.to_string(),
+        "item_b_type": c.item_b_type,
+        "item_b_id": c.item_b_id.to_string(),
+        "agent_a_id": c.agent_a_id.map(|id| id.to_string()),
+        "agent_b_id": c.agent_b_id.map(|id| id.to_string()),
+        "trajectory_id": c.trajectory_id.map(|id| id.to_string()),
+        "status": match c.status {
+            ConflictStatus::Detected => "detected",
+            ConflictStatus::Resolving => "resolving",
+            ConflictStatus::Resolved => "resolved",
+            ConflictStatus::Escalated => "escalated",
+        },
+        "resolution": c.resolution.as_ref().map(safe_to_json),
+        "detected_at": c.detected_at.to_rfc3339(),
+        "resolved_at": c.resolved_at.map(|t| t.to_rfc3339()),
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// Resolve a conflict.
 #[pg_extern]
@@ -5248,53 +5086,39 @@ fn caliber_edge_create(
 }
 
 /// Get an edge by ID.
-#[pg_extern]
-fn caliber_edge_get(id: pgrx::Uuid, tenant_id: pgrx::Uuid) -> Option<pgrx::JsonB> {
-    let entity_id = Uuid::from_bytes(*id.as_bytes());
-    let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-
-    match edge_heap::edge_get_heap(entity_id, tenant_uuid) {
-        Ok(Some(row)) => {
-            let edge = row.edge;
-            let json = serde_json::json!({
-                "edge_id": edge.edge_id.to_string(),
-                "edge_type": match edge.edge_type {
-                    EdgeType::Supports => "supports",
-                    EdgeType::Contradicts => "contradicts",
-                    EdgeType::Supersedes => "supersedes",
-                    EdgeType::DerivedFrom => "derivedfrom",
-                    EdgeType::RelatesTo => "relatesto",
-                    EdgeType::Temporal => "temporal",
-                    EdgeType::Causal => "causal",
-                    EdgeType::SynthesizedFrom => "synthesizedfrom",
-                    EdgeType::Grouped => "grouped",
-                    EdgeType::Compared => "compared",
-                },
-                "participants": edge.participants,
-                "weight": edge.weight,
-                "trajectory_id": edge.trajectory_id.map(|id| id.to_string()),
-                "provenance": {
-                    "source_turn": edge.provenance.source_turn,
-                    "extraction_method": match edge.provenance.extraction_method {
-                        ExtractionMethod::Explicit => "explicit",
-                        ExtractionMethod::Inferred => "inferred",
-                        ExtractionMethod::UserProvided => "userprovided",
-                    },
-                    "confidence": edge.provenance.confidence,
-                },
-                "created_at": edge.created_at.to_rfc3339(),
-                "metadata": edge.metadata,
-                "tenant_id": row.tenant_id.map(|id| id.to_string()),
-            });
-            Some(pgrx::JsonB(json))
-        }
-        Ok(None) => None,
-        Err(e) => {
-            pgrx::warning!("CALIBER: Failed to get edge: {}", e);
-            None
-        }
-    }
-}
+caliber_pg_get!(edge, edge_heap, |row| {
+    let edge = row.edge;
+    serde_json::json!({
+        "edge_id": edge.edge_id.to_string(),
+        "edge_type": match edge.edge_type {
+            EdgeType::Supports => "supports",
+            EdgeType::Contradicts => "contradicts",
+            EdgeType::Supersedes => "supersedes",
+            EdgeType::DerivedFrom => "derivedfrom",
+            EdgeType::RelatesTo => "relatesto",
+            EdgeType::Temporal => "temporal",
+            EdgeType::Causal => "causal",
+            EdgeType::SynthesizedFrom => "synthesizedfrom",
+            EdgeType::Grouped => "grouped",
+            EdgeType::Compared => "compared",
+        },
+        "participants": edge.participants,
+        "weight": edge.weight,
+        "trajectory_id": edge.trajectory_id.map(|id| id.to_string()),
+        "provenance": {
+            "source_turn": edge.provenance.source_turn,
+            "extraction_method": match edge.provenance.extraction_method {
+                ExtractionMethod::Explicit => "explicit",
+                ExtractionMethod::Inferred => "inferred",
+                ExtractionMethod::UserProvided => "userprovided",
+            },
+            "confidence": edge.provenance.confidence,
+        },
+        "created_at": edge.created_at.to_rfc3339(),
+        "metadata": edge.metadata,
+        "tenant_id": row.tenant_id.map(|id| id.to_string()),
+    })
+});
 
 /// List edges by participant with tenant isolation.
 #[pg_extern]

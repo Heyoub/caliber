@@ -333,56 +333,6 @@ impl DbClient {
         }
     }
 
-    /// Close a scope by calling caliber_scope_close.
-    pub async fn scope_close(&self, id: EntityId, tenant_id: EntityId) -> ApiResult<ScopeResponse> {
-        let conn = self.get_conn().await?;
-
-        let closed: bool = conn
-            .query_one("SELECT caliber_scope_close($1, $2)", &[&id, &tenant_id])
-            .await?
-            .get(0);
-
-        if !closed {
-            return Err(ApiError::scope_not_found(id));
-        }
-
-        self.scope_get(id, tenant_id).await?
-            .ok_or_else(|| ApiError::scope_not_found(id))
-    }
-
-    /// Create a checkpoint for a scope.
-    pub async fn scope_create_checkpoint(
-        &self,
-        id: EntityId,
-        req: &CreateCheckpointRequest,
-        tenant_id: EntityId,
-    ) -> ApiResult<CheckpointResponse> {
-        let conn = self.get_conn().await?;
-
-        // Build checkpoint JSON
-        let checkpoint_json = serde_json::json!({
-            "context_state": req.context_state,
-            "recoverable": req.recoverable,
-        });
-
-        let updated: bool = conn
-            .query_one(
-                "SELECT caliber_scope_update($1, $2, $3)",
-                &[&id, &serde_json::json!({ "checkpoint": checkpoint_json }), &tenant_id],
-            )
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::scope_not_found(id));
-        }
-
-        Ok(CheckpointResponse {
-            context_state: req.context_state.clone(),
-            recoverable: req.recoverable,
-        })
-    }
-
     /// Parse scope JSON into ScopeResponse.
     fn parse_scope_json(&self, json: &JsonValue) -> ApiResult<ScopeResponse> {
         Ok(ScopeResponse {
@@ -636,16 +586,6 @@ impl DbClient {
         }
     }
 
-    /// Update agent heartbeat by calling caliber_agent_heartbeat.
-    pub async fn agent_heartbeat(&self, id: EntityId) -> ApiResult<()> {
-        let conn = self.get_conn().await?;
-
-        conn.execute("SELECT caliber_agent_heartbeat($1)", &[&id])
-            .await?;
-
-        Ok(())
-    }
-
     /// Update an agent by calling caliber_agent_update.
     pub async fn agent_update(
         &self,
@@ -753,22 +693,6 @@ impl DbClient {
         Ok(agents)
     }
 
-    /// Unregister an agent by calling caliber_agent_unregister.
-    pub async fn agent_unregister(&self, id: EntityId) -> ApiResult<()> {
-        let conn = self.get_conn().await?;
-
-        let unregistered: bool = conn
-            .query_one("SELECT caliber_agent_unregister($1)", &[&id])
-            .await?
-            .get(0);
-
-        if !unregistered {
-            return Err(ApiError::agent_not_found(id));
-        }
-
-        Ok(())
-    }
-
     /// Parse agent JSON into AgentResponse.
     fn parse_agent_json(&self, json: &JsonValue) -> ApiResult<AgentResponse> {
         Ok(AgentResponse {
@@ -852,25 +776,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// Extend a lock's expiration by additional duration.
-    pub async fn lock_extend(&self, id: EntityId, additional: Duration) -> ApiResult<LockResponse> {
-        let conn = self.get_conn().await?;
-        let additional_ms = i64::try_from(additional.as_millis())
-            .map_err(|_| ApiError::invalid_range("additional_ms", 1, i64::MAX))?;
-
-        let updated: bool = conn
-            .query_one("SELECT caliber_lock_extend($1, $2)", &[&id, &additional_ms])
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::lock_not_found(id));
-        }
-
-        self.lock_get(id).await?
-            .ok_or_else(|| ApiError::lock_not_found(id))
     }
 
     /// List all active locks.
@@ -974,38 +879,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// Mark a message as acknowledged by calling caliber_message_mark_acknowledged.
-    pub async fn message_acknowledge(&self, id: EntityId) -> ApiResult<()> {
-        let conn = self.get_conn().await?;
-
-        let updated: bool = conn
-            .query_one("SELECT caliber_message_mark_acknowledged($1)", &[&id])
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::message_not_found(id));
-        }
-
-        Ok(())
-    }
-
-    /// Mark a message as delivered by calling caliber_message_mark_delivered.
-    pub async fn message_deliver(&self, id: EntityId) -> ApiResult<()> {
-        let conn = self.get_conn().await?;
-
-        let updated: bool = conn
-            .query_one("SELECT caliber_message_mark_delivered($1)", &[&id])
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::message_not_found(id));
-        }
-
-        Ok(())
     }
 
     /// List messages with filters by calling caliber_message_list.
@@ -1152,30 +1025,6 @@ impl DbClient {
         }
     }
 
-    /// Accept a delegation by calling caliber_delegation_accept.
-    pub async fn delegation_accept(
-        &self,
-        id: EntityId,
-        accepting_agent_id: EntityId,
-    ) -> ApiResult<DelegationResponse> {
-        let conn = self.get_conn().await?;
-
-        let updated: bool = conn
-            .query_one(
-                "SELECT caliber_delegation_accept($1, $2)",
-                &[&id, &accepting_agent_id],
-            )
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::entity_not_found("Delegation", id));
-        }
-
-        self.delegation_get(id).await?
-            .ok_or_else(|| ApiError::entity_not_found("Delegation", id))
-    }
-
     /// Reject a delegation by calling caliber_delegation_reject.
     pub async fn delegation_reject(
         &self,
@@ -1188,30 +1037,6 @@ impl DbClient {
             .query_one(
                 "SELECT caliber_delegation_reject($1, $2)",
                 &[&id, &reason],
-            )
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::entity_not_found("Delegation", id));
-        }
-
-        self.delegation_get(id).await?
-            .ok_or_else(|| ApiError::entity_not_found("Delegation", id))
-    }
-
-    /// Complete a delegation by calling caliber_delegation_complete.
-    pub async fn delegation_complete(
-        &self,
-        id: EntityId,
-        result_json: JsonValue,
-    ) -> ApiResult<DelegationResponse> {
-        let conn = self.get_conn().await?;
-
-        let updated: bool = conn
-            .query_one(
-                "SELECT caliber_delegation_complete($1, $2)",
-                &[&id, &result_json],
             )
             .await?
             .get(0);
@@ -1296,47 +1121,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// Accept a handoff by calling caliber_handoff_accept.
-    pub async fn handoff_accept(
-        &self,
-        id: EntityId,
-        accepting_agent_id: EntityId,
-    ) -> ApiResult<HandoffResponse> {
-        let conn = self.get_conn().await?;
-
-        let updated: bool = conn
-            .query_one(
-                "SELECT caliber_handoff_accept($1, $2)",
-                &[&id, &accepting_agent_id],
-            )
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::entity_not_found("Handoff", id));
-        }
-
-        self.handoff_get(id).await?
-            .ok_or_else(|| ApiError::entity_not_found("Handoff", id))
-    }
-
-    /// Complete a handoff by calling caliber_handoff_complete.
-    pub async fn handoff_complete(&self, id: EntityId) -> ApiResult<HandoffResponse> {
-        let conn = self.get_conn().await?;
-
-        let updated: bool = conn
-            .query_one("SELECT caliber_handoff_complete($1)", &[&id])
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::entity_not_found("Handoff", id));
-        }
-
-        self.handoff_get(id).await?
-            .ok_or_else(|| ApiError::entity_not_found("Handoff", id))
     }
 
     /// Parse handoff JSON into HandoffResponse.

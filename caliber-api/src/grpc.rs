@@ -416,7 +416,11 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
             recoverable: req.recoverable,
         };
         
-        let checkpoint = self.db.scope_create_checkpoint(id, &checkpoint_req, tenant_id).await?;
+        // Get scope and create checkpoint via Response method
+        let scope = self.db.get::<crate::types::ScopeResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Scope not found"))?;
+        let updated_scope = scope.create_checkpoint(&self.db, &checkpoint_req).await?;
+        let checkpoint = updated_scope.checkpoint.ok_or_else(|| Status::internal("Checkpoint not set"))?;
         
         let response = CheckpointResponse {
             context_state: checkpoint.context_state,
@@ -434,7 +438,10 @@ impl scope_service_server::ScopeService for ScopeServiceImpl {
         let req = request.into_inner();
         let id = req.scope_id.parse().map_err(|_| Status::invalid_argument("Invalid scope_id"))?;
         
-        let scope = self.db.scope_close(id, tenant_id).await?;
+        // Get scope and close via Response method
+        let existing = self.db.get::<crate::types::ScopeResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Scope not found"))?;
+        let scope = existing.close(&self.db).await?;
         
         self.ws.broadcast(WsEvent::ScopeClosed {
             scope: scope.clone(),
@@ -1248,15 +1255,22 @@ impl agent_service_server::AgentService for AgentServiceImpl {
     }
 
     async fn unregister_agent(&self, request: Request<UnregisterAgentRequest>) -> Result<Response<Empty>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id: caliber_core::EntityId = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
-        self.db.agent_unregister(id).await?;
+        // Get agent and unregister via Response method
+        let agent = self.db.get::<crate::types::AgentResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
+        agent.unregister(&self.db).await?;
         Ok(Response::new(Empty {}))
     }
 
     async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
-        self.db.agent_heartbeat(id).await?;
+        // Get agent and heartbeat via Response method
+        let agent = self.db.get::<crate::types::AgentResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
+        agent.heartbeat(&self.db).await?;
         let now = Utc::now();
         self.ws.broadcast(WsEvent::AgentHeartbeat { tenant_id, agent_id: id, timestamp: now });
         Ok(Response::new(HeartbeatResponse { timestamp: timestamp_to_millis(&now) }))
@@ -1301,13 +1315,17 @@ impl lock_service_server::LockService for LockServiceImpl {
     }
 
     async fn extend_lock(&self, request: Request<ExtendLockRequest>) -> Result<Response<LockResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id: caliber_core::EntityId = req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
         if req.additional_ms <= 0 {
             return Err(Status::invalid_argument("additional_ms must be positive"));
         }
+        // Get lock and extend via Response method
+        let existing = self.db.lock_get(id).await?
+            .ok_or_else(|| Status::not_found("Lock not found"))?;
         let duration = std::time::Duration::from_millis(req.additional_ms as u64);
-        let lock = self.db.lock_extend(id, duration).await?;
+        let lock = existing.extend(&self.db, duration).await?;
         Ok(Response::new(lock_to_proto(&lock)))
     }
 
@@ -1400,13 +1418,10 @@ impl message_service_server::MessageService for MessageServiceImpl {
     async fn deliver_message(&self, request: Request<DeliverMessageRequest>) -> Result<Response<MessageResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
-        self.db.message_deliver(id).await?;
-        let message = self
-            .db
-            .message_get(id)
-            .await
-            ?
+        // Get message and deliver via Response method
+        let existing = self.db.message_get(id).await?
             .ok_or_else(|| Status::not_found("Message not found"))?;
+        let message = existing.deliver(&self.db).await?;
         self.ws.broadcast(WsEvent::MessageDelivered { tenant_id, message_id: id });
         Ok(Response::new(message_to_proto(&message)))
     }
@@ -1414,13 +1429,10 @@ impl message_service_server::MessageService for MessageServiceImpl {
     async fn acknowledge_message(&self, request: Request<AcknowledgeMessageRequest>) -> Result<Response<MessageResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
-        self.db.message_acknowledge(id).await?;
-        let message = self
-            .db
-            .message_get(id)
-            .await
-            ?
+        // Get message and acknowledge via Response method
+        let existing = self.db.message_get(id).await?
             .ok_or_else(|| Status::not_found("Message not found"))?;
+        let message = existing.acknowledge(&self.db).await?;
         self.ws.broadcast(WsEvent::MessageAcknowledged { tenant_id, message_id: id });
         Ok(Response::new(message_to_proto(&message)))
     }
@@ -1471,7 +1483,10 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
         let req = request.into_inner();
         let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
         let accepting_agent_id = req.accepting_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid accepting_agent_id"))?;
-        let delegation = self.db.delegation_accept(id, accepting_agent_id).await?;
+        // Get delegation and accept via Response method
+        let existing = self.db.get::<crate::types::DelegationResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Delegation not found"))?;
+        let delegation = existing.accept(&self.db, accepting_agent_id).await?;
         self.ws.broadcast(WsEvent::DelegationAccepted {
             tenant_id,
             delegation_id: id,
@@ -1492,17 +1507,21 @@ impl delegation_service_server::DelegationService for DelegationServiceImpl {
     }
 
     async fn complete_delegation(&self, request: Request<CompleteDelegationRequest>) -> Result<Response<DelegationResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let id = req.delegation_id.parse().map_err(|_| Status::invalid_argument("Invalid delegation_id"))?;
         let result = req.result.ok_or_else(|| Status::invalid_argument("result required"))?;
-        let result_req = crate::types::DelegationResultRequest {
-            status: result.status,
+        // Convert to DelegationResultResponse for the Response method
+        let result_resp = crate::types::DelegationResultResponse {
+            status: result.status.parse().map_err(|_| Status::invalid_argument("Invalid status"))?,
             output: result.output,
             artifacts: result.artifacts.into_iter().filter_map(|s| s.parse().ok()).collect(),
             error: result.error,
         };
-        let result_json = serde_json::to_value(&result_req).map_err(|_| Status::internal("Failed to serialize delegation result"))?;
-        let delegation = self.db.delegation_complete(id, result_json).await?;
+        // Get delegation and complete via Response method
+        let existing = self.db.get::<crate::types::DelegationResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Delegation not found"))?;
+        let delegation = existing.complete(&self.db, &result_resp).await?;
         self.ws.broadcast(WsEvent::DelegationCompleted {
             delegation: delegation.clone(),
         });
@@ -1554,14 +1573,21 @@ impl handoff_service_server::HandoffService for HandoffServiceImpl {
         let req = request.into_inner();
         let id = req.handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
         let accepting_agent_id = req.accepting_agent_id.parse().map_err(|_| Status::invalid_argument("Invalid accepting_agent_id"))?;
-        let handoff = self.db.handoff_accept(id, accepting_agent_id).await?;
+        // Get handoff and accept via Response method
+        let existing = self.db.get::<crate::types::HandoffResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Handoff not found"))?;
+        let handoff = existing.accept(&self.db, accepting_agent_id).await?;
         self.ws.broadcast(WsEvent::HandoffAccepted { tenant_id, handoff_id: id });
         Ok(Response::new(handoff_to_proto(&handoff)))
     }
 
     async fn complete_handoff(&self, request: Request<CompleteHandoffRequest>) -> Result<Response<HandoffResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().handoff_id.parse().map_err(|_| Status::invalid_argument("Invalid handoff_id"))?;
-        let handoff = self.db.handoff_complete(id).await?;
+        // Get handoff and complete via Response method
+        let existing = self.db.get::<crate::types::HandoffResponse>(id, tenant_id).await?
+            .ok_or_else(|| Status::not_found("Handoff not found"))?;
+        let handoff = existing.complete(&self.db).await?;
         self.ws.broadcast(WsEvent::HandoffCompleted {
             handoff: handoff.clone(),
         });

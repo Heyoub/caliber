@@ -3,7 +3,7 @@
 //! Provides intelligent context assembly with token budget management.
 //! Combines all inputs into a single coherent prompt following the Context Conveyor pattern.
 
-use caliber_core::{
+use crate::{
     Artifact, CaliberConfig, CaliberResult, EntityId, EntityType, Note, Timestamp,
 };
 use chrono::Utc;
@@ -683,7 +683,7 @@ impl ContextAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{
+    use crate::{
         ContextPersistence, NoteType, RetryConfig,
         SectionPriorities, TTL, ValidationMode,
     };
@@ -737,7 +737,7 @@ mod tests {
             access_count: 0,
             superseded_by: None,
             metadata: None,
-            abstraction_level: caliber_core::AbstractionLevel::Raw,
+            abstraction_level: crate::AbstractionLevel::Raw,
             source_note_ids: vec![],
         }
     }
@@ -855,7 +855,7 @@ mod tests {
 #[cfg(test)]
 mod prop_tests {
     use super::*;
-    use caliber_core::{
+    use crate::{
         ArtifactType, ContextPersistence, ExtractionMethod, NoteType, Provenance, RetryConfig,
         SectionPriorities, TTL, ValidationMode,
     };
@@ -910,7 +910,7 @@ mod prop_tests {
             access_count: 0,
             superseded_by: None,
             metadata: None,
-            abstraction_level: caliber_core::AbstractionLevel::Raw,
+            abstraction_level: crate::AbstractionLevel::Raw,
             source_note_ids: vec![],
         })
     }
