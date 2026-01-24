@@ -3,6 +3,9 @@
 use caliber_core::{EntityId, Timestamp};
 use serde::{Deserialize, Serialize};
 
+use crate::db::DbClient;
+use crate::error::{ApiError, ApiResult};
+
 /// Request to create a new scope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -84,4 +87,69 @@ pub struct CheckpointResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "byte"))]
     pub context_state: Vec<u8>,
     pub recoverable: bool,
+}
+
+// ============================================================================
+// STATE TRANSITION METHODS
+// ============================================================================
+
+impl ScopeResponse {
+    /// Close this scope (set is_active to false).
+    ///
+    /// # Arguments
+    /// - `db`: Database client for persisting the update
+    ///
+    /// # Errors
+    /// Returns error if the scope is already closed.
+    pub async fn close(&self, db: &DbClient) -> ApiResult<Self> {
+        if !self.is_active {
+            return Err(ApiError::state_conflict(
+                "Scope is already closed",
+            ));
+        }
+
+        let tenant_id = self.tenant_id.ok_or_else(|| {
+            ApiError::internal_error("Scope missing tenant_id")
+        })?;
+
+        let updates = serde_json::json!({
+            "is_active": false,
+            "closed_at": chrono::Utc::now().to_rfc3339()
+        });
+
+        db.update_raw::<Self>(self.scope_id, updates, tenant_id).await
+    }
+
+    /// Create a checkpoint for this scope.
+    ///
+    /// # Arguments
+    /// - `db`: Database client for persisting the update
+    /// - `req`: Checkpoint creation request
+    ///
+    /// # Errors
+    /// Returns error if the scope is inactive.
+    pub async fn create_checkpoint(&self, db: &DbClient, req: &CreateCheckpointRequest) -> ApiResult<Self> {
+        if !self.is_active {
+            return Err(ApiError::state_conflict(
+                "Cannot create checkpoint for inactive scope",
+            ));
+        }
+
+        let tenant_id = self.tenant_id.ok_or_else(|| {
+            ApiError::internal_error("Scope missing tenant_id")
+        })?;
+
+        let checkpoint = CheckpointResponse {
+            context_state: req.context_state.clone(),
+            recoverable: req.recoverable,
+        };
+
+        let checkpoint_json = serde_json::to_value(&checkpoint)?;
+
+        let updates = serde_json::json!({
+            "checkpoint": checkpoint_json
+        });
+
+        db.update_raw::<Self>(self.scope_id, updates, tenant_id).await
+    }
 }

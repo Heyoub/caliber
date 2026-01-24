@@ -36,6 +36,7 @@ mod webhook;
 mod agent;
 mod message;
 mod lock;
+mod summarization_policy;
 
 // Re-export all component types and filters
 pub use trajectory::TrajectoryListFilter;
@@ -52,6 +53,7 @@ pub use webhook::WebhookListFilter;
 pub use agent::AgentListFilter;
 pub use message::MessageListFilter;
 pub use lock::LockListFilter;
+pub use summarization_policy::SummarizationPolicyListFilter;
 
 // Note: The Component trait implementations are applied to the types
 // in the types module, so they are automatically available when you

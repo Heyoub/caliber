@@ -15,7 +15,7 @@
 
 use caliber_api::{
     db::DbClient,
-    types::{CreateScopeRequest, CreateTrajectoryRequest, UpdateScopeRequest},
+    types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, UpdateScopeRequest},
 };
 use caliber_core::EntityId;
 use proptest::prelude::*;
@@ -196,7 +196,7 @@ proptest! {
             // ================================================================
             // STEP 1: CREATE - Create a new scope
             // ================================================================
-            let created = db.scope_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created scope has an ID
             let nil_id: EntityId = Uuid::nil();
@@ -238,7 +238,7 @@ proptest! {
             // ================================================================
             // STEP 3: UPDATE - Update the scope
             // ================================================================
-            let updated = db.scope_update(created.scope_id, &update_req, auth.tenant_id).await?;
+            let updated = db.update::<ScopeResponse>(created.scope_id, &update_req, auth.tenant_id).await?;
 
             // Verify the ID hasn't changed
             prop_assert_eq!(updated.scope_id, created.scope_id);
@@ -324,8 +324,8 @@ proptest! {
             create_req.trajectory_id = trajectory_id;
 
             // Create two scopes with the same data
-            let scope1 = db.scope_create(&create_req, auth.tenant_id).await?;
-            let scope2 = db.scope_create(&create_req, auth.tenant_id).await?;
+            let scope1 = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
+            let scope2 = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -385,7 +385,7 @@ proptest! {
             let random_id = Uuid::from_bytes(random_id_bytes);
 
             // Try to update a scope with a random ID
-            let result = db.scope_update(random_id, &update_req, auth.tenant_id).await;
+            let result = db.update::<ScopeResponse>(random_id, &update_req, auth.tenant_id).await;
 
             // Property: Should return an error (scope not found)
             prop_assert!(result.is_err(), "Updating non-existent scope should fail");
@@ -419,7 +419,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.scope_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Name should be preserved exactly
             prop_assert_eq!(&created.name, &name);
@@ -458,7 +458,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.scope_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Token budget should be preserved
             prop_assert_eq!(created.token_budget, token_budget);
@@ -497,7 +497,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.scope_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -535,7 +535,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.scope_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Close the scope once
             let closed1 = db.scope_close(created.scope_id, auth.tenant_id).await?;
@@ -578,7 +578,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.scope_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -601,7 +601,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.scope_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with zero budget
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -624,7 +624,7 @@ mod edge_cases {
         };
 
         // This should fail validation
-        let result = db.scope_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
 
         // Should fail
         assert!(result.is_err());
@@ -648,7 +648,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.scope_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -678,7 +678,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req, auth.tenant_id).await
+        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
             .expect("Should handle Unicode names");
 
         assert_eq!(created.name, unicode_name);
@@ -707,7 +707,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req, auth.tenant_id).await
+        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Update with the same values
@@ -719,7 +719,7 @@ mod edge_cases {
         };
 
         let updated = db
-            .scope_update(created.scope_id, &update_req, auth.tenant_id)
+            .update::<ScopeResponse>(created.scope_id, &update_req, auth.tenant_id)
             .await
             .expect("Should update scope");
 
@@ -744,7 +744,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req, auth.tenant_id).await
+        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Property: tokens_used should start at 0
@@ -773,7 +773,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req, auth.tenant_id).await
+        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Property: scope should belong to the trajectory
@@ -802,7 +802,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req, auth.tenant_id).await
+        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         // Property: scope should be active by default
@@ -825,7 +825,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.scope_create(&create_req, auth.tenant_id).await
+        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
             .expect("Should create scope");
 
         assert!(created.closed_at.is_none());

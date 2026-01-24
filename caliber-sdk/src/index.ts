@@ -38,13 +38,9 @@ export type {
   EventHandler,
 } from './websocket';
 
-// Context assembly helper
-export { ContextHelper } from './context';
-export type {
-  AssembleContextOptions,
-  ContextPackage,
-  FormatContextOptions,
-} from './context';
+// Context assembly is now handled by the server via POST /api/v1/context/assemble
+// The SDK's ContextHelper class has been removed in favor of server-side assembly.
+// Use the CalibrClient to call the context/assemble endpoint directly.
 
 // Managers
 export {

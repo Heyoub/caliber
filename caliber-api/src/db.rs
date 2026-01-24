@@ -287,67 +287,6 @@ impl DbClient {
         Ok(trajectories)
     }
 
-    /// List trajectories by status and tenant for tenant isolation.
-    ///
-    /// This ensures only trajectories belonging to the specified tenant are returned.
-    pub async fn trajectory_list_by_status_and_tenant(
-        &self,
-        status: caliber_core::TrajectoryStatus,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<TrajectoryResponse>> {
-        let conn = self.get_conn().await?;
-
-        let status_str = match status {
-            caliber_core::TrajectoryStatus::Active => "active",
-            caliber_core::TrajectoryStatus::Completed => "completed",
-            caliber_core::TrajectoryStatus::Failed => "failed",
-            caliber_core::TrajectoryStatus::Suspended => "suspended",
-        };
-
-        // Use direct SQL query with tenant filter until stored procedure is updated
-        let rows = conn
-            .query(
-                "SELECT row_to_json(t.*) FROM caliber_trajectory t WHERE t.status = $1 AND t.tenant_id = $2",
-                &[&status_str, &tenant_id],
-            )
-            .await?;
-
-        let mut trajectories = Vec::new();
-        for row in rows {
-            let json: JsonValue = row.get(0);
-            trajectories.push(self.parse_trajectory_json(&json)?);
-        }
-
-        Ok(trajectories)
-    }
-
-    /// List child trajectories by tenant for tenant isolation.
-    ///
-    /// This ensures only child trajectories belonging to the specified tenant are returned.
-    pub async fn trajectory_list_children_by_tenant(
-        &self,
-        parent_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<TrajectoryResponse>> {
-        let conn = self.get_conn().await?;
-
-        // Use direct SQL query with tenant filter until stored procedure is updated
-        let rows = conn
-            .query(
-                "SELECT row_to_json(t.*) FROM caliber_trajectory t WHERE t.parent_trajectory_id = $1 AND t.tenant_id = $2",
-                &[&parent_id, &tenant_id],
-            )
-            .await?;
-
-        let mut trajectories = Vec::new();
-        for row in rows {
-            let json: JsonValue = row.get(0);
-            trajectories.push(self.parse_trajectory_json(&json)?);
-        }
-
-        Ok(trajectories)
-    }
-
     /// Parse trajectory JSON into TrajectoryResponse.
     fn parse_trajectory_json(&self, json: &JsonValue) -> ApiResult<TrajectoryResponse> {
         Ok(TrajectoryResponse {
@@ -371,32 +310,6 @@ impl DbClient {
     // SCOPE OPERATIONS
     // ========================================================================
 
-    /// Create a new scope by calling caliber_scope_create.
-    ///
-    /// The `tenant_id` parameter ensures tenant isolation by associating
-    /// the scope with the authenticated user's tenant.
-    pub async fn scope_create(&self, req: &CreateScopeRequest, tenant_id: EntityId) -> ApiResult<ScopeResponse> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_scope_create($1, $2, $3, $4, $5)",
-                &[
-                    &req.trajectory_id,
-                    &req.name,
-                    &req.purpose,
-                    &req.token_budget,
-                    &tenant_id,
-                ],
-            )
-            .await?;
-
-        let scope_id: Uuid = row.get(0);
-
-        self.scope_get(scope_id, tenant_id).await?
-            .ok_or_else(|| ApiError::internal_error("Failed to retrieve created scope"))
-    }
-
     /// Get a scope by ID by calling caliber_scope_get.
     pub async fn scope_get(
         &self,
@@ -418,47 +331,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// Update a scope by calling caliber_scope_update.
-    pub async fn scope_update(
-        &self,
-        id: EntityId,
-        req: &UpdateScopeRequest,
-        tenant_id: EntityId,
-    ) -> ApiResult<ScopeResponse> {
-        let conn = self.get_conn().await?;
-
-        let mut updates = serde_json::Map::new();
-        if let Some(name) = &req.name {
-            updates.insert("name".to_string(), JsonValue::String(name.clone()));
-        }
-        if let Some(purpose) = &req.purpose {
-            updates.insert("purpose".to_string(), JsonValue::String(purpose.clone()));
-        }
-        if let Some(token_budget) = req.token_budget {
-            updates.insert("token_budget".to_string(), JsonValue::Number(token_budget.into()));
-        }
-        if let Some(metadata) = &req.metadata {
-            updates.insert("metadata".to_string(), metadata.clone());
-        }
-
-        let updates_json = JsonValue::Object(updates);
-
-        let updated: bool = conn
-            .query_one(
-                "SELECT caliber_scope_update($1, $2, $3)",
-                &[&id, &updates_json, &tenant_id],
-            )
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::scope_not_found(id));
-        }
-
-        self.scope_get(id, tenant_id).await?
-            .ok_or_else(|| ApiError::scope_not_found(id))
     }
 
     /// Close a scope by calling caliber_scope_close.
@@ -534,45 +406,6 @@ impl DbClient {
     // ARTIFACT OPERATIONS
     // ========================================================================
 
-    /// Create a new artifact by calling caliber_artifact_create.
-    ///
-    /// The `tenant_id` parameter ensures tenant isolation by associating
-    /// the artifact with the authenticated user's tenant.
-    pub async fn artifact_create(&self, req: &CreateArtifactRequest, tenant_id: EntityId) -> ApiResult<ArtifactResponse> {
-        let conn = self.get_conn().await?;
-
-        let artifact_type_str = format!("{:?}", req.artifact_type);
-        let extraction_method_str = match req.extraction_method {
-            caliber_core::ExtractionMethod::Explicit => "explicit",
-            caliber_core::ExtractionMethod::Inferred => "inferred",
-            caliber_core::ExtractionMethod::UserProvided => "user_provided",
-        };
-        let ttl_str = self.ttl_to_string(&req.ttl);
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_artifact_create($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                &[
-                    &req.trajectory_id,
-                    &req.scope_id,
-                    &artifact_type_str,
-                    &req.name,
-                    &req.content,
-                    &req.source_turn,
-                    &extraction_method_str,
-                    &req.confidence,
-                    &ttl_str,
-                    &tenant_id,
-                ],
-            )
-            .await?;
-
-        let artifact_id: Uuid = row.get(0);
-
-        self.artifact_get(artifact_id, tenant_id).await?
-            .ok_or_else(|| ApiError::internal_error("Failed to retrieve created artifact"))
-    }
-
     /// Get an artifact by ID by calling caliber_artifact_get.
     pub async fn artifact_get(
         &self,
@@ -594,33 +427,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// Query artifacts by scope by calling caliber_artifact_query_by_scope.
-    pub async fn artifact_list_by_scope(
-        &self,
-        scope_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<ArtifactResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_artifact_query_by_scope($1, $2)",
-                &[&scope_id, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let artifacts_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from artifact list"))?;
-
-        let mut artifacts = Vec::new();
-        for artifact_json in artifacts_json {
-            artifacts.push(self.parse_artifact_json(artifact_json)?);
-        }
-
-        Ok(artifacts)
     }
 
     /// List recent artifacts across all trajectories for a tenant.
@@ -649,60 +455,6 @@ impl DbClient {
 
         artifacts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         artifacts.truncate(limit);
-        Ok(artifacts)
-    }
-
-    /// Query artifacts by trajectory by calling caliber_artifact_query_by_trajectory.
-    pub async fn artifact_list_by_trajectory(
-        &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<ArtifactResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_artifact_query_by_trajectory($1, $2)",
-                &[&trajectory_id, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let artifacts_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from artifact list"))?;
-
-        let mut artifacts = Vec::new();
-        for artifact_json in artifacts_json {
-            artifacts.push(self.parse_artifact_json(artifact_json)?);
-        }
-
-        Ok(artifacts)
-    }
-
-    /// Query artifacts by scope for a specific tenant.
-    pub async fn artifact_list_by_scope_and_tenant(
-        &self,
-        scope_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<ArtifactResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_artifact_query_by_scope_and_tenant($1, $2)",
-                &[&scope_id, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let artifacts_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from artifact list"))?;
-
-        let mut artifacts = Vec::new();
-        for artifact_json in artifacts_json {
-            artifacts.push(self.parse_artifact_json(artifact_json)?);
-        }
-
         Ok(artifacts)
     }
 
@@ -758,39 +510,6 @@ impl DbClient {
     // NOTE OPERATIONS
     // ========================================================================
 
-    /// Create a new note by calling caliber_note_create.
-    ///
-    /// The `tenant_id` parameter ensures tenant isolation by associating
-    /// the note with the authenticated user's tenant.
-    pub async fn note_create(&self, req: &CreateNoteRequest, tenant_id: EntityId) -> ApiResult<NoteResponse> {
-        let conn = self.get_conn().await?;
-
-        let note_type_str = format!("{:?}", req.note_type);
-        let ttl_str = self.ttl_to_string(&req.ttl);
-        let source_traj_ids: Vec<Uuid> = req.source_trajectory_ids.to_vec();
-        let source_artifact_ids: Vec<Uuid> = req.source_artifact_ids.to_vec();
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_note_create($1, $2, $3, $4, $5, $6, $7)",
-                &[
-                    &note_type_str,
-                    &req.title,
-                    &req.content,
-                    &source_traj_ids,
-                    &source_artifact_ids,
-                    &ttl_str,
-                    &tenant_id,
-                ],
-            )
-            .await?;
-
-        let note_id: Uuid = row.get(0);
-
-        self.note_get(note_id, tenant_id).await?
-            .ok_or_else(|| ApiError::internal_error("Failed to retrieve created note"))
-    }
-
     /// Get a note by ID by calling caliber_note_get.
     pub async fn note_get(
         &self,
@@ -812,111 +531,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// Query notes by trajectory by calling caliber_note_query_by_trajectory.
-    pub async fn note_list_by_trajectory(
-        &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<NoteResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_note_query_by_trajectory($1, $2)",
-                &[&trajectory_id, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let notes_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from note list"))?;
-
-        let mut notes = Vec::new();
-        for note_json in notes_json {
-            notes.push(self.parse_note_json(note_json)?);
-        }
-
-        Ok(notes)
-    }
-
-    /// List all notes by calling caliber_note_list_all.
-    pub async fn note_list_all(&self, limit: i32, offset: i32) -> ApiResult<Vec<NoteResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_note_list_all($1, $2)",
-                &[&limit, &offset],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let notes_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from note list"))?;
-
-        let mut notes = Vec::new();
-        for note_json in notes_json {
-            notes.push(self.parse_note_json(note_json)?);
-        }
-
-        Ok(notes)
-    }
-
-    /// Query notes by trajectory filtered by tenant for isolation.
-    pub async fn note_list_by_trajectory_and_tenant(
-        &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<NoteResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_note_query_by_trajectory_and_tenant($1, $2)",
-                &[&trajectory_id, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let notes_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from note list"))?;
-
-        let mut notes = Vec::new();
-        for note_json in notes_json {
-            notes.push(self.parse_note_json(note_json)?);
-        }
-
-        Ok(notes)
-    }
-
-    /// List all notes filtered by tenant for isolation.
-    pub async fn note_list_all_by_tenant(
-        &self,
-        limit: i32,
-        offset: i32,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<NoteResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_note_list_all_by_tenant($1, $2, $3)",
-                &[&limit, &offset, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let notes_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from note list"))?;
-
-        let mut notes = Vec::new();
-        for note_json in notes_json {
-            notes.push(self.parse_note_json(note_json)?);
-        }
-
-        Ok(notes)
     }
 
     /// Search notes by content similarity.
@@ -967,97 +581,6 @@ impl DbClient {
     // ========================================================================
     // TURN OPERATIONS
     // ========================================================================
-
-    /// Create a new turn by calling caliber_turn_create.
-    ///
-    /// The `tenant_id` parameter ensures tenant isolation by associating
-    /// the turn with the authenticated user's tenant.
-    pub async fn turn_create(&self, req: &CreateTurnRequest, tenant_id: EntityId) -> ApiResult<TurnResponse> {
-        let conn = self.get_conn().await?;
-
-        let role_str = match req.role {
-            caliber_core::TurnRole::User => "user",
-            caliber_core::TurnRole::Assistant => "assistant",
-            caliber_core::TurnRole::System => "system",
-            caliber_core::TurnRole::Tool => "tool",
-        };
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_turn_create($1, $2, $3, $4, $5, $6, $7, $8)",
-                &[
-                    &req.scope_id,
-                    &req.sequence,
-                    &role_str,
-                    &req.content,
-                    &req.token_count,
-                    &req.tool_calls,
-                    &req.tool_results,
-                    &tenant_id,
-                ],
-            )
-            .await?;
-
-        let turn_id: Uuid = row.get(0);
-
-        Ok(TurnResponse {
-            turn_id,
-            tenant_id: Some(tenant_id),
-            scope_id: req.scope_id,
-            sequence: req.sequence,
-            role: req.role,
-            content: req.content.clone(),
-            token_count: req.token_count,
-            created_at: chrono::Utc::now(),
-            tool_calls: req.tool_calls.clone(),
-            tool_results: req.tool_results.clone(),
-            metadata: req.metadata.clone(),
-        })
-    }
-
-    /// Get turns by scope by calling caliber_turn_get_by_scope.
-    pub async fn turn_list_by_scope(
-        &self,
-        scope_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<TurnResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_turn_get_by_scope($1, $2)",
-                &[&scope_id, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let turns_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from turn list"))?;
-
-        let mut turns = Vec::new();
-        for turn_json in turns_json {
-            turns.push(self.parse_turn_json(turn_json)?);
-        }
-
-        Ok(turns)
-    }
-
-    /// Parse turn JSON into TurnResponse.
-    fn parse_turn_json(&self, json: &JsonValue) -> ApiResult<TurnResponse> {
-        Ok(TurnResponse {
-            turn_id: self.parse_uuid(json, "turn_id")?,
-            tenant_id: self.parse_optional_uuid(json, "tenant_id"),
-            scope_id: self.parse_uuid(json, "scope_id")?,
-            sequence: self.parse_i32(json, "sequence")?,
-            role: self.parse_turn_role(json, "role")?,
-            content: self.parse_string(json, "content")?,
-            token_count: self.parse_i32(json, "token_count")?,
-            created_at: self.parse_timestamp(json, "created_at")?,
-            tool_calls: json.get("tool_calls").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
-            tool_results: json.get("tool_results").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
-            metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
-        })
-    }
 
     // ========================================================================
     // AGENT OPERATIONS
@@ -1216,79 +739,6 @@ impl DbClient {
 
         let row = conn
             .query_one("SELECT caliber_agent_list_all()", &[])
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let agents_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
-
-        let mut agents = Vec::new();
-        for agent_json in agents_json {
-            agents.push(self.parse_agent_json(agent_json)?);
-        }
-
-        Ok(agents)
-    }
-
-    /// List agents by type filtered by tenant for isolation.
-    pub async fn agent_list_by_type_and_tenant(
-        &self,
-        agent_type: &str,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<AgentResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_agent_list_by_type_and_tenant($1, $2)",
-                &[&agent_type, &tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let agents_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
-
-        let mut agents = Vec::new();
-        for agent_json in agents_json {
-            agents.push(self.parse_agent_json(agent_json)?);
-        }
-
-        Ok(agents)
-    }
-
-    /// List active agents filtered by tenant for isolation.
-    pub async fn agent_list_active_by_tenant(&self, tenant_id: EntityId) -> ApiResult<Vec<AgentResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_agent_list_active_by_tenant($1)",
-                &[&tenant_id],
-            )
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let agents_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
-
-        let mut agents = Vec::new();
-        for agent_json in agents_json {
-            agents.push(self.parse_agent_json(agent_json)?);
-        }
-
-        Ok(agents)
-    }
-
-    /// List all agents filtered by tenant for isolation.
-    pub async fn agent_list_all_by_tenant(&self, tenant_id: EntityId) -> ApiResult<Vec<AgentResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_agent_list_all_by_tenant($1)",
-                &[&tenant_id],
-            )
             .await?;
 
         let json: JsonValue = row.get(0);
@@ -2277,140 +1727,6 @@ impl DbClient {
         Ok(trajectories)
     }
 
-    /// List scopes by trajectory by calling caliber_scope_list_by_trajectory.
-    pub async fn scope_list_by_trajectory(&self, id: EntityId) -> ApiResult<Vec<ScopeResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one("SELECT caliber_scope_list_by_trajectory($1)", &[&id])
-            .await?;
-
-        let json: JsonValue = row.get(0);
-        let scopes_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from scope list"))?;
-
-        let mut scopes = Vec::new();
-        for scope_json in scopes_json {
-            scopes.push(self.parse_scope_json(scope_json)?);
-        }
-
-        Ok(scopes)
-    }
-
-    /// Update an artifact by calling caliber_artifact_update.
-    pub async fn artifact_update(
-        &self,
-        id: EntityId,
-        req: &UpdateArtifactRequest,
-        tenant_id: EntityId,
-    ) -> ApiResult<ArtifactResponse> {
-        let conn = self.get_conn().await?;
-
-        let mut updates = serde_json::Map::new();
-        if let Some(name) = &req.name {
-            updates.insert("name".to_string(), JsonValue::String(name.clone()));
-        }
-        if let Some(content) = &req.content {
-            updates.insert("content".to_string(), JsonValue::String(content.clone()));
-        }
-        if let Some(artifact_type) = &req.artifact_type {
-            updates.insert("artifact_type".to_string(), JsonValue::String(format!("{:?}", artifact_type)));
-        }
-        if let Some(ttl) = &req.ttl {
-            updates.insert("ttl".to_string(), JsonValue::String(self.ttl_to_string(ttl)));
-        }
-        if let Some(metadata) = &req.metadata {
-            updates.insert("metadata".to_string(), metadata.clone());
-        }
-
-        let updates_json = JsonValue::Object(updates);
-
-        let updated: bool = conn
-            .query_one("SELECT caliber_artifact_update($1, $2)", &[&id, &updates_json])
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::artifact_not_found(id));
-        }
-
-        self.artifact_get(id, tenant_id).await?
-            .ok_or_else(|| ApiError::artifact_not_found(id))
-    }
-
-    /// Delete an artifact by calling caliber_artifact_delete.
-    pub async fn artifact_delete(&self, id: EntityId) -> ApiResult<()> {
-        let conn = self.get_conn().await?;
-
-        let deleted: bool = conn
-            .query_one("SELECT caliber_artifact_delete($1)", &[&id])
-            .await?
-            .get(0);
-
-        if !deleted {
-            return Err(ApiError::artifact_not_found(id));
-        }
-
-        Ok(())
-    }
-
-    /// Update a note by calling caliber_note_update.
-    pub async fn note_update(
-        &self,
-        id: EntityId,
-        req: &UpdateNoteRequest,
-        tenant_id: EntityId,
-    ) -> ApiResult<NoteResponse> {
-        let conn = self.get_conn().await?;
-
-        let mut updates = serde_json::Map::new();
-        if let Some(title) = &req.title {
-            updates.insert("title".to_string(), JsonValue::String(title.clone()));
-        }
-        if let Some(content) = &req.content {
-            updates.insert("content".to_string(), JsonValue::String(content.clone()));
-        }
-        if let Some(note_type) = &req.note_type {
-            updates.insert("note_type".to_string(), JsonValue::String(format!("{:?}", note_type)));
-        }
-        if let Some(ttl) = &req.ttl {
-            updates.insert("ttl".to_string(), JsonValue::String(self.ttl_to_string(ttl)));
-        }
-        if let Some(metadata) = &req.metadata {
-            updates.insert("metadata".to_string(), metadata.clone());
-        }
-
-        let updates_json = JsonValue::Object(updates);
-
-        let updated: bool = conn
-            .query_one("SELECT caliber_note_update($1, $2)", &[&id, &updates_json])
-            .await?
-            .get(0);
-
-        if !updated {
-            return Err(ApiError::note_not_found(id));
-        }
-
-        self.note_get(id, tenant_id).await?
-            .ok_or_else(|| ApiError::note_not_found(id))
-    }
-
-    /// Delete a note by calling caliber_note_delete.
-    pub async fn note_delete(&self, id: EntityId) -> ApiResult<()> {
-        let conn = self.get_conn().await?;
-
-        let deleted: bool = conn
-            .query_one("SELECT caliber_note_delete($1)", &[&id])
-            .await?
-            .get(0);
-
-        if !deleted {
-            return Err(ApiError::note_not_found(id));
-        }
-
-        Ok(())
-    }
-
     /// Health check - verifies database connectivity.
     pub async fn health_check(&self) -> ApiResult<()> {
         let conn = self.get_conn().await?;
@@ -2424,39 +1740,6 @@ impl DbClient {
     // ========================================================================
     // BATTLE INTEL: EDGE OPERATIONS
     // ========================================================================
-
-    /// Create an edge by calling caliber_edge_create.
-    pub async fn edge_create(&self, req: &CreateEdgeRequest, tenant_id: EntityId) -> ApiResult<EdgeResponse> {
-        let conn = self.get_conn().await?;
-
-        let participants_json = serde_json::to_value(&req.participants)?;
-        let edge_type_str = format!("{:?}", req.edge_type);
-        let extraction_method_str = format!("{:?}", req.provenance.extraction_method);
-
-        let row = conn
-            .query_one(
-                "SELECT caliber_edge_create($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-                &[
-                    &edge_type_str,
-                    &participants_json,
-                    &req.weight,
-                    &req.trajectory_id,
-                    &req.provenance.source_turn,
-                    &extraction_method_str,
-                    &req.provenance.confidence,
-                    &req.metadata,
-                    &tenant_id,
-                ],
-            )
-            .await?;
-
-        let edge_id: Option<Uuid> = row.get(0);
-        let edge_id = edge_id.ok_or_else(|| ApiError::internal_error("Failed to create edge"))?;
-
-        self.edge_get(edge_id)
-            .await?
-            .ok_or_else(|| ApiError::internal_error("Edge created but not found"))
-    }
 
     /// Get an edge by ID by calling caliber_edge_get.
     pub async fn edge_get(&self, id: EntityId) -> ApiResult<Option<EdgeResponse>> {
@@ -2475,38 +1758,6 @@ impl DbClient {
             }
             None => Ok(None),
         }
-    }
-
-    /// List edges by participant entity ID.
-    pub async fn edge_list_by_participant(&self, entity_id: EntityId) -> ApiResult<Vec<EdgeResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one("SELECT caliber_edges_by_participant($1)", &[&entity_id])
-            .await?;
-
-        let json_value: JsonValue = row.get(0);
-        let edges: Vec<EdgeResponse> = serde_json::from_value(json_value)?;
-
-        Ok(edges)
-    }
-
-    /// List edges by participant entity ID for a specific tenant.
-    pub async fn edge_list_by_participant_and_tenant(
-        &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
-    ) -> ApiResult<Vec<EdgeResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one("SELECT caliber_edges_by_participant_and_tenant($1, $2)", &[&entity_id, &tenant_id])
-            .await?;
-
-        let json_value: JsonValue = row.get(0);
-        let edges: Vec<EdgeResponse> = serde_json::from_value(json_value)?;
-
-        Ok(edges)
     }
 
     // ========================================================================
@@ -2604,29 +1855,6 @@ impl DbClient {
         }
 
         Ok(())
-    }
-
-    // ========================================================================
-    // TURN OPERATIONS (additional)
-    // ========================================================================
-
-    /// Get a turn by ID.
-    pub async fn turn_get(&self, id: EntityId) -> ApiResult<Option<TurnResponse>> {
-        let conn = self.get_conn().await?;
-
-        let row = conn
-            .query_one("SELECT caliber_turn_get($1)", &[&id])
-            .await?;
-
-        let json_opt: Option<JsonValue> = row.get(0);
-
-        match json_opt {
-            Some(json) => {
-                let response = self.parse_turn_json(&json)?;
-                Ok(Some(response))
-            }
-            None => Ok(None),
-        }
     }
 
     // ========================================================================
@@ -3322,6 +2550,53 @@ impl DbClient {
     {
         let conn = self.get_conn().await?;
         let updates = C::build_updates(req);
+
+        let sql = format!(
+            "SELECT row_to_json(t.*) FROM {}($1, $2, $3) AS t",
+            C::sql_function("update")
+        );
+
+        let row = conn
+            .query_opt(&sql, &[&id, &updates, &tenant_id])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        match row {
+            Some(r) => {
+                let json: serde_json::Value = r.get(0);
+                if json.is_null() {
+                    Err(C::not_found_error(id))
+                } else {
+                    C::from_json(&json).map_err(|e| ApiError::internal_error(e.to_string()))
+                }
+            }
+            None => Err(C::not_found_error(id)),
+        }
+    }
+
+    /// Generic update operation with raw JSON updates.
+    ///
+    /// This is used by state transition methods on Response types to apply
+    /// arbitrary updates without needing a typed Update request.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `id`: The entity ID to update
+    /// - `updates`: JSON object with fields to update
+    /// - `tenant_id`: The tenant ID for isolation
+    ///
+    /// # Returns
+    ///
+    /// The updated entity on success, or an error if not found or on failure.
+    pub async fn update_raw<C>(&self, id: EntityId, updates: JsonValue, tenant_id: EntityId) -> ApiResult<C>
+    where
+        C: Component + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
 
         let sql = format!(
             "SELECT row_to_json(t.*) FROM {}($1, $2, $3) AS t",

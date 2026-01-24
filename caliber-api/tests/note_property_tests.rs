@@ -14,8 +14,9 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
+    components::NoteListFilter,
     db::DbClient,
-    types::{CreateNoteRequest, CreateTrajectoryRequest},
+    types::{CreateNoteRequest, CreateTrajectoryRequest, NoteResponse},
 };
 use caliber_core::{EntityId, NoteType, TTL};
 use proptest::prelude::*;
@@ -223,7 +224,7 @@ proptest! {
             // ================================================================
             // STEP 1: CREATE - Create a new note
             // ================================================================
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created note has an ID
             let nil_id: EntityId = Uuid::nil();
@@ -333,8 +334,8 @@ proptest! {
             };
 
             // Create two notes with the same data
-            let note1 = db.note_create(&create_req, auth.tenant_id).await?;
-            let note2 = db.note_create(&create_req, auth.tenant_id).await?;
+            let note1 = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
+            let note2 = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -407,7 +408,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Title should be preserved exactly
             prop_assert_eq!(&created.title, &title);
@@ -449,7 +450,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Content should be preserved exactly
             prop_assert_eq!(&created.content, &content);
@@ -491,7 +492,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Type should be preserved
             prop_assert_eq!(created.note_type, note_type);
@@ -533,7 +534,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: TTL should be preserved
             prop_assert_eq!(&created.ttl, &ttl);
@@ -575,7 +576,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -618,7 +619,7 @@ proptest! {
                 metadata: None,
             };
 
-            let note1 = db.note_create(&create_req, auth.tenant_id).await?;
+            let note1 = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Create another note with the same content
             let create_req2 = CreateNoteRequest {
@@ -626,7 +627,7 @@ proptest! {
                 ..create_req
             };
 
-            let note2 = db.note_create(&create_req2, auth.tenant_id).await?;
+            let note2 = db.create::<NoteResponse>(&create_req2, auth.tenant_id).await?;
 
             // Property: Same content should produce same hash
             prop_assert_eq!(
@@ -665,7 +666,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Note should belong to the specified trajectory
             prop_assert_eq!(created.source_trajectory_ids, vec![trajectory_id]);
@@ -678,8 +679,12 @@ proptest! {
             prop_assert_eq!(retrieved.source_trajectory_ids, vec![trajectory_id]);
 
             // Verify it appears in trajectory's note list
+            let filter = NoteListFilter {
+                source_trajectory_id: Some(trajectory_id),
+                ..Default::default()
+            };
             let trajectory_notes = db
-                .note_list_by_trajectory(trajectory_id, auth.tenant_id)
+                .list::<NoteResponse>(&filter, auth.tenant_id)
                 .await?;
             prop_assert!(
                 trajectory_notes.iter().any(|n| n.note_id == created.note_id),
@@ -716,7 +721,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.note_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Access count should be 0 for new notes
             prop_assert_eq!(created.access_count, 0);
@@ -758,7 +763,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.note_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<NoteResponse>(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty title
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -783,7 +788,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.note_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<NoteResponse>(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -810,7 +815,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.note_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<NoteResponse>(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -843,7 +848,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -879,7 +884,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -925,7 +930,7 @@ mod edge_cases {
             };
 
             let created = db
-                .note_create(&create_req, auth.tenant_id)
+                .create::<NoteResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -973,7 +978,7 @@ mod edge_cases {
             };
 
             let created = db
-                .note_create(&create_req, auth.tenant_id)
+                .create::<NoteResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1008,7 +1013,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1038,7 +1043,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1070,15 +1075,19 @@ mod edge_cases {
             };
 
             let created = db
-                .note_create(&create_req, auth.tenant_id)
+                .create::<NoteResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
             note_ids.push(created.note_id);
         }
 
         // List notes by trajectory
+        let filter = NoteListFilter {
+            source_trajectory_id: Some(trajectory_id),
+            ..Default::default()
+        };
         let notes = db
-            .note_list_by_trajectory(trajectory_id, auth.tenant_id)
+            .list::<NoteResponse>(&filter, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1122,7 +1131,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1157,7 +1166,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1195,7 +1204,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1230,7 +1239,7 @@ mod edge_cases {
         };
 
         let created = db
-            .note_create(&create_req, auth.tenant_id)
+            .create::<NoteResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 

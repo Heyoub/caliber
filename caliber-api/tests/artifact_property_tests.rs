@@ -14,8 +14,9 @@
 //! **Validates: Requirements 1.1**
 
 use caliber_api::{
+    components::ArtifactListFilter,
     db::DbClient,
-    types::{CreateArtifactRequest, CreateScopeRequest, CreateTrajectoryRequest},
+    types::{ArtifactResponse, CreateArtifactRequest, CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse},
 };
 use caliber_core::{ArtifactType, EntityId, ExtractionMethod, TTL};
 use proptest::prelude::*;
@@ -92,7 +93,7 @@ async fn create_test_scope(
     };
 
     let scope = db
-        .scope_create(&req, tenant_id)
+        .create::<ScopeResponse>(&req, tenant_id)
         .await
         .map_err(|e| TestCaseError::fail(format!("Failed to create test scope: {}", e)))?;
 
@@ -303,7 +304,7 @@ proptest! {
             // ================================================================
             // STEP 1: CREATE - Create a new artifact
             // ================================================================
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created artifact has an ID
             let nil_id: EntityId = Uuid::nil();
@@ -424,8 +425,8 @@ proptest! {
             };
 
             // Create two artifacts with the same data
-            let artifact1 = db.artifact_create(&create_req, auth.tenant_id).await?;
-            let artifact2 = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let artifact1 = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
+            let artifact2 = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: IDs must be different
             prop_assert_ne!(
@@ -501,7 +502,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Name should be preserved exactly
             prop_assert_eq!(&created.name, &name);
@@ -547,7 +548,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Content should be preserved exactly
             prop_assert_eq!(&created.content, &content);
@@ -593,7 +594,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Type should be preserved
             prop_assert_eq!(created.artifact_type, artifact_type);
@@ -642,7 +643,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Provenance should be preserved
             prop_assert_eq!(created.provenance.source_turn, source_turn);
@@ -692,7 +693,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: TTL should be preserved
             prop_assert_eq!(&created.ttl, &ttl);
@@ -738,7 +739,7 @@ proptest! {
                 metadata: metadata.clone(),
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Metadata should be preserved
             prop_assert_eq!(&created.metadata, &metadata);
@@ -785,7 +786,7 @@ proptest! {
                 metadata: None,
             };
 
-            let artifact1 = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let artifact1 = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Create another artifact with the same content
             let create_req2 = CreateArtifactRequest {
@@ -793,7 +794,7 @@ proptest! {
                 ..create_req
             };
 
-            let artifact2 = db.artifact_create(&create_req2, auth.tenant_id).await?;
+            let artifact2 = db.create::<ArtifactResponse>(&create_req2, auth.tenant_id).await?;
 
             // Property: Same content should produce same hash
             prop_assert_eq!(
@@ -836,7 +837,7 @@ proptest! {
                 metadata: None,
             };
 
-            let created = db.artifact_create(&create_req, auth.tenant_id).await?;
+            let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Property: Artifact should belong to the specified scope and trajectory
             prop_assert_eq!(created.trajectory_id, trajectory_id);
@@ -851,7 +852,11 @@ proptest! {
             prop_assert_eq!(retrieved.scope_id, scope_id);
 
             // Verify it appears in scope's artifact list
-            let scope_artifacts = db.artifact_list_by_scope(scope_id, auth.tenant_id).await?;
+            let filter = ArtifactListFilter {
+                scope_id: Some(scope_id),
+                ..Default::default()
+            };
+            let scope_artifacts = db.list::<ArtifactResponse>(&filter, auth.tenant_id).await?;
             prop_assert!(
                 scope_artifacts.iter().any(|a| a.artifact_id == created.artifact_id),
                 "Artifact should appear in scope's artifact list"
@@ -891,7 +896,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.artifact_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -920,7 +925,7 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.artifact_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
 
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -949,7 +954,7 @@ mod edge_cases {
         };
 
         // This should fail validation
-        let result = db.artifact_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
 
         // Should fail
         assert!(result.is_err());
@@ -977,7 +982,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.artifact_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
         assert!(result.is_err(), "Confidence > 1.0 should fail");
 
         // Test confidence < 0.0
@@ -986,7 +991,7 @@ mod edge_cases {
             ..create_req
         };
 
-        let result2 = db.artifact_create(&create_req2, auth.tenant_id).await;
+        let result2 = db.create::<ArtifactResponse>(&create_req2, auth.tenant_id).await;
         assert!(result2.is_err(), "Confidence < 0.0 should fail");
         Ok(())
     }
@@ -1014,7 +1019,7 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.artifact_create(&create_req, auth.tenant_id).await;
+        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -1051,7 +1056,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1091,7 +1096,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1142,7 +1147,7 @@ mod edge_cases {
             };
 
             let created = db
-                .artifact_create(&create_req, auth.tenant_id)
+                .create::<ArtifactResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1188,7 +1193,7 @@ mod edge_cases {
             };
 
             let created = db
-                .artifact_create(&create_req, auth.tenant_id)
+                .create::<ArtifactResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1240,7 +1245,7 @@ mod edge_cases {
             };
 
             let created = db
-                .artifact_create(&create_req, auth.tenant_id)
+                .create::<ArtifactResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1280,7 +1285,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
         assert_eq!(created.provenance.confidence, Some(0.0));
@@ -1293,7 +1298,7 @@ mod edge_cases {
         };
 
         let created2 = db
-            .artifact_create(&create_req2, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req2, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
         assert_eq!(created2.provenance.confidence, Some(1.0));
@@ -1321,7 +1326,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1350,7 +1355,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1382,7 +1387,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1418,15 +1423,19 @@ mod edge_cases {
             };
 
             let created = db
-                .artifact_create(&create_req, auth.tenant_id)
+                .create::<ArtifactResponse>(&create_req, auth.tenant_id)
                 .await
                 .map_err(|e| TestCaseError::fail(e.to_string()))?;
             artifact_ids.push(created.artifact_id);
         }
 
         // List artifacts by scope
+        let filter = ArtifactListFilter {
+            scope_id: Some(scope_id),
+            ..Default::default()
+        };
         let artifacts = db
-            .artifact_list_by_scope(scope_id, auth.tenant_id)
+            .list::<ArtifactResponse>(&filter, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -1474,7 +1483,7 @@ mod edge_cases {
         };
 
         let created = db
-            .artifact_create(&create_req, auth.tenant_id)
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
             .await
             .map_err(|e| TestCaseError::fail(e.to_string()))?;
 

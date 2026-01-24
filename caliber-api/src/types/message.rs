@@ -3,6 +3,9 @@
 use caliber_core::{EntityId, Timestamp};
 use serde::{Deserialize, Serialize};
 
+use crate::db::DbClient;
+use crate::error::{ApiError, ApiResult};
+
 /// Request to send a message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -104,4 +107,52 @@ pub struct ListMessagesResponse {
     pub messages: Vec<MessageResponse>,
     /// Total count
     pub total: i32,
+}
+
+// ============================================================================
+// STATE TRANSITION METHODS
+// ============================================================================
+
+impl MessageResponse {
+    /// Mark this message as delivered.
+    ///
+    /// # Arguments
+    /// - `db`: Database client for persisting the update
+    ///
+    /// # Errors
+    /// Returns error if the message has already been delivered.
+    pub async fn deliver(&self, db: &DbClient) -> ApiResult<Self> {
+        if self.delivered_at.is_some() {
+            return Err(ApiError::state_conflict(
+                "Message has already been delivered",
+            ));
+        }
+
+        let updates = serde_json::json!({
+            "delivered_at": chrono::Utc::now().to_rfc3339()
+        });
+
+        db.update_raw::<Self>(self.message_id, updates, self.tenant_id).await
+    }
+
+    /// Mark this message as acknowledged.
+    ///
+    /// # Arguments
+    /// - `db`: Database client for persisting the update
+    ///
+    /// # Errors
+    /// Returns error if the message has already been acknowledged.
+    pub async fn acknowledge(&self, db: &DbClient) -> ApiResult<Self> {
+        if self.acknowledged_at.is_some() {
+            return Err(ApiError::state_conflict(
+                "Message has already been acknowledged",
+            ));
+        }
+
+        let updates = serde_json::json!({
+            "acknowledged_at": chrono::Utc::now().to_rfc3339()
+        });
+
+        db.update_raw::<Self>(self.message_id, updates, self.tenant_id).await
+    }
 }

@@ -3,6 +3,9 @@
 use caliber_core::{AgentStatus, EntityId, Timestamp};
 use serde::{Deserialize, Serialize};
 
+use crate::db::DbClient;
+use crate::error::ApiResult;
+
 /// Request to register a new agent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -125,4 +128,40 @@ pub struct ListAgentsResponse {
     pub agents: Vec<AgentResponse>,
     /// Total count
     pub total: i32,
+}
+
+// ============================================================================
+// STATE TRANSITION METHODS
+// ============================================================================
+
+impl AgentResponse {
+    /// Send a heartbeat to update last_heartbeat timestamp.
+    ///
+    /// # Arguments
+    /// - `db`: Database client for persisting the update
+    ///
+    /// # Returns
+    /// Updated agent with new last_heartbeat timestamp.
+    pub async fn heartbeat(&self, db: &DbClient) -> ApiResult<Self> {
+        let updates = serde_json::json!({
+            "last_heartbeat": chrono::Utc::now().to_rfc3339()
+        });
+
+        db.update_raw::<Self>(self.agent_id, updates, self.tenant_id).await
+    }
+
+    /// Unregister this agent (set status to Offline).
+    ///
+    /// # Arguments
+    /// - `db`: Database client for persisting the update
+    ///
+    /// # Returns
+    /// Updated agent with Offline status.
+    pub async fn unregister(&self, db: &DbClient) -> ApiResult<Self> {
+        let updates = serde_json::json!({
+            "status": "Offline"
+        });
+
+        db.update_raw::<Self>(self.agent_id, updates, self.tenant_id).await
+    }
 }

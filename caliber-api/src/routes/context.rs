@@ -28,11 +28,11 @@
 //! }
 //! ```
 
-use crate::components::{ArtifactListFilter, NoteListFilter};
+use crate::components::{ArtifactListFilter, NoteListFilter, ScopeListFilter, TurnListFilter};
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::AuthContext;
-use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse};
+use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse, TurnResponse};
 use axum::{extract::State, Extension, Json};
 use caliber_context::{
     ContextAssembler, ContextPackage, ContextWindow, KernelConfig, ScopeSummary, SessionMarkers,
@@ -55,9 +55,9 @@ pub struct AssembleContextRequest {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub trajectory_id: EntityId,
 
-    /// Scope to assemble context for
-    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    /// Scope to assemble context for (optional - auto-selects most recent active scope if not provided)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub scope_id: Option<EntityId>,
 
     /// Current user input/query (used for relevance ranking)
     pub user_input: Option<String>,
@@ -77,6 +77,14 @@ pub struct AssembleContextRequest {
     #[serde(default = "default_true")]
     pub include_history: bool,
 
+    /// Whether to include conversation turns from the scope
+    #[serde(default = "default_true")]
+    pub include_turns: bool,
+
+    /// Whether to include parent trajectory hierarchy
+    #[serde(default)]
+    pub include_hierarchy: bool,
+
     /// Maximum number of notes to include
     pub max_notes: Option<i32>,
 
@@ -86,12 +94,39 @@ pub struct AssembleContextRequest {
     /// Maximum number of scope summaries to include
     pub max_summaries: Option<i32>,
 
+    /// Maximum number of turns to include
+    pub max_turns: Option<i32>,
+
     /// Optional kernel/persona configuration
     pub kernel_config: Option<KernelConfigRequest>,
 
     /// Agent ID for multi-agent scenarios
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub agent_id: Option<EntityId>,
+
+    /// Semantic search query for filtering notes/artifacts by relevance
+    pub relevance_query: Option<String>,
+
+    /// Minimum relevance score (0.0-1.0) for semantic filtering
+    pub min_relevance: Option<f32>,
+
+    /// Output format for the assembled context
+    #[serde(default)]
+    pub format: ContextFormat,
+}
+
+/// Output format for assembled context.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ContextFormat {
+    /// Markdown format (default)
+    #[default]
+    Markdown,
+    /// XML format
+    Xml,
+    /// JSON format (returns structured data)
+    Json,
 }
 
 fn default_true() -> bool {
@@ -161,6 +196,9 @@ pub struct ContextWindowDetails {
     /// Number of artifacts included
     pub artifacts_included: i32,
 
+    /// Number of turns included
+    pub turns_included: i32,
+
     /// Number of scope summaries included
     pub summaries_included: i32,
 
@@ -211,19 +249,39 @@ pub async fn assemble_context(
     let tenant_id = auth.tenant_id;
 
     // Validate trajectory exists and belongs to tenant
-    let _trajectory = db
+    let trajectory = db
         .get::<TrajectoryResponse>(req.trajectory_id, tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(req.trajectory_id))?;
 
-    // Validate scope exists and belongs to tenant
-    let _scope = db
-        .get::<ScopeResponse>(req.scope_id, tenant_id)
-        .await?
-        .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
+    // Resolve scope_id (auto-select most recent active scope if not provided)
+    let scope_id = match req.scope_id {
+        Some(id) => {
+            // Validate provided scope exists and belongs to tenant
+            let _scope = db
+                .get::<ScopeResponse>(id, tenant_id)
+                .await?
+                .ok_or_else(|| ApiError::scope_not_found(id))?;
+            id
+        }
+        None => {
+            // Auto-select most recent active scope for this trajectory
+            let filter = ScopeListFilter {
+                trajectory_id: Some(req.trajectory_id),
+                is_active: Some(true),
+                limit: Some(1),
+                ..Default::default()
+            };
+            let scopes = db.list::<ScopeResponse>(&filter, tenant_id).await?;
+            scopes
+                .first()
+                .map(|s| s.scope_id)
+                .ok_or_else(|| ApiError::invalid_input("No active scope found for trajectory"))?
+        }
+    };
 
     // Build the context package
-    let mut pkg = ContextPackage::new(req.trajectory_id, req.scope_id);
+    let mut pkg = ContextPackage::new(req.trajectory_id, scope_id);
 
     // Add user input if provided
     if let Some(user_input) = req.user_input {
@@ -233,7 +291,7 @@ pub async fn assemble_context(
     // Add session markers
     let session_markers = SessionMarkers {
         active_trajectory_id: Some(req.trajectory_id),
-        active_scope_id: Some(req.scope_id),
+        active_scope_id: Some(scope_id),
         recent_artifact_ids: vec![],
         agent_id: req.agent_id,
     };
@@ -271,7 +329,7 @@ pub async fn assemble_context(
     if req.include_artifacts {
         let max_artifacts = req.max_artifacts.unwrap_or(5) as usize;
         let filter = ArtifactListFilter {
-            scope_id: Some(req.scope_id),
+            scope_id: Some(scope_id),
             ..Default::default()
         };
         let artifacts = db.list::<ArtifactResponse>(&filter, tenant_id).await?;
@@ -286,6 +344,40 @@ pub async fn assemble_context(
             .map(|a| artifact_response_to_core(a))
             .collect();
         pkg = pkg.with_artifacts(core_artifacts);
+    }
+
+    // Fetch and count conversation turns
+    // Note: ContextPackage doesn't support turns yet, but we count them for reporting
+    let mut turns_count = 0;
+    if req.include_turns {
+        let max_turns = req.max_turns.unwrap_or(20) as usize;
+        let filter = TurnListFilter {
+            scope_id: Some(scope_id),
+            ..Default::default()
+        };
+        let turns = db.list::<TurnResponse>(&filter, tenant_id).await?;
+
+        // Apply limit and count
+        let limited_turns: Vec<_> = turns.into_iter().take(max_turns).collect();
+        turns_count = limited_turns.len() as i32;
+
+        // TODO: Add turns to package when caliber_context supports it
+        // For now, turns are counted but not included in context assembly
+    }
+
+    // Fetch parent trajectory hierarchy if requested
+    let mut hierarchy: Vec<TrajectoryResponse> = Vec::new();
+    if req.include_hierarchy {
+        let mut current_id = trajectory.parent_trajectory_id;
+        while let Some(parent_id) = current_id {
+            if let Some(parent) = db.get::<TrajectoryResponse>(parent_id, tenant_id).await? {
+                current_id = parent.parent_trajectory_id;
+                hierarchy.push(parent);
+            } else {
+                break;
+            }
+        }
+        // TODO: Add hierarchy to package when caliber_context supports it
     }
 
     // Fetch and add scope summaries (if we had a summarization system)
@@ -323,6 +415,7 @@ pub async fn assemble_context(
             window_id: window.window_id,
             notes_included: notes_count,
             artifacts_included: artifacts_count,
+            turns_included: turns_count,
             summaries_included: summaries_count,
             assembly_trace: window
                 .assembly_trace
