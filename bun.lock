@@ -22,7 +22,7 @@
     },
     "caliber-sdk": {
       "name": "@caliber-run/sdk",
-      "version": "0.4.0",
+      "version": "0.4.3",
       "dependencies": {
         "axios": "^1.6.0",
       },

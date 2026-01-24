@@ -35,7 +35,7 @@ The following items have been verified as complete in the current codebase:
 - ✅ Unknown note_type returns ValidationError (caliber_note_create)
 - ✅ Unknown role returns ValidationError (caliber_turn_create)
 - ✅ Unknown status returns None with ValidationError warning (caliber_trajectory_set_status)
-- ✅ Context assembly uses `section_priorities.persona` for persona sections (caliber-context)
+- ✅ Context assembly uses `section_priorities.persona` for persona sections (`caliber-core/src/context.rs`)
 - ✅ DSL parser requires explicit adapter type (no defaults)
 - ✅ DSL parser requires explicit connection string (no defaults)
 - ✅ DSL parser requires explicit memory type (no defaults)
@@ -265,7 +265,7 @@ The following items have been verified as complete in the current codebase:
 **Files Modified:**
 
 - `caliber-core/src/lib.rs` - SectionPriorities struct
-- `caliber-context/src/lib.rs` - Context assembly
+- `caliber-core/src/context.rs` - Context assembly module
 
 ---
 

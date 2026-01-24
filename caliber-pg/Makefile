@@ -13,8 +13,8 @@
 #   make package     - Create PGXN distribution package
 #   make clean       - Clean build artifacts
 
-EXTENSION = caliber
-EXTVERSION = 0.4.0
+EXTENSION = caliber_pg
+EXTVERSION = 0.4.3
 
 # Use pg_config from PATH or allow override
 PG_CONFIG ?= pg_config
@@ -76,7 +76,7 @@ install: build
 	@echo "Installation complete."
 	@echo ""
 	@echo "To enable the extension, run in psql:"
-	@echo "  CREATE EXTENSION caliber;"
+	@echo "  CREATE EXTENSION caliber_pg;"
 	@echo "  SELECT caliber_init();"
 
 test:

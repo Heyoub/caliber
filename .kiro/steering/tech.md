@@ -20,9 +20,8 @@ See `.kiro/steering/dev-philosophy.md` for full rationale.
 ## Multi-Crate Architecture
 
 ```text
-caliber-core/        # ENTITIES: Data structures only
+caliber-core/        # ENTITIES: Data structures + context module
 caliber-storage/     # COMPONENT: Storage trait + pgrx
-caliber-context/     # COMPONENT: Context assembly logic
 caliber-pcp/         # COMPONENT: Validation, checkpoints, recovery
 caliber-llm/         # COMPONENT: VAL (Vector Abstraction Layer)
 caliber-agents/      # COMPONENT: Multi-agent coordination

@@ -661,4 +661,3 @@ SELECT
 FROM caliber_delegation d
 WHERE d.status = 'pending'
 ORDER BY d.deadline NULLS LAST, d.created_at;
-

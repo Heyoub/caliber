@@ -46,7 +46,7 @@ Landing page for CALIBER — a Postgres-native memory framework for AI agents. T
 1. THE Landing_Page SHALL display solutions corresponding to each problem with code snippets
 2. THE code snippets SHALL use syntax highlighting consistent with the SynthBrute aesthetic
 3. WHEN displaying architecture information, THE Landing_Page SHALL show the ECS pattern and crate structure
-4. THE solution section SHALL include the key stats: 8 crates, 165 tests, 57 property tests, 0 hard-coded defaults
+4. THE solution section SHALL include the key stats: 10 crates, 165 tests, 57 property tests, 0 hard-coded defaults
 
 ### Requirement 4: Pricing Section
 

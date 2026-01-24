@@ -14,9 +14,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.3"
 edition = "2021"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 repository = "https://github.com/caliber-run/caliber"
 authors = ["Eassa Ayoub <hello@heyoub.dev>"]
 homepage = "https://heyoub.dev"
@@ -62,14 +62,14 @@ tui-textarea = "0.5"
 toml = "0.8"
 
 # Internal crates
-caliber-core = { path = "caliber-core", version = "0.4.0" }
-caliber-storage = { path = "caliber-storage", version = "0.4.0" }
-caliber-pcp = { path = "caliber-pcp", version = "0.4.0" }
-caliber-llm = { path = "caliber-llm", version = "0.4.0" }
-caliber-agents = { path = "caliber-agents", version = "0.4.0" }
-caliber-dsl = { path = "caliber-dsl", version = "0.4.0" }
-caliber-test-utils = { path = "caliber-test-utils", version = "0.4.0" }
-caliber-api = { path = "caliber-api", version = "0.4.0" }
+caliber-core = { path = "caliber-core", version = "0.4.3" }
+caliber-storage = { path = "caliber-storage", version = "0.4.3" }
+caliber-pcp = { path = "caliber-pcp", version = "0.4.3" }
+caliber-llm = { path = "caliber-llm", version = "0.4.3" }
+caliber-agents = { path = "caliber-agents", version = "0.4.3" }
+caliber-dsl = { path = "caliber-dsl", version = "0.4.3" }
+caliber-test-utils = { path = "caliber-test-utils", version = "0.4.3" }
+caliber-api = { path = "caliber-api", version = "0.4.3" }
 
 # === PROFILE OPTIMIZATIONS ===
 

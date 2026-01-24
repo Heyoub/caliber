@@ -12,7 +12,7 @@ Presets are explicit and validated; overrides are opt-in.
 let config = CaliberConfig { /* user provides all values */ };
 ```
 
-See `docs/CONFIG_PRESETS.md` for preset profiles and hard-value audit.
+Keep presets explicit and tracked alongside config changes.
 
 ---
 
@@ -21,7 +21,6 @@ See `docs/CONFIG_PRESETS.md` for preset profiles and hard-value audit.
 ```
 caliber-core/        # Entities (data only)
 caliber-storage/     # Storage trait + pgrx
-caliber-context/     # Context assembly
 caliber-pcp/         # Validation, checkpoints
 caliber-llm/         # VAL (Vector Abstraction Layer)
 caliber-agents/      # Multi-agent coordination
@@ -152,7 +151,7 @@ cargo build -p caliber-pg --release
 cargo pgrx package -p caliber-pg
 
 # Install
-psql -c "CREATE EXTENSION caliber;"
+psql -c "CREATE EXTENSION caliber_pg;"
 ```
 
 ---

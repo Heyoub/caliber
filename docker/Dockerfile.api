@@ -28,7 +28,6 @@ COPY caliber-core ./caliber-core
 COPY caliber-dsl ./caliber-dsl
 COPY caliber-llm ./caliber-llm
 COPY caliber-storage ./caliber-storage
-COPY caliber-context ./caliber-context
 COPY caliber-agents ./caliber-agents
 COPY caliber-pcp ./caliber-pcp
 COPY caliber-test-utils ./caliber-test-utils

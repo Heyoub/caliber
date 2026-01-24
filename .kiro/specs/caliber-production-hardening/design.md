@@ -407,7 +407,7 @@ pub struct SectionPriorities {
 }
 ```
 
-**Affected Files:** `caliber-core/src/lib.rs`, `caliber-context/src/lib.rs`
+**Affected Files:** `caliber-core/src/lib.rs`, `caliber-core/src/context.rs`
 
 ---
 

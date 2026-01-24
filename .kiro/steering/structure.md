@@ -13,11 +13,9 @@ caliber/
 │   ├── LLM_SERVICES.md          # VAL + summarization
 │   ├── MULTI_AGENT_COORDINATION.md  # Locks, messages, delegation
 │   └── QUICK_REFERENCE.md       # Cheat sheet
-├── caliber-core/          # Entity types (data only)
+├── caliber-core/          # Entity types + context assembly module
 │   └── src/lib.rs
 ├── caliber-storage/       # Storage trait + pgrx impl
-│   └── src/lib.rs
-├── caliber-context/       # Context assembly
 │   └── src/lib.rs
 ├── caliber-pcp/           # Validation, checkpoints
 │   └── src/lib.rs

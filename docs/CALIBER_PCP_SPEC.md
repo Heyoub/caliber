@@ -66,12 +66,10 @@ CALIBER uses **compositional architecture** over inheritance. Rust's functional/
 ```
 caliber-core/        # ENTITIES: Data structures only (Trajectory, Scope, Artifact, Note)
                      # No behavior, just types. Pure data.
+                     # Includes context assembly module (context.rs)
 
 caliber-storage/     # COMPONENT: Storage trait + pgrx implementation
                      # Defines StorageTrait, implements via direct heap access
-
-caliber-context/     # COMPONENT: Context assembly logic
-                     # Trait-based, composable with any storage
 
 caliber-pcp/         # COMPONENT: Validation, checkpoints, recovery
                      # PCP harm reduction as composable component
@@ -3218,17 +3216,13 @@ caliber/
 │       ├── lib.rs
 │       ├── types.rs                # Entity types
 │       ├── error.rs                # CaliberError
-│       └── config.rs               # CaliberConfig
+│       ├── config.rs               # CaliberConfig
+│       └── context.rs              # Context assembly
 ├── caliber-storage/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
 │       └── traits.rs               # StorageTrait
-├── caliber-context/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs
-│       └── assembler.rs            # Context assembly
 ├── caliber-pcp/
 │   ├── Cargo.toml
 │   └── src/
@@ -3277,7 +3271,6 @@ resolver = "2"
 members = [
     "caliber-core",
     "caliber-storage",
-    "caliber-context",
     "caliber-pcp",
     "caliber-llm",
     "caliber-agents",
@@ -3331,18 +3324,7 @@ caliber-core = { path = "../caliber-core" }
 uuid.workspace = true
 ```
 
-```toml
-# caliber-context/Cargo.toml
-[package]
-name = "caliber-context"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-caliber-core = { path = "../caliber-core" }
-caliber-storage = { path = "../caliber-storage" }
-uuid.workspace = true
-```
+Context assembly lives in `caliber-core/src/context.rs` (no standalone crate).
 
 ```toml
 # caliber-pcp/Cargo.toml
@@ -3413,7 +3395,6 @@ crate-type = ["cdylib"]
 # All caliber crates
 caliber-core = { path = "../caliber-core" }
 caliber-storage = { path = "../caliber-storage" }
-caliber-context = { path = "../caliber-context" }
 caliber-pcp = { path = "../caliber-pcp" }
 caliber-llm = { path = "../caliber-llm" }
 caliber-agents = { path = "../caliber-agents" }
@@ -3480,7 +3461,7 @@ cargo pgrx test -p caliber-pg pg16
 cargo pgrx package -p caliber-pg
 
 # Install
-psql -c "CREATE EXTENSION caliber;"
+psql -c "CREATE EXTENSION caliber_pg;"
 ```
 
 ---
@@ -3673,7 +3654,7 @@ pub struct ConflictUpdate {
 
 ```sql
 -- caliber/sql/bootstrap.sql
--- Run once at CREATE EXTENSION caliber
+-- Run once at CREATE EXTENSION caliber_pg
 
 -- Enable pgvector if not already enabled
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -4201,7 +4182,7 @@ impl AgentStatus {
 ## 14. CONTEXT ASSEMBLY ALGORITHM (Complete)
 
 ```rust
-// caliber-context/src/assembler.rs
+// caliber-core/src/context.rs
 
 use caliber_core::*;
 use caliber_storage::CaliberStorage;
@@ -5328,7 +5309,7 @@ pub enum ConfigError {
 | Embedding | `EmbeddingProvider` | caliber-llm |
 | Summarization | `SummarizationProvider` | caliber-llm |
 | Storage | `CaliberStorage` | caliber-storage |
-| Context Assembly | `ContextAssembler` | caliber-context (struct, not trait) |
+| Context Assembly | `ContextAssembler` | caliber-core::context (struct, not trait) |
 | PCP Validation | `PCPValidator` | caliber-pcp (struct, not trait) |
 
 **Deprecated names (do not use):**

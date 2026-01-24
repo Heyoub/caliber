@@ -19,7 +19,7 @@ AI-Native (us): plan everything → generate all code → cargo check once → f
 
 - [x] 0. **STEP ZERO: Complete Semantic Planning (DO THIS FIRST)**
   - [x] 0.1 Build Full Crate Dependency Graph
-    - Map all 8 crates with exact inter-crate dependencies
+    - Map all core crates with exact inter-crate dependencies
     - Verify DAG has no cycles
     - Document which types flow between crates
   - [x] 0.2 Lock External Dependencies with Exact Versions
@@ -30,7 +30,7 @@ AI-Native (us): plan everything → generate all code → cargo check once → f
     - All caliber-core types documented
     - All caliber-dsl types documented
     - All caliber-llm types documented
-    - All caliber-context types documented
+    - All context module types documented (caliber-core::context)
     - All caliber-pcp types documented
     - All caliber-agents types documented
     - All caliber-storage types documented
@@ -55,8 +55,8 @@ AI-Native (us): plan everything → generate all code → cargo check once → f
     - Define all workspace.dependencies
     - Configure profile optimizations
     - _Requirements: 1.1, 1.2_
-  - [x] 1.2 Create directory structure for all 8 crates
-    - caliber-core, caliber-storage, caliber-context, caliber-pcp
+  - [x] 1.2 Create directory structure for all core crates
+    - caliber-core (incl. context), caliber-storage, caliber-pcp
     - caliber-llm, caliber-agents, caliber-dsl, caliber-pg
     - Create `src/` folders only — NO lib.rs stubs (those come with actual code in Tasks 2-12)
     - _Requirements: 1.1_
@@ -167,7 +167,7 @@ AI-Native (us): plan everything → generate all code → cargo check once → f
     - **Validates: Requirements 6.4**
   - **🎯 HACKATHON: Document VAL design decisions in DEVLOG.md**
 
-- [x] 7. Implement caliber-context (Context Assembly)
+- [x] 7. Implement context module in caliber-core (Context Assembly)
   - [x] 7.1 Create ContextPackage struct
     - user_input, relevant_notes, recent_artifacts, session_markers, kernel_config
     - _Requirements: 9.1_

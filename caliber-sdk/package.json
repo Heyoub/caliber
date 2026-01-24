@@ -1,6 +1,6 @@
 {
   "name": "@caliber-run/sdk",
-  "version": "0.4.0",
+  "version": "0.4.3",
   "description": "TypeScript SDK for CALIBER - Cognitive Agent Long-term Intelligence, Behavioral Episodic Recall",
   "type": "module",
   "main": "dist/index.js",
@@ -67,7 +67,7 @@
     "sdk"
   ],
   "author": "Eassa Ayoub <hello@heyoub.dev>",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/caliber-run/caliber"

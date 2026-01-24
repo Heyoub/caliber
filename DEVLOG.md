@@ -5333,6 +5333,8 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 
 **Objective:** Eliminate storage trait type mismatches by standardizing row-to-domain conversions.
 
+**Release:** 0.4.1
+
 **Completed:**
 
 - Added `From<*Row> for *` conversions across all heap modules
@@ -5366,6 +5368,8 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 ### January 19, 2026 — WSL Bootstrap and Full Verification
 
 **Objective:** Re-establish full test/verification workflow after moving the repo to WSL.
+
+**Release:** 0.4.1
 
 **Completed:**
 
@@ -5427,6 +5431,8 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 |------|----------|-----------|
 | 2026-01-19 | Use shared `AppState` + `FromRef` for route state | Avoids `Router<()>` vs `Router<Arc<WsState>>` mismatch and simplifies state wiring |
 
+**Release:** 0.4.1
+
 **Challenges:**
 - Challenge: Many route modules had embedded state structs and `.with_state()` calls.
   - Solution: Converted handlers to extract `DbClient`, `WsState`, `PCPRuntime`, and singleton state from `AppState`.
@@ -5444,6 +5450,8 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 ### January 20, 2026 — API Test Hardening & JWT Secret Handling
 
 **Objective:** Improve API error handling, test reliability, and JWT secret management.
+
+**Release:** 0.4.1
 
 **Completed:**
 
@@ -5468,6 +5476,8 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 
 **Objective:** Restore caliber-pg build/test compatibility on PostgreSQL 18.
 
+**Release:** 0.4.2
+
 **Completed:**
 
 - ✅ Enabled `pgrx-tests` PG18 support via upstream develop branch
@@ -5491,3 +5501,159 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 **Time Spent:** n/a (not tracked)
 
 **Status:** PG18 test build unblocked; next step is running actual pgrx integration tests.
+
+---
+
+### January 21, 2026 - Dependency Compatibility Sweep
+
+**Objective:** Keep the async-graphql stack compatible with Rust 1.85 and Docker builds.
+
+**Release:** 0.4.2
+
+**Completed:**
+
+- Pinned async-graphql dependencies to 7.0.0 for rustc 1.85.x compatibility
+- Downgraded Axum to 0.7 and Swagger UI to 8.0 to match async-graphql-axum 7.0.0
+- Upgraded Rust to 1.85 in Docker builds
+- Moved the `pg18` feature from default to `pg_test` in pgrx-tests
+- Added workspace version constraints and removed a duplicate self-reference
+
+**Commits:**
+
+- `8019e45` - ship.ship.shp.ALMOST!!!!
+- `8d154f6` - feat: Add workspace version constraints and improve code quality
+- `289d593` - feat: Remove duplicate self-reference in caliber-core Cargo.toml
+- `48f86a6` - feat: Move pg18 feature from default to pg_test feature in pgrx-tests
+- `46b342c` - feat: Pin async-graphql to 7.0.x and upgrade Rust to 1.85 in Docker builds
+- `5c10ec2` - feat: Pin async-graphql dependencies to exact version 7.0.0 for rustc 1.85.x compatibility
+- `5c6d4c6` - feat: Downgrade axum to 0.7 and utoipa-swagger-ui to 8.0 for async-graphql-axum 7.0.0 compatibility
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** Compatibility sweep complete; Docker and dependency versions aligned.
+
+---
+
+### January 22, 2026 - Postgres Extension Packaging and Schema Generation
+
+**Objective:** Stabilize extension packaging and SQL schema generation for `caliber_pg`.
+
+**Release:** 0.4.2
+
+**Completed:**
+
+- Added the extension control file and renamed the extension to `caliber_pg`
+- Added a bootstrap SQL schema and validated generation workflow
+- Diagnosed pgrx schema output location and redirected stdout to file
+- Ran `cargo pgrx schema` and the `pgrx_embed` binary to generate SQL
+- Applied a manual SQL copy workaround for pgrx 0.16
+- Installed `pgvector` extension required for embedding columns
+- Added `caliber_config_get` and `caliber_config_update` functions
+
+**Commits:**
+
+- `a9d5c78` - feat: Add PostgreSQL extension control file for caliber_pg
+- `420fc2f` - feat: Rename extension from 'caliber' to 'caliber_pg' and add bootstrap SQL schema
+- `9569a18` - debug: check for SQL files in build output
+- `916c379` - fix: explicitly generate SQL schema with cargo pgrx schema
+- `5dc1194` - fix: redirect pgrx schema output to file via stdout
+- `32efd11` - debug: find where pgrx schema writes SQL files
+- `d5466e6` - fix: run pgrx_embed binary directly to generate SQL
+- `59b6e22` - debug: check pgrx_embed binary output
+- `4a9f415` - fix: use cargo pgrx install instead of package
+- `5a2d242` - workaround: manually copy SQL file since pgrx 0.16 doesn't generate it
+- `1ca292c` - fix: install pgvector extension required for embedding columns
+- `def85e3` - feat: Add missing caliber_config_get and caliber_config_update functions
+- `d88fea5` - (commit message: "...")
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** Extension packaging and SQL generation stabilized.
+
+---
+
+### January 22, 2026 - API Deployment and Landing Build Fixes
+
+**Objective:** Restore API deployment features and ensure the landing dashboard builds on Vercel.
+
+**Release:** 0.4.2
+
+**Completed:**
+
+- Enabled OpenAPI, Swagger UI, and WorkOS features in API deployment
+- Prevented duplicate `/openapi.json` route when swagger-ui is enabled
+- Added `ConnectInfo` extraction to support rate limiting
+- Replaced the broken WorkOS crate with direct HTTP implementation
+- Aligned `PCPConfig` defaults with schema expectations
+- Added SSR to the dashboard and cleaned up repo configuration
+- Pointed Vercel to the landing directory and removed the broken root config
+- Triggered a Vercel redeploy after root directory corrections
+
+**Commits:**
+
+- `a3be205` - feat: enable openapi, swagger-ui, and workos features in API deployment
+- `5a0d858` - fix: Avoid duplicate /openapi.json route when swagger-ui is enabled
+- `bb62da3` - fix: Add ConnectInfo extension to axum server for rate limiting
+- `f226755` - fix: Replace broken workos crate with direct HTTP implementation
+- `3976736` - fix: update default PCPConfig to match caliber-pcp schema changes
+- `2cb2a69` - feat: Add SSR to dashboard, cleanup repo, fix CI configs
+- `4231fba` - fix: Configure Vercel to build from landing directory
+- `812f4a6` - fix: Remove broken root vercel.json - use Vercel dashboard Root Directory setting instead
+- `30c3376` - chore: Trigger Vercel redeploy
+- `264a8fc` - fix: Configure Vercel to build landing subdirectory with Astro
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** API deployment restored; landing build pipeline stabilized.
+
+---
+
+### January 23, 2026 - Change Journal Integration and Data Model Refactor
+
+**Objective:** Integrate change journal operations and modernize domain types/CRUD paths.
+
+**Release:** 0.4.3
+
+**Completed:**
+
+- Integrated `caliber-events` with API change journal operations
+- Removed the obsolete change journal migration and folded it into distributed correctness
+- Expanded Event/Effect structures and EventHeader metadata
+- Switched agent, delegation, and handoff models to new status enums
+- Refactored database interactions to use generic CRUD and improved filtering
+- Removed obsolete trajectory and scope methods
+
+**Commits:**
+
+- `8673dff` - feat: Integrate caliber-events and enhance API with change journal operations
+- `a22dcce` - refactor: Remove obsolete change journal SQL migration and integrate change journal functionality into distributed correctness migration
+- `219c1b8` - refactor: Update Cargo.toml and improve Effect and EventHeader structures
+- `7c45616` - refactor: Enhance Event and Effect structures with new features and optimizations
+- `2bfc07f` - refactor: Update agent, delegation, and handoff types to use new status enums
+- `e7dfd53` - refactor: Update database interactions to use generic CRUD methods and enhance filtering
+- `67ee45d` - refactor: Remove obsolete trajectory and scope methods, introduce generic update operation
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** Change journal and domain refactors landed.
+
+---
+
+### January 24, 2026 - Workspace Cleanup
+
+**Objective:** Remove deprecated crates and streamline workspace dependencies.
+
+**Release:** 0.4.3
+
+**Completed:**
+
+- Removed `caliber-context` and `caliber-events` crates from the workspace
+- Streamlined Cargo.toml dependency wiring
+
+**Commits:**
+
+- `5fc5797` - refactor: Remove caliber-context and caliber-events, streamline Cargo.toml dependencies
+
+**Time Spent:** n/a (not tracked)
+
+**Status:** Workspace cleanup complete.

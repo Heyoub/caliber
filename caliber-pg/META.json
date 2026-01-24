@@ -1,15 +1,15 @@
 {
-   "name": "caliber",
+   "name": "caliber_pg",
    "abstract": "PostgreSQL-native memory framework for AI agents",
    "description": "CALIBER provides hierarchical memory management, multi-agent coordination, and context window optimization for AI applications, all running natively in PostgreSQL.",
-   "version": "0.4.0",
+   "version": "0.4.3",
    "maintainer": ["Caliber Team <team@caliber.run>"],
-   "license": "mit",
+   "license": "AGPL-3.0-or-later",
    "provides": {
-      "caliber": {
+      "caliber_pg": {
          "abstract": "AI agent memory framework",
-         "file": "sql/caliber--0.4.0.sql",
-         "version": "0.4.0"
+         "file": "sql/caliber_pg--0.4.3.sql",
+         "version": "0.4.3"
       }
    },
    "prereqs": {

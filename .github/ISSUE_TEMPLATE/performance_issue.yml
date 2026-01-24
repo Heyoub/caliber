@@ -16,7 +16,6 @@ body:
       options:
         - caliber-pg (Heap operations, indexes)
         - caliber-api (REST/gRPC/WebSocket)
-        - caliber-context (Context assembly, token counting)
         - caliber-llm (Embedding generation, vector search)
         - caliber-agents (Lock acquisition, message passing)
         - caliber-pcp (Validation, checkpoints)

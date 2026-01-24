@@ -50,7 +50,7 @@ Build a single-page marketing site for CALIBER using Astro + Svelte with the Syn
   - [x] 2.4 Build Solutions section
     - Create `src/components/Solutions.astro`
     - Add solution content with code snippets
-    - Display key stats (8 crates, 165 tests, etc.)
+    - Display key stats (10 crates, 165 tests, etc.)
     - _Requirements: 3.1, 3.3, 3.4_
 
   - [x] 2.5 Build Architecture section

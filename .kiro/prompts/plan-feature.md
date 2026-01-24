@@ -14,7 +14,7 @@ Create a detailed implementation plan for a CALIBER feature.
 
 When planning a feature:
 
-1. **Identify affected crates** — which of the 8 crates need changes?
+1. **Identify affected crates** — which workspace crates need changes?
 2. **Define types first** — what new structs/enums in caliber-core?
 3. **Storage operations** — what direct heap operations needed?
 4. **Trait definitions** — what interfaces for composability?

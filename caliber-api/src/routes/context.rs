@@ -1,7 +1,7 @@
 //! Context assembly routes.
 //!
 //! This module provides the `/context/assemble` endpoint that wires the
-//! previously-unused `caliber-context` crate into the API layer.
+//! context assembly module (`caliber_core::context`) into the API layer.
 //!
 //! # Purpose
 //!

@@ -8,17 +8,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
-- Initial public release preparation
 - CI/CD pipelines for automated testing
 - Continuous fuzzing integration (planned)
 - Stripe payment integration (alternative to LemonSqueezy)
 - Mutation testing (planned)
 - Test coverage reporting (planned)
+
+## [0.4.3] - 2026-01-24
+
+### Added
+
+- Change journal API operations via `caliber-events` integration
+
+### Changed
+
+- Domain refactors: new status enums, generic CRUD/update paths, and filtering improvements
+- Removed obsolete change journal migration and folded it into distributed correctness
+- Removed `caliber-context` and `caliber-events` crates from the workspace
+
+## [0.4.2] - 2026-01-22
+
+### Added
+
+- OpenAPI + Swagger UI features for API deployment
+- Postgres extension control file and bootstrap SQL schema for `caliber_pg`
+- `caliber_config_get` and `caliber_config_update` functions
+- SSR support for the dashboard landing experience
+- PG18-compatible `pgrx-tests` wiring via upstream develop branch
+
+### Fixed
+
+- PG18 pgrx test compilation failures (heap test imports, lock mode usage)
+- Duplicate extension symbols during pg_test builds (gated pg_module_magic/_PG_init)
+- PG18 list access mismatches in index ops (removed list_nth_* symbols; switched to pgrx List API)
+- OpenAPI `/openapi.json` duplication when swagger-ui is enabled
+- Rate limiting extraction requires ConnectInfo on the Axum server
+- PCPConfig defaults now aligned with `caliber-pcp` schema
+- WorkOS integration restored by replacing the broken crate with direct HTTP calls
+- Vercel build configuration for the landing subdirectory
+- pgrx SQL schema generation and output file handling
+- `pgvector` extension installation for embedding columns
+
+### Changed
+
+- `pg_test` setup now runs migrations to keep migration path exercised
+- Disabled default pgrx features/workspace defaults to avoid feature drift
+- Disabled standard Rust test/doctest harness for the extension crate during pg_test builds
+- async-graphql pinned to 7.0.0 with Axum 0.7 and Swagger UI 8.0 for compatibility
+- Docker builds upgraded to Rust 1.85
+- `pg18` feature moved from default to `pg_test` in pgrx-tests
+- Workspace dependency constraints and cleanup for Cargo.toml self-references
+
+### Notes
+
+- Debugging journey: initially suspected linker/runtime symbol issues from the standard test harness, then traced PG18 build failures to pgrx list helpers removed from pg_sys. Final fix: disable lib test harness, update list access to pgrx List API, and tighten pg_test setup to run migrations.
+
+## [0.4.1] - 2026-01-20
+
+### Added
+
 - WSL-specific setup notes in README for Linux filesystem and tooling
 - Shared `AppState` for Axum routes with `FromRef` extractors
 - DB-backed property tests for API flows (explicit DB configuration)
-- PG18-compatible `pgrx-tests` wiring via upstream develop branch
 
 ### Fixed
 
@@ -27,10 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auth config production-validation tests now isolate environment variables
 - Smoke test network error handling now tolerates non-throwing fetch runtimes
 - Axum router state mismatch caused by `/ws` route state requirements
-- PG18 pgrx test compilation failures (heap test imports, lock mode usage)
 - Missing tenant_id plumbing in heap property tests and moved-value assertions
-- Duplicate extension symbols during pg_test builds (gated pg_module_magic/_PG_init)
-- PG18 list access mismatches in index ops (removed list_nth_* symbols; switched to pgrx List API)
 
 ### Changed
 
@@ -38,13 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Route modules now rely on shared app state instead of per-module routers
 - Async handlers now return `ApiResult` for consistent error propagation
 - JWT secret handling now type-safe with tighter auth config validation
-- `pg_test` setup now runs migrations to keep migration path exercised
-- Disabled default pgrx features/workspace defaults to avoid feature drift
-- Disabled standard Rust test/doctest harness for the extension crate during pg_test builds
-
-### Notes
-
-- Debugging journey: initially suspected linker/runtime symbol issues from the standard test harness, then traced PG18 build failures to pgrx list helpers removed from pg_sys. Final fix: disable lib test harness, update list access to pgrx List API, and tighten pg_test setup to run migrations.
 
 ## [0.4.0] - 2026-01-17
 
@@ -52,6 +93,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **PostgreSQL 18+ Required**: Dropped support for PostgreSQL 13-17. CALIBER now requires PostgreSQL 18 or later.
 - **API Router Signature**: `create_api_router()` now requires `&ApiConfig` parameter for CORS and rate limiting configuration.
+
+### Added
+
+- Initial public release preparation
 
 ### Added - Production Hardening
 

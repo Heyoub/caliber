@@ -30,7 +30,6 @@ Fixes #(issue number)
 
 - [ ] caliber-core (Entity types, config)
 - [ ] caliber-storage (Storage trait, backends)
-- [ ] caliber-context (Context assembly)
 - [ ] caliber-pcp (Validation, checkpoints)
 - [ ] caliber-llm (VAL, embeddings)
 - [ ] caliber-agents (Locks, messages, coordination)
@@ -92,11 +91,7 @@ cargo test -p caliber-core -- test_name
 
 <!-- Describe manual testing performed -->
 
-- [ ] Tested with PostgreSQL 13
-- [ ] Tested with PostgreSQL 14
-- [ ] Tested with PostgreSQL 15
-- [ ] Tested with PostgreSQL 16
-- [ ] Tested with PostgreSQL 17
+- [ ] Tested with PostgreSQL 18
 - [ ] Tested in WSL environment
 - [ ] Tested with caliber-api running
 - [ ] Tested with caliber-tui

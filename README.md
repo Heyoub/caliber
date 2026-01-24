@@ -5,7 +5,7 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.4.0  
+**Version:** 0.4.3  
 **Architecture:** Multi-crate ECS (Entity-Component-System)  
 **Language:** Rust (pgrx)
 
@@ -73,7 +73,7 @@ Use the ops checklist for the fallback test lane.
 ### Hello World (Postgres, low-level API)
 
 ```bash
-psql -c "CREATE EXTENSION caliber;"
+psql -c "CREATE EXTENSION caliber_pg;"
 psql -c "SELECT caliber_init();"
 psql -c "SELECT caliber_trajectory_get(caliber_trajectory_create('hello-world', NULL, NULL));"
 psql -c "WITH t AS (SELECT caliber_trajectory_create('hello-world', NULL, NULL) AS id) SELECT caliber_scope_create(t.id, 'scope-1', NULL, 800) FROM t;"
@@ -90,7 +90,6 @@ Config is required for runtime operations; see `docs/QUICK_REFERENCE.md` for the
 caliber/
 ├── caliber-core/        # Entity types (data only, no behavior)
 ├── caliber-storage/     # Storage trait + mock implementation
-├── caliber-context/     # Context assembly logic
 ├── caliber-pcp/         # Validation, checkpoints, recovery
 ├── caliber-llm/         # VAL (Vector Abstraction Layer)
 ├── caliber-agents/      # Multi-agent coordination
@@ -135,8 +134,8 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 │  PCP Protocol Layer (validation, checkpoints, harm reduction)   │
 │                              │                                  │
 │  CALIBER Components (ECS)                                       │
-│  caliber-core │ caliber-storage │ caliber-context               │
-│  caliber-pcp  │ caliber-llm     │ caliber-agents                │
+│  caliber-core │ caliber-storage │ caliber-pcp                   │
+│  caliber-llm  │ caliber-agents  │ caliber-dsl                   │
 │                              │                                  │
 │  pgrx Direct Storage (heap ops, no SQL in hot path)             │
 │                              │                                  │
@@ -167,7 +166,7 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 | caliber-core | 7 | 10 | 17 |
 | caliber-dsl | 21 | 10 | 31 |
 | caliber-llm | 16 | 7 | 23 |
-| caliber-context | 10 | 9 | 19 |
+| context module (in caliber-core) | 10 | 9 | 19 |
 | caliber-pcp | 16 | 5 | 21 |
 | caliber-agents | 16 | 6 | 22 |
 | caliber-storage | 12 | 5 | 17 |
@@ -186,7 +185,6 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 | [MULTI_AGENT_COORDINATION.md](docs/MULTI_AGENT_COORDINATION.md) | Agent coordination |
 | [DEPENDENCY_GRAPH.md](docs/DEPENDENCY_GRAPH.md) | Type system reference |
 | [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Cheat sheet |
-| [CONFIG_PRESETS.md](docs/CONFIG_PRESETS.md) | Preset-first config philosophy + hard-value audit |
 | [BENCHMARKS.md](BENCHMARKS.md) | Performance benchmarks and comparisons |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and workflow |
 | [SECURITY.md](SECURITY.md) | Security policy and vulnerability reporting |
@@ -199,8 +197,9 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 ## 🎯 Usage Example (Rust, high-level)
 
 ```rust
-use caliber_context::{ContextAssembler, ContextPackage};
 use caliber_core::{
+    ContextAssembler,
+    ContextPackage,
     CaliberConfig,
     CaliberResult,
     ContextPersistence,

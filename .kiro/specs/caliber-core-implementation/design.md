@@ -25,8 +25,8 @@ The key innovation is bypassing SQL entirely in the hot path — agent memory op
 │                              │                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │              CALIBER Components (ECS)                    │   │
-│  │  caliber-core │ caliber-storage │ caliber-context       │   │
-│  │  caliber-pcp  │ caliber-llm     │ caliber-agents        │   │
+│  │  caliber-core │ caliber-storage │ caliber-pcp           │   │
+│  │  caliber-llm  │ caliber-agents  │ caliber-dsl           │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -43,10 +43,9 @@ The key innovation is bypassing SQL entirely in the hot path — agent memory op
 ### Crate Dependency Graph
 
 ```
-caliber-core (entities, no deps)
+caliber-core (entities + context module, no deps)
      ↑
      ├── caliber-storage (storage traits)
-     ├── caliber-context (context assembly)
      ├── caliber-pcp (validation)
      ├── caliber-llm (VAL traits)
      ├── caliber-agents (coordination)
@@ -201,7 +200,7 @@ pub struct AgentHandoff { ... }
 pub struct Conflict { ... }
 ```
 
-### caliber-context: Context Assembly
+### Context module (caliber-core::context)
 
 Inspired by the Context Conveyor pattern — combines all inputs into a single coherent prompt with token budget management.
 

@@ -28,7 +28,7 @@ CALIBER (Context Abstraction Layer Integrating Behavioral Extensible Runtime) wi
 
 #### Acceptance Criteria
 
-1. THE Workspace SHALL contain 8 crates: caliber-core, caliber-storage, caliber-context, caliber-pcp, caliber-llm, caliber-agents, caliber-dsl, caliber-pg
+1. THE Workspace SHALL contain 7 crates: caliber-core, caliber-storage, caliber-pcp, caliber-llm, caliber-agents, caliber-dsl, caliber-pg
 2. WHEN `cargo build --workspace` is run, THE System SHALL compile without errors
 3. THE Workspace SHALL define proper inter-crate dependencies following ECS architecture
 4. THE caliber-pg crate SHALL be the only crate with pgrx runtime dependency
@@ -146,7 +146,7 @@ CALIBER (Context Abstraction Layer Integrating Behavioral Extensible Runtime) wi
 
 ---
 
-### Requirement 9: Context Assembly (caliber-context)
+### Requirement 9: Context Assembly (caliber-core::context)
 
 **User Story:** As an AI agent, I want intelligent context assembly, so that I get relevant information within my token budget.
 

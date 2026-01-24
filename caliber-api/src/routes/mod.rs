@@ -279,7 +279,7 @@ impl SecureRouterBuilder {
             .nest("/graphql", graphql::create_router())
             .nest("/edges", edge::create_router())
             .nest("/summarization-policies", summarization_policy::create_router())
-            // Context assembly (wires caliber-context crate)
+            // Context assembly (caliber-core::context module)
             .nest("/context", context::context_router()))
     }
 

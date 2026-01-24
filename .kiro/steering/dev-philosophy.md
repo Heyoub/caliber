@@ -69,7 +69,7 @@ Before creating any source file, ask:
 ### Reference Documents
 
 All types are pre-defined in:
-- `docs/DEPENDENCY_GRAPH.md` — Complete type system for all 8 crates
+- `docs/DEPENDENCY_GRAPH.md` — Complete type system for all core crates
 - `docs/CALIBER_PCP_SPEC.md` — Core specification
 - `docs/DSL_PARSER.md` — Lexer/parser types
 - `docs/MULTI_AGENT_COORDINATION.md` — Agent types

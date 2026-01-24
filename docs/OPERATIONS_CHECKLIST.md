@@ -19,7 +19,7 @@ and a predictable rollout path.
 - `cargo pgrx init` must run on the deployment host.
 - `cargo pgrx test` is currently blocked by upstream pgrx-tests/PG18 incompatibility.
   - Fallback test lane: run full workspace tests excluding `caliber-pg`.
-  - Extension smoke test: `CREATE EXTENSION caliber; SELECT caliber_init();`
+- Extension smoke test: `CREATE EXTENSION caliber_pg; SELECT caliber_init();`
   - Track upstream fix and re-enable pgrx tests when available.
 
 ## 3) Migrations and Schema
@@ -57,7 +57,7 @@ and a predictable rollout path.
 
 ## 8) Config Profiles and Defaults
 
-- Prefer explicit presets for numeric knobs (see `docs/CONFIG_PRESETS.md`).
+- Prefer explicit presets for numeric knobs and document overrides.
 - Avoid untracked defaults in production; document all overrides.
 
 ## 9) Backup and Recovery

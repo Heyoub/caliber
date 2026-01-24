@@ -48,7 +48,6 @@ Trajectory (task container)
 ### Crate Structure
 - caliber-core: Entity types (data structures)
 - caliber-storage: Storage trait + pgrx implementation
-- caliber-context: Context assembly logic
 - caliber-pcp: Validation, checkpoints, recovery
 - caliber-llm: VAL + summarization traits
 - caliber-agents: Multi-agent coordination
@@ -70,7 +69,7 @@ Trajectory (task container)
 - All features included
 
 ## Key Stats
-- 8 crates in the workspace
+- 10 crates in the workspace
 - 165+ tests
 - 57 property-based tests
 - 0 hard-coded defaults (everything is configurable)

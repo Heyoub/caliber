@@ -15,8 +15,8 @@ Implement a specific CALIBER crate with COMPLETE code.
 
 ### caliber-core
 
-- Entity types only (Trajectory, Scope, Artifact, Note, Turn)
-- No behavior, just data structures
+- Entity types (Trajectory, Scope, Artifact, Note, Turn)
+- Context assembly module (`context.rs`) lives here
 - PostgresType/PostgresEnum derives
 
 ### caliber-storage
@@ -25,11 +25,6 @@ Implement a specific CALIBER crate with COMPLETE code.
 - pgrx implementation with direct heap access
 - Index operations (btree, hnsw, etc.)
 
-### caliber-context
-
-- ContextWindow assembly
-- Section prioritization
-- Token budget management
 
 ### caliber-pcp
 

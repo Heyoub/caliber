@@ -11,33 +11,33 @@
 ```
                     ┌─────────────────┐
                     │  caliber-core   │  (Foundation - NO dependencies)
-                    │  Pure data only │
+                    │  Data + context │
                     └────────┬────────┘
                              │
          ┌───────────────────┼───────────────────┬───────────────────┐
          │                   │                   │                   │
          ▼                   ▼                   ▼                   ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ caliber-storage │ │ caliber-context │ │   caliber-pcp   │ │   caliber-llm   │
-│  Storage trait  │ │ Context assembly│ │   Validation    │ │      VAL        │
+│ caliber-storage │ │   caliber-pcp   │ │   caliber-llm   │ │   caliber-dsl   │
+│  Storage trait  │ │   Validation    │ │      VAL        │ │   (core only)   │
 └────────┬────────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
          │                   │                   │                   │
-         │                   └───────────────────┼───────────────────┘
-         │                                       │
-         ▼                                       ▼
-┌─────────────────┐                    ┌─────────────────┐
-│ caliber-agents  │                    │   caliber-dsl   │
-│  Coordination   │                    │     Parser      │
-│ (core, storage) │                    │   (core only)   │
-└────────┬────────┘                    └────────┬────────┘
-         │                                       │
-         └───────────────────┬───────────────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │   caliber-pg    │  (pgrx extension - wires ALL)
-                    │  Runtime system │
-                    └─────────────────┘
+         └───────────────────┼───────────────────┼───────────────────┘
+                             │                   │
+                             ▼                   │
+                    ┌─────────────────┐          │
+                    │ caliber-agents  │          │
+                    │  Coordination   │          │
+                    │ (core, storage) │          │
+                    └────────┬────────┘          │
+                             │                   │
+                             └───────────────────┘
+                                     │
+                                     ▼
+                            ┌─────────────────┐
+                            │   caliber-pg    │  (pgrx extension - wires ALL)
+                            │  Runtime system │
+                            └─────────────────┘
 ```
 
 ### Dependency Matrix
@@ -46,7 +46,6 @@
 |-----------------|------------------------------------------------|------------------------------------------------|
 | caliber-core    | (none - foundation)                            | ALL other crates                               |
 | caliber-storage | caliber-core                                   | caliber-agents, caliber-pg                     |
-| caliber-context | caliber-core                                   | caliber-pg                                     |
 | caliber-pcp     | caliber-core                                   | caliber-pg                                     |
 | caliber-llm     | caliber-core                                   | caliber-pg                                     |
 | caliber-agents  | caliber-core, caliber-storage                  | caliber-pg                                     |
@@ -220,7 +219,7 @@ pub struct EmbeddingCache { cache: RwLock<HashMap<[u8; 32], EmbeddingVector>>, m
 pub struct CostTracker { embedding_tokens: AtomicI64, completion_input: AtomicI64, completion_output: AtomicI64 }
 ```
 
-### Types Exported from caliber-context (consumed by caliber-pg)
+### Context assembly types (caliber-core::context, consumed by caliber-pg)
 
 ```rust
 pub struct ContextPackage { trajectory_id: EntityId, scope_id: EntityId, user_input: Option<String>, relevant_notes: Vec<Note>, recent_artifacts: Vec<Artifact>, scope_summaries: Vec<ScopeSummary>, session_markers: SessionMarkers, kernel_config: Option<KernelConfig> }
@@ -485,7 +484,6 @@ resolver = "2"
 members = [
     "caliber-core",
     "caliber-storage",
-    "caliber-context",
     "caliber-pcp",
     "caliber-llm",
     "caliber-agents",
@@ -516,7 +514,6 @@ pgrx = "0.16"
 # Internal crates
 caliber-core = { path = "caliber-core" }
 caliber-storage = { path = "caliber-storage" }
-caliber-context = { path = "caliber-context" }
 caliber-pcp = { path = "caliber-pcp" }
 caliber-llm = { path = "caliber-llm" }
 caliber-agents = { path = "caliber-agents" }
@@ -584,25 +581,10 @@ thiserror = { workspace = true }
 proptest = { workspace = true }
 ```
 
-### caliber-context/Cargo.toml
+### Context module (caliber-core::context)
 
-```toml
-[package]
-name = "caliber-context"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-caliber-core = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-
-[dev-dependencies]
-proptest = { workspace = true }
-```
+Context assembly lives inside `caliber-core` as a module; there is no standalone
+context crate in the current workspace.
 
 ### caliber-pcp/Cargo.toml
 
@@ -708,7 +690,6 @@ pg_test = []
 pgrx = { workspace = true }
 caliber-core = { workspace = true }
 caliber-storage = { workspace = true }
-caliber-context = { workspace = true }
 caliber-pcp = { workspace = true }
 caliber-llm = { workspace = true }
 caliber-agents = { workspace = true }

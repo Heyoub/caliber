@@ -16,7 +16,6 @@ body:
       options:
         - caliber-core (Entity types, config)
         - caliber-storage (Storage trait, new backends)
-        - caliber-context (Context assembly, token management)
         - caliber-pcp (Validation, checkpoints, recovery)
         - caliber-llm (VAL, new providers, embeddings)
         - caliber-agents (Locks, messages, coordination)
