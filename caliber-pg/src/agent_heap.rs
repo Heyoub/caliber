@@ -7,7 +7,8 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
+    AgentId, CaliberError, CaliberResult, EntityIdType, EntityType,
+    ScopeId, StorageError, TenantId, TrajectoryId,
 };
 use caliber_agents::{Agent, AgentStatus, MemoryAccess};
 
@@ -31,7 +32,7 @@ use crate::tuple_extract::{
 /// Agent row with tenant ownership metadata.
 pub struct AgentRow {
     pub agent: Agent,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<AgentRow> for Agent {
@@ -42,14 +43,14 @@ impl From<AgentRow> for Agent {
 
 /// Register a new agent by inserting an agent record using direct heap operations.
 pub fn agent_register_heap(
-    agent_id: EntityId,
+    agent_id: AgentId,
     agent_type: &str,
     capabilities: &[String],
     memory_access: &MemoryAccess,
     can_delegate_to: &[String],
-    reports_to: Option<EntityId>,
-    tenant_id: EntityId,
-) -> CaliberResult<EntityId> {
+    reports_to: Option<AgentId>,
+    tenant_id: TenantId,
+) -> CaliberResult<AgentId> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_agent_relation(&rel)?;
 
@@ -71,7 +72,7 @@ pub fn agent_register_heap(
     let mut nulls: [bool; agent::NUM_COLS] = [false; agent::NUM_COLS];
     
     // Set required fields
-    values[agent::AGENT_ID as usize - 1] = uuid_to_datum(agent_id);
+    values[agent::AGENT_ID as usize - 1] = uuid_to_datum(agent_id.as_uuid());
     values[agent::AGENT_TYPE as usize - 1] = string_to_datum(agent_type);
     
     // Set capabilities array
@@ -110,8 +111,8 @@ pub fn agent_register_heap(
     values[agent::LAST_HEARTBEAT as usize - 1] = now_datum;
 
     // Set tenant_id
-    values[agent::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
-    
+    values[agent::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
+
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
     unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
@@ -120,7 +121,7 @@ pub fn agent_register_heap(
 }
 
 /// Get an agent by ID using direct heap operations.
-pub fn agent_get_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<AgentRow>> {
+pub fn agent_get_heap(agent_id: AgentId, tenant_id: TenantId) -> CaliberResult<Option<AgentRow>> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(agent::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -131,15 +132,15 @@ pub fn agent_get_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberResult<
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(agent_id),
+        uuid_to_datum(agent_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -150,26 +151,26 @@ pub fn agent_get_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberResult<
 }
 
 /// Update agent heartbeat timestamp using direct heap operations.
-pub fn agent_heartbeat_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
+pub fn agent_heartbeat_heap(agent_id: AgentId, tenant_id: TenantId) -> CaliberResult<bool> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(agent::PK_INDEX)?;
     let snapshot = get_active_snapshot();
-    
+
     let mut scan_key = pg_sys::ScanKeyData::default();
     init_scan_key(
         &mut scan_key,
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(agent_id),
+        uuid_to_datum(agent_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, agent::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -179,7 +180,7 @@ pub fn agent_heartbeat_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberR
         let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Agent,
-                id: agent_id,
+                id: agent_id.as_uuid(),
                 reason: "Failed to convert timestamp to datum".to_string(),
             }))?;
         
@@ -200,29 +201,29 @@ pub fn agent_heartbeat_heap(agent_id: EntityId, tenant_id: EntityId) -> CaliberR
 
 /// Update agent status using direct heap operations.
 pub fn agent_set_status_heap(
-    agent_id: EntityId,
+    agent_id: AgentId,
     status: AgentStatus,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(agent::PK_INDEX)?;
     let snapshot = get_active_snapshot();
-    
+
     let mut scan_key = pg_sys::ScanKeyData::default();
     init_scan_key(
         &mut scan_key,
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(agent_id),
+        uuid_to_datum(agent_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, agent::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -250,7 +251,7 @@ pub fn agent_set_status_heap(
 }
 
 /// List agents by type using direct heap operations.
-pub fn agent_list_by_type_heap(agent_type: &str, tenant_id: EntityId) -> CaliberResult<Vec<AgentRow>> {
+pub fn agent_list_by_type_heap(agent_type: &str, tenant_id: TenantId) -> CaliberResult<Vec<AgentRow>> {
     let rel = open_relation(agent::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(agent::TYPE_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -271,11 +272,11 @@ pub fn agent_list_by_type_heap(agent_type: &str, tenant_id: EntityId) -> Caliber
     
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_agent(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
-    
+
     Ok(results)
 }
 
@@ -295,9 +296,9 @@ fn validate_agent_relation(rel: &HeapRelation) -> CaliberResult<()> {
 }
 
 /// Build optional UUID datum using proper helper.
-fn build_optional_agent_uuid(reports_to: Option<EntityId>) -> (pg_sys::Datum, bool) {
+fn build_optional_agent_uuid(reports_to: Option<AgentId>) -> (pg_sys::Datum, bool) {
     match reports_to {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     }
 }
@@ -343,13 +344,13 @@ unsafe fn tuple_to_agent(
         }
     };
     
-    let current_trajectory_id = extract_uuid(tuple, tuple_desc, agent::CURRENT_TRAJECTORY_ID)?;
-    let current_scope_id = extract_uuid(tuple, tuple_desc, agent::CURRENT_SCOPE_ID)?;
-    
+    let current_trajectory_id = extract_uuid(tuple, tuple_desc, agent::CURRENT_TRAJECTORY_ID)?.map(TrajectoryId::new);
+    let current_scope_id = extract_uuid(tuple, tuple_desc, agent::CURRENT_SCOPE_ID)?.map(ScopeId::new);
+
     let can_delegate_to = extract_text_array(tuple, tuple_desc, agent::CAN_DELEGATE_TO)?
         .unwrap_or_default();
-    
-    let reports_to = extract_uuid(tuple, tuple_desc, agent::REPORTS_TO)?;
+
+    let reports_to = extract_uuid(tuple, tuple_desc, agent::REPORTS_TO)?.map(AgentId::new);
     
     let created_at_ts = extract_timestamp(tuple, tuple_desc, agent::CREATED_AT)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
@@ -363,8 +364,8 @@ unsafe fn tuple_to_agent(
         }))?;
     let last_heartbeat = timestamp_to_chrono(last_heartbeat_ts);
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, agent::TENANT_ID)?;
-    
+    let tenant_id = extract_uuid(tuple, tuple_desc, agent::TENANT_ID)?.map(TenantId::new);
+
     Ok(AgentRow {
         agent: Agent {
             agent_id,
@@ -397,16 +398,16 @@ mod tests {
     // Test Helpers - Generators for Agent data
     // ========================================================================
 
-    /// Generate a random EntityId
-    fn arb_entity_id() -> impl Strategy<Value = EntityId> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+    /// Generate a random AgentId
+    fn arb_agent_id() -> impl Strategy<Value = AgentId> {
+        any::<[u8; 16]>().prop_map(|bytes| AgentId::new(uuid::Uuid::from_bytes(bytes)))
     }
 
-    /// Generate an optional EntityId
-    fn arb_optional_entity_id() -> impl Strategy<Value = Option<EntityId>> {
+    /// Generate an optional AgentId
+    fn arb_optional_agent_id() -> impl Strategy<Value = Option<AgentId>> {
         prop_oneof![
             1 => Just(None),
-            3 => arb_entity_id().prop_map(Some),
+            3 => arb_agent_id().prop_map(Some),
         ]
     }
 
@@ -502,7 +503,7 @@ mod tests {
                 arb_capabilities(),
                 arb_memory_access(),
                 arb_can_delegate_to(),
-                arb_optional_entity_id(),
+                arb_optional_agent_id(),
             );
 
             runner.run(&strategy, |(
@@ -513,8 +514,8 @@ mod tests {
                 reports_to,
             )| {
                 // Generate a new agent ID
-                let agent_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let agent_id = AgentId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let result = agent_register_heap(
@@ -572,9 +573,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = AgentId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = agent_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent agent should return None");
@@ -603,7 +604,7 @@ mod tests {
                 arb_capabilities(),
                 arb_memory_access(),
                 arb_can_delegate_to(),
-                arb_optional_entity_id(),
+                arb_optional_agent_id(),
             );
 
             runner.run(&strategy, |(
@@ -614,8 +615,8 @@ mod tests {
                 reports_to,
             )| {
                 // Generate a new agent ID
-                let agent_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let agent_id = AgentId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = agent_register_heap(
@@ -678,7 +679,7 @@ mod tests {
                 arb_capabilities(),
                 arb_memory_access(),
                 arb_can_delegate_to(),
-                arb_optional_entity_id(),
+                arb_optional_agent_id(),
                 arb_agent_status(),
             );
 
@@ -691,8 +692,8 @@ mod tests {
                 new_status,
             )| {
                 // Generate a new agent ID
-                let agent_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let agent_id = AgentId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = agent_register_heap(
@@ -745,16 +746,16 @@ mod tests {
             let strategy = (any::<[u8; 16]>(), arb_agent_status());
 
             runner.run(&strategy, |(bytes, status)| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
+                let random_id = AgentId::new(uuid::Uuid::from_bytes(bytes));
+
                 // Try heartbeat
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let heartbeat_result = agent_heartbeat_heap(random_id, tenant_id);
                 prop_assert!(heartbeat_result.is_ok(), "Heartbeat should not error");
                 prop_assert!(!heartbeat_result.unwrap(), "Heartbeat of non-existent agent should return false");
 
                 // Try set status
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let status_result = agent_set_status_heap(random_id, status, tenant_id);
                 prop_assert!(status_result.is_ok(), "Set status should not error");
                 prop_assert!(!status_result.unwrap(), "Set status of non-existent agent should return false");
@@ -781,7 +782,7 @@ mod tests {
                 arb_capabilities(),
                 arb_memory_access(),
                 arb_can_delegate_to(),
-                arb_optional_entity_id(),
+                arb_optional_agent_id(),
             );
 
             runner.run(&strategy, |(
@@ -792,8 +793,8 @@ mod tests {
                 reports_to,
             )| {
                 // Generate a new agent ID
-                let agent_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let agent_id = AgentId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = agent_register_heap(

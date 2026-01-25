@@ -51,7 +51,7 @@ async fn extract_json<T: DeserializeOwned>(
 
 fn request_with_tenant<T>(
     payload: T,
-    tenant_id: caliber_core::EntityId,
+    tenant_id: uuid::Uuid,
 ) -> Result<Request<T>, TestCaseError> {
     let mut request = Request::new(payload);
     let tenant_header = MetadataValue::try_from(tenant_id.to_string())

@@ -25,7 +25,7 @@ use caliber_api::{
         UpdateAgentRequest, UpdateScopeRequest, UpdateTrajectoryRequest,
     },
 };
-use caliber_core::{ArtifactType, EntityId, ExtractionMethod, NoteType, TTL, TrajectoryStatus, TurnRole};
+use caliber_core::{ArtifactType, ExtractionMethod, NoteType, TTL, TrajectoryStatus, TurnRole};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::sync::Arc;
@@ -128,7 +128,7 @@ fn default_memory_access() -> MemoryAccessRequest {
 async fn seed_trajectory(
     db: &DbClient,
     name: &str,
-    tenant_id: EntityId,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::TrajectoryResponse, TestCaseError> {
     let req = CreateTrajectoryRequest {
         name: name.to_string(),
@@ -144,8 +144,8 @@ async fn seed_trajectory(
 
 async fn seed_scope(
     db: &DbClient,
-    trajectory_id: EntityId,
-    tenant_id: EntityId,
+    trajectory_id: Uuid,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::ScopeResponse, TestCaseError> {
     let req = CreateScopeRequest {
         trajectory_id,
@@ -163,7 +163,7 @@ async fn seed_scope(
 async fn seed_agent(
     db: &DbClient,
     agent_type: &str,
-    tenant_id: EntityId,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::AgentResponse, TestCaseError> {
     let req = RegisterAgentRequest {
         agent_type: agent_type.to_string(),
@@ -179,9 +179,9 @@ async fn seed_agent(
 
 async fn seed_lock(
     db: &DbClient,
-    holder_agent_id: EntityId,
-    resource_id: EntityId,
-    tenant_id: EntityId,
+    holder_agent_id: Uuid,
+    resource_id: Uuid,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::LockResponse, TestCaseError> {
     let req = AcquireLockRequest {
         resource_type: "trajectory".to_string(),
@@ -197,11 +197,11 @@ async fn seed_lock(
 
 async fn seed_message(
     db: &DbClient,
-    from_agent_id: EntityId,
-    to_agent_id: EntityId,
-    trajectory_id: Option<EntityId>,
-    scope_id: Option<EntityId>,
-    tenant_id: EntityId,
+    from_agent_id: Uuid,
+    to_agent_id: Uuid,
+    trajectory_id: Option<Uuid>,
+    scope_id: Option<Uuid>,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::MessageResponse, TestCaseError> {
     let req = SendMessageRequest {
         from_agent_id,
@@ -222,11 +222,11 @@ async fn seed_message(
 
 async fn seed_delegation(
     db: &DbClient,
-    from_agent_id: EntityId,
-    to_agent_id: EntityId,
-    trajectory_id: EntityId,
-    scope_id: EntityId,
-    tenant_id: EntityId,
+    from_agent_id: Uuid,
+    to_agent_id: Uuid,
+    trajectory_id: Uuid,
+    scope_id: Uuid,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::DelegationResponse, TestCaseError> {
     let req = CreateDelegationRequest {
         from_agent_id,
@@ -244,11 +244,11 @@ async fn seed_delegation(
 
 async fn seed_handoff(
     db: &DbClient,
-    from_agent_id: EntityId,
-    to_agent_id: EntityId,
-    trajectory_id: EntityId,
-    scope_id: EntityId,
-    tenant_id: EntityId,
+    from_agent_id: Uuid,
+    to_agent_id: Uuid,
+    trajectory_id: Uuid,
+    scope_id: Uuid,
+    tenant_id: Uuid,
 ) -> Result<caliber_api::types::HandoffResponse, TestCaseError> {
     let req = CreateHandoffRequest {
         from_agent_id,
@@ -270,31 +270,31 @@ async fn seed_handoff(
 #[derive(Debug)]
 enum ExpectedEvent {
     TrajectoryCreated,
-    TrajectoryUpdated(EntityId),
-    TrajectoryDeleted(EntityId),
+    TrajectoryUpdated(Uuid),
+    TrajectoryDeleted(Uuid),
     ScopeCreated,
-    ScopeUpdated(EntityId),
-    ScopeClosed(EntityId),
+    ScopeUpdated(Uuid),
+    ScopeClosed(Uuid),
     ArtifactCreated,
     NoteCreated,
     TurnCreated,
     AgentRegistered,
-    AgentStatusChanged(EntityId, String),
-    AgentUnregistered(EntityId),
+    AgentStatusChanged(Uuid, String),
+    AgentUnregistered(Uuid),
     LockAcquired,
-    LockReleased(EntityId),
+    LockReleased(Uuid),
     MessageSent,
-    MessageAcknowledged(EntityId),
+    MessageAcknowledged(Uuid),
     DelegationCreated,
-    DelegationAccepted(EntityId),
-    DelegationCompleted(EntityId),
+    DelegationAccepted(Uuid),
+    DelegationCompleted(Uuid),
     HandoffCreated,
-    HandoffAccepted(EntityId),
-    HandoffCompleted(EntityId),
+    HandoffAccepted(Uuid),
+    HandoffCompleted(Uuid),
 }
 
 fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCaseError> {
-    let nil_id: EntityId = Uuid::nil();
+    let nil_id = Uuid::nil();
 
     match (expected, actual) {
         (ExpectedEvent::TrajectoryCreated, WsEvent::TrajectoryCreated { trajectory }) => {
@@ -629,7 +629,7 @@ proptest! {
                 }
                 MutationCase::LockAcquire => {
                     let agent = seed_agent(&db, "lock-holder", auth.tenant_id).await?;
-                    let resource_id: EntityId = Uuid::now_v7();
+                    let resource_id = Uuid::now_v7();
                     let req = AcquireLockRequest {
                         resource_type: "trajectory".to_string(),
                         resource_id,
@@ -648,7 +648,7 @@ proptest! {
                 }
                 MutationCase::LockRelease => {
                     let agent = seed_agent(&db, "lock-releaser", auth.tenant_id).await?;
-                    let resource_id: EntityId = Uuid::now_v7();
+                    let resource_id = Uuid::now_v7();
                     let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await?;
                     lock::release_lock(
                         State(db.clone()),

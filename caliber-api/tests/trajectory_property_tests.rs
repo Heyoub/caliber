@@ -17,7 +17,7 @@ use caliber_api::{
     db::DbClient,
     types::{CreateTrajectoryRequest, UpdateTrajectoryRequest},
 };
-use caliber_core::{EntityId, TrajectoryStatus};
+use caliber_core::TrajectoryStatus;
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -92,7 +92,7 @@ fn trajectory_status_strategy() -> impl Strategy<Value = TrajectoryStatus> {
 }
 
 /// Strategy for generating optional agent IDs.
-fn optional_agent_id_strategy() -> impl Strategy<Value = Option<EntityId>> {
+fn optional_agent_id_strategy() -> impl Strategy<Value = Option<Uuid>> {
     prop_oneof![
         // No agent
         Just(None),
@@ -102,7 +102,7 @@ fn optional_agent_id_strategy() -> impl Strategy<Value = Option<EntityId>> {
 }
 
 /// Strategy for generating optional parent trajectory IDs.
-fn optional_parent_id_strategy() -> impl Strategy<Value = Option<EntityId>> {
+fn optional_parent_id_strategy() -> impl Strategy<Value = Option<Uuid>> {
     prop_oneof![
         // No parent (root trajectory)
         3 => Just(None),
@@ -204,7 +204,7 @@ proptest! {
             let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created trajectory has an ID
-            let nil_id: EntityId = Uuid::nil();
+            let nil_id = Uuid::nil();
             prop_assert_ne!(created.trajectory_id, nil_id);
 
             // Verify the created trajectory matches the request

@@ -17,7 +17,6 @@ use caliber_api::{
     db::DbClient,
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, UpdateScopeRequest},
 };
-use caliber_core::EntityId;
 use proptest::prelude::*;
 use uuid::Uuid;
 
@@ -37,7 +36,7 @@ fn test_db_client() -> DbClient {
 }
 
 /// Helper to create a test trajectory for scope tests.
-async fn create_test_trajectory(db: &DbClient, tenant_id: EntityId) -> EntityId {
+async fn create_test_trajectory(db: &DbClient, tenant_id: Uuid) -> Uuid {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // Generate a unique name using timestamp
@@ -199,7 +198,7 @@ proptest! {
             let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created scope has an ID
-            let nil_id: EntityId = Uuid::nil();
+            let nil_id = Uuid::nil();
             prop_assert_ne!(created.scope_id, nil_id);
 
             // Verify the created scope matches the request

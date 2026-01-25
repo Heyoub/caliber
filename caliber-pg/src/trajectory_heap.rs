@@ -15,8 +15,8 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
-    Trajectory, TrajectoryOutcome, TrajectoryStatus,
+    AgentId, CaliberError, CaliberResult, EntityIdType, EntityType, StorageError,
+    TenantId, Trajectory, TrajectoryId, TrajectoryOutcome, TrajectoryStatus,
 };
 
 use crate::column_maps::trajectory;
@@ -39,7 +39,7 @@ use crate::tuple_extract::{
 /// Trajectory row with tenant ownership metadata.
 pub struct TrajectoryRow {
     pub trajectory: Trajectory,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<TrajectoryRow> for Trajectory {
@@ -59,19 +59,19 @@ impl From<TrajectoryRow> for Trajectory {
 /// * `agent_id` - Optional agent ID that owns this trajectory
 ///
 /// # Returns
-/// * `Ok(EntityId)` - The trajectory ID on success
+/// * `Ok(TrajectoryId)` - The trajectory ID on success
 /// * `Err(CaliberError)` - On failure
 ///
 /// # Requirements
 /// - 1.1: Uses heap_form_tuple and simple_heap_insert instead of SPI
 /// - 1.6: Updates all relevant indexes via CatalogIndexInsert
 pub fn trajectory_create_heap(
-    trajectory_id: EntityId,
+    trajectory_id: TrajectoryId,
     name: &str,
     description: Option<&str>,
-    agent_id: Option<EntityId>,
-    tenant_id: EntityId,
-) -> CaliberResult<EntityId> {
+    agent_id: Option<AgentId>,
+    tenant_id: TenantId,
+) -> CaliberResult<TrajectoryId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(trajectory::TABLE_NAME, LockMode::RowExclusive)?;
 
@@ -96,7 +96,7 @@ pub fn trajectory_create_heap(
         build_optional_datums(description, agent_id, None, None);
 
     // Column 1: trajectory_id (UUID, NOT NULL)
-    values[trajectory::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id);
+    values[trajectory::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id.as_uuid());
 
     // Column 2: name (TEXT, NOT NULL)
     values[trajectory::NAME as usize - 1] = string_to_datum(name);
@@ -136,7 +136,7 @@ pub fn trajectory_create_heap(
     nulls[trajectory::METADATA as usize - 1] = metadata_null;
 
     // Column 13: tenant_id (UUID, NOT NULL)
-    values[trajectory::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[trajectory::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
     
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -166,7 +166,7 @@ pub fn trajectory_create_heap(
 /// # Requirements
 /// - 1.2: Uses index_beginscan for O(log n) lookup instead of SPI SELECT
 /// - 1.7: Returns None without SQL error overhead if not found
-pub fn trajectory_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<TrajectoryRow>> {
+pub fn trajectory_get_heap(id: TrajectoryId, tenant_id: TenantId) -> CaliberResult<Option<TrajectoryRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(trajectory::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -183,7 +183,7 @@ pub fn trajectory_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<O
         1, // First column of index (trajectory_id)
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
     
     // Create index scanner
@@ -199,7 +199,7 @@ pub fn trajectory_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<O
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_trajectory(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -231,14 +231,14 @@ pub fn trajectory_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<O
 /// # Requirements
 /// - 1.3: Uses simple_heap_update instead of SPI UPDATE
 pub struct TrajectoryUpdateHeapParams<'a> {
-    pub id: EntityId,
-    pub tenant_id: EntityId,
+    pub id: TrajectoryId,
+    pub tenant_id: TenantId,
     pub name: Option<&'a str>,
     pub description: Option<Option<&'a str>>,
     pub status: Option<TrajectoryStatus>,
-    pub parent_trajectory_id: Option<Option<EntityId>>,
-    pub root_trajectory_id: Option<Option<EntityId>>,
-    pub agent_id: Option<Option<EntityId>>,
+    pub parent_trajectory_id: Option<Option<TrajectoryId>>,
+    pub root_trajectory_id: Option<Option<TrajectoryId>>,
+    pub agent_id: Option<Option<AgentId>>,
     pub outcome: Option<Option<&'a TrajectoryOutcome>>,
     pub metadata: Option<Option<&'a serde_json::Value>>,
 }
@@ -272,7 +272,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
     
     // Create index scanner
@@ -299,7 +299,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
     
     let tuple_desc = rel.tuple_desc();
     let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, trajectory::TENANT_ID)? };
-    if existing_tenant != Some(tenant_id) {
+    if existing_tenant != Some(tenant_id.as_uuid()) {
         return Ok(false);
     }
     
@@ -444,9 +444,9 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
 /// # Requirements
 /// - 1.4: Uses simple_heap_update instead of SPI UPDATE
 pub fn trajectory_set_status_heap(
-    id: EntityId,
+    id: TrajectoryId,
     status: TrajectoryStatus,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     trajectory_update_heap(TrajectoryUpdateHeapParams {
         id,
@@ -475,7 +475,7 @@ pub fn trajectory_set_status_heap(
 /// - 1.5: Uses heap_beginscan with index for filtering instead of SPI SELECT
 pub fn trajectory_list_by_status_heap(
     status: TrajectoryStatus,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<Vec<TrajectoryRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(trajectory::TABLE_NAME, LockMode::AccessShare)?;
@@ -511,7 +511,7 @@ pub fn trajectory_list_by_status_heap(
     // Collect all matching tuples
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_trajectory(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
@@ -544,7 +544,7 @@ fn validate_trajectory_relation(rel: &HeapRelation) -> CaliberResult<()> {
 /// for proper NULL handling in PostgreSQL.
 fn build_optional_datums(
     description: Option<&str>,
-    agent_id: Option<EntityId>,
+    agent_id: Option<AgentId>,
     outcome: Option<&serde_json::Value>,
     metadata: Option<&serde_json::Value>,
 ) -> (pg_sys::Datum, pg_sys::Datum, pg_sys::Datum, pg_sys::Datum, bool, bool, bool, bool) {
@@ -555,7 +555,7 @@ fn build_optional_datums(
     };
 
     let (agent_datum, agent_null) = if let Some(a) = agent_id {
-        (option_uuid_to_datum(Some(a)), false)
+        (option_uuid_to_datum(Some(a.as_uuid())), false)
     } else {
         (pg_sys::Datum::from(0), true)
     };
@@ -648,8 +648,8 @@ unsafe fn tuple_to_trajectory(
         .and_then(|j| serde_json::from_value(j).ok());
     
     let metadata = extract_jsonb(tuple, tuple_desc, trajectory::METADATA)?;
-    let tenant_id = extract_uuid(tuple, tuple_desc, trajectory::TENANT_ID)?;
-    
+    let tenant_id = extract_uuid(tuple, tuple_desc, trajectory::TENANT_ID)?.map(TenantId::new);
+
     Ok(TrajectoryRow {
         trajectory: Trajectory {
             trajectory_id,
@@ -698,10 +698,10 @@ mod tests {
     }
 
     /// Generate an optional agent ID
-    fn arb_agent_id() -> impl Strategy<Value = Option<EntityId>> {
+    fn arb_agent_id() -> impl Strategy<Value = Option<AgentId>> {
         prop_oneof![
             Just(None),
-            any::<[u8; 16]>().prop_map(|bytes| Some(uuid::Uuid::from_bytes(bytes))),
+            any::<[u8; 16]>().prop_map(|bytes| Some(AgentId::new(uuid::Uuid::from_bytes(bytes)))),
         ]
     }
 
@@ -756,8 +756,8 @@ mod tests {
 
             runner.run(&strategy, |(name, description, agent_id)| {
                 // Generate a new trajectory ID
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let result = trajectory_create_heap(
@@ -791,7 +791,7 @@ mod tests {
                 prop_assert!(t.completed_at.is_none());
                 prop_assert!(t.outcome.is_none());
                 prop_assert!(t.metadata.is_none());
-                prop_assert_eq!(row.tenant_id, Some(tenant_id));
+                prop_assert_eq!(row.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
 
                 Ok(())
             }).unwrap();
@@ -813,7 +813,7 @@ mod tests {
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let result = trajectory_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent trajectory should return None");
@@ -855,8 +855,8 @@ mod tests {
 
             runner.run(&strategy, |(name, new_status)| {
                 // Create a trajectory first
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let create_result = trajectory_create_heap(
                     trajectory_id,
                     &name,
@@ -881,7 +881,7 @@ mod tests {
                 let row = trajectory.unwrap();
                 let t = row.trajectory;
                 prop_assert_eq!(t.status, new_status, "Status should be updated");
-                prop_assert_eq!(row.tenant_id, Some(tenant_id));
+                prop_assert_eq!(row.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
 
                 // If status is completed or failed, completed_at should be set
                 if new_status == TrajectoryStatus::Completed || new_status == TrajectoryStatus::Failed {
@@ -910,7 +910,7 @@ mod tests {
             runner.run(&strategy, |(bytes, status)| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
                 
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let result = trajectory_set_status_heap(random_id, status, tenant_id);
                 prop_assert!(result.is_ok(), "Update should not error");
                 prop_assert!(!result.unwrap(), "Update of non-existent trajectory should return false");
@@ -941,8 +941,8 @@ mod tests {
 
             runner.run(&strategy, |(original_name, new_name, new_desc, new_status)| {
                 // Create a trajectory first
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let create_result = trajectory_create_heap(
                     trajectory_id,
                     &original_name,
@@ -977,7 +977,7 @@ mod tests {
                 prop_assert_eq!(t.name, new_name);
                 prop_assert_eq!(t.description, new_desc);
                 prop_assert_eq!(t.status, new_status);
-                prop_assert_eq!(row.tenant_id, Some(tenant_id));
+                prop_assert_eq!(row.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
 
                 Ok(())
             }).unwrap();

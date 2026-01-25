@@ -17,8 +17,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, Edge, EdgeParticipant, EdgeType, EntityId,
-    EntityType, ExtractionMethod, Provenance, StorageError,
+    CaliberError, CaliberResult, Edge, EdgeId, EdgeParticipant, EdgeType,
+    EntityIdType, EntityType, ExtractionMethod, Provenance, StorageError,
+    TenantId, TrajectoryId,
 };
 
 use crate::column_maps::edge;
@@ -39,7 +40,7 @@ use crate::tuple_extract::{
 /// Edge row with tenant ownership metadata.
 pub struct EdgeRow {
     pub edge: Edge,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<EdgeRow> for Edge {
@@ -54,9 +55,9 @@ impl From<EdgeRow> for Edge {
 /// * `edge` - The Edge entity to insert
 ///
 /// # Returns
-/// * `Ok(EntityId)` - The edge ID on success
+/// * `Ok(EdgeId)` - The edge ID on success
 /// * `Err(CaliberError)` - On failure
-pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<EntityId> {
+pub fn edge_create_heap(edge: &Edge, tenant_id: TenantId) -> CaliberResult<EdgeId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(edge::TABLE_NAME, LockMode::RowExclusive)?;
     validate_edge_relation(&rel)?;
@@ -74,7 +75,7 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<Entit
     let mut nulls: [bool; edge::NUM_COLS] = [false; edge::NUM_COLS];
 
     // Column 1: edge_id (UUID, NOT NULL)
-    values[edge::EDGE_ID as usize - 1] = uuid_to_datum(edge.edge_id);
+    values[edge::EDGE_ID as usize - 1] = uuid_to_datum(edge.edge_id.as_uuid());
 
     // Column 2: edge_type (TEXT, NOT NULL)
     values[edge::EDGE_TYPE as usize - 1] = string_to_datum(edge_type_to_str(edge.edge_type));
@@ -96,7 +97,7 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<Entit
 
     // Column 5: trajectory_id (UUID, nullable)
     if let Some(traj_id) = edge.trajectory_id {
-        values[edge::TRAJECTORY_ID as usize - 1] = uuid_to_datum(traj_id);
+        values[edge::TRAJECTORY_ID as usize - 1] = uuid_to_datum(traj_id.as_uuid());
     } else {
         nulls[edge::TRAJECTORY_ID as usize - 1] = true;
     }
@@ -127,7 +128,7 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<Entit
     }
 
     // Column 11: tenant_id (UUID, NOT NULL)
-    values[edge::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[edge::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
 
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -150,7 +151,7 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: EntityId) -> CaliberResult<Entit
 /// * `Ok(Some(Edge))` - The edge if found
 /// * `Ok(None)` - If no edge with that ID exists
 /// * `Err(CaliberError)` - On failure
-pub fn edge_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<EdgeRow>> {
+pub fn edge_get_heap(id: EdgeId, tenant_id: TenantId) -> CaliberResult<Option<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
 
@@ -167,7 +168,7 @@ pub fn edge_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<
         1, // First column of index (edge_id)
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
 
     // Create index scanner
@@ -183,7 +184,7 @@ pub fn edge_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -201,7 +202,7 @@ pub fn edge_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<
 /// # Returns
 /// * `Ok(Vec<Edge>)` - List of matching edges
 /// * `Err(CaliberError)` - On failure
-pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: EntityId) -> CaliberResult<Vec<EdgeRow>> {
+pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: TenantId) -> CaliberResult<Vec<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
 
@@ -236,7 +237,7 @@ pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: EntityId) -> Cali
     // Collect all matching tuples
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
@@ -253,8 +254,8 @@ pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: EntityId) -> Cali
 /// * `Ok(Vec<Edge>)` - List of matching edges
 /// * `Err(CaliberError)` - On failure
 pub fn edge_query_by_trajectory_heap(
-    trajectory_id: EntityId,
-    tenant_id: EntityId,
+    trajectory_id: TrajectoryId,
+    tenant_id: TenantId,
 ) -> CaliberResult<Vec<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
@@ -272,7 +273,7 @@ pub fn edge_query_by_trajectory_heap(
         1, // First column of index (trajectory_id)
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(trajectory_id),
+        uuid_to_datum(trajectory_id.as_uuid()),
     );
 
     // Create index scanner
@@ -290,7 +291,7 @@ pub fn edge_query_by_trajectory_heap(
     // Collect all matching tuples
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_edge(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
@@ -405,7 +406,7 @@ unsafe fn tuple_to_edge(
 
     let weight = extract_float4(tuple, tuple_desc, edge::WEIGHT)?;
 
-    let trajectory_id = extract_uuid(tuple, tuple_desc, edge::TRAJECTORY_ID)?;
+    let trajectory_id = extract_uuid(tuple, tuple_desc, edge::TRAJECTORY_ID)?.map(TrajectoryId::new);
 
     // Build provenance from individual columns
     let source_turn = extract_i32(tuple, tuple_desc, edge::SOURCE_TURN)?
@@ -435,7 +436,7 @@ unsafe fn tuple_to_edge(
 
     let metadata = extract_jsonb(tuple, tuple_desc, edge::METADATA)?;
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, edge::TENANT_ID)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, edge::TENANT_ID)?.map(TenantId::new);
 
     Ok(EdgeRow {
         edge: Edge {
@@ -565,21 +566,21 @@ mod tests {
             );
 
             runner.run(&strategy, |(edge_type, provenance, weight)| {
-                let edge_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let edge_id = EdgeId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Create two participants for a binary edge
                 let participant_a = EdgeParticipant {
                     entity_ref: EntityRef {
                         entity_type: EntityType::Note,
-                        id: caliber_core::new_entity_id(),
+                        id: caliber_core::NoteId::now_v7().as_uuid(),
                     },
                     role: Some("source".to_string()),
                 };
                 let participant_b = EdgeParticipant {
                     entity_ref: EntityRef {
                         entity_type: EntityType::Note,
-                        id: caliber_core::new_entity_id(),
+                        id: caliber_core::NoteId::now_v7().as_uuid(),
                     },
                     role: Some("target".to_string()),
                 };
@@ -632,9 +633,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
+                let random_id = EdgeId::new(uuid::Uuid::from_bytes(bytes));
 
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let result = edge_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent edge should return None");

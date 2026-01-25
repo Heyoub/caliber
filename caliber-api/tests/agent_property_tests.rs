@@ -19,7 +19,6 @@ use caliber_api::{
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, UpdateAgentRequest,
     },
 };
-use caliber_core::EntityId;
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -127,7 +126,7 @@ fn delegation_targets_strategy() -> impl Strategy<Value = Vec<String>> {
 }
 
 /// Strategy for generating optional supervisor agent ID.
-fn optional_supervisor_strategy() -> impl Strategy<Value = Option<EntityId>> {
+fn optional_supervisor_strategy() -> impl Strategy<Value = Option<Uuid>> {
     prop_oneof![
         // No supervisor
         3 => Just(None),
@@ -234,7 +233,7 @@ proptest! {
             let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Verify the registered agent has an ID
-            let nil_id: EntityId = Uuid::nil();
+            let nil_id = Uuid::nil();
             prop_assert_ne!(registered.agent_id, nil_id);
 
             // Verify the registered agent matches the request

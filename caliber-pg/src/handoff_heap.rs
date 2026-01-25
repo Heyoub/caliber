@@ -7,7 +7,8 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
+    AgentId, ArtifactId, CaliberError, CaliberResult, EntityIdType, EntityType,
+    HandoffId, ScopeId, StorageError, TenantId, TrajectoryId,
 };
 use caliber_agents::{AgentHandoff, HandoffStatus, HandoffReason};
 
@@ -30,7 +31,7 @@ use crate::tuple_extract::{
 /// Handoff row with tenant ownership metadata.
 pub struct HandoffRow {
     pub handoff: AgentHandoff,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<HandoffRow> for AgentHandoff {
@@ -41,22 +42,22 @@ impl From<HandoffRow> for AgentHandoff {
 
 /// Create a new handoff by inserting a handoff record using direct heap operations.
 pub struct HandoffCreateParams<'a> {
-    pub handoff_id: EntityId,
-    pub from_agent_id: EntityId,
-    pub to_agent_id: Option<EntityId>,
+    pub handoff_id: HandoffId,
+    pub from_agent_id: AgentId,
+    pub to_agent_id: Option<AgentId>,
     pub to_agent_type: Option<&'a str>,
-    pub trajectory_id: EntityId,
-    pub scope_id: EntityId,
-    pub context_snapshot_id: EntityId,
+    pub trajectory_id: TrajectoryId,
+    pub scope_id: ScopeId,
+    pub context_snapshot_id: ArtifactId,
     pub handoff_notes: &'a str,
     pub next_steps: &'a [String],
     pub blockers: &'a [String],
     pub open_questions: &'a [String],
     pub reason: HandoffReason,
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
 }
 
-pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<EntityId> {
+pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<HandoffId> {
     let HandoffCreateParams {
         handoff_id,
         from_agent_id,
@@ -86,29 +87,29 @@ pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<Ent
     let mut nulls: [bool; handoff::NUM_COLS] = [false; handoff::NUM_COLS];
     
     // Set required fields
-    values[handoff::HANDOFF_ID as usize - 1] = uuid_to_datum(handoff_id);
-    values[handoff::FROM_AGENT_ID as usize - 1] = uuid_to_datum(from_agent_id);
-    
+    values[handoff::HANDOFF_ID as usize - 1] = uuid_to_datum(handoff_id.as_uuid());
+    values[handoff::FROM_AGENT_ID as usize - 1] = uuid_to_datum(from_agent_id.as_uuid());
+
     // Set optional to_agent_id
     if let Some(to_id) = to_agent_id {
-        values[handoff::TO_AGENT_ID as usize - 1] = uuid_to_datum(to_id);
+        values[handoff::TO_AGENT_ID as usize - 1] = uuid_to_datum(to_id.as_uuid());
     } else {
         nulls[handoff::TO_AGENT_ID as usize - 1] = true;
     }
-    
+
     // Set optional to_agent_type
     if let Some(to_type) = to_agent_type {
         values[handoff::TO_AGENT_TYPE as usize - 1] = string_to_datum(to_type);
     } else {
         nulls[handoff::TO_AGENT_TYPE as usize - 1] = true;
     }
-    
+
     // Set trajectory_id and scope_id
-    values[handoff::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id);
-    values[handoff::SCOPE_ID as usize - 1] = uuid_to_datum(scope_id);
-    
+    values[handoff::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id.as_uuid());
+    values[handoff::SCOPE_ID as usize - 1] = uuid_to_datum(scope_id.as_uuid());
+
     // Set context_snapshot_id
-    values[handoff::CONTEXT_SNAPSHOT_ID as usize - 1] = uuid_to_datum(context_snapshot_id);
+    values[handoff::CONTEXT_SNAPSHOT_ID as usize - 1] = uuid_to_datum(context_snapshot_id.as_uuid());
     
     // Set handoff_notes
     values[handoff::HANDOFF_NOTES as usize - 1] = string_to_datum(handoff_notes);
@@ -154,7 +155,7 @@ pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<Ent
     };
     values[handoff::REASON as usize - 1] = string_to_datum(reason_str);
 
-    values[handoff::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[handoff::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -164,7 +165,7 @@ pub fn handoff_create_heap(params: HandoffCreateParams<'_>) -> CaliberResult<Ent
 }
 
 /// Get a handoff by ID using direct heap operations.
-pub fn handoff_get_heap(handoff_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<HandoffRow>> {
+pub fn handoff_get_heap(handoff_id: HandoffId, tenant_id: TenantId) -> CaliberResult<Option<HandoffRow>> {
     let rel = open_relation(handoff::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(handoff::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -175,15 +176,15 @@ pub fn handoff_get_heap(handoff_id: EntityId, tenant_id: EntityId) -> CaliberRes
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(handoff_id),
+        uuid_to_datum(handoff_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_handoff(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -200,9 +201,9 @@ pub fn handoff_get_heap(handoff_id: EntityId, tenant_id: EntityId) -> CaliberRes
 /// - The acceptance timestamp
 /// - Status change to "accepted"
 pub fn handoff_accept_heap(
-    handoff_id: EntityId,
-    accepting_agent_id: EntityId,
-    tenant_id: EntityId,
+    handoff_id: HandoffId,
+    accepting_agent_id: AgentId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(handoff::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(handoff::PK_INDEX)?;
@@ -214,7 +215,7 @@ pub fn handoff_accept_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(handoff_id),
+        uuid_to_datum(handoff_id.as_uuid()),
     );
 
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
@@ -222,13 +223,13 @@ pub fn handoff_accept_heap(
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, handoff::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
         // Update to_agent_id - the agent accepting the handoff
-        values[handoff::TO_AGENT_ID as usize - 1] = uuid_to_datum(accepting_agent_id);
+        values[handoff::TO_AGENT_ID as usize - 1] = uuid_to_datum(accepting_agent_id.as_uuid());
         nulls[handoff::TO_AGENT_ID as usize - 1] = false;
 
         // Update status to "accepted"
@@ -239,7 +240,7 @@ pub fn handoff_accept_heap(
         let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Handoff,
-                id: handoff_id,
+                id: handoff_id.as_uuid(),
                 reason: "Failed to convert timestamp to datum".to_string(),
             }))?;
 
@@ -260,7 +261,7 @@ pub fn handoff_accept_heap(
 }
 
 /// Complete a handoff by updating status and completed_at using direct heap operations.
-pub fn handoff_complete_heap(handoff_id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
+pub fn handoff_complete_heap(handoff_id: HandoffId, tenant_id: TenantId) -> CaliberResult<bool> {
     let rel = open_relation(handoff::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(handoff::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -271,15 +272,15 @@ pub fn handoff_complete_heap(handoff_id: EntityId, tenant_id: EntityId) -> Calib
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(handoff_id),
+        uuid_to_datum(handoff_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, handoff::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -292,7 +293,7 @@ pub fn handoff_complete_heap(handoff_id: EntityId, tenant_id: EntityId) -> Calib
         let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Handoff,
-                id: handoff_id,
+                id: handoff_id.as_uuid(),
                 reason: "Failed to convert timestamp to datum".to_string(),
             }))?;
         
@@ -341,7 +342,7 @@ unsafe fn tuple_to_handoff(
             reason: "from_agent_id is NULL".to_string(),
         }))?;
     
-    let to_agent_id = extract_uuid(tuple, tuple_desc, handoff::TO_AGENT_ID)?;
+    let to_agent_id = extract_uuid(tuple, tuple_desc, handoff::TO_AGENT_ID)?.map(AgentId::new);
     let to_agent_type = extract_text(tuple, tuple_desc, handoff::TO_AGENT_TYPE)?;
     
     let trajectory_id = extract_uuid(tuple, tuple_desc, handoff::TRAJECTORY_ID)?
@@ -418,17 +419,17 @@ unsafe fn tuple_to_handoff(
         }
     };
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, handoff::TENANT_ID)?;
-    
+    let tenant_id = extract_uuid(tuple, tuple_desc, handoff::TENANT_ID)?.map(TenantId::new);
+
     Ok(HandoffRow {
         handoff: AgentHandoff {
-            handoff_id,
-            from_agent_id,
+            handoff_id: HandoffId::new(handoff_id),
+            from_agent_id: AgentId::new(from_agent_id),
             to_agent_id,
             to_agent_type,
-            trajectory_id,
-            scope_id,
-            context_snapshot_id,
+            trajectory_id: TrajectoryId::new(trajectory_id),
+            scope_id: ScopeId::new(scope_id),
+            context_snapshot_id: ArtifactId::new(context_snapshot_id),
             handoff_notes,
             next_steps,
             blockers,
@@ -456,16 +457,16 @@ mod tests {
     // Test Helpers - Generators for Handoff data
     // ========================================================================
 
-    /// Generate a random EntityId
-    fn arb_entity_id() -> impl Strategy<Value = EntityId> {
+    /// Generate a random UUID
+    fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
         any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
     }
 
-    /// Generate an optional EntityId
-    fn arb_optional_entity_id() -> impl Strategy<Value = Option<EntityId>> {
+    /// Generate an optional AgentId
+    fn arb_optional_agent_id() -> impl Strategy<Value = Option<AgentId>> {
         prop_oneof![
             1 => Just(None),
-            3 => arb_entity_id().prop_map(Some),
+            3 => arb_uuid().prop_map(|id| Some(AgentId::new(id))),
         ]
     }
 
@@ -570,18 +571,17 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_uuid(),
+                arb_optional_agent_id(),
                 arb_optional_agent_type(),
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_handoff_notes(),
                 arb_next_steps(),
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
-                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -596,10 +596,14 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
-                tenant_id,
             )| {
                 // Generate a new handoff ID
-                let handoff_id = caliber_core::new_entity_id();
+                let handoff_id = HandoffId::now_v7();
+                let from_agent_id = AgentId::new(from_agent_id);
+                let trajectory_id = TrajectoryId::new(trajectory_id);
+                let scope_id = ScopeId::new(scope_id);
+                let context_snapshot_id = ArtifactId::new(context_snapshot_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let result = handoff_create_heap(HandoffCreateParams {
@@ -630,13 +634,13 @@ mod tests {
                 let h = handoff.unwrap().handoff;
                 
                 // Verify round-trip preserves data
-                prop_assert_eq!(h.handoff_id, handoff_id);
-                prop_assert_eq!(h.from_agent_id, from_agent_id);
-                prop_assert_eq!(h.to_agent_id, to_agent_id);
+                prop_assert_eq!(h.handoff_id.as_uuid(), handoff_id.as_uuid());
+                prop_assert_eq!(h.from_agent_id.as_uuid(), from_agent_id.as_uuid());
+                prop_assert_eq!(h.to_agent_id.map(|a| a.as_uuid()), to_agent_id.map(|a| a.as_uuid()));
                 prop_assert_eq!(h.to_agent_type, to_agent_type);
-                prop_assert_eq!(h.trajectory_id, trajectory_id);
-                prop_assert_eq!(h.scope_id, scope_id);
-                prop_assert_eq!(h.context_snapshot_id, context_snapshot_id);
+                prop_assert_eq!(h.trajectory_id.as_uuid(), trajectory_id.as_uuid());
+                prop_assert_eq!(h.scope_id.as_uuid(), scope_id.as_uuid());
+                prop_assert_eq!(h.context_snapshot_id.as_uuid(), context_snapshot_id.as_uuid());
                 prop_assert_eq!(h.handoff_notes, handoff_notes);
                 prop_assert_eq!(h.next_steps, next_steps);
                 prop_assert_eq!(h.blockers, blockers);
@@ -667,9 +671,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = HandoffId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = handoff_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent handoff should return None");
@@ -692,18 +696,17 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_uuid(),
+                arb_optional_agent_id(),
                 arb_optional_agent_type(),
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_handoff_notes(),
                 arb_next_steps(),
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
-                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -718,10 +721,14 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
-                tenant_id,
             )| {
                 // Generate a new handoff ID
-                let handoff_id = caliber_core::new_entity_id();
+                let handoff_id = HandoffId::now_v7();
+                let from_agent_id = AgentId::new(from_agent_id);
+                let trajectory_id = TrajectoryId::new(trajectory_id);
+                let scope_id = ScopeId::new(scope_id);
+                let context_snapshot_id = ArtifactId::new(context_snapshot_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = handoff_create_heap(HandoffCreateParams {
@@ -749,7 +756,7 @@ mod tests {
                 prop_assert!(handoff_before.accepted_at.is_none(), "accepted_at should be None before accept");
 
                 // Generate accepting agent ID
-                let accepting_agent = caliber_core::new_entity_id();
+                let accepting_agent = AgentId::now_v7();
 
                 // Accept the handoff with accepting agent
                 let accept_result = handoff_accept_heap(handoff_id, accepting_agent, tenant_id);
@@ -763,7 +770,7 @@ mod tests {
                 prop_assert_eq!(handoff_after.status, HandoffStatus::Accepted, "Status should be Accepted");
                 prop_assert!(handoff_after.accepted_at.is_some(), "accepted_at should be set after accept");
                 prop_assert!(handoff_after.accepted_at.unwrap() <= chrono::Utc::now(), "accepted_at should be <= now");
-                prop_assert_eq!(handoff_after.to_agent_id, Some(accepting_agent), "to_agent_id should be set to accepting agent");
+                prop_assert_eq!(handoff_after.to_agent_id.map(|a| a.as_uuid()), Some(accepting_agent.as_uuid()), "to_agent_id should be set to accepting agent");
 
                 Ok(())
             }).unwrap();
@@ -783,18 +790,17 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_uuid(),
+                arb_optional_agent_id(),
                 arb_optional_agent_type(),
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_handoff_notes(),
                 arb_next_steps(),
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
-                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -809,10 +815,14 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
-                tenant_id,
             )| {
                 // Generate a new handoff ID
-                let handoff_id = caliber_core::new_entity_id();
+                let handoff_id = HandoffId::now_v7();
+                let from_agent_id = AgentId::new(from_agent_id);
+                let trajectory_id = TrajectoryId::new(trajectory_id);
+                let scope_id = ScopeId::new(scope_id);
+                let context_snapshot_id = ArtifactId::new(context_snapshot_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = handoff_create_heap(HandoffCreateParams {
@@ -870,17 +880,17 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&(any::<[u8; 16]>(), any::<[u8; 16]>()), |(bytes, agent_bytes)| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                let random_agent_id = uuid::Uuid::from_bytes(agent_bytes);
+                let random_id = HandoffId::new(uuid::Uuid::from_bytes(bytes));
+                let random_agent_id = AgentId::new(uuid::Uuid::from_bytes(agent_bytes));
 
                 // Try accept with random accepting agent
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let accept_result = handoff_accept_heap(random_id, random_agent_id, tenant_id);
                 prop_assert!(accept_result.is_ok(), "Accept should not error");
                 prop_assert!(!accept_result.unwrap(), "Accept of non-existent handoff should return false");
 
                 // Try complete
-                let tenant_id = caliber_core::new_entity_id();
+                let tenant_id = TenantId::now_v7();
                 let complete_result = handoff_complete_heap(random_id, tenant_id);
                 prop_assert!(complete_result.is_ok(), "Complete should not error");
                 prop_assert!(!complete_result.unwrap(), "Complete of non-existent handoff should return false");
@@ -903,18 +913,17 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_entity_id(), // to_agent_id (always Some)
+                arb_uuid(),
+                arb_uuid(), // to_agent_id (always Some)
                 arb_optional_agent_type(),
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_handoff_notes(),
                 arb_next_steps(),
                 arb_blockers(),
                 arb_open_questions(),
                 arb_handoff_reason(),
-                arb_entity_id(), // tenant_id
             );
 
             runner.run(&strategy, |(
@@ -929,10 +938,15 @@ mod tests {
                 blockers,
                 open_questions,
                 reason,
-                tenant_id,
             )| {
                 // Generate a new handoff ID
-                let handoff_id = caliber_core::new_entity_id();
+                let handoff_id = HandoffId::now_v7();
+                let from_agent_id = AgentId::new(from_agent_id);
+                let to_agent_id = AgentId::new(to_agent_id);
+                let trajectory_id = TrajectoryId::new(trajectory_id);
+                let scope_id = ScopeId::new(scope_id);
+                let context_snapshot_id = ArtifactId::new(context_snapshot_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert with all fields populated
                 let result = handoff_create_heap(HandoffCreateParams {
@@ -959,13 +973,13 @@ mod tests {
                 let h = get_result.unwrap().unwrap().handoff;
                 
                 // Verify all fields are preserved
-                prop_assert_eq!(h.handoff_id, handoff_id);
-                prop_assert_eq!(h.from_agent_id, from_agent_id);
-                prop_assert_eq!(h.to_agent_id, Some(to_agent_id));
+                prop_assert_eq!(h.handoff_id.as_uuid(), handoff_id.as_uuid());
+                prop_assert_eq!(h.from_agent_id.as_uuid(), from_agent_id.as_uuid());
+                prop_assert_eq!(h.to_agent_id.map(|a| a.as_uuid()), Some(to_agent_id.as_uuid()));
                 prop_assert_eq!(h.to_agent_type, to_agent_type);
-                prop_assert_eq!(h.trajectory_id, trajectory_id);
-                prop_assert_eq!(h.scope_id, scope_id);
-                prop_assert_eq!(h.context_snapshot_id, context_snapshot_id);
+                prop_assert_eq!(h.trajectory_id.as_uuid(), trajectory_id.as_uuid());
+                prop_assert_eq!(h.scope_id.as_uuid(), scope_id.as_uuid());
+                prop_assert_eq!(h.context_snapshot_id.as_uuid(), context_snapshot_id.as_uuid());
                 prop_assert_eq!(h.handoff_notes, handoff_notes);
                 prop_assert_eq!(h.next_steps, next_steps);
                 prop_assert_eq!(h.blockers, blockers);

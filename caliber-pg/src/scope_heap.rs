@@ -15,8 +15,8 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, Checkpoint, EntityId, EntityType, 
-    Scope, StorageError,
+    CaliberError, CaliberResult, Checkpoint, EntityIdType, EntityType,
+    Scope, ScopeId, StorageError, TenantId, TrajectoryId,
 };
 
 use crate::column_maps::scope;
@@ -39,7 +39,7 @@ use crate::tuple_extract::{
 /// Scope row with tenant ownership metadata.
 pub struct ScopeRow {
     pub scope: Scope,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<ScopeRow> for Scope {
@@ -60,20 +60,20 @@ impl From<ScopeRow> for Scope {
 /// * `token_budget` - Token budget for this scope
 ///
 /// # Returns
-/// * `Ok(EntityId)` - The scope ID on success
+/// * `Ok(ScopeId)` - The scope ID on success
 /// * `Err(CaliberError)` - On failure
 ///
 /// # Requirements
 /// - 2.1: Uses heap_form_tuple and simple_heap_insert instead of SPI
 /// - 2.6: Updates all relevant indexes via CatalogIndexInsert
 pub fn scope_create_heap(
-    scope_id: EntityId,
-    trajectory_id: EntityId,
+    scope_id: ScopeId,
+    trajectory_id: TrajectoryId,
     name: &str,
     purpose: Option<&str>,
     token_budget: i32,
-    tenant_id: EntityId,
-) -> CaliberResult<EntityId> {
+    tenant_id: TenantId,
+) -> CaliberResult<ScopeId> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
 
@@ -93,10 +93,10 @@ pub fn scope_create_heap(
     let mut nulls: [bool; scope::NUM_COLS] = [false; scope::NUM_COLS];
     
     // Column 1: scope_id (UUID, NOT NULL)
-    values[scope::SCOPE_ID as usize - 1] = uuid_to_datum(scope_id);
-    
+    values[scope::SCOPE_ID as usize - 1] = uuid_to_datum(scope_id.as_uuid());
+
     // Column 2: trajectory_id (UUID, NOT NULL)
-    values[scope::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id);
+    values[scope::TRAJECTORY_ID as usize - 1] = uuid_to_datum(trajectory_id.as_uuid());
     
     // Column 3: parent_scope_id (UUID, nullable)
     nulls[scope::PARENT_SCOPE_ID as usize - 1] = true;
@@ -133,7 +133,7 @@ pub fn scope_create_heap(
     nulls[scope::METADATA as usize - 1] = true;
 
     // Column 13: tenant_id (UUID, NOT NULL)
-    values[scope::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[scope::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
     
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -162,7 +162,7 @@ pub fn scope_create_heap(
 ///
 /// # Requirements
 /// - 2.2: Uses index_beginscan for O(log n) lookup instead of SPI SELECT
-pub fn scope_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<ScopeRow>> {
+pub fn scope_get_heap(id: ScopeId, tenant_id: TenantId) -> CaliberResult<Option<ScopeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(scope::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -179,9 +179,9 @@ pub fn scope_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option
         1, // First column of index (scope_id)
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
-    
+
     // Create index scanner
     let mut scanner = unsafe { IndexScanner::new(
         &rel,
@@ -190,12 +190,12 @@ pub fn scope_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option
         1,
         &mut scan_key,
     ) };
-    
+
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -219,16 +219,16 @@ pub fn scope_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option
 ///
 /// # Requirements
 /// - 2.3: Uses simple_heap_update instead of SPI UPDATE
-pub fn scope_close_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
+pub fn scope_close_heap(id: ScopeId, tenant_id: TenantId) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
-    
+
     // Open the primary key index
     let index_rel = open_index(scope::PK_INDEX)?;
-    
+
     // Get active snapshot for visibility
     let snapshot = get_active_snapshot();
-    
+
     // Build scan key for primary key lookup
     let mut scan_key = pg_sys::ScanKeyData::default();
     init_scan_key(
@@ -236,9 +236,9 @@ pub fn scope_close_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<bool
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
-    
+
     // Create index scanner
     let mut scanner = unsafe { IndexScanner::new(
         &rel,
@@ -247,39 +247,39 @@ pub fn scope_close_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<bool
         1,
         &mut scan_key,
     ) };
-    
+
     // Find the existing tuple
     let old_tuple = match scanner.next() {
         Some(t) => t,
         None => return Ok(false), // Not found
     };
-    
+
     let tid = scanner.current_tid()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Scope,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to get TID of existing tuple".to_string(),
         }))?;
-    
+
     let tuple_desc = rel.tuple_desc();
     let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, scope::TENANT_ID)? };
-    if existing_tenant != Some(tenant_id) {
+    if existing_tenant != Some(tenant_id.as_uuid()) {
         return Ok(false);
     }
-    
+
     // Extract current values and nulls
     let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
-    
+
     // Update is_active to false
     values[scope::IS_ACTIVE as usize - 1] = bool_to_datum(false);
-    
+
     // Set closed_at to current timestamp
     let now = current_timestamp();
     values[scope::CLOSED_AT as usize - 1] = timestamp_to_pgrx(now)?
         .into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Scope,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     nulls[scope::CLOSED_AT as usize - 1] = false;
@@ -309,8 +309,8 @@ pub fn scope_close_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<bool
 /// # Requirements
 /// - 2.4: Uses index scan on trajectory_id instead of SPI SELECT
 pub fn scope_list_by_trajectory_heap(
-    trajectory_id: EntityId,
-    tenant_id: EntityId,
+    trajectory_id: TrajectoryId,
+    tenant_id: TenantId,
 ) -> CaliberResult<Vec<ScopeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(scope::TABLE_NAME, LockMode::AccessShare)?;
@@ -328,7 +328,7 @@ pub fn scope_list_by_trajectory_heap(
         1, // First column of index (trajectory_id)
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(trajectory_id),
+        uuid_to_datum(trajectory_id.as_uuid()),
     );
     
     // Create index scanner
@@ -346,7 +346,7 @@ pub fn scope_list_by_trajectory_heap(
     // Collect all matching tuples
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_scope(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
@@ -368,9 +368,9 @@ pub fn scope_list_by_trajectory_heap(
 /// # Requirements
 /// - 2.5: Uses simple_heap_update instead of SPI UPDATE
 pub fn scope_update_tokens_heap(
-    id: EntityId,
+    id: ScopeId,
     tokens_used: i32,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
@@ -388,9 +388,9 @@ pub fn scope_update_tokens_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
-    
+
     // Create index scanner
     let mut scanner = unsafe { IndexScanner::new(
         &rel,
@@ -399,26 +399,26 @@ pub fn scope_update_tokens_heap(
         1,
         &mut scan_key,
     ) };
-    
+
     // Find the existing tuple
     let old_tuple = match scanner.next() {
         Some(t) => t,
         None => return Ok(false), // Not found
     };
-    
+
     let tid = scanner.current_tid()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Scope,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to get TID of existing tuple".to_string(),
         }))?;
-    
+
     let tuple_desc = rel.tuple_desc();
     let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, scope::TENANT_ID)? };
-    if existing_tenant != Some(tenant_id) {
+    if existing_tenant != Some(tenant_id.as_uuid()) {
         return Ok(false);
     }
-    
+
     // Extract current values and nulls
     let (mut values, nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
 
@@ -461,9 +461,9 @@ fn validate_scope_relation(rel: &HeapRelation) -> CaliberResult<()> {
 /// Update the checkpoint for a scope using direct heap operations.
 /// This uses json_to_datum for proper JSONB serialization.
 pub fn scope_update_checkpoint_heap(
-    id: EntityId,
+    id: ScopeId,
     checkpoint: Option<&Checkpoint>,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(scope::TABLE_NAME, LockMode::RowExclusive)?;
     validate_scope_relation(&rel)?;
@@ -477,7 +477,7 @@ pub fn scope_update_checkpoint_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
 
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
@@ -490,13 +490,13 @@ pub fn scope_update_checkpoint_heap(
     let tid = scanner.current_tid()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Scope,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to get TID".to_string(),
         }))?;
 
     let tuple_desc = rel.tuple_desc();
     let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, scope::TENANT_ID)? };
-    if existing_tenant != Some(tenant_id) {
+    if existing_tenant != Some(tenant_id.as_uuid()) {
         return Ok(false);
     }
     let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -506,7 +506,7 @@ pub fn scope_update_checkpoint_heap(
         let checkpoint_json = serde_json::to_value(cp)
             .map_err(|e| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Scope,
-                id,
+                id: id.as_uuid(),
                 reason: format!("Failed to serialize checkpoint: {}", e),
             }))?;
         values[scope::CHECKPOINT as usize - 1] = json_to_datum(&checkpoint_json);
@@ -580,8 +580,8 @@ unsafe fn tuple_to_scope(
         }))?;
     
     let metadata = extract_jsonb(tuple, tuple_desc, scope::METADATA)?;
-    let tenant_id = extract_uuid(tuple, tuple_desc, scope::TENANT_ID)?;
-    
+    let tenant_id = extract_uuid(tuple, tuple_desc, scope::TENANT_ID)?.map(TenantId::new);
+
     Ok(ScopeRow {
         scope: Scope {
             scope_id,
@@ -672,8 +672,8 @@ mod tests {
 
             runner.run(&strategy, |(name, purpose, token_budget)| {
                 // First create a trajectory to be the parent
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let traj_result = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
@@ -684,7 +684,7 @@ mod tests {
                 prop_assert!(traj_result.is_ok(), "Trajectory creation should succeed");
 
                 // Generate a new scope ID
-                let scope_id = caliber_core::new_entity_id();
+                let scope_id = ScopeId::now_v7();
 
                 // Insert via heap
                 let result = scope_create_heap(
@@ -738,9 +738,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = ScopeId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = scope_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent scope should return None");
@@ -785,8 +785,8 @@ mod tests {
 
             runner.run(&strategy, |(name, token_budget)| {
                 // Create trajectory first
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
@@ -796,7 +796,7 @@ mod tests {
                 );
 
                 // Create scope
-                let scope_id = caliber_core::new_entity_id();
+                let scope_id = ScopeId::now_v7();
                 let _ = scope_create_heap(
                     scope_id,
                     trajectory_id,
@@ -848,8 +848,8 @@ mod tests {
 
             runner.run(&strategy, |(name, token_budget, new_tokens_used)| {
                 // Create trajectory first
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
@@ -859,7 +859,7 @@ mod tests {
                 );
 
                 // Create scope
-                let scope_id = caliber_core::new_entity_id();
+                let scope_id = ScopeId::now_v7();
                 let _ = scope_create_heap(
                     scope_id,
                     trajectory_id,
@@ -892,9 +892,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = ScopeId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = scope_close_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Close should not error");
                 prop_assert!(!result.unwrap(), "Close of non-existent scope should return false");
@@ -914,9 +914,9 @@ mod tests {
             let strategy = (any::<[u8; 16]>(), arb_tokens_used());
 
             runner.run(&strategy, |(bytes, tokens)| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = ScopeId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = scope_update_tokens_heap(random_id, tokens, tenant_id);
                 prop_assert!(result.is_ok(), "Update should not error");
                 prop_assert!(!result.unwrap(), "Update of non-existent scope should return false");
@@ -955,8 +955,8 @@ mod tests {
 
             runner.run(&strategy, |(num_scopes, token_budget)| {
                 // Create trajectory
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
@@ -968,7 +968,7 @@ mod tests {
                 // Create multiple scopes
                 let mut scope_ids = Vec::new();
                 for i in 0..num_scopes {
-                    let scope_id = caliber_core::new_entity_id();
+                    let scope_id = ScopeId::now_v7();
                     let _ = scope_create_heap(
                         scope_id,
                         trajectory_id,
@@ -1014,9 +1014,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = TrajectoryId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = scope_list_by_trajectory_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "List should not error");
                 prop_assert!(result.unwrap().is_empty(), "List for non-existent trajectory should be empty");

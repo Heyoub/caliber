@@ -7,7 +7,7 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, LockMode, StorageError,
+    AgentId, CaliberError, CaliberResult, EntityIdType, EntityType, LockId, LockMode, StorageError, TenantId,
 };
 use caliber_agents::DistributedLock;
 
@@ -31,7 +31,7 @@ use std::ptr;
 /// Lock row with tenant ownership metadata.
 pub struct LockRow {
     pub lock: DistributedLock,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<LockRow> for DistributedLock {
@@ -42,14 +42,14 @@ impl From<LockRow> for DistributedLock {
 
 /// Acquire a lock by inserting a lock record using direct heap operations.
 pub fn lock_acquire_heap(
-    lock_id: EntityId,
+    lock_id: LockId,
     resource_type: &str,
-    resource_id: EntityId,
-    holder_agent_id: EntityId,
+    resource_id: uuid::Uuid,
+    holder_agent_id: AgentId,
     expires_at: chrono::DateTime<chrono::Utc>,
     mode: LockMode,
-    tenant_id: EntityId,
-) -> CaliberResult<EntityId> {
+    tenant_id: TenantId,
+) -> CaliberResult<LockId> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::RowExclusive)?;
     validate_lock_relation(&rel)?;
 
@@ -68,21 +68,21 @@ pub fn lock_acquire_heap(
 
     let mut values: [pg_sys::Datum; lock::NUM_COLS] = [pg_sys::Datum::from(0); lock::NUM_COLS];
     let nulls: [bool; lock::NUM_COLS] = [false; lock::NUM_COLS];
-    
-    values[lock::LOCK_ID as usize - 1] = uuid_to_datum(lock_id);
+
+    values[lock::LOCK_ID as usize - 1] = uuid_to_datum(lock_id.as_uuid());
     values[lock::RESOURCE_TYPE as usize - 1] = string_to_datum(resource_type);
     values[lock::RESOURCE_ID as usize - 1] = uuid_to_datum(resource_id);
-    values[lock::HOLDER_AGENT_ID as usize - 1] = uuid_to_datum(holder_agent_id);
+    values[lock::HOLDER_AGENT_ID as usize - 1] = uuid_to_datum(holder_agent_id.as_uuid());
     values[lock::ACQUIRED_AT as usize - 1] = now_datum;
     values[lock::EXPIRES_AT as usize - 1] = expires_datum;
-    
+
     let mode_str = match mode {
         LockMode::Exclusive => "exclusive",
         LockMode::Shared => "shared",
     };
     values[lock::MODE as usize - 1] = string_to_datum(mode_str);
 
-    values[lock::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[lock::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -92,7 +92,7 @@ pub fn lock_acquire_heap(
 }
 
 /// Release a lock by deleting its record using direct heap operations.
-pub fn lock_release_heap(lock_id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
+pub fn lock_release_heap(lock_id: LockId, tenant_id: TenantId) -> CaliberResult<bool> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(lock::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -103,15 +103,15 @@ pub fn lock_release_heap(lock_id: EntityId, tenant_id: EntityId) -> CaliberResul
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(lock_id),
+        uuid_to_datum(lock_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(tuple, tuple_desc, lock::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let tid = scanner.current_tid()
@@ -127,7 +127,7 @@ pub fn lock_release_heap(lock_id: EntityId, tenant_id: EntityId) -> CaliberResul
 }
 
 /// Get a lock by ID using direct heap operations.
-pub fn lock_get_heap(lock_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<LockRow>> {
+pub fn lock_get_heap(lock_id: LockId, tenant_id: TenantId) -> CaliberResult<Option<LockRow>> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(lock::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -138,15 +138,15 @@ pub fn lock_get_heap(lock_id: EntityId, tenant_id: EntityId) -> CaliberResult<Op
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(lock_id),
+        uuid_to_datum(lock_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -159,8 +159,8 @@ pub fn lock_get_heap(lock_id: EntityId, tenant_id: EntityId) -> CaliberResult<Op
 /// List locks by resource type and ID using direct heap operations.
 pub fn lock_list_by_resource_heap(
     resource_type: &str,
-    resource_id: EntityId,
-    tenant_id: EntityId,
+    resource_id: uuid::Uuid,
+    tenant_id: TenantId,
 ) -> CaliberResult<Vec<LockRow>> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(lock::RESOURCE_INDEX)?;
@@ -194,7 +194,7 @@ pub fn lock_list_by_resource_heap(
     
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
@@ -203,7 +203,7 @@ pub fn lock_list_by_resource_heap(
 }
 
 /// List all active (non-expired) locks using a heap scan.
-pub fn lock_list_active_heap(tenant_id: EntityId) -> CaliberResult<Vec<LockRow>> {
+pub fn lock_list_active_heap(tenant_id: TenantId) -> CaliberResult<Vec<LockRow>> {
     let rel = open_relation(lock::TABLE_NAME, HeapLockMode::AccessShare)?;
     let snapshot = get_active_snapshot();
     let mut scanner = unsafe { HeapScanner::new(&rel, snapshot, 0, ptr::null_mut()) };
@@ -213,7 +213,7 @@ pub fn lock_list_active_heap(tenant_id: EntityId) -> CaliberResult<Vec<LockRow>>
     let mut results = Vec::new();
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) && row.lock.expires_at > now {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) && row.lock.expires_at > now {
             results.push(row);
         }
     }
@@ -285,14 +285,14 @@ unsafe fn tuple_to_lock(
         }
     };
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, lock::TENANT_ID)?;
-    
+    let tenant_id = extract_uuid(tuple, tuple_desc, lock::TENANT_ID)?.map(TenantId::new);
+
     Ok(LockRow {
         lock: DistributedLock {
-            lock_id,
+            lock_id: LockId::new(lock_id),
             resource_type,
             resource_id,
-            holder_agent_id,
+            holder_agent_id: AgentId::new(holder_agent_id),
             acquired_at,
             expires_at,
             mode,
@@ -304,9 +304,9 @@ unsafe fn tuple_to_lock(
 /// Extend a lock's expiration time using direct heap operations.
 /// Uses extract_values_and_nulls to read existing tuple and update expires_at.
 pub fn lock_extend_heap(
-    lock_id: EntityId,
+    lock_id: LockId,
     new_expires_at: chrono::DateTime<chrono::Utc>,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     use crate::heap_ops::update_tuple;
 
@@ -321,14 +321,14 @@ pub fn lock_extend_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(lock_id),
+        uuid_to_datum(lock_id.as_uuid()),
     );
 
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     if let Some(tuple) = scanner.next() {
         let existing_tenant = unsafe { extract_uuid(tuple, tuple_desc, lock::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let tid = scanner.current_tid()
@@ -344,7 +344,7 @@ pub fn lock_extend_heap(
             .into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Lock,
-                id: lock_id,
+                id: lock_id.as_uuid(),
                 reason: "Failed to convert expires_at to datum".to_string(),
             }))?;
         nulls[lock::EXPIRES_AT as usize - 1] = false;
@@ -383,8 +383,8 @@ mod tests {
         ]
     }
 
-    /// Generate a random EntityId
-    fn arb_entity_id() -> impl Strategy<Value = EntityId> {
+    /// Generate a random UUID
+    fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
         any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
     }
 
@@ -430,16 +430,17 @@ mod tests {
 
             let strategy = (
                 arb_resource_type(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_expires_at(),
                 arb_lock_mode(),
             );
 
             runner.run(&strategy, |(resource_type, resource_id, holder_agent_id, expires_at, mode)| {
                 // Generate a new lock ID
-                let lock_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let lock_id = LockId::now_v7();
+                let holder_agent_id = AgentId::new(holder_agent_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let result = lock_acquire_heap(
@@ -465,12 +466,12 @@ mod tests {
                 let l = row.lock;
                 
                 // Verify round-trip preserves data
-                prop_assert_eq!(l.lock_id, lock_id);
+                prop_assert_eq!(l.lock_id.as_uuid(), lock_id.as_uuid());
                 prop_assert_eq!(l.resource_type, resource_type);
                 prop_assert_eq!(l.resource_id, resource_id);
-                prop_assert_eq!(l.holder_agent_id, holder_agent_id);
+                prop_assert_eq!(l.holder_agent_id.as_uuid(), holder_agent_id.as_uuid());
                 prop_assert_eq!(l.mode, mode);
-                prop_assert_eq!(row.tenant_id, Some(tenant_id));
+                prop_assert_eq!(row.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
                 
                 // Timestamps should be set
                 prop_assert!(l.acquired_at <= chrono::Utc::now());
@@ -493,9 +494,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = LockId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = lock_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent lock should return None");
@@ -519,16 +520,17 @@ mod tests {
 
             let strategy = (
                 arb_resource_type(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_expires_at(),
                 arb_lock_mode(),
             );
 
             runner.run(&strategy, |(resource_type, resource_id, holder_agent_id, expires_at, mode)| {
                 // Generate a new lock ID
-                let lock_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let lock_id = LockId::now_v7();
+                let holder_agent_id = AgentId::new(holder_agent_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = lock_acquire_heap(
@@ -562,7 +564,7 @@ mod tests {
                 prop_assert!(list_result.is_ok(), "List by resource should succeed");
                 let locks = list_result.unwrap();
                 prop_assert!(
-                    !locks.iter().any(|l| l.lock.lock_id == lock_id),
+                    !locks.iter().any(|l| l.lock.lock_id.as_uuid() == lock_id.as_uuid()),
                     "Deleted lock should not appear in resource index query"
                 );
 
@@ -584,9 +586,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = LockId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = lock_release_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Delete should not error: {:?}", result.err());
                 prop_assert!(!result.unwrap(), "Delete of non-existent lock should return false");
@@ -610,16 +612,17 @@ mod tests {
 
             let strategy = (
                 arb_resource_type(),
-                arb_entity_id(),
-                arb_entity_id(),
+                arb_uuid(),
+                arb_uuid(),
                 arb_expires_at(),
                 arb_lock_mode(),
             );
 
             runner.run(&strategy, |(resource_type, resource_id, holder_agent_id, expires_at, mode)| {
                 // Generate a new lock ID
-                let lock_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let lock_id = LockId::now_v7();
+                let holder_agent_id = AgentId::new(holder_agent_id);
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = lock_acquire_heap(
@@ -639,17 +642,17 @@ mod tests {
                 
                 let locks = list_result.unwrap();
                 prop_assert!(
-                    locks.iter().any(|l| l.lock.lock_id == lock_id),
+                    locks.iter().any(|l| l.lock.lock_id.as_uuid() == lock_id.as_uuid()),
                     "Inserted lock should be found via resource index"
                 );
 
                 // Verify the found lock has correct data
-                let found_lock = locks.iter().find(|l| l.lock.lock_id == lock_id).unwrap();
+                let found_lock = locks.iter().find(|l| l.lock.lock_id.as_uuid() == lock_id.as_uuid()).unwrap();
                 prop_assert_eq!(&found_lock.lock.resource_type, &resource_type);
                 prop_assert_eq!(found_lock.lock.resource_id, resource_id);
-                prop_assert_eq!(found_lock.lock.holder_agent_id, holder_agent_id);
+                prop_assert_eq!(found_lock.lock.holder_agent_id.as_uuid(), holder_agent_id.as_uuid());
                 prop_assert_eq!(found_lock.lock.mode, mode);
-                prop_assert_eq!(found_lock.tenant_id, Some(tenant_id));
+                prop_assert_eq!(found_lock.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
 
                 Ok(())
             }).unwrap();

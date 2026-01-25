@@ -14,8 +14,8 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AbstractionLevel, CaliberError, CaliberResult, ContentHash, EmbeddingVector, EntityId,
-    EntityType, Note, NoteType, StorageError, TTL,
+    AbstractionLevel, ArtifactId, CaliberError, CaliberResult, ContentHash, EmbeddingVector,
+    EntityIdType, EntityType, Note, NoteId, NoteType, StorageError, TenantId, TrajectoryId, TTL,
 };
 
 use crate::column_maps::note;
@@ -40,7 +40,7 @@ use crate::tuple_extract::{
 /// Note row with tenant ownership metadata.
 pub struct NoteRow {
     pub note: Note,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<NoteRow> for Note {
@@ -72,21 +72,21 @@ impl From<NoteRow> for Note {
 /// - 4.1: Uses heap_form_tuple and simple_heap_insert instead of SPI
 /// - 4.5: Updates btree and hnsw indexes via CatalogIndexInsert
 pub struct NoteCreateParams<'a> {
-    pub note_id: EntityId,
+    pub note_id: NoteId,
     pub note_type: NoteType,
     pub title: &'a str,
     pub content: &'a str,
     pub content_hash: ContentHash,
     pub embedding: Option<&'a EmbeddingVector>,
-    pub source_trajectory_ids: &'a [EntityId],
-    pub source_artifact_ids: &'a [EntityId],
+    pub source_trajectory_ids: &'a [TrajectoryId],
+    pub source_artifact_ids: &'a [ArtifactId],
     pub ttl: TTL,
     pub abstraction_level: AbstractionLevel,
-    pub source_note_ids: &'a [EntityId],
-    pub tenant_id: EntityId,
+    pub source_note_ids: &'a [NoteId],
+    pub tenant_id: TenantId,
 }
 
-pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId> {
+pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<NoteId> {
     let NoteCreateParams {
         note_id,
         note_type,
@@ -118,7 +118,7 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
     let mut nulls: [bool; note::NUM_COLS] = [false; note::NUM_COLS];
     
     // Column 1: note_id (UUID, NOT NULL)
-    values[note::NOTE_ID as usize - 1] = uuid_to_datum(note_id);
+    values[note::NOTE_ID as usize - 1] = uuid_to_datum(note_id.as_uuid());
     
     // Column 2: note_type (TEXT, NOT NULL)
     values[note::NOTE_TYPE as usize - 1] = string_to_datum(note_type_to_str(note_type));
@@ -141,14 +141,16 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
     
     // Column 7: source_trajectory_ids (UUID[], nullable)
     if !source_trajectory_ids.is_empty() {
-        values[note::SOURCE_TRAJECTORY_IDS as usize - 1] = uuid_array_to_datum(source_trajectory_ids);
+        let trajectory_uuids: Vec<uuid::Uuid> = source_trajectory_ids.iter().map(|id| id.as_uuid()).collect();
+        values[note::SOURCE_TRAJECTORY_IDS as usize - 1] = uuid_array_to_datum(&trajectory_uuids);
     } else {
         nulls[note::SOURCE_TRAJECTORY_IDS as usize - 1] = true;
     }
-    
+
     // Column 8: source_artifact_ids (UUID[], nullable)
     if !source_artifact_ids.is_empty() {
-        values[note::SOURCE_ARTIFACT_IDS as usize - 1] = uuid_array_to_datum(source_artifact_ids);
+        let artifact_uuids: Vec<uuid::Uuid> = source_artifact_ids.iter().map(|id| id.as_uuid()).collect();
+        values[note::SOURCE_ARTIFACT_IDS as usize - 1] = uuid_array_to_datum(&artifact_uuids);
     } else {
         nulls[note::SOURCE_ARTIFACT_IDS as usize - 1] = true;
     }
@@ -179,13 +181,14 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
 
     // Column 17: source_note_ids (UUID[], nullable) - Battle Intel Feature 2
     if !source_note_ids.is_empty() {
-        values[note::SOURCE_NOTE_IDS as usize - 1] = uuid_array_to_datum(source_note_ids);
+        let note_uuids: Vec<uuid::Uuid> = source_note_ids.iter().map(|id| id.as_uuid()).collect();
+        values[note::SOURCE_NOTE_IDS as usize - 1] = uuid_array_to_datum(&note_uuids);
     } else {
         nulls[note::SOURCE_NOTE_IDS as usize - 1] = true;
     }
 
     // Column 18: tenant_id (UUID, NOT NULL)
-    values[note::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[note::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
 
     // Form the heap tuple
     let tuple = form_tuple(&rel, &values, &nulls)?;
@@ -212,7 +215,7 @@ pub fn note_create_heap(params: NoteCreateParams<'_>) -> CaliberResult<EntityId>
 ///
 /// # Requirements
 /// - 4.2: Uses index_beginscan for O(log n) lookup instead of SPI SELECT
-pub fn note_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<NoteRow>> {
+pub fn note_get_heap(id: NoteId, tenant_id: TenantId) -> CaliberResult<Option<NoteRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(note::TABLE_NAME, LockMode::AccessShare)?;
     
@@ -229,7 +232,7 @@ pub fn note_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<
         1, // First column of index (note_id)
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
     
     // Create index scanner
@@ -245,7 +248,7 @@ pub fn note_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_note(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -271,8 +274,8 @@ pub fn note_get_heap(id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<
 /// # Requirements
 /// - 4.3: Uses index scan instead of SPI SELECT
 pub fn note_query_by_trajectory_heap(
-    trajectory_id: EntityId,
-    tenant_id: EntityId,
+    trajectory_id: TrajectoryId,
+    tenant_id: TenantId,
 ) -> CaliberResult<Vec<NoteRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(note::TABLE_NAME, LockMode::AccessShare)?;
@@ -298,10 +301,10 @@ pub fn note_query_by_trajectory_heap(
         let source_ids = unsafe { extract_uuid_array(tuple, tuple_desc, note::SOURCE_TRAJECTORY_IDS) }?;
 
         if let Some(ids) = source_ids {
-            if ids.contains(&trajectory_id) {
+            if ids.contains(&trajectory_id.as_uuid()) {
                 let row = unsafe { tuple_to_note(tuple, tuple_desc) }?;
                 // Enforce TTL - skip expired notes
-                if row.tenant_id == Some(tenant_id)
+                if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid())
                     && !is_note_expired(&row.note.ttl, row.note.created_at)
                 {
                     results.push(row);
@@ -331,13 +334,13 @@ pub fn note_query_by_trajectory_heap(
 /// # Requirements
 /// - 4.4: Uses simple_heap_update instead of SPI UPDATE
 pub fn note_update_heap(
-    id: EntityId,
+    id: NoteId,
     content: Option<&str>,
     content_hash: Option<ContentHash>,
     embedding: Option<Option<&EmbeddingVector>>,
-    superseded_by: Option<Option<EntityId>>,
+    superseded_by: Option<Option<NoteId>>,
     metadata: Option<Option<&serde_json::Value>>,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     // Open relation with RowExclusive lock for writes
     let rel = open_relation(note::TABLE_NAME, LockMode::RowExclusive)?;
@@ -355,7 +358,7 @@ pub fn note_update_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(id),
+        uuid_to_datum(id.as_uuid()),
     );
     
     // Create index scanner
@@ -376,13 +379,13 @@ pub fn note_update_heap(
     let tid = scanner.current_tid()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Note,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to get TID of existing tuple".to_string(),
         }))?;
-    
+
     let tuple_desc = rel.tuple_desc();
     let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, note::TENANT_ID)? };
-    if existing_tenant != Some(tenant_id) {
+    if existing_tenant != Some(tenant_id.as_uuid()) {
         return Ok(false);
     }
     
@@ -413,7 +416,7 @@ pub fn note_update_heap(
     if let Some(new_superseded) = superseded_by {
         match new_superseded {
             Some(s) => {
-                values[note::SUPERSEDED_BY as usize - 1] = uuid_to_datum(s);
+                values[note::SUPERSEDED_BY as usize - 1] = uuid_to_datum(s.as_uuid());
                 nulls[note::SUPERSEDED_BY as usize - 1] = false;
             }
             None => {
@@ -440,7 +443,7 @@ pub fn note_update_heap(
         .into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Note,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     
@@ -674,10 +677,16 @@ unsafe fn tuple_to_note(
     let embedding = embedding_data.map(|data| EmbeddingVector::new(data, "unknown".to_string()));
     
     let source_trajectory_ids = extract_uuid_array(tuple, tuple_desc, note::SOURCE_TRAJECTORY_IDS)?
-        .unwrap_or_default();
-    
+        .unwrap_or_default()
+        .into_iter()
+        .map(TrajectoryId::new)
+        .collect();
+
     let source_artifact_ids = extract_uuid_array(tuple, tuple_desc, note::SOURCE_ARTIFACT_IDS)?
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(ArtifactId::new)
+        .collect();
     
     let ttl_str = extract_text(tuple, tuple_desc, note::TTL)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
@@ -708,7 +717,7 @@ unsafe fn tuple_to_note(
             reason: "access_count is NULL".to_string(),
         }))?;
     
-    let superseded_by = extract_uuid(tuple, tuple_desc, note::SUPERSEDED_BY)?;
+    let superseded_by = extract_uuid(tuple, tuple_desc, note::SUPERSEDED_BY)?.map(NoteId::new);
 
     let metadata = extract_jsonb(tuple, tuple_desc, note::METADATA)?;
 
@@ -721,9 +730,12 @@ unsafe fn tuple_to_note(
 
     // Battle Intel Feature 2: Source note IDs (derivation chain)
     let source_note_ids = extract_uuid_array(tuple, tuple_desc, note::SOURCE_NOTE_IDS)?
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(NoteId::new)
+        .collect();
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, note::TENANT_ID)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, note::TENANT_ID)?.map(TenantId::new);
 
     Ok(NoteRow {
         note: Note {
@@ -820,8 +832,8 @@ mod tests {
             );
 
             runner.run(&strategy, |(title, content, note_type, ttl)| {
-                let note_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let note_id = NoteId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let content_hash = caliber_core::compute_content_hash(content.as_bytes());
 
                 // Insert via heap
@@ -883,9 +895,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = NoteId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = note_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error");
                 prop_assert!(result.unwrap().is_none(), "Non-existent note should return None");
@@ -916,8 +928,8 @@ mod tests {
             let strategy = (arb_content(), arb_content());
 
             runner.run(&strategy, |(original_content, new_content)| {
-                let note_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let note_id = NoteId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let original_hash = caliber_core::compute_content_hash(original_content.as_bytes());
                 
                 let _ = note_create_heap(NoteCreateParams {
@@ -968,8 +980,8 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
+                let random_id = NoteId::new(uuid::Uuid::from_bytes(bytes));
+
                 let result = note_update_heap(
                     random_id,
                     Some("new content"),
@@ -977,7 +989,7 @@ mod tests {
                     None,
                     None,
                     None,
-                    caliber_core::new_entity_id(),
+                    TenantId::now_v7(),
                 );
                 prop_assert!(result.is_ok(), "Update should not error");
                 prop_assert!(!result.unwrap(), "Update of non-existent note should return false");
@@ -1009,8 +1021,8 @@ mod tests {
 
             runner.run(&strategy, |num_notes| {
                 // Create a trajectory to use as source
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "source_trajectory",
@@ -1022,7 +1034,7 @@ mod tests {
                 // Create notes with this trajectory as source
                 let mut note_ids = Vec::new();
                 for i in 0..num_notes {
-                    let note_id = caliber_core::new_entity_id();
+                    let note_id = NoteId::now_v7();
                     let content = format!("note_content_{}", i);
                     let content_hash = caliber_core::compute_content_hash(content.as_bytes());
                     
@@ -1080,9 +1092,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = TrajectoryId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = note_query_by_trajectory_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Query should not error");
                 prop_assert!(result.unwrap().is_empty(), "Query for non-existent trajectory should be empty");

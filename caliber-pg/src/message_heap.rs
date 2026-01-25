@@ -7,7 +7,7 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
+    CaliberError, CaliberResult, EntityIdType, EntityType, StorageError, TenantId, MessageId, AgentId, TrajectoryId, ScopeId, ArtifactId,
 };
 use caliber_agents::{AgentMessage, MessageType, MessagePriority};
 
@@ -31,7 +31,7 @@ use crate::tuple_extract::{
 /// Message row with tenant ownership metadata.
 pub struct MessageRow {
     pub message: AgentMessage,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<MessageRow> for AgentMessage {
@@ -55,21 +55,21 @@ type OptionalMessageDatums = (
 
 /// Send a message by inserting a message record using direct heap operations.
 pub struct MessageSendParams<'a> {
-    pub message_id: EntityId,
-    pub from_agent_id: EntityId,
-    pub to_agent_id: Option<EntityId>,
+    pub message_id: MessageId,
+    pub from_agent_id: AgentId,
+    pub to_agent_id: Option<AgentId>,
     pub to_agent_type: Option<&'a str>,
     pub message_type: MessageType,
     pub payload: &'a str,
-    pub trajectory_id: Option<EntityId>,
-    pub scope_id: Option<EntityId>,
-    pub artifact_ids: &'a [EntityId],
+    pub trajectory_id: Option<TrajectoryId>,
+    pub scope_id: Option<ScopeId>,
+    pub artifact_ids: &'a [ArtifactId],
     pub priority: MessagePriority,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
 }
 
-pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityId> {
+pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<MessageId> {
     let MessageSendParams {
         message_id,
         from_agent_id,
@@ -103,8 +103,8 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
         build_optional_message_datums(to_agent_id, to_agent_type, trajectory_id, scope_id, expires_at)?;
 
     // Set required fields
-    values[message::MESSAGE_ID as usize - 1] = uuid_to_datum(message_id);
-    values[message::FROM_AGENT_ID as usize - 1] = uuid_to_datum(from_agent_id);
+    values[message::MESSAGE_ID as usize - 1] = uuid_to_datum(message_id.as_uuid());
+    values[message::FROM_AGENT_ID as usize - 1] = uuid_to_datum(from_agent_id.as_uuid());
 
     // Set optional to_agent_id
     values[message::TO_AGENT_ID as usize - 1] = to_agent_datum;
@@ -142,7 +142,8 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
     if artifact_ids.is_empty() {
         nulls[message::ARTIFACT_IDS as usize - 1] = true;
     } else {
-        values[message::ARTIFACT_IDS as usize - 1] = uuid_array_to_datum(artifact_ids);
+        let artifact_uuids: Vec<uuid::Uuid> = artifact_ids.iter().map(|id| id.as_uuid()).collect();
+        values[message::ARTIFACT_IDS as usize - 1] = uuid_array_to_datum(&artifact_uuids);
     }
 
     // Set timestamps
@@ -164,7 +165,7 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
     nulls[message::EXPIRES_AT as usize - 1] = expires_null;
 
     // Set tenant_id
-    values[message::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[message::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -174,7 +175,7 @@ pub fn message_send_heap(params: MessageSendParams<'_>) -> CaliberResult<EntityI
 }
 
 /// Get a message by ID using direct heap operations.
-pub fn message_get_heap(message_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<MessageRow>> {
+pub fn message_get_heap(message_id: MessageId, tenant_id: TenantId) -> CaliberResult<Option<MessageRow>> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(message::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -185,15 +186,15 @@ pub fn message_get_heap(message_id: EntityId, tenant_id: EntityId) -> CaliberRes
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(message_id),
+        uuid_to_datum(message_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_message(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -205,8 +206,8 @@ pub fn message_get_heap(message_id: EntityId, tenant_id: EntityId) -> CaliberRes
 
 /// List messages for a specific agent using direct heap operations.
 pub fn message_list_for_agent_heap(
-    to_agent_id: EntityId,
-    tenant_id: EntityId,
+    to_agent_id: AgentId,
+    tenant_id: TenantId,
 ) -> CaliberResult<Vec<MessageRow>> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(message::TO_AGENT_INDEX)?;
@@ -218,17 +219,17 @@ pub fn message_list_for_agent_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(to_agent_id),
+        uuid_to_datum(to_agent_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
-    
+
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_message(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
@@ -237,7 +238,7 @@ pub fn message_list_for_agent_heap(
 }
 
 /// Acknowledge a message by updating its acknowledged_at field using direct heap operations.
-pub fn message_acknowledge_heap(message_id: EntityId, tenant_id: EntityId) -> CaliberResult<bool> {
+pub fn message_acknowledge_heap(message_id: MessageId, tenant_id: TenantId) -> CaliberResult<bool> {
     let rel = open_relation(message::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(message::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -248,15 +249,15 @@ pub fn message_acknowledge_heap(message_id: EntityId, tenant_id: EntityId) -> Ca
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(message_id),
+        uuid_to_datum(message_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, message::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -266,7 +267,7 @@ pub fn message_acknowledge_heap(message_id: EntityId, tenant_id: EntityId) -> Ca
         let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Message,
-                id: message_id,
+                id: message_id.as_uuid(),
                 reason: "Failed to convert timestamp to datum".to_string(),
             }))?;
         
@@ -303,14 +304,14 @@ fn validate_message_relation(rel: &HeapRelation) -> CaliberResult<()> {
 
 /// Build optional datum values for message fields using proper option_* helpers.
 fn build_optional_message_datums(
-    to_agent_id: Option<EntityId>,
+    to_agent_id: Option<AgentId>,
     to_agent_type: Option<&str>,
-    trajectory_id: Option<EntityId>,
-    scope_id: Option<EntityId>,
+    trajectory_id: Option<TrajectoryId>,
+    scope_id: Option<ScopeId>,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> CaliberResult<OptionalMessageDatums> {
     let (to_agent_datum, to_agent_null) = match to_agent_id {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     };
 
@@ -320,12 +321,12 @@ fn build_optional_message_datums(
     };
 
     let (traj_datum, traj_null) = match trajectory_id {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     };
 
     let (scope_datum, scope_null) = match scope_id {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     };
 
@@ -353,16 +354,18 @@ unsafe fn tuple_to_message(
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<MessageRow> {
     let message_id = extract_uuid(tuple, tuple_desc, message::MESSAGE_ID)?
+        .map(MessageId::new)
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "message_id is NULL".to_string(),
         }))?;
-    
+
     let from_agent_id = extract_uuid(tuple, tuple_desc, message::FROM_AGENT_ID)?
+        .map(AgentId::new)
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "from_agent_id is NULL".to_string(),
         }))?;
-    
-    let to_agent_id = extract_uuid(tuple, tuple_desc, message::TO_AGENT_ID)?;
+
+    let to_agent_id = extract_uuid(tuple, tuple_desc, message::TO_AGENT_ID)?.map(AgentId::new);
     let to_agent_type = extract_text(tuple, tuple_desc, message::TO_AGENT_TYPE)?;
     
     let message_type_str = extract_text(tuple, tuple_desc, message::MESSAGE_TYPE)?
@@ -389,10 +392,11 @@ unsafe fn tuple_to_message(
             reason: "payload is NULL".to_string(),
         }))?;
     
-    let trajectory_id = extract_uuid(tuple, tuple_desc, message::TRAJECTORY_ID)?;
-    let scope_id = extract_uuid(tuple, tuple_desc, message::SCOPE_ID)?;
-    
+    let trajectory_id = extract_uuid(tuple, tuple_desc, message::TRAJECTORY_ID)?.map(TrajectoryId::new);
+    let scope_id = extract_uuid(tuple, tuple_desc, message::SCOPE_ID)?.map(ScopeId::new);
+
     let artifact_ids = extract_uuid_array(tuple, tuple_desc, message::ARTIFACT_IDS)?
+        .map(|uuids| uuids.into_iter().map(ArtifactId::new).collect())
         .unwrap_or_default();
     
     let created_at_ts = extract_timestamp(tuple, tuple_desc, message::CREATED_AT)?
@@ -425,7 +429,7 @@ unsafe fn tuple_to_message(
     let expires_at = extract_timestamp(tuple, tuple_desc, message::EXPIRES_AT)?
         .map(timestamp_to_chrono);
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, message::TENANT_ID)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, message::TENANT_ID)?.map(TenantId::new);
     
     Ok(MessageRow {
         message: AgentMessage {
@@ -462,16 +466,32 @@ mod tests {
     // Test Helpers - Generators for Message data
     // ========================================================================
 
-    /// Generate a random EntityId
-    fn arb_entity_id() -> impl Strategy<Value = EntityId> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+    /// Generate a random AgentId
+    fn arb_agent_id() -> impl Strategy<Value = AgentId> {
+        any::<[u8; 16]>().prop_map(|bytes| AgentId::new(uuid::Uuid::from_bytes(bytes)))
     }
 
-    /// Generate an optional EntityId
-    fn arb_optional_entity_id() -> impl Strategy<Value = Option<EntityId>> {
+    /// Generate an optional AgentId
+    fn arb_optional_agent_id() -> impl Strategy<Value = Option<AgentId>> {
         prop_oneof![
             1 => Just(None),
-            3 => arb_entity_id().prop_map(Some),
+            3 => arb_agent_id().prop_map(Some),
+        ]
+    }
+
+    /// Generate an optional TrajectoryId
+    fn arb_optional_trajectory_id() -> impl Strategy<Value = Option<TrajectoryId>> {
+        prop_oneof![
+            1 => Just(None),
+            3 => any::<[u8; 16]>().prop_map(|bytes| Some(TrajectoryId::new(uuid::Uuid::from_bytes(bytes)))),
+        ]
+    }
+
+    /// Generate an optional ScopeId
+    fn arb_optional_scope_id() -> impl Strategy<Value = Option<ScopeId>> {
+        prop_oneof![
+            1 => Just(None),
+            3 => any::<[u8; 16]>().prop_map(|bytes| Some(ScopeId::new(uuid::Uuid::from_bytes(bytes)))),
         ]
     }
 
@@ -532,8 +552,11 @@ mod tests {
     }
 
     /// Generate a vector of artifact IDs (0-5 items)
-    fn arb_artifact_ids() -> impl Strategy<Value = Vec<EntityId>> {
-        prop::collection::vec(arb_entity_id(), 0..=5)
+    fn arb_artifact_ids() -> impl Strategy<Value = Vec<ArtifactId>> {
+        prop::collection::vec(
+            any::<[u8; 16]>().prop_map(|bytes| ArtifactId::new(uuid::Uuid::from_bytes(bytes))),
+            0..=5
+        )
     }
 
     // ========================================================================
@@ -561,14 +584,14 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_agent_id(),
+                arb_agent_id(),
+                arb_optional_agent_id(),
                 arb_optional_agent_type(),
                 arb_message_type(),
                 arb_payload(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_optional_trajectory_id(),
+                arb_optional_scope_id(),
                 arb_artifact_ids(),
                 arb_priority(),
                 arb_optional_expires_at(),
@@ -588,8 +611,8 @@ mod tests {
                 expires_at,
             )| {
                 // Generate a new message ID
-                let message_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let message_id = MessageId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let result = message_send_heap(MessageSendParams {
@@ -655,9 +678,9 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+                let random_id = MessageId::new(uuid::Uuid::from_bytes(bytes));
+
+                let tenant_id = TenantId::now_v7();
                 let result = message_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent message should return None");
@@ -680,14 +703,14 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_agent_id(),
+                arb_agent_id(),
+                arb_optional_agent_id(),
                 arb_optional_agent_type(),
                 arb_message_type(),
                 arb_payload(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_optional_trajectory_id(),
+                arb_optional_scope_id(),
                 arb_artifact_ids(),
                 arb_priority(),
                 arb_optional_expires_at(),
@@ -707,8 +730,8 @@ mod tests {
                 expires_at,
             )| {
                 // Generate a new message ID
-                let message_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let message_id = MessageId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = message_send_heap(MessageSendParams {
@@ -765,14 +788,14 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_entity_id(),
-                arb_entity_id(), // Always provide to_agent_id for this test
+                arb_agent_id(),
+                arb_agent_id(),
+                arb_agent_id(), // Always provide to_agent_id for this test
                 arb_optional_agent_type(),
                 arb_message_type(),
                 arb_payload(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_optional_trajectory_id(),
+                arb_optional_scope_id(),
                 arb_artifact_ids(),
                 arb_priority(),
                 arb_optional_expires_at(),
@@ -792,8 +815,8 @@ mod tests {
                 expires_at,
             )| {
                 // Generate a new message ID
-                let message_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let message_id = MessageId::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap with to_agent_id
                 let insert_result = message_send_heap(MessageSendParams {

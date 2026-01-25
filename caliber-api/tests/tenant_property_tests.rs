@@ -24,7 +24,7 @@ use caliber_api::{
     types::{CreateTrajectoryRequest, ListTrajectoriesResponse, TrajectoryResponse},
 };
 use chrono::Utc;
-use caliber_core::{EntityId, TrajectoryStatus};
+use caliber_core::TrajectoryStatus;
 use proptest::prelude::*;
 use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
@@ -49,7 +49,7 @@ fn test_runtime() -> Result<Runtime, TestCaseError> {
 #[derive(Debug, Clone, Default)]
 struct TestStorage {
     /// Map of trajectory_id -> (tenant_id, trajectory)
-    trajectories: Arc<Mutex<Vec<(EntityId, TrajectoryResponse)>>>,
+    trajectories: Arc<Mutex<Vec<(Uuid, TrajectoryResponse)>>>,
 }
 
 impl TestStorage {
@@ -62,10 +62,10 @@ impl TestStorage {
     /// Create a trajectory for a specific tenant
     fn create_trajectory(
         &self,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
         req: &CreateTrajectoryRequest,
     ) -> TrajectoryResponse {
-        let trajectory_id = EntityId::from(Uuid::now_v7());
+        let trajectory_id = Uuid::now_v7();
         let now = Utc::now();
 
         let trajectory = TrajectoryResponse {
@@ -93,7 +93,7 @@ impl TestStorage {
     }
 
     /// List trajectories for a specific tenant
-    fn list_trajectories(&self, tenant_id: EntityId) -> Vec<TrajectoryResponse> {
+    fn list_trajectories(&self, tenant_id: Uuid) -> Vec<TrajectoryResponse> {
         self.trajectories
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -106,8 +106,8 @@ impl TestStorage {
     /// Get a trajectory by ID, only if it belongs to the tenant
     fn get_trajectory(
         &self,
-        tenant_id: EntityId,
-        trajectory_id: EntityId,
+        tenant_id: Uuid,
+        trajectory_id: Uuid,
     ) -> Option<TrajectoryResponse> {
         self.trajectories
             .lock()
@@ -126,7 +126,7 @@ impl TestStorage {
     }
 
     /// Count trajectories for a specific tenant
-    fn count_for_tenant(&self, tenant_id: EntityId) -> usize {
+    fn count_for_tenant(&self, tenant_id: Uuid) -> usize {
         self.trajectories
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -221,7 +221,7 @@ fn test_app(storage: TestStorage) -> Router {
             None => return StatusCode::BAD_REQUEST.into_response(),
         };
         let trajectory_id = match Uuid::parse_str(trajectory_id_str) {
-            Ok(id) => EntityId::from(id),
+            Ok(id) => id,
             Err(_) => return StatusCode::BAD_REQUEST.into_response(),
         };
 
@@ -248,7 +248,7 @@ fn test_app(storage: TestStorage) -> Router {
 // ============================================================================
 
 /// Strategy for generating tenant IDs
-fn tenant_id_strategy() -> impl Strategy<Value = EntityId> {
+fn tenant_id_strategy() -> impl Strategy<Value = Uuid> {
     any::<[u8; 16]>().prop_map(Uuid::from_bytes)
 }
 
@@ -539,8 +539,8 @@ proptest! {
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
 
-            // Convert to EntityIds and ensure uniqueness
-            let mut tenant_ids: Vec<EntityId> = tenant_ids
+            // Convert to Uuids and ensure uniqueness
+            let mut tenant_ids: Vec<Uuid> = tenant_ids
                 .into_iter()
                 .map(Uuid::from_bytes)
                 .collect();
@@ -619,12 +619,11 @@ mod ws_tenant_isolation {
         events::WsEvent,
         should_deliver_event, tenant_id_from_event,
     };
-    use caliber_core::EntityId;
     use proptest::prelude::*;
     use uuid::Uuid;
 
-    /// Strategy for generating EntityIds
-    fn entity_id_strategy() -> impl Strategy<Value = EntityId> {
+    /// Strategy for generating Uuids
+    fn entity_id_strategy() -> impl Strategy<Value = Uuid> {
         any::<[u8; 16]>().prop_map(Uuid::from_bytes)
     }
 
@@ -712,8 +711,8 @@ mod ws_tenant_isolation {
             tenant_id_bytes in any::<[u8; 16]>(),
             entity_id_bytes in any::<[u8; 16]>(),
         ) {
-            let tenant_id: EntityId = Uuid::from_bytes(tenant_id_bytes);
-            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes);
+            let tenant_id = Uuid::from_bytes(tenant_id_bytes);
+            let entity_id = Uuid::from_bytes(entity_id_bytes);
 
             let status_events = vec![
                 WsEvent::AgentStatusChanged {
@@ -764,7 +763,7 @@ mod ws_tenant_isolation {
         fn prop_ws_unknown_tenant_events_denied(
             client_tenant_id_bytes in any::<[u8; 16]>(),
         ) {
-            let client_tenant_id: EntityId = Uuid::from_bytes(client_tenant_id_bytes);
+            let client_tenant_id = Uuid::from_bytes(client_tenant_id_bytes);
 
             // Events that currently return None for tenant_id should be denied
             // (Note: This tests the DENY by default behavior)
@@ -801,9 +800,9 @@ mod ws_tenant_isolation {
             // Must be different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
 
-            let tenant_a: EntityId = Uuid::from_bytes(tenant_a_bytes);
-            let tenant_b: EntityId = Uuid::from_bytes(tenant_b_bytes);
-            let entity_id: EntityId = Uuid::from_bytes(entity_id_bytes);
+            let tenant_a = Uuid::from_bytes(tenant_a_bytes);
+            let tenant_b = Uuid::from_bytes(tenant_b_bytes);
+            let entity_id = Uuid::from_bytes(entity_id_bytes);
 
             // All tenant-specific events with tenant_a should not be delivered to tenant_b
             let tenant_a_events = vec![
@@ -847,7 +846,7 @@ mod edge_cases {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
-        let tenant_id: EntityId = Uuid::now_v7();
+        let tenant_id = Uuid::now_v7();
 
         let auth_context = test_auth_context_with_tenant(tenant_id);
         let token = generate_jwt_token(
@@ -888,8 +887,8 @@ mod edge_cases {
         let storage = TestStorage::new();
         let _auth_config = test_auth_config();
 
-        let tenant_a: EntityId = Uuid::now_v7();
-        let tenant_b: EntityId = Uuid::now_v7();
+        let tenant_a = Uuid::now_v7();
+        let tenant_b = Uuid::now_v7();
 
         // Create trajectories with the same name for different tenants
         let req = CreateTrajectoryRequest {
@@ -914,8 +913,8 @@ mod edge_cases {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
-        let tenant_id: EntityId = Uuid::now_v7();
-        let nonexistent_id: EntityId = Uuid::now_v7();
+        let tenant_id = Uuid::now_v7();
+        let nonexistent_id = Uuid::now_v7();
 
         let token = generate_jwt_token(
             &auth_config,

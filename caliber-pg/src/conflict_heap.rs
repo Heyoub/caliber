@@ -7,7 +7,7 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityId, EntityType, StorageError,
+    CaliberError, CaliberResult, EntityIdType, EntityType, StorageError, TenantId, AgentId, TrajectoryId,
 };
 use caliber_agents::{Conflict, ConflictStatus, ConflictType, ConflictResolutionRecord};
 
@@ -30,7 +30,7 @@ use crate::tuple_extract::{
 /// Conflict row with tenant ownership metadata.
 pub struct ConflictRow {
     pub conflict: Conflict,
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
 }
 
 impl From<ConflictRow> for Conflict {
@@ -41,19 +41,19 @@ impl From<ConflictRow> for Conflict {
 
 /// Create a new conflict by inserting a conflict record using direct heap operations.
 pub struct ConflictCreateParams<'a> {
-    pub conflict_id: EntityId,
+    pub conflict_id: uuid::Uuid,
     pub conflict_type: ConflictType,
     pub item_a_type: &'a str,
-    pub item_a_id: EntityId,
+    pub item_a_id: uuid::Uuid,
     pub item_b_type: &'a str,
-    pub item_b_id: EntityId,
-    pub agent_a_id: Option<EntityId>,
-    pub agent_b_id: Option<EntityId>,
-    pub trajectory_id: Option<EntityId>,
-    pub tenant_id: EntityId,
+    pub item_b_id: uuid::Uuid,
+    pub agent_a_id: Option<AgentId>,
+    pub agent_b_id: Option<AgentId>,
+    pub trajectory_id: Option<TrajectoryId>,
+    pub tenant_id: TenantId,
 }
 
-pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<EntityId> {
+pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<uuid::Uuid> {
     let ConflictCreateParams {
         conflict_id,
         conflict_type,
@@ -126,7 +126,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<E
     values[conflict::DETECTED_AT as usize - 1] = now_datum;
     nulls[conflict::RESOLVED_AT as usize - 1] = true;
 
-    values[conflict::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id);
+    values[conflict::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
     
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
@@ -136,7 +136,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<E
 }
 
 /// Get a conflict by ID using direct heap operations.
-pub fn conflict_get_heap(conflict_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<ConflictRow>> {
+pub fn conflict_get_heap(conflict_id: uuid::Uuid, tenant_id: TenantId) -> CaliberResult<Option<ConflictRow>> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -155,7 +155,7 @@ pub fn conflict_get_heap(conflict_id: EntityId, tenant_id: EntityId) -> CaliberR
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -167,9 +167,9 @@ pub fn conflict_get_heap(conflict_id: EntityId, tenant_id: EntityId) -> CaliberR
 
 /// Resolve a conflict by updating status, resolution, and resolved_at using direct heap operations.
 pub fn conflict_resolve_heap(
-    conflict_id: EntityId,
+    conflict_id: uuid::Uuid,
     resolution: &ConflictResolutionRecord,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> CaliberResult<bool> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
@@ -189,7 +189,7 @@ pub fn conflict_resolve_heap(
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, conflict::TENANT_ID)? };
-        if existing_tenant != Some(tenant_id) {
+        if existing_tenant != Some(tenant_id.as_uuid()) {
             return Ok(false);
         }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
@@ -234,7 +234,7 @@ pub fn conflict_resolve_heap(
 }
 
 /// List pending conflicts (detected or resolving) using direct heap operations.
-pub fn conflict_list_pending_heap(tenant_id: EntityId) -> CaliberResult<Vec<ConflictRow>> {
+pub fn conflict_list_pending_heap(tenant_id: TenantId) -> CaliberResult<Vec<ConflictRow>> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::STATUS_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -256,11 +256,11 @@ pub fn conflict_list_pending_heap(tenant_id: EntityId) -> CaliberResult<Vec<Conf
     
     for tuple in &mut scanner_detected {
         let row = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
-        if row.tenant_id == Some(tenant_id) {
+        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(row);
         }
     }
-    
+
     // Scan for "resolving" status
     let mut scan_key_resolving = pg_sys::ScanKeyData::default();
     init_scan_key(
@@ -270,12 +270,12 @@ pub fn conflict_list_pending_heap(tenant_id: EntityId) -> CaliberResult<Vec<Conf
         operator_oids::TEXT_EQ,
         string_to_datum("resolving"),
     );
-    
+
     let mut scanner_resolving = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_resolving) };
-    
+
     for tuple in &mut scanner_resolving {
         let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
-        if conflict.tenant_id == Some(tenant_id) {
+        if conflict.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
             results.push(conflict);
         }
     }
@@ -300,20 +300,20 @@ fn validate_conflict_relation(rel: &HeapRelation) -> CaliberResult<()> {
 
 /// Build optional conflict datums using proper helper.
 fn build_optional_conflict_agents(
-    agent_a_id: Option<EntityId>,
-    agent_b_id: Option<EntityId>,
-    trajectory_id: Option<EntityId>,
+    agent_a_id: Option<AgentId>,
+    agent_b_id: Option<AgentId>,
+    trajectory_id: Option<TrajectoryId>,
 ) -> ((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool)) {
     let a = match agent_a_id {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     };
     let b = match agent_b_id {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     };
     let t = match trajectory_id {
-        Some(id) => (option_uuid_to_datum(Some(id)), false),
+        Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
     };
     (a, b, t)
@@ -364,9 +364,9 @@ unsafe fn tuple_to_conflict(
             reason: "item_b_id is NULL".to_string(),
         }))?;
     
-    let agent_a_id = extract_uuid(tuple, tuple_desc, conflict::AGENT_A_ID)?;
-    let agent_b_id = extract_uuid(tuple, tuple_desc, conflict::AGENT_B_ID)?;
-    let trajectory_id = extract_uuid(tuple, tuple_desc, conflict::TRAJECTORY_ID)?;
+    let agent_a_id = extract_uuid(tuple, tuple_desc, conflict::AGENT_A_ID)?.map(AgentId::new);
+    let agent_b_id = extract_uuid(tuple, tuple_desc, conflict::AGENT_B_ID)?.map(AgentId::new);
+    let trajectory_id = extract_uuid(tuple, tuple_desc, conflict::TRAJECTORY_ID)?.map(TrajectoryId::new);
     
     let status_str = extract_text(tuple, tuple_desc, conflict::STATUS)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
@@ -395,7 +395,7 @@ unsafe fn tuple_to_conflict(
     let resolved_at = extract_timestamp(tuple, tuple_desc, conflict::RESOLVED_AT)?
         .map(timestamp_to_chrono);
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, conflict::TENANT_ID)?;
+    let tenant_id = extract_uuid(tuple, tuple_desc, conflict::TENANT_ID)?.map(TenantId::new);
     
     Ok(ConflictRow {
         conflict: Conflict {
@@ -432,16 +432,24 @@ mod tests {
     // Test Helpers - Generators for Conflict data
     // ========================================================================
 
-    /// Generate a random EntityId
-    fn arb_entity_id() -> impl Strategy<Value = EntityId> {
+    /// Generate a random Uuid
+    fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
         any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
     }
 
-    /// Generate an optional EntityId
-    fn arb_optional_entity_id() -> impl Strategy<Value = Option<EntityId>> {
+    /// Generate an optional AgentId
+    fn arb_optional_agent_id() -> impl Strategy<Value = Option<AgentId>> {
         prop_oneof![
             1 => Just(None),
-            3 => arb_entity_id().prop_map(Some),
+            3 => any::<[u8; 16]>().prop_map(|bytes| Some(AgentId::new(uuid::Uuid::from_bytes(bytes)))),
+        ]
+    }
+
+    /// Generate an optional TrajectoryId
+    fn arb_optional_trajectory_id() -> impl Strategy<Value = Option<TrajectoryId>> {
+        prop_oneof![
+            1 => Just(None),
+            3 => any::<[u8; 16]>().prop_map(|bytes| Some(TrajectoryId::new(uuid::Uuid::from_bytes(bytes)))),
         ]
     }
 
@@ -526,12 +534,12 @@ mod tests {
             let strategy = (
                 arb_conflict_type(),
                 arb_item_type(),
-                arb_entity_id(),
+                arb_uuid(),
                 arb_item_type(),
-                arb_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_uuid(),
+                arb_optional_agent_id(),
+                arb_optional_agent_id(),
+                arb_optional_trajectory_id(),
             );
 
             runner.run(&strategy, |(
@@ -545,8 +553,8 @@ mod tests {
                 trajectory_id,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let conflict_id = uuid::Uuid::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let result = conflict_create_heap(ConflictCreateParams {
@@ -609,8 +617,8 @@ mod tests {
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+
+                let tenant_id = TenantId::now_v7();
                 let result = conflict_get_heap(random_id, tenant_id);
                 prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
                 prop_assert!(result.unwrap().is_none(), "Non-existent conflict should return None");
@@ -656,8 +664,8 @@ mod tests {
                 resolution,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let conflict_id = uuid::Uuid::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = conflict_create_heap(ConflictCreateParams {
@@ -724,8 +732,8 @@ mod tests {
 
             runner.run(&strategy, |(bytes, resolution)| {
                 let random_id = uuid::Uuid::from_bytes(bytes);
-                
-                let tenant_id = caliber_core::new_entity_id();
+
+                let tenant_id = TenantId::now_v7();
                 let result = conflict_resolve_heap(random_id, &resolution, tenant_id);
                 prop_assert!(result.is_ok(), "Resolve should not error: {:?}", result.err());
                 prop_assert!(!result.unwrap(), "Resolve of non-existent conflict should return false");
@@ -750,12 +758,12 @@ mod tests {
             let strategy = (
                 arb_conflict_type(),
                 arb_item_type(),
-                arb_entity_id(),
+                arb_uuid(),
                 arb_item_type(),
-                arb_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_uuid(),
+                arb_optional_agent_id(),
+                arb_optional_agent_id(),
+                arb_optional_trajectory_id(),
             );
 
             runner.run(&strategy, |(
@@ -769,8 +777,8 @@ mod tests {
                 trajectory_id,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let conflict_id = uuid::Uuid::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = conflict_create_heap(ConflictCreateParams {
@@ -852,8 +860,8 @@ mod tests {
                 resolution,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let conflict_id = uuid::Uuid::now_v7();
+                let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
                 let insert_result = conflict_create_heap(ConflictCreateParams {

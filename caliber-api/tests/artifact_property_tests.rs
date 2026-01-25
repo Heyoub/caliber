@@ -18,7 +18,7 @@ use caliber_api::{
     db::DbClient,
     types::{ArtifactResponse, CreateArtifactRequest, CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse},
 };
-use caliber_core::{ArtifactType, EntityId, ExtractionMethod, TTL};
+use caliber_core::{ArtifactType, ExtractionMethod, TTL};
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -45,8 +45,8 @@ fn test_runtime() -> Result<Runtime, TestCaseError> {
 /// Helper to create a test trajectory for artifact tests.
 async fn create_test_trajectory(
     db: &DbClient,
-    tenant_id: EntityId,
-) -> Result<EntityId, TestCaseError> {
+    tenant_id: Uuid,
+) -> Result<Uuid, TestCaseError> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let timestamp = SystemTime::now()
@@ -73,9 +73,9 @@ async fn create_test_trajectory(
 /// Helper to create a test scope for artifact tests.
 async fn create_test_scope(
     db: &DbClient,
-    trajectory_id: EntityId,
-    tenant_id: EntityId,
-) -> Result<EntityId, TestCaseError> {
+    trajectory_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Uuid, TestCaseError> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let timestamp = SystemTime::now()
@@ -219,8 +219,8 @@ fn optional_metadata_strategy() -> impl Strategy<Value = Option<serde_json::Valu
 /// construct CreateArtifactRequest manually for more explicit control.
 #[allow(dead_code)]
 fn create_artifact_request_strategy(
-    trajectory_id: EntityId,
-    scope_id: EntityId,
+    trajectory_id: Uuid,
+    scope_id: Uuid,
 ) -> impl Strategy<Value = CreateArtifactRequest> {
     (
         artifact_type_strategy(),
@@ -307,7 +307,7 @@ proptest! {
             let created = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created artifact has an ID
-            let nil_id: EntityId = Uuid::nil();
+            let nil_id = Uuid::nil();
             prop_assert_ne!(created.artifact_id, nil_id);
 
             // Verify the created artifact matches the request
