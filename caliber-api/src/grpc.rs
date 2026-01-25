@@ -720,8 +720,8 @@ fn message_to_proto(m: &crate::types::MessageResponse) -> MessageResponse {
     MessageResponse {
         tenant_id: m.tenant_id.to_string(),
         message_id: m.message_id.to_string(),
-        from_agent_id: m.from_agent_id.to_string(),
-        to_agent_id: m.to_agent_id.map(|id| id.to_string()),
+        from_agent_id: m.sender_id.to_string(),
+        to_agent_id: m.recipient_id.map(|id| id.to_string()),
         to_agent_type: m.to_agent_type.clone(),
         message_type: m.message_type.to_string(),
         payload: m.payload.clone(),
@@ -739,10 +739,10 @@ fn message_to_proto(m: &crate::types::MessageResponse) -> MessageResponse {
 fn delegation_to_proto(d: &crate::types::DelegationResponse) -> DelegationResponse {
     DelegationResponse {
         delegation_id: d.delegation_id.to_string(),
-        from_agent_id: d.from_agent_id.to_string(),
-        to_agent_id: d.to_agent_id.to_string(),
+        from_agent_id: d.delegator_id.to_string(),
+        to_agent_id: d.delegatee_id.to_string(),
         trajectory_id: d.trajectory_id.to_string(),
-        scope_id: d.scope_id.to_string(),
+        scope_id: d.scope_id.map(|id| id.to_string()).unwrap_or_default(),
         task_description: d.task_description.clone(),
         status: d.status.to_string(),
         created_at: timestamp_to_millis(&d.created_at),
@@ -766,7 +766,7 @@ fn handoff_to_proto(h: &crate::types::HandoffResponse) -> HandoffResponse {
         from_agent_id: h.from_agent_id.to_string(),
         to_agent_id: h.to_agent_id.to_string(),
         trajectory_id: h.trajectory_id.to_string(),
-        scope_id: h.scope_id.to_string(),
+        scope_id: h.scope_id.map(|id| id.to_string()).unwrap_or_default(),
         reason: h.reason.clone(),
         status: h.status.to_string(),
         created_at: timestamp_to_millis(&h.created_at),
