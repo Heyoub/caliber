@@ -27,7 +27,7 @@
     "@playwright/test": "^1.57.0",
     "@types/bun": "latest",
     "fast-check": "^4.5.3",
-    "lighthouse": "^12.8.2"
+    "lighthouse": "^13.0.1"
   },
   "license": "AGPL-3.0-or-later",
   "packageManager": "bun@1.1.0"
