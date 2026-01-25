@@ -187,13 +187,27 @@ pub enum ArtifactType {
     Plan,
 }
 
-/// Method used to extract an artifact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Method used to extract an artifact or evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ExtractionMethod {
+    /// Explicitly provided by user
     Explicit,
+    /// Inferred from context
     Inferred,
+    /// User provided directly
     UserProvided,
+    /// Extracted by LLM
+    LlmExtraction,
+    /// Extracted by tool/function
+    ToolExtraction,
+    /// From memory recall
+    MemoryRecall,
+    /// From external API
+    ExternalApi,
+    /// Unknown or unspecified
+    #[default]
+    Unknown,
 }
 
 /// Type of note (cross-trajectory knowledge).
@@ -459,6 +473,11 @@ impl fmt::Display for ExtractionMethod {
             ExtractionMethod::Explicit => "Explicit",
             ExtractionMethod::Inferred => "Inferred",
             ExtractionMethod::UserProvided => "UserProvided",
+            ExtractionMethod::LlmExtraction => "LlmExtraction",
+            ExtractionMethod::ToolExtraction => "ToolExtraction",
+            ExtractionMethod::MemoryRecall => "MemoryRecall",
+            ExtractionMethod::ExternalApi => "ExternalApi",
+            ExtractionMethod::Unknown => "Unknown",
         };
         write!(f, "{}", value)
     }
@@ -472,6 +491,11 @@ impl FromStr for ExtractionMethod {
             "explicit" => Ok(ExtractionMethod::Explicit),
             "inferred" => Ok(ExtractionMethod::Inferred),
             "userprovided" => Ok(ExtractionMethod::UserProvided),
+            "llmextraction" => Ok(ExtractionMethod::LlmExtraction),
+            "toolextraction" => Ok(ExtractionMethod::ToolExtraction),
+            "memoryrecall" => Ok(ExtractionMethod::MemoryRecall),
+            "externalapi" => Ok(ExtractionMethod::ExternalApi),
+            "unknown" => Ok(ExtractionMethod::Unknown),
             _ => Err(format!("Invalid ExtractionMethod: {}", s)),
         }
     }

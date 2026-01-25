@@ -506,6 +506,336 @@ pub enum UpstreamSignal {
 }
 
 // ============================================================================
+// HASH CHAINING FOR AUDIT INTEGRITY (Phase 1.1)
+// ============================================================================
+
+/// Hash algorithm for event integrity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum HashAlgorithm {
+    /// SHA-256 hash algorithm
+    Sha256,
+    /// Blake3 hash algorithm (faster, recommended)
+    #[default]
+    Blake3,
+}
+
+/// Hash chain for tamper-evident event log.
+///
+/// Each event in the chain contains a hash of the previous event,
+/// creating an immutable, verifiable audit trail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HashChain {
+    /// Hash of previous event (creates chain). Genesis event has zero prev_hash.
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub prev_hash: [u8; 32],
+    /// Hash of this event (canonical serialization)
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub event_hash: [u8; 32],
+    /// Algorithm used for hashing
+    pub algorithm: HashAlgorithm,
+}
+
+impl Default for HashChain {
+    fn default() -> Self {
+        Self {
+            prev_hash: [0u8; 32],  // Genesis event has zero prev_hash
+            event_hash: [0u8; 32],
+            algorithm: HashAlgorithm::Blake3,
+        }
+    }
+}
+
+// ============================================================================
+// CAUSALITY TRACKING (Phase 1.2)
+// ============================================================================
+
+/// W3C Trace Context compatible distributed tracing.
+///
+/// Provides full causality tracking for events across distributed systems.
+/// Compatible with OpenTelemetry and other distributed tracing systems.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Causality {
+    /// Stable trace ID across request lifecycle (W3C compatible)
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub trace_id: Uuid,
+    /// Current operation span ID
+    pub span_id: u64,
+    /// Parent span (if not root)
+    pub parent_span_id: Option<u64>,
+    /// Parent event IDs for causality fan-in (multiple parents)
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
+    pub parent_event_ids: Vec<EventId>,
+    /// Root event of this trace tree
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub root_event_id: EventId,
+}
+
+impl Default for Causality {
+    fn default() -> Self {
+        let root_id = Uuid::now_v7();
+        Self {
+            trace_id: Uuid::now_v7(),
+            span_id: 0,
+            parent_span_id: None,
+            parent_event_ids: Vec::new(),
+            root_event_id: root_id,
+        }
+    }
+}
+
+impl Causality {
+    /// Create a new causality context with a fresh trace.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a child span from this causality context.
+    pub fn child(&self, new_span_id: u64) -> Self {
+        Self {
+            trace_id: self.trace_id,
+            span_id: new_span_id,
+            parent_span_id: Some(self.span_id),
+            parent_event_ids: vec![self.root_event_id],
+            root_event_id: self.root_event_id,
+        }
+    }
+
+    /// Create a causality context with multiple parents (fan-in).
+    pub fn merge(parents: &[&Causality], new_span_id: u64) -> Option<Self> {
+        let first = parents.first()?;
+        Some(Self {
+            trace_id: first.trace_id,
+            span_id: new_span_id,
+            parent_span_id: Some(first.span_id),
+            parent_event_ids: parents.iter().map(|p| p.root_event_id).collect(),
+            root_event_id: first.root_event_id,
+        })
+    }
+}
+
+// ============================================================================
+// RICH EVIDENCE REFERENCES (Phase 1.3)
+// ============================================================================
+
+use crate::{ArtifactId, NoteId, AgentId, Timestamp, ExtractionMethod};
+
+/// Evidence reference types for provenance tracking.
+///
+/// Rich references to external sources that support claims or data in an event.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum EvidenceRef {
+    /// Reference to a document chunk
+    DocChunk {
+        doc_id: String,
+        chunk_id: String,
+        offset: u32,
+        length: u32,
+    },
+    /// Reference to another event
+    Event {
+        #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+        event_id: EventId,
+        timestamp: i64,
+    },
+    /// Reference to a tool call result
+    ToolResult {
+        call_id: String,
+        tool_name: String,
+        result_index: u32,
+    },
+    /// Reference to external URL
+    Url {
+        url: String,
+        accessed_at: i64,
+        #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+        hash: Option<[u8; 32]>,
+    },
+    /// Reference to knowledge pack section
+    KnowledgePack {
+        pack_id: String,
+        section: String,
+    },
+    /// Reference to artifact
+    Artifact {
+        artifact_id: ArtifactId,
+    },
+    /// Reference to note
+    Note {
+        note_id: NoteId,
+    },
+    /// Manual user-provided evidence
+    Manual {
+        user_id: String,
+        timestamp: i64,
+        description: String,
+    },
+}
+
+/// Verification status for evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum VerificationStatus {
+    /// Evidence has not been verified
+    #[default]
+    Unverified,
+    /// Evidence has been verified
+    Verified,
+    /// Evidence has been partially verified
+    PartiallyVerified,
+    /// Evidence verification failed
+    Invalid,
+    /// Evidence has expired
+    Expired,
+}
+
+
+
+/// Enhanced provenance with evidence chains.
+///
+/// Extends basic provenance with rich evidence references, chain of custody,
+/// and verification status for robust audit trails.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EnhancedProvenance {
+    /// Source turn number
+    pub source_turn: i32,
+    /// How this data was extracted
+    pub extraction_method: ExtractionMethod,
+    /// Confidence score (0.0 to 1.0)
+    pub confidence: Option<f32>,
+    /// Rich evidence references
+    pub evidence_refs: Vec<EvidenceRef>,
+    /// Chain of custody (agent trail) - tuples of (AgentId, Timestamp)
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<serde_json::Value>))]
+    pub chain_of_custody: Vec<(AgentId, Timestamp)>,
+    /// Verification status
+    pub verification_status: VerificationStatus,
+}
+
+impl Default for EnhancedProvenance {
+    fn default() -> Self {
+        Self {
+            source_turn: 0,
+            extraction_method: ExtractionMethod::Unknown,
+            confidence: None,
+            evidence_refs: Vec::new(),
+            chain_of_custody: Vec::new(),
+            verification_status: VerificationStatus::Unverified,
+        }
+    }
+}
+
+impl EnhancedProvenance {
+    /// Create a new enhanced provenance.
+    pub fn new(source_turn: i32, extraction_method: ExtractionMethod) -> Self {
+        Self {
+            source_turn,
+            extraction_method,
+            ..Default::default()
+        }
+    }
+
+    /// Add an evidence reference.
+    pub fn with_evidence(mut self, evidence: EvidenceRef) -> Self {
+        self.evidence_refs.push(evidence);
+        self
+    }
+
+    /// Add a custody entry.
+    pub fn with_custody(mut self, agent_id: AgentId, timestamp: Timestamp) -> Self {
+        self.chain_of_custody.push((agent_id, timestamp));
+        self
+    }
+
+    /// Set confidence score.
+    pub fn with_confidence(mut self, confidence: f32) -> Self {
+        self.confidence = Some(confidence.clamp(0.0, 1.0));
+        self
+    }
+
+    /// Set verification status.
+    pub fn with_verification(mut self, status: VerificationStatus) -> Self {
+        self.verification_status = status;
+        self
+    }
+}
+
+// ============================================================================
+// EVENT VERIFIER TRAIT (Phase 1.4)
+// ============================================================================
+
+/// Trait for cryptographic event verification.
+///
+/// Implementations of this trait provide hash computation and verification
+/// for events, enabling tamper-evident audit logs.
+pub trait EventVerifier: Send + Sync {
+    /// Compute hash for an event.
+    fn compute_hash<P: Serialize>(&self, event: &Event<P>) -> [u8; 32];
+
+    /// Verify event integrity using its hash.
+    fn verify_hash<P: Serialize>(&self, event: &Event<P>, expected: &[u8; 32]) -> bool {
+        &self.compute_hash(event) == expected
+    }
+
+    /// Verify hash chain (current depends on previous).
+    fn verify_chain<P: Serialize>(&self, current: &Event<P>, previous_hash: &[u8; 32]) -> bool;
+
+    /// Get the algorithm used by this verifier.
+    fn algorithm(&self) -> HashAlgorithm;
+}
+
+/// Blake3-based event verifier (default, recommended for performance).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Blake3Verifier;
+
+impl EventVerifier for Blake3Verifier {
+    fn compute_hash<P: Serialize>(&self, event: &Event<P>) -> [u8; 32] {
+        let canonical = serde_json::to_vec(event).unwrap_or_default();
+        blake3::hash(&canonical).into()
+    }
+
+    fn verify_chain<P: Serialize>(&self, current: &Event<P>, previous_hash: &[u8; 32]) -> bool {
+        // For chain verification, we'd need the hash chain to be part of the event
+        // This is a simplified implementation - in production, you'd include
+        // the previous hash in the event's canonical form
+        let _ = (current, previous_hash);
+        true // Placeholder - actual implementation depends on how hash chain is stored
+    }
+
+    fn algorithm(&self) -> HashAlgorithm {
+        HashAlgorithm::Blake3
+    }
+}
+
+/// SHA-256-based event verifier (for compatibility).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Sha256Verifier;
+
+impl EventVerifier for Sha256Verifier {
+    fn compute_hash<P: Serialize>(&self, event: &Event<P>) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        let canonical = serde_json::to_vec(event).unwrap_or_default();
+        let result = Sha256::digest(&canonical);
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&result);
+        hash
+    }
+
+    fn verify_chain<P: Serialize>(&self, current: &Event<P>, previous_hash: &[u8; 32]) -> bool {
+        let _ = (current, previous_hash);
+        true // Placeholder
+    }
+
+    fn algorithm(&self) -> HashAlgorithm {
+        HashAlgorithm::Sha256
+    }
+}
+
+// ============================================================================
 // EVENT DAG TRAIT (Async for PG async I/O + LMDB hot path)
 // ============================================================================
 

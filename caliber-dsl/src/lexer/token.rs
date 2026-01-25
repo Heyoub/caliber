@@ -203,6 +203,33 @@ pub enum TokenKind {
     // Special
     Eof,
     Error(String),
+
+    // ========================================================================
+    // PII & SECURITY TOKENS (Phase 3)
+    // ========================================================================
+
+    /// Mark field/value as opaque to agents (can pass but not read)
+    Opaque,
+    /// Sensitive data classification
+    Sensitive,
+    /// Secret value (encrypted at rest, redacted in logs)
+    Secret,
+    /// Redaction policy marker
+    Redact,
+    /// Write protection (immutable after creation)
+    Immutable,
+    /// Audit requirement (all access logged)
+    Audited,
+
+    // Sensitivity/classification levels
+    /// Public - no restrictions
+    Public,
+    /// Internal use only
+    Internal,
+    /// Limited access - confidential
+    Confidential,
+    /// Highly restricted
+    Restricted,
 }
 
 /// Source location span.

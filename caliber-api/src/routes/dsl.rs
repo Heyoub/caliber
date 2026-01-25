@@ -11,7 +11,7 @@ use axum::{
 };
 
 use crate::{
-    auth::AuthExtractor,
+    middleware::AuthExtractor,
     db::DbClient,
     error::{ApiError, ApiResult},
     state::AppState,

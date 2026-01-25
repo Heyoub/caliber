@@ -2,7 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::scope::{CreateScopeRequest, ScopeResponse, UpdateScopeRequest};
+use crate::types::{CreateScopeRequest, ScopeResponse, UpdateScopeRequest};
 use caliber_core::{ScopeId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 

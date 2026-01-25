@@ -5,7 +5,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam};
 use crate::error::ApiError;
-use crate::types::tenant::{CreateTenantRequest, TenantInfo, TenantStatus, UpdateTenantRequest};
+use crate::types::{CreateTenantRequest, TenantInfo, TenantStatus, UpdateTenantRequest};
 use caliber_core::TenantId;
 use serde_json::Value as JsonValue;
 

@@ -76,7 +76,8 @@ pub struct AdapterConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CompiledAdapterType {
     Postgres,
-    Lmdb,
+    Redis,
+    Memory,
 }
 
 /// Compiled memory configuration.
@@ -111,6 +112,36 @@ pub struct FieldConfig {
     pub name: String,
     pub field_type: CompiledFieldType,
     pub nullable: bool,
+    /// Security configuration for PII fields.
+    pub security: Option<CompiledFieldSecurity>,
+}
+
+/// Compiled PII classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum CompiledPIIClassification {
+    #[default]
+    Public,
+    Internal,
+    Confidential,
+    Restricted,
+    Secret,
+}
+
+/// Compiled field security configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompiledFieldSecurity {
+    /// Sensitivity classification
+    pub classification: CompiledPIIClassification,
+    /// Agent can pass but not read content
+    pub opaque: bool,
+    /// Cannot be modified after creation
+    pub immutable: bool,
+    /// All access is logged
+    pub audited: bool,
+    /// Redact in logs and error messages
+    pub redact_in_logs: bool,
+    /// Source from environment variable
+    pub env_source: Option<String>,
 }
 
 /// Compiled field types.
@@ -123,8 +154,9 @@ pub enum CompiledFieldType {
     Bool,
     Timestamp,
     Json,
-    Embedding { dimensions: i32 },
+    Embedding { dimensions: Option<usize> },
     Enum { variants: Vec<String> },
+    Array(Box<CompiledFieldType>),
 }
 
 /// Compiled retention configuration.
@@ -134,6 +166,7 @@ pub enum CompiledRetention {
     Session,
     Scope,
     Duration(Duration),
+    Max(usize),
 }
 
 /// Compiled lifecycle configuration.
@@ -153,29 +186,34 @@ pub enum CompiledTrigger {
     ScopeClose,
     TurnEnd,
     Manual,
-    Explicit,
+    Schedule(String),
     DosageReached { threshold: i32 },
     TurnCount { count: i32 },
     ArtifactCount { count: i32 },
 }
 
 /// Compiled lifecycle actions.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CompiledAction {
-    Summarize,
-    ExtractArtifacts,
-    Checkpoint,
-    Prune,
-    Notify,
-    AutoSummarize,
+    Summarize { target: String },
+    ExtractArtifacts { target: String },
+    Checkpoint { target: String },
+    Prune { target: String, criteria: CompiledFilter },
+    Notify { target: String },
+    Inject { target: String, mode: CompiledInjectionMode },
+    AutoSummarize {
+        source_level: CompiledAbstractionLevel,
+        target_level: CompiledAbstractionLevel,
+        create_edges: bool,
+    },
 }
 
 /// Compiled index configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IndexConfig {
-    pub name: String,
-    pub fields: Vec<String>,
+    pub field: String,
     pub index_type: CompiledIndexType,
+    pub options: HashMap<String, String>,
 }
 
 /// Compiled index types.
@@ -251,7 +289,6 @@ pub struct PolicyConfig {
 pub struct CompiledPolicyRule {
     pub trigger: CompiledTrigger,
     pub actions: Vec<CompiledAction>,
-    pub schedule: Option<String>,
 }
 
 /// Compiled injection configuration.
@@ -364,6 +401,7 @@ pub struct CacheConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CompiledCacheBackend {
     Lmdb,
+    Memory,
 }
 
 /// Compiled freshness configuration.
@@ -388,6 +426,7 @@ pub struct ProviderConfig {
 pub enum CompiledProviderType {
     OpenAI,
     Anthropic,
+    Custom,
 }
 
 /// Compiled evolution configuration.
@@ -643,7 +682,8 @@ impl DslCompiler {
     fn compile_adapter(def: &AdapterDef) -> CompileResult<AdapterConfig> {
         let adapter_type = match def.adapter_type {
             AdapterType::Postgres => CompiledAdapterType::Postgres,
-            AdapterType::Lmdb => CompiledAdapterType::Lmdb,
+            AdapterType::Redis => CompiledAdapterType::Redis,
+            AdapterType::Memory => CompiledAdapterType::Memory,
         };
 
         let options: HashMap<String, String> = def.options.iter().cloned().collect();
@@ -705,11 +745,31 @@ impl DslCompiler {
 
     fn compile_field(def: &FieldDef) -> CompileResult<FieldConfig> {
         let field_type = Self::compile_field_type(&def.field_type)?;
+        let security = def.security.as_ref().map(Self::compile_field_security);
         Ok(FieldConfig {
             name: def.name.clone(),
             field_type,
             nullable: def.nullable,
+            security,
         })
+    }
+
+    fn compile_field_security(sec: &FieldSecurity) -> CompiledFieldSecurity {
+        use crate::parser::ast::PIIClassification;
+        CompiledFieldSecurity {
+            classification: match sec.classification {
+                PIIClassification::Public => CompiledPIIClassification::Public,
+                PIIClassification::Internal => CompiledPIIClassification::Internal,
+                PIIClassification::Confidential => CompiledPIIClassification::Confidential,
+                PIIClassification::Restricted => CompiledPIIClassification::Restricted,
+                PIIClassification::Secret => CompiledPIIClassification::Secret,
+            },
+            opaque: sec.opaque,
+            immutable: sec.immutable,
+            audited: sec.audited,
+            redact_in_logs: sec.redact_in_logs,
+            env_source: sec.env_source.clone(),
+        }
     }
 
     fn compile_field_type(ft: &FieldType) -> CompileResult<CompiledFieldType> {
@@ -721,12 +781,16 @@ impl DslCompiler {
             FieldType::Bool => CompiledFieldType::Bool,
             FieldType::Timestamp => CompiledFieldType::Timestamp,
             FieldType::Json => CompiledFieldType::Json,
-            FieldType::Embedding { dimensions } => CompiledFieldType::Embedding {
+            FieldType::Embedding(dimensions) => CompiledFieldType::Embedding {
                 dimensions: *dimensions,
             },
-            FieldType::Enum { variants } => CompiledFieldType::Enum {
+            FieldType::Enum(variants) => CompiledFieldType::Enum {
                 variants: variants.clone(),
             },
+            FieldType::Array(inner) => {
+                let compiled_inner = Self::compile_field_type(inner)?;
+                CompiledFieldType::Array(Box::new(compiled_inner))
+            }
         })
     }
 
@@ -739,6 +803,7 @@ impl DslCompiler {
                 let duration = Self::parse_duration(s)?;
                 CompiledRetention::Duration(duration)
             }
+            Retention::Max(n) => CompiledRetention::Max(*n),
         })
     }
 
@@ -759,18 +824,41 @@ impl DslCompiler {
             Trigger::ScopeClose => CompiledTrigger::ScopeClose,
             Trigger::TurnEnd => CompiledTrigger::TurnEnd,
             Trigger::Manual => CompiledTrigger::Manual,
-            Trigger::Explicit => CompiledTrigger::Explicit,
+            Trigger::Schedule(s) => CompiledTrigger::Schedule(s.clone()),
         })
     }
 
     fn compile_action(action: &Action) -> CompileResult<CompiledAction> {
         Ok(match action {
-            Action::Summarize => CompiledAction::Summarize,
-            Action::ExtractArtifacts => CompiledAction::ExtractArtifacts,
-            Action::Checkpoint => CompiledAction::Checkpoint,
-            Action::Prune => CompiledAction::Prune,
-            Action::Notify => CompiledAction::Notify,
-            Action::AutoSummarize => CompiledAction::AutoSummarize,
+            Action::Summarize(target) => CompiledAction::Summarize {
+                target: target.clone(),
+            },
+            Action::ExtractArtifacts(target) => CompiledAction::ExtractArtifacts {
+                target: target.clone(),
+            },
+            Action::Checkpoint(target) => CompiledAction::Checkpoint {
+                target: target.clone(),
+            },
+            Action::Prune { target, criteria } => CompiledAction::Prune {
+                target: target.clone(),
+                criteria: Self::compile_filter(criteria)?,
+            },
+            Action::Notify(target) => CompiledAction::Notify {
+                target: target.clone(),
+            },
+            Action::Inject { target, mode } => CompiledAction::Inject {
+                target: target.clone(),
+                mode: Self::compile_injection_mode(mode)?,
+            },
+            Action::AutoSummarize {
+                source_level,
+                target_level,
+                create_edges,
+            } => CompiledAction::AutoSummarize {
+                source_level: Self::compile_abstraction_level(source_level)?,
+                target_level: Self::compile_abstraction_level(target_level)?,
+                create_edges: *create_edges,
+            },
         })
     }
 
@@ -784,9 +872,9 @@ impl DslCompiler {
         };
 
         Ok(IndexConfig {
-            name: def.name.clone(),
-            fields: def.fields.clone(),
+            field: def.field.clone(),
             index_type,
+            options: def.options.iter().cloned().collect(),
         })
     }
 
@@ -843,7 +931,7 @@ impl DslCompiler {
     }
 
     fn compile_policy_rule(rule: &PolicyRule) -> CompileResult<CompiledPolicyRule> {
-        let trigger = Self::compile_trigger(&rule.on)?;
+        let trigger = Self::compile_trigger(&rule.trigger)?;
         let actions = rule
             .actions
             .iter()
@@ -852,7 +940,6 @@ impl DslCompiler {
         Ok(CompiledPolicyRule {
             trigger,
             actions,
-            schedule: rule.schedule.clone(),
         })
     }
 
@@ -879,7 +966,7 @@ impl DslCompiler {
         Ok(match mode {
             InjectionMode::Full => CompiledInjectionMode::Full,
             InjectionMode::Summary => CompiledInjectionMode::Summary,
-            InjectionMode::TopK(k) => CompiledInjectionMode::TopK { k: *k },
+            InjectionMode::TopK(k) => CompiledInjectionMode::TopK { k: *k as i32 },
             InjectionMode::Relevant(threshold) => CompiledInjectionMode::Relevant {
                 threshold: *threshold,
             },
@@ -995,6 +1082,7 @@ impl DslCompiler {
     fn compile_cache(def: &CacheDef) -> CompileResult<CacheConfig> {
         let backend = match def.backend {
             CacheBackendType::Lmdb => CompiledCacheBackend::Lmdb,
+            CacheBackendType::Memory => CompiledCacheBackend::Memory,
         };
 
         let default_freshness = Self::compile_freshness(&def.default_freshness)?;
@@ -1032,6 +1120,7 @@ impl DslCompiler {
         let provider_type = match def.provider_type {
             ProviderType::OpenAI => CompiledProviderType::OpenAI,
             ProviderType::Anthropic => CompiledProviderType::Anthropic,
+            ProviderType::Custom => CompiledProviderType::Custom,
         };
 
         let api_key = Self::resolve_env_value(&def.api_key)?;
@@ -1106,14 +1195,14 @@ impl DslCompiler {
         trigger: &SummarizationTriggerDsl,
     ) -> CompileResult<CompiledTrigger> {
         Ok(match trigger {
-            SummarizationTriggerDsl::DosageReached(threshold) => {
+            SummarizationTriggerDsl::DosageThreshold { percent } => {
                 CompiledTrigger::DosageReached {
-                    threshold: *threshold,
+                    threshold: *percent as i32,
                 }
             }
             SummarizationTriggerDsl::ScopeClose => CompiledTrigger::ScopeClose,
-            SummarizationTriggerDsl::TurnCount(count) => CompiledTrigger::TurnCount { count: *count },
-            SummarizationTriggerDsl::ArtifactCount(count) => {
+            SummarizationTriggerDsl::TurnCount { count } => CompiledTrigger::TurnCount { count: *count },
+            SummarizationTriggerDsl::ArtifactCount { count } => {
                 CompiledTrigger::ArtifactCount { count: *count }
             }
             SummarizationTriggerDsl::Manual => CompiledTrigger::Manual,

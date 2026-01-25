@@ -472,8 +472,9 @@ mod tests {
     }
 
     fn make_test_trajectory(tenant_id: Uuid) -> caliber_core::Trajectory {
+        use caliber_core::{TrajectoryId, EntityIdType};
         caliber_core::Trajectory {
-            trajectory_id: tenant_id, // Using trajectory_id as tenant_id for this entity type
+            trajectory_id: TrajectoryId::new(tenant_id), // Using trajectory_id as tenant_id for this entity type
             name: "Test Trajectory".to_string(),
             description: Some("A test trajectory".to_string()),
             status: TrajectoryStatus::Active,
@@ -489,14 +490,15 @@ mod tests {
     }
 
     fn make_test_note(trajectory_id: Uuid) -> caliber_core::Note {
+        use caliber_core::{TrajectoryId, NoteId, EntityIdType};
         caliber_core::Note {
-            note_id: Uuid::now_v7(),
+            note_id: NoteId::now_v7(),
             note_type: NoteType::Fact,
             title: "Test Note".to_string(),
             content: "This is test content".to_string(),
             content_hash: [0u8; 32],
             embedding: None,
-            source_trajectory_ids: vec![trajectory_id],
+            source_trajectory_ids: vec![TrajectoryId::new(trajectory_id)],
             source_artifact_ids: vec![],
             ttl: TTL::Persistent,
             created_at: Utc::now(),
@@ -514,10 +516,11 @@ mod tests {
         trajectory_id: Uuid,
         scope_id: Uuid,
     ) -> caliber_core::Artifact {
+        use caliber_core::{TrajectoryId, ScopeId, ArtifactId, EntityIdType};
         caliber_core::Artifact {
-            artifact_id: Uuid::now_v7(),
-            trajectory_id,
-            scope_id,
+            artifact_id: ArtifactId::now_v7(),
+            trajectory_id: TrajectoryId::new(trajectory_id),
+            scope_id: ScopeId::new(scope_id),
             artifact_type: ArtifactType::Fact,
             name: "Test Artifact".to_string(),
             content: "test content".to_string(),
@@ -545,6 +548,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_put_and_get() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let trajectory_id = Uuid::now_v7();
@@ -554,7 +558,7 @@ mod tests {
         backend.put(&trajectory, cached_at).await.unwrap();
 
         let cached = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, trajectory_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
             .unwrap();
         assert!(cached.is_some());
@@ -582,6 +586,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let trajectory_id = Uuid::now_v7();
@@ -589,17 +594,17 @@ mod tests {
 
         backend.put(&trajectory, Utc::now()).await.unwrap();
         assert!(backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, trajectory_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
             .unwrap()
             .is_some());
 
         backend
-            .delete::<caliber_core::Trajectory>(trajectory.trajectory_id, trajectory_id)
+            .delete::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
             .unwrap();
         assert!(backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, trajectory_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
             .unwrap()
             .is_none());
@@ -607,6 +612,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tenant_isolation() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let tenant1 = Uuid::now_v7();
@@ -618,14 +624,14 @@ mod tests {
 
         // Try to retrieve under tenant2 (same entity_id, different tenant)
         let cached = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, tenant2)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant2)
             .await
             .unwrap();
         assert!(cached.is_none(), "Tenant2 should not see tenant1's data");
 
         // Verify tenant1 can still retrieve
         let cached = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, tenant1)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant1)
             .await
             .unwrap();
         assert!(cached.is_some(), "Tenant1 should still see their data");
@@ -633,6 +639,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalidate_tenant() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let tenant1 = Uuid::now_v7();
@@ -655,7 +662,7 @@ mod tests {
 
         // Tenant2's data should still exist
         let cached = backend
-            .get::<caliber_core::Trajectory>(t2_trajectory.trajectory_id, tenant2)
+            .get::<caliber_core::Trajectory>(t2_trajectory.trajectory_id.as_uuid(), tenant2)
             .await
             .unwrap();
         assert!(cached.is_some(), "Tenant2's data should not be affected");
@@ -663,6 +670,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalidate_entity_type() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let tenant_id = Uuid::now_v7();
@@ -672,7 +680,7 @@ mod tests {
         let mut artifact_ids = Vec::new();
         for _ in 0..3 {
             let artifact = make_test_artifact(tenant_id, scope_id);
-            artifact_ids.push(artifact.artifact_id);
+            artifact_ids.push(artifact.artifact_id.as_uuid());
             backend.put(&artifact, Utc::now()).await.unwrap();
         }
 
@@ -689,7 +697,7 @@ mod tests {
 
         // Note should still exist
         let cached = backend
-            .get::<caliber_core::Note>(note.note_id, tenant_id)
+            .get::<caliber_core::Note>(note.note_id.as_uuid(), tenant_id)
             .await
             .unwrap();
         assert!(cached.is_some(), "Note should not be affected");
@@ -706,6 +714,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let tenant_id = Uuid::now_v7();
@@ -713,7 +722,7 @@ mod tests {
 
         // Miss
         let _ = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, tenant_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant_id)
             .await;
 
         // Put
@@ -721,10 +730,10 @@ mod tests {
 
         // Hit
         let _ = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, tenant_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant_id)
             .await;
         let _ = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, tenant_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant_id)
             .await;
 
         let stats = backend.stats().await.unwrap();
@@ -735,6 +744,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tenant_stats() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let tenant1 = Uuid::now_v7();
@@ -744,13 +754,13 @@ mod tests {
         let t1 = make_test_trajectory(tenant1);
         backend.put(&t1, Utc::now()).await.unwrap();
         let _ = backend
-            .get::<caliber_core::Trajectory>(t1.trajectory_id, tenant1)
+            .get::<caliber_core::Trajectory>(t1.trajectory_id.as_uuid(), tenant1)
             .await;
         let _ = backend
-            .get::<caliber_core::Trajectory>(t1.trajectory_id, tenant1)
+            .get::<caliber_core::Trajectory>(t1.trajectory_id.as_uuid(), tenant1)
             .await;
         let _ = backend
-            .get::<caliber_core::Trajectory>(t1.trajectory_id, tenant1)
+            .get::<caliber_core::Trajectory>(t1.trajectory_id.as_uuid(), tenant1)
             .await;
 
         // Generate misses for tenant2
@@ -773,6 +783,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_overwrite() {
+        use caliber_core::EntityIdType;
         let (backend, _temp_dir) = create_test_backend();
 
         let tenant_id = Uuid::now_v7();
@@ -787,7 +798,7 @@ mod tests {
 
         // Verify the updated version is returned
         let cached = backend
-            .get::<caliber_core::Trajectory>(trajectory.trajectory_id, tenant_id)
+            .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant_id)
             .await
             .unwrap();
         assert!(cached.is_some());

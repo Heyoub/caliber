@@ -10,7 +10,7 @@
 //! - Dragon 3: Change journal for cache invalidation
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, UuidType, EntityType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId};
+use caliber_core::{CaliberResult, EntityType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId};
 use uuid::Uuid;
 use caliber_storage::{
     CacheableEntity, ChangeJournal, Freshness, InMemoryChangeJournal, LmdbCacheBackend,

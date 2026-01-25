@@ -31,7 +31,7 @@
 use crate::components::{ArtifactListFilter, NoteListFilter, ScopeListFilter, TurnListFilter};
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
-use crate::middleware::AuthContext;
+use crate::auth::AuthContext;
 use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse, TurnResponse};
 use axum::{extract::State, Extension, Json};
 use caliber_core::{

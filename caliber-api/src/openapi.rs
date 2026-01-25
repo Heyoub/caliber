@@ -29,8 +29,8 @@ use caliber_core::{
     ValidationMode, TTL,
 };
 
-// Import ConflictResolution from pcp
-use caliber_pcp::ConflictResolution;
+// Import ConflictResolution from caliber_core
+use caliber_core::agent::ConflictResolution;
 
 /// OpenAPI document for CALIBER API.
 ///

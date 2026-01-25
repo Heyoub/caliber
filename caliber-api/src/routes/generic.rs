@@ -57,7 +57,7 @@ use crate::{
 /// ```
 pub async fn create_handler<C>(
     db: DbClient,
-    auth: crate::middleware::AuthInfo,
+    auth: crate::auth::AuthContext,
     req: C::Create,
 ) -> ApiResult<(StatusCode, Json<C>)>
 where
@@ -71,7 +71,7 @@ where
 /// Generic get handler - retrieves an entity by ID.
 pub async fn get_handler<C>(
     db: DbClient,
-    auth: crate::middleware::AuthInfo,
+    auth: crate::auth::AuthContext,
     id: C::Id,
 ) -> ApiResult<Json<C>>
 where
@@ -87,7 +87,7 @@ where
 /// Generic update handler - updates an entity and returns it.
 pub async fn update_handler<C>(
     db: DbClient,
-    auth: crate::middleware::AuthInfo,
+    auth: crate::auth::AuthContext,
     id: C::Id,
     req: C::Update,
 ) -> ApiResult<Json<C>>
@@ -102,7 +102,7 @@ where
 /// Generic delete handler - deletes an entity.
 pub async fn delete_handler<C>(
     db: DbClient,
-    auth: crate::middleware::AuthInfo,
+    auth: crate::auth::AuthContext,
     id: C::Id,
 ) -> ApiResult<StatusCode>
 where
@@ -117,7 +117,7 @@ where
 /// Returns a tuple of (entities, total) for flexibility in response formatting.
 pub async fn list_handler<C>(
     db: DbClient,
-    auth: crate::middleware::AuthInfo,
+    auth: crate::auth::AuthContext,
     filter: C::ListFilter,
 ) -> ApiResult<(Vec<C>, i32)>
 where

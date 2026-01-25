@@ -2513,6 +2513,7 @@ mod tests {
                     field_type: FieldType::Uuid,
                     nullable: false,
                     default: None,
+                    security: None,
                 }],
                 retention: Retention::Scope,
                 lifecycle: Lifecycle::Explicit,
@@ -2828,6 +2829,7 @@ mod prop_tests {
                 field_type,
                 nullable,
                 default: None,
+                security: None,
             })
     }
 

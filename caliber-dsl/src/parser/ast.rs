@@ -84,6 +84,8 @@ pub struct FieldDef {
     pub field_type: FieldType,
     pub nullable: bool,
     pub default: Option<String>,
+    /// Optional security configuration for PII fields.
+    pub security: Option<FieldSecurity>,
 }
 
 /// Field types supported in schemas.
@@ -548,6 +550,129 @@ pub enum LockMode {
 
 
 // ============================================================================
+// PII & SECURITY AST TYPES (Phase 3)
+// ============================================================================
+
+/// PII/sensitivity classification for a field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum PIIClassification {
+    /// No restrictions
+    #[default]
+    Public,
+    /// Internal use only
+    Internal,
+    /// Limited access
+    Confidential,
+    /// Highly restricted
+    Restricted,
+    /// Secret - encrypted, redacted in logs
+    Secret,
+}
+
+/// Field security modifiers.
+///
+/// Controls how agents and systems can interact with sensitive fields.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FieldSecurity {
+    /// Sensitivity classification
+    pub classification: PIIClassification,
+    /// Agent can pass but not read content
+    pub opaque: bool,
+    /// Cannot be modified after creation
+    pub immutable: bool,
+    /// All access is logged
+    pub audited: bool,
+    /// Redact in logs and error messages
+    pub redact_in_logs: bool,
+    /// Source from environment variable
+    pub env_source: Option<String>,
+}
+
+impl Default for FieldSecurity {
+    fn default() -> Self {
+        Self {
+            classification: PIIClassification::Public,
+            opaque: false,
+            immutable: false,
+            audited: false,
+            redact_in_logs: false,
+            env_source: None,
+        }
+    }
+}
+
+impl FieldSecurity {
+    /// Create a public field with no restrictions.
+    pub fn public() -> Self {
+        Self::default()
+    }
+
+    /// Create a secret field with full protection.
+    pub fn secret() -> Self {
+        Self {
+            classification: PIIClassification::Secret,
+            opaque: true,
+            immutable: false,
+            audited: true,
+            redact_in_logs: true,
+            env_source: None,
+        }
+    }
+
+    /// Create a sensitive field.
+    pub fn sensitive() -> Self {
+        Self {
+            classification: PIIClassification::Confidential,
+            opaque: false,
+            immutable: false,
+            audited: false,
+            redact_in_logs: true,
+            env_source: None,
+        }
+    }
+
+    /// Mark as opaque (agent can pass but not read).
+    pub fn with_opaque(mut self) -> Self {
+        self.opaque = true;
+        self
+    }
+
+    /// Mark as immutable.
+    pub fn with_immutable(mut self) -> Self {
+        self.immutable = true;
+        self
+    }
+
+    /// Mark as audited.
+    pub fn with_audited(mut self) -> Self {
+        self.audited = true;
+        self
+    }
+
+    /// Set environment source.
+    pub fn with_env(mut self, var_name: impl Into<String>) -> Self {
+        self.env_source = Some(var_name.into());
+        self
+    }
+}
+
+/// Enhanced field definition with security modifiers.
+///
+/// Extends the basic FieldDef with optional security configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecureFieldDef {
+    /// Field name
+    pub name: String,
+    /// Field type
+    pub field_type: FieldType,
+    /// Security configuration (optional)
+    pub security: Option<FieldSecurity>,
+    /// Default value (if any)
+    pub default: Option<String>,
+}
+
+
+// ============================================================================
 // PARSE ERROR (Task 4.8)
 // ============================================================================
 
@@ -822,6 +947,13 @@ impl Parser {
             false
         };
 
+        // Check for security modifiers [modifier, ...]
+        let security = if self.check(&TokenKind::LBracket) {
+            Some(self.parse_field_security()?)
+        } else {
+            None
+        };
+
         // Check for default value (literal)
         let default = if self.check(&TokenKind::Eq) {
             self.advance();
@@ -835,7 +967,87 @@ impl Parser {
             field_type,
             nullable,
             default,
+            security,
         })
+    }
+
+    /// Parse field security modifiers: [modifier, modifier, ...]
+    fn parse_field_security(&mut self) -> Result<FieldSecurity, ParseError> {
+        self.expect(TokenKind::LBracket)?;
+        let mut security = FieldSecurity::default();
+
+        loop {
+            match &self.current().kind {
+                // Classification levels
+                TokenKind::Public => {
+                    security.classification = PIIClassification::Public;
+                    self.advance();
+                }
+                TokenKind::Internal => {
+                    security.classification = PIIClassification::Internal;
+                    self.advance();
+                }
+                TokenKind::Confidential => {
+                    security.classification = PIIClassification::Confidential;
+                    self.advance();
+                }
+                TokenKind::Restricted => {
+                    security.classification = PIIClassification::Restricted;
+                    self.advance();
+                }
+                TokenKind::Secret => {
+                    security.classification = PIIClassification::Secret;
+                    security.redact_in_logs = true; // Secret implies redaction
+                    self.advance();
+                }
+                // Boolean modifiers
+                TokenKind::Opaque => {
+                    security.opaque = true;
+                    self.advance();
+                }
+                TokenKind::Sensitive => {
+                    security.classification = PIIClassification::Confidential;
+                    security.redact_in_logs = true;
+                    self.advance();
+                }
+                TokenKind::Redact => {
+                    security.redact_in_logs = true;
+                    self.advance();
+                }
+                TokenKind::Immutable => {
+                    security.immutable = true;
+                    self.advance();
+                }
+                TokenKind::Audited => {
+                    security.audited = true;
+                    self.advance();
+                }
+                // env("VAR_NAME") syntax
+                TokenKind::Env => {
+                    self.advance();
+                    self.expect(TokenKind::LParen)?;
+                    if let TokenKind::String(var_name) = &self.current().kind {
+                        security.env_source = Some(var_name.clone());
+                        self.advance();
+                    } else {
+                        return Err(self.error("Expected environment variable name string"));
+                    }
+                    self.expect(TokenKind::RParen)?;
+                }
+                TokenKind::RBracket => {
+                    break;
+                }
+                TokenKind::Comma => {
+                    self.advance();
+                }
+                _ => {
+                    return Err(self.error("Expected security modifier or ']'"));
+                }
+            }
+        }
+
+        self.expect(TokenKind::RBracket)?;
+        Ok(security)
     }
 
     fn parse_default_literal(&mut self) -> Result<String, ParseError> {

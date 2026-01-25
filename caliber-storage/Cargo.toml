@@ -18,6 +18,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 async-trait = "0.1"
 heed = "0.20"
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 proptest = { workspace = true }

@@ -6,7 +6,7 @@
 
 use caliber_core::{
     AbstractionLevel, AgentId, Artifact, ArtifactId, CaliberConfig, CaliberError, CaliberResult,
-    NoteId, RawContent, Scope, ScopeId, SummarizationPolicy, SummarizationPolicyId,
+    EntityIdType, NoteId, RawContent, Scope, ScopeId, SummarizationPolicy, SummarizationPolicyId,
     SummarizationTrigger, Timestamp, TrajectoryId, ValidationError,
     // Re-exported from caliber-core (was previously defined locally)
     ConflictResolution,
@@ -409,7 +409,7 @@ impl RecallService {
 
         // Count unique scopes
         let mut unique_scope_ids: Vec<ScopeId> = filtered.iter().map(|c| c.scope_id).collect();
-        unique_scope_ids.sort();
+        unique_scope_ids.sort_by_key(|id| id.as_uuid());
         unique_scope_ids.dedup();
         let unique_scopes = unique_scope_ids.len() as i64;
 
@@ -557,8 +557,7 @@ pub enum RecoveryFrequency {
     Manual,
 }
 
-// ConflictResolution is now re-exported from caliber-core
-pub use caliber_core::ConflictResolution;
+// ConflictResolution is re-exported from caliber-core at line 12
 
 /// Configuration for context DAG management.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1079,7 +1078,7 @@ impl PCPRuntime {
                     age.num_hours(),
                     self.config.staleness.stale_hours
                 ),
-                entity_id: Some(scope.scope_id),
+                entity_id: Some(scope.scope_id.as_uuid()),
             });
         }
     }
@@ -1095,7 +1094,7 @@ impl PCPRuntime {
                     "Artifact {} is missing embedding (required for grounding)",
                     artifact.artifact_id
                 ),
-                entity_id: Some(artifact.artifact_id),
+                entity_id: Some(artifact.artifact_id.as_uuid()),
             });
         }
 
@@ -1109,7 +1108,7 @@ impl PCPRuntime {
                         "Artifact {} has low confidence ({})",
                         artifact.artifact_id, confidence
                     ),
-                    entity_id: Some(artifact.artifact_id),
+                    entity_id: Some(artifact.artifact_id.as_uuid()),
                 });
             }
         }
@@ -1811,8 +1810,8 @@ mod tests {
 
     fn make_test_scope() -> Scope {
         Scope {
-            scope_id: Uuid::now_v7(),
-            trajectory_id: Uuid::now_v7(),
+            scope_id: ScopeId::now_v7(),
+            trajectory_id: TrajectoryId::now_v7(),
             parent_scope_id: None,
             name: "Test Scope".to_string(),
             purpose: Some("Testing".to_string()),
@@ -1828,9 +1827,9 @@ mod tests {
 
     fn make_test_artifact(content: &str) -> Artifact {
         Artifact {
-            artifact_id: Uuid::now_v7(),
-            trajectory_id: Uuid::now_v7(),
-            scope_id: Uuid::now_v7(),
+            artifact_id: ArtifactId::now_v7(),
+            trajectory_id: TrajectoryId::now_v7(),
+            scope_id: ScopeId::now_v7(),
             artifact_type: ArtifactType::Fact,
             name: "Test Artifact".to_string(),
             content: content.to_string(),
@@ -1855,8 +1854,8 @@ mod tests {
 
     #[test]
     fn test_memory_commit_new() {
-        let traj_id = Uuid::now_v7();
-        let scope_id = Uuid::now_v7();
+        let traj_id = TrajectoryId::now_v7();
+        let scope_id = ScopeId::now_v7();
         let commit = MemoryCommit::new(
             traj_id,
             scope_id,
@@ -1876,8 +1875,8 @@ mod tests {
     #[test]
     fn test_memory_commit_with_tokens() {
         let commit = MemoryCommit::new(
-            Uuid::now_v7(),
-            Uuid::now_v7(),
+            TrajectoryId::now_v7(),
+            ScopeId::now_v7(),
             "query".to_string(),
             "response".to_string(),
             "standard".to_string(),
@@ -1898,8 +1897,8 @@ mod tests {
         let config = make_test_caliber_config();
         let mut service = RecallService::new(config).unwrap();
 
-        let traj_id = Uuid::now_v7();
-        let scope_id = Uuid::now_v7();
+        let traj_id = TrajectoryId::now_v7();
+        let scope_id = ScopeId::now_v7();
 
         let commit = MemoryCommit::new(
             traj_id,
@@ -1922,16 +1921,16 @@ mod tests {
         let mut service = RecallService::new(config).unwrap();
 
         service.add_commit(MemoryCommit::new(
-            Uuid::now_v7(),
-            Uuid::now_v7(),
+            TrajectoryId::now_v7(),
+            ScopeId::now_v7(),
             "weather query".to_string(),
             "sunny response".to_string(),
             "standard".to_string(),
         ));
 
         service.add_commit(MemoryCommit::new(
-            Uuid::now_v7(),
-            Uuid::now_v7(),
+            TrajectoryId::now_v7(),
+            ScopeId::now_v7(),
             "code query".to_string(),
             "code response".to_string(),
             "standard".to_string(),
@@ -2044,7 +2043,7 @@ mod tests {
 
         let scope = make_test_scope();
         let artifacts = vec![make_test_artifact("test")];
-        let note_ids = vec![Uuid::now_v7()];
+        let note_ids = vec![NoteId::now_v7()];
 
         let checkpoint = runtime
             .create_checkpoint(&scope, &artifacts, &note_ids)
@@ -2090,7 +2089,7 @@ mod tests {
 
         let artifact1 = make_test_artifact("same content");
         let mut artifact2 = make_test_artifact("same content");
-        artifact2.artifact_id = Uuid::now_v7(); // Different ID, same content
+        artifact2.artifact_id = ArtifactId::now_v7(); // Different ID, same content
 
         let result = runtime.lint_artifact(&artifact2, &[artifact1]).unwrap();
         assert!(!result.passed);
@@ -2183,8 +2182,8 @@ mod prop_tests {
             let config = make_test_caliber_config();
             let mut service = RecallService::new(config).unwrap();
 
-            let traj_id = Uuid::now_v7();
-            let scope_id = Uuid::now_v7();
+            let traj_id = TrajectoryId::now_v7();
+            let scope_id = ScopeId::now_v7();
 
             // Create and add commit
             let commit = MemoryCommit::new(
@@ -2228,12 +2227,12 @@ mod prop_tests {
             let mut service = RecallService::new(config).unwrap();
 
             // Create commits with different modes
-            let traj_id = Uuid::now_v7();
+            let traj_id = TrajectoryId::now_v7();
 
             // Add a standard mode commit without decision keywords
             let standard_commit = MemoryCommit::new(
                 traj_id,
-                Uuid::now_v7(),
+                ScopeId::now_v7(),
                 "simple query".to_string(),
                 "simple response without any decision words".to_string(),
                 "standard".to_string(),
@@ -2243,7 +2242,7 @@ mod prop_tests {
             // Add a commit with the test mode
             let test_commit = MemoryCommit::new(
                 traj_id,
-                Uuid::now_v7(),
+                ScopeId::now_v7(),
                 query.clone(),
                 "I recommend this approach for the solution.".to_string(),
                 mode.clone(),
@@ -2296,8 +2295,8 @@ mod prop_tests {
             output_tokens in 0i64..1000000
         ) {
             let commit = MemoryCommit::new(
-                Uuid::now_v7(),
-                Uuid::now_v7(),
+                TrajectoryId::now_v7(),
+                ScopeId::now_v7(),
                 "query".to_string(),
                 "response".to_string(),
                 "standard".to_string(),
@@ -2316,8 +2315,8 @@ mod prop_tests {
             let config = make_test_caliber_config();
             let mut service = RecallService::new(config).unwrap();
 
-            let scope_id = Uuid::now_v7();
-            let traj_id = Uuid::now_v7();
+            let scope_id = ScopeId::now_v7();
+            let traj_id = TrajectoryId::now_v7();
 
             // Add commits
             for i in 0..num_commits {

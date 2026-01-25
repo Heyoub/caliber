@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityType};
+use caliber_core::{CaliberResult, EntityType, TenantId, EntityIdType};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -245,16 +245,17 @@ where
         S: StorageFetcher<T>,
     {
         // Get current watermark
-        let current_watermark = self.journal.current_watermark(tenant_id).await?;
+        let tenant_id_typed = TenantId::new(tenant_id);
+        let current_watermark = self.journal.current_watermark(tenant_id_typed).await?;
 
         // Try cache
         if let Some((entity, cached_at)) = self.cache.get::<T>(entity_id, tenant_id).await? {
             // Get watermark at cache time
-            if let Some(cache_watermark) = self.journal.watermark_at(tenant_id, cached_at).await? {
+            if let Some(cache_watermark) = self.journal.watermark_at(tenant_id_typed, cached_at).await? {
                 // Check if any changes have occurred since caching
                 let has_changes = self
                     .journal
-                    .changes_since(tenant_id, &cache_watermark, &[T::entity_type()])
+                    .changes_since(tenant_id_typed, &cache_watermark, &[T::entity_type()])
                     .await?;
 
                 if !has_changes {
@@ -285,7 +286,8 @@ where
         T: CacheableEntity,
         S: StorageFetcher<T>,
     {
-        let watermark = self.journal.current_watermark(tenant_id).await?;
+        let tenant_id_typed = TenantId::new(tenant_id);
+        let watermark = self.journal.current_watermark(tenant_id_typed).await?;
         self.fetch_and_cache_with_watermark(entity_id, tenant_id, storage, watermark)
             .await
     }
@@ -450,7 +452,7 @@ mod tests {
             self.artifacts
                 .write()
                 .unwrap()
-                .insert(artifact.artifact_id, artifact);
+                .insert(artifact.artifact_id.as_uuid(), artifact);
         }
     }
 
@@ -466,10 +468,11 @@ mod tests {
     }
 
     fn make_test_artifact(trajectory_id: Uuid, scope_id: Uuid) -> Artifact {
+        use caliber_core::{TrajectoryId, ScopeId, ArtifactId};
         Artifact {
-            artifact_id: Uuid::now_v7(),
-            trajectory_id,
-            scope_id,
+            artifact_id: ArtifactId::now_v7(),
+            trajectory_id: TrajectoryId::new(trajectory_id),
+            scope_id: ScopeId::new(scope_id),
             artifact_type: ArtifactType::Fact,
             name: "Test Artifact".to_string(),
             content: "test content".to_string(),
@@ -505,7 +508,7 @@ mod tests {
 
         let result = read_through
             .get::<Artifact, _>(
-                artifact.artifact_id,
+                artifact.artifact_id.as_uuid(),
                 trajectory_id,
                 Freshness::BestEffort {
                     max_staleness: Duration::from_secs(60),
@@ -538,7 +541,7 @@ mod tests {
 
         let result = read_through
             .get::<Artifact, _>(
-                artifact.artifact_id,
+                artifact.artifact_id.as_uuid(),
                 trajectory_id,
                 Freshness::Consistent,
                 &storage,

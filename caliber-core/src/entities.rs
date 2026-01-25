@@ -4,6 +4,7 @@ use crate::{
     // ID types
     TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, AgentId,
     MessageId, DelegationId, HandoffId, ConflictId,
+    identity::EntityIdType,
     // Other types
     EntityType, TrajectoryStatus, ArtifactType, NoteType, TurnRole,
     TTL, AbstractionLevel, ExtractionMethod, OutcomeStatus,

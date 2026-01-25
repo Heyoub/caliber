@@ -2,7 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::webhook::{
+use crate::types::{
     CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse,
     WebhookRetryPolicy,
 };

@@ -2,7 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::agent::{
+use crate::types::{
     AgentResponse, ListAgentsRequest, RegisterAgentRequest, UpdateAgentRequest,
 };
 use caliber_core::{AgentId, TenantId, TrajectoryId, ScopeId};

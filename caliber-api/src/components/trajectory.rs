@@ -2,7 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::trajectory::{
+use crate::types::{
     CreateTrajectoryRequest, ListTrajectoriesRequest, TrajectoryResponse, UpdateTrajectoryRequest,
 };
 use caliber_core::{AgentId, TenantId, TrajectoryId, TrajectoryStatus};

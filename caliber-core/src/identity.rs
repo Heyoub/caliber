@@ -171,6 +171,15 @@ define_entity_id!(SummarizationPolicyId, "summarization_policy", "Type-safe ID f
 define_entity_id!(ConflictId, "conflict", "Type-safe ID for conflict entities.");
 define_entity_id!(DslConfigId, "dsl_config", "Type-safe ID for DSL configuration entities.");
 
+// BDI (Belief-Desire-Intention) Agent Primitives (Phase 2)
+define_entity_id!(GoalId, "goal", "Type-safe ID for agent goal entities.");
+define_entity_id!(PlanId, "plan", "Type-safe ID for agent plan entities.");
+define_entity_id!(ActionId, "action", "Type-safe ID for agent action entities.");
+define_entity_id!(StepId, "step", "Type-safe ID for plan step entities.");
+define_entity_id!(ObservationId, "observation", "Type-safe ID for agent observation entities.");
+define_entity_id!(BeliefId, "belief", "Type-safe ID for agent belief entities.");
+define_entity_id!(LearningId, "learning", "Type-safe ID for agent learning entities.");
+
 // ============================================================================
 // OTHER IDENTITY TYPES
 // ============================================================================

@@ -4,8 +4,8 @@
 //! Combines all inputs into a single coherent prompt following the Context Conveyor pattern.
 
 use crate::{
-    AgentId, Artifact, ArtifactId, CaliberConfig, CaliberResult, EntityType, Note, ScopeId,
-    Timestamp, TrajectoryId,
+    identity::EntityIdType, AgentId, Artifact, ArtifactId, CaliberConfig, CaliberResult,
+    EntityType, Note, ScopeId, Timestamp, TrajectoryId,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -128,15 +128,27 @@ impl ContextPackage {
 /// Type of context section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SectionType {
-    /// System instructions
-    System,
-    /// Persona/kernel configuration
-    Persona,
-    /// Relevant notes from semantic memory
-    Notes,
+    /// System prompt (highest level instructions)
+    SystemPrompt,
+    /// DSL instructions/persona configuration
+    Instructions,
+    /// Evidence/provenance data
+    Evidence,
+    /// User memory injection
+    Memory,
+    /// Tool/LLM result history
+    ToolResult,
     /// Conversation history
+    ConversationHistory,
+    /// System instructions (legacy)
+    System,
+    /// Persona/kernel configuration (legacy)
+    Persona,
+    /// Relevant notes from semantic memory (legacy)
+    Notes,
+    /// Conversation history (legacy alias)
     History,
-    /// Artifacts from current trajectory
+    /// Artifacts from current trajectory (legacy)
     Artifacts,
     /// User input/query
     User,
@@ -221,6 +233,10 @@ pub struct ContextWindow {
     pub included_sections: Vec<String>,
     /// Full audit trail of assembly decisions
     pub assembly_trace: Vec<AssemblyDecision>,
+    /// Segment-based token budget allocation
+    pub budget: Option<TokenBudget>,
+    /// Per-segment usage tracking
+    pub usage: SegmentUsage,
 }
 
 impl ContextSection {
@@ -263,6 +279,85 @@ impl ContextWindow {
             truncated: false,
             included_sections: Vec::new(),
             assembly_trace: Vec::new(),
+            budget: None,
+            usage: SegmentUsage::default(),
+        }
+    }
+
+    /// Create a new context window with segment-based budget.
+    pub fn with_budget(budget: TokenBudget) -> Self {
+        let max_tokens = budget.total();
+        Self {
+            window_id: Uuid::now_v7(),
+            assembled_at: Utc::now(),
+            max_tokens,
+            used_tokens: 0,
+            sections: Vec::new(),
+            truncated: false,
+            included_sections: Vec::new(),
+            assembly_trace: Vec::new(),
+            budget: Some(budget),
+            usage: SegmentUsage::default(),
+        }
+    }
+
+    /// Add content to a specific segment.
+    ///
+    /// Returns an error if the segment budget would be exceeded.
+    pub fn add_to_segment(
+        &mut self,
+        segment: ContextSegment,
+        content: String,
+        priority: i32,
+    ) -> Result<(), SegmentBudgetError> {
+        let tokens = estimate_tokens(&content);
+
+        // Check segment budget if configured
+        if let Some(ref budget) = self.budget {
+            if !self.usage.can_add(segment, tokens, budget) {
+                return Err(SegmentBudgetError::SegmentExceeded {
+                    segment,
+                    available: self.segment_remaining(segment),
+                    requested: tokens,
+                });
+            }
+        }
+
+        // Check total budget
+        if self.used_tokens + tokens > self.max_tokens {
+            return Err(SegmentBudgetError::TotalExceeded {
+                available: self.max_tokens - self.used_tokens,
+                requested: tokens,
+            });
+        }
+
+        // Add section
+        let section_type = match segment {
+            ContextSegment::System => SectionType::SystemPrompt,
+            ContextSegment::Instructions => SectionType::Instructions,
+            ContextSegment::Evidence => SectionType::Evidence,
+            ContextSegment::Memory => SectionType::Memory,
+            ContextSegment::ToolResults => SectionType::ToolResult,
+            ContextSegment::History => SectionType::ConversationHistory,
+        };
+
+        let section = ContextSection::new(section_type, content, priority);
+        self.sections.push(section);
+
+        // Update usage
+        self.used_tokens += tokens;
+        if let Some(ref budget) = self.budget {
+            self.usage.add(segment, tokens, budget);
+        }
+
+        Ok(())
+    }
+
+    /// Get remaining tokens for a specific segment.
+    pub fn segment_remaining(&self, segment: ContextSegment) -> i32 {
+        match &self.budget {
+            Some(budget) => budget.for_segment(segment) - self.usage.for_segment(segment),
+            None => self.max_tokens - self.used_tokens,
         }
     }
 
@@ -366,18 +461,11 @@ impl std::fmt::Display for ContextWindow {
 // TOKEN UTILITIES (Task 7.3)
 // ============================================================================
 
-/// Re-export estimate_tokens from llm module.
-///
-/// This uses the `HeuristicTokenizer` with GPT-4 defaults (~0.25 tokens per char).
-/// For model-specific estimation, use `HeuristicTokenizer::for_model()` directly.
-///
-/// # Arguments
-/// * `text` - The text to estimate tokens for
-///
-/// # Returns
-/// Estimated token count (always >= 0)
-pub fn estimate_tokens(text: &str) -> i32 {
-    // Delegate to the llm module's implementation
+// Note: estimate_tokens is exported from the llm module.
+// Use crate::llm::estimate_tokens() or the re-exported estimate_tokens from lib.rs.
+
+/// Internal helper to estimate tokens using the llm module.
+fn estimate_tokens(text: &str) -> i32 {
     crate::llm::estimate_tokens(text)
 }
 
@@ -467,17 +555,47 @@ fn safe_truncate(s: &str, max_chars: usize) -> &str {
 pub struct ContextAssembler {
     /// Configuration for assembly
     config: CaliberConfig,
+    /// Segment-based token budget (optional)
+    segment_budget: Option<TokenBudget>,
 }
 
 impl ContextAssembler {
     /// Create a new context assembler with the given configuration.
     pub fn new(config: CaliberConfig) -> CaliberResult<Self> {
         config.validate()?;
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            segment_budget: None,
+        })
+    }
+
+    /// Create a context assembler with segment-based budget.
+    pub fn with_segment_budget(config: CaliberConfig, budget: TokenBudget) -> CaliberResult<Self> {
+        config.validate()?;
+        Ok(Self {
+            config,
+            segment_budget: Some(budget),
+        })
+    }
+
+    /// Map SectionType to ContextSegment for budget tracking.
+    fn section_to_segment(section_type: SectionType) -> ContextSegment {
+        match section_type {
+            SectionType::SystemPrompt | SectionType::System => ContextSegment::System,
+            SectionType::Instructions | SectionType::Persona => ContextSegment::Instructions,
+            SectionType::Evidence | SectionType::Artifacts => ContextSegment::Evidence,
+            SectionType::Memory | SectionType::Notes => ContextSegment::Memory,
+            SectionType::ToolResult => ContextSegment::ToolResults,
+            SectionType::ConversationHistory | SectionType::History => ContextSegment::History,
+            SectionType::User => ContextSegment::System, // User input treated as system segment
+        }
     }
 
     /// Assemble context from a package with token budget management.
     /// Sections are added in priority order until budget is exhausted.
+    ///
+    /// When segment budget is configured, sections are also checked against
+    /// their respective segment budgets.
     ///
     /// # Arguments
     /// * `pkg` - The context package to assemble
@@ -485,7 +603,11 @@ impl ContextAssembler {
     /// # Returns
     /// An assembled ContextWindow with sections ordered by priority
     pub fn assemble(&self, pkg: ContextPackage) -> CaliberResult<ContextWindow> {
-        let mut window = ContextWindow::new(self.config.token_budget);
+        // Create window with segment budget if available
+        let mut window = match &self.segment_budget {
+            Some(budget) => ContextWindow::with_budget(budget.clone()),
+            None => ContextWindow::new(self.config.token_budget),
+        };
 
         // Build sections from the package
         let mut sections = self.build_sections(&pkg);
@@ -495,22 +617,55 @@ impl ContextAssembler {
 
         // Add sections in priority order until budget is exhausted
         for section in sections {
+            let segment = Self::section_to_segment(section.section_type);
+
+            // Check total budget
             if window.remaining_tokens() <= 0 {
-                // No more budget, record exclusion
                 window.assembly_trace.push(AssemblyDecision {
                     timestamp: Utc::now(),
                     action: AssemblyAction::Exclude,
                     target_type: format!("{:?}", section.section_type),
                     target_id: Some(section.section_id),
-                    reason: "Budget exhausted".to_string(),
+                    reason: "Total budget exhausted".to_string(),
                     tokens_affected: 0,
                 });
                 continue;
             }
 
+            // Check segment budget if configured
+            if self.segment_budget.is_some() {
+                let segment_remaining = window.segment_remaining(segment);
+                if section.token_count > segment_remaining {
+                    window.assembly_trace.push(AssemblyDecision {
+                        timestamp: Utc::now(),
+                        action: AssemblyAction::Exclude,
+                        target_type: format!("{:?}", section.section_type),
+                        target_id: Some(section.section_id),
+                        reason: format!(
+                            "Segment {:?} budget exhausted ({} remaining, {} requested)",
+                            segment, segment_remaining, section.token_count
+                        ),
+                        tokens_affected: 0,
+                    });
+                    continue;
+                }
+            }
+
             if section.token_count <= window.remaining_tokens() {
-                // Section fits completely
-                window.add_section(section);
+                // Section fits completely - track segment usage
+                if self.segment_budget.is_some() {
+                    // Use add_to_segment for proper tracking
+                    if let Err(_) = window.add_to_segment(
+                        segment,
+                        section.content.clone(),
+                        section.priority,
+                    ) {
+                        // Segment budget exceeded (shouldn't happen due to check above)
+                        continue;
+                    }
+                } else {
+                    window.add_section(section);
+                }
             } else if section.compressible {
                 // Section doesn't fit but can be truncated
                 window.add_truncated_section(section);
@@ -673,6 +828,320 @@ impl ContextAssembler {
     pub fn token_budget(&self) -> i32 {
         self.config.token_budget
     }
+}
+
+
+// ============================================================================
+// TOKEN BUDGET SEGMENTATION (Phase 4)
+// ============================================================================
+
+/// Segment-based token budget allocation.
+///
+/// Divides the total token budget into segments for different purposes,
+/// allowing fine-grained control over context assembly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TokenBudget {
+    /// System prompt allocation
+    pub system: i32,
+    /// DSL instructions/persona
+    pub instructions: i32,
+    /// Evidence/provenance data
+    pub evidence: i32,
+    /// User memory injection
+    pub memory: i32,
+    /// Tool/LLM result history
+    pub tool_results: i32,
+    /// Conversation history
+    pub history: i32,
+    /// Safety margin (typically 5-10%)
+    pub slack: i32,
+}
+
+impl TokenBudget {
+    /// Get the total budget across all segments.
+    pub fn total(&self) -> i32 {
+        self.system
+            + self.instructions
+            + self.evidence
+            + self.memory
+            + self.tool_results
+            + self.history
+            + self.slack
+    }
+
+    /// Create a budget from a total with default ratios.
+    ///
+    /// Default allocation:
+    /// - System: 10%
+    /// - Instructions: 15%
+    /// - Evidence: 15%
+    /// - Memory: 20%
+    /// - Tool Results: 15%
+    /// - History: 20%
+    /// - Slack: 5%
+    pub fn from_total(total: i32) -> Self {
+        Self {
+            system: (total as f32 * 0.10) as i32,
+            instructions: (total as f32 * 0.15) as i32,
+            evidence: (total as f32 * 0.15) as i32,
+            memory: (total as f32 * 0.20) as i32,
+            tool_results: (total as f32 * 0.15) as i32,
+            history: (total as f32 * 0.20) as i32,
+            slack: (total as f32 * 0.05) as i32,
+        }
+    }
+
+    /// Create a builder for custom ratio configuration.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use caliber_core::TokenBudget;
+    ///
+    /// let budget = TokenBudget::builder(8000)
+    ///     .system(0.10)
+    ///     .memory(0.25)  // Override default
+    ///     .build();
+    /// ```
+    pub fn builder(total: i32) -> TokenBudgetBuilder {
+        TokenBudgetBuilder::new(total)
+    }
+
+    /// Get the budget for a specific segment.
+    pub fn for_segment(&self, segment: ContextSegment) -> i32 {
+        match segment {
+            ContextSegment::System => self.system,
+            ContextSegment::Instructions => self.instructions,
+            ContextSegment::Evidence => self.evidence,
+            ContextSegment::Memory => self.memory,
+            ContextSegment::ToolResults => self.tool_results,
+            ContextSegment::History => self.history,
+        }
+    }
+}
+
+impl Default for TokenBudget {
+    fn default() -> Self {
+        Self::from_total(8000)
+    }
+}
+
+// ============================================================================
+// TOKEN BUDGET BUILDER
+// ============================================================================
+
+/// Builder for constructing TokenBudget with custom ratios.
+///
+/// Provides a fluent API for configuring token budget allocation.
+/// All ratios default to the standard allocation if not specified.
+#[derive(Debug, Clone)]
+pub struct TokenBudgetBuilder {
+    total: i32,
+    system: f32,
+    instructions: f32,
+    evidence: f32,
+    memory: f32,
+    tool_results: f32,
+    history: f32,
+    slack: f32,
+}
+
+impl TokenBudgetBuilder {
+    /// Create a new builder with default ratios.
+    fn new(total: i32) -> Self {
+        Self {
+            total,
+            system: 0.10,
+            instructions: 0.15,
+            evidence: 0.15,
+            memory: 0.20,
+            tool_results: 0.15,
+            history: 0.20,
+            slack: 0.05,
+        }
+    }
+
+    /// Set the system prompt ratio (default: 0.10).
+    pub fn system(mut self, ratio: f32) -> Self {
+        self.system = ratio;
+        self
+    }
+
+    /// Set the instructions ratio (default: 0.15).
+    pub fn instructions(mut self, ratio: f32) -> Self {
+        self.instructions = ratio;
+        self
+    }
+
+    /// Set the evidence ratio (default: 0.15).
+    pub fn evidence(mut self, ratio: f32) -> Self {
+        self.evidence = ratio;
+        self
+    }
+
+    /// Set the memory ratio (default: 0.20).
+    pub fn memory(mut self, ratio: f32) -> Self {
+        self.memory = ratio;
+        self
+    }
+
+    /// Set the tool results ratio (default: 0.15).
+    pub fn tool_results(mut self, ratio: f32) -> Self {
+        self.tool_results = ratio;
+        self
+    }
+
+    /// Set the history ratio (default: 0.20).
+    pub fn history(mut self, ratio: f32) -> Self {
+        self.history = ratio;
+        self
+    }
+
+    /// Set the slack ratio (default: 0.05).
+    pub fn slack(mut self, ratio: f32) -> Self {
+        self.slack = ratio;
+        self
+    }
+
+    /// Build the TokenBudget.
+    ///
+    /// Converts ratios to absolute token counts based on total.
+    pub fn build(self) -> TokenBudget {
+        TokenBudget {
+            system: (self.total as f32 * self.system) as i32,
+            instructions: (self.total as f32 * self.instructions) as i32,
+            evidence: (self.total as f32 * self.evidence) as i32,
+            memory: (self.total as f32 * self.memory) as i32,
+            tool_results: (self.total as f32 * self.tool_results) as i32,
+            history: (self.total as f32 * self.history) as i32,
+            slack: (self.total as f32 * self.slack) as i32,
+        }
+    }
+}
+
+/// Context segment types for budget tracking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ContextSegment {
+    /// System prompt
+    System,
+    /// DSL instructions/persona
+    Instructions,
+    /// Evidence/provenance data
+    Evidence,
+    /// User memory injection
+    Memory,
+    /// Tool/LLM result history
+    ToolResults,
+    /// Conversation history
+    History,
+}
+
+impl std::fmt::Display for ContextSegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContextSegment::System => write!(f, "system"),
+            ContextSegment::Instructions => write!(f, "instructions"),
+            ContextSegment::Evidence => write!(f, "evidence"),
+            ContextSegment::Memory => write!(f, "memory"),
+            ContextSegment::ToolResults => write!(f, "tool_results"),
+            ContextSegment::History => write!(f, "history"),
+        }
+    }
+}
+
+/// Segment usage tracking.
+///
+/// Tracks how many tokens have been used in each segment.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SegmentUsage {
+    /// Tokens used in system segment
+    pub system_used: i32,
+    /// Tokens used in instructions segment
+    pub instructions_used: i32,
+    /// Tokens used in evidence segment
+    pub evidence_used: i32,
+    /// Tokens used in memory segment
+    pub memory_used: i32,
+    /// Tokens used in tool results segment
+    pub tool_results_used: i32,
+    /// Tokens used in history segment
+    pub history_used: i32,
+}
+
+impl SegmentUsage {
+    /// Get total tokens used across all segments.
+    pub fn total(&self) -> i32 {
+        self.system_used
+            + self.instructions_used
+            + self.evidence_used
+            + self.memory_used
+            + self.tool_results_used
+            + self.history_used
+    }
+
+    /// Get usage for a specific segment.
+    pub fn for_segment(&self, segment: ContextSegment) -> i32 {
+        match segment {
+            ContextSegment::System => self.system_used,
+            ContextSegment::Instructions => self.instructions_used,
+            ContextSegment::Evidence => self.evidence_used,
+            ContextSegment::Memory => self.memory_used,
+            ContextSegment::ToolResults => self.tool_results_used,
+            ContextSegment::History => self.history_used,
+        }
+    }
+
+    /// Check if we can add tokens to a segment.
+    pub fn can_add(&self, segment: ContextSegment, tokens: i32, budget: &TokenBudget) -> bool {
+        self.for_segment(segment) + tokens <= budget.for_segment(segment)
+    }
+
+    /// Add tokens to a segment.
+    ///
+    /// Returns true if successful, false if budget exceeded.
+    pub fn add(&mut self, segment: ContextSegment, tokens: i32, budget: &TokenBudget) -> bool {
+        if !self.can_add(segment, tokens, budget) {
+            return false;
+        }
+        match segment {
+            ContextSegment::System => self.system_used += tokens,
+            ContextSegment::Instructions => self.instructions_used += tokens,
+            ContextSegment::Evidence => self.evidence_used += tokens,
+            ContextSegment::Memory => self.memory_used += tokens,
+            ContextSegment::ToolResults => self.tool_results_used += tokens,
+            ContextSegment::History => self.history_used += tokens,
+        }
+        true
+    }
+
+    /// Get remaining tokens in a segment.
+    pub fn remaining(&self, segment: ContextSegment, budget: &TokenBudget) -> i32 {
+        budget.for_segment(segment) - self.for_segment(segment)
+    }
+}
+
+/// Error type for segment budget violations.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum SegmentBudgetError {
+    /// A specific segment's budget was exceeded
+    #[error("Segment {segment} budget exceeded: requested {requested} tokens, only {available} available")]
+    SegmentExceeded {
+        /// The segment that was exceeded
+        segment: ContextSegment,
+        /// Tokens available in the segment
+        available: i32,
+        /// Tokens that were requested
+        requested: i32,
+    },
+    /// The total budget was exceeded
+    #[error("Total budget exceeded: requested {requested} tokens, only {available} available")]
+    TotalExceeded {
+        /// Tokens available in total
+        available: i32,
+        /// Tokens that were requested
+        requested: i32,
+    },
 }
 
 

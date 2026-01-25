@@ -5750,3 +5750,97 @@ This refactor was executed using 5 parallel Sonnet agents, each handling a subse
 **Time Spent:** ~2 hours (planning + parallel agent execution + git recovery)
 
 **Status:** EntityId removal complete. Awaiting cargo check verification.
+
+---
+
+### January 25, 2026 — Primitive Enhancement Plan Complete
+
+**Goal:** Complete CALIBER's abstract state machine by enhancing types, enums, and structs based on bizJit patterns.
+
+**Completed:**
+
+- [x] Phase 1: Event System - Hash chaining, causality, evidence refs
+- [x] Phase 2: Agent BDI - Beliefs, goals, plans, observations
+- [x] Phase 3: DSL PII - Security tokens, lexer, parser, compiler
+- [x] Phase 4: Token Budget - Builder pattern, segment tracking, assembler integration
+- [x] Phase 5: Exports - Verified all types exported via glob re-exports
+
+**Decisions:**
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-01-25 | Use builder pattern for TokenBudget | Replaces 8-argument `from_ratios` function; clippy warns about too_many_arguments for a reason |
+| 2026-01-25 | Add legacy SectionType variants | Backwards compatibility with existing code while adding new segment-specific variants |
+| 2026-01-25 | PIIClassification uses 5-level model | Matches common enterprise classification: Public, Internal, Confidential, Restricted, Secret |
+| 2026-01-25 | SegmentUsage tracks budget internally | `add()` method requires budget reference to enforce limits at the tracking level |
+
+**Challenges:**
+
+- Challenge: `#[allow(clippy::too_many_arguments)]` was being used as a hack
+  - Solution: Implemented proper builder pattern with `TokenBudgetBuilder`
+- Challenge: SectionType enum didn't have segment-specific variants
+  - Solution: Added new variants (SystemPrompt, Instructions, Evidence, Memory, ToolResult, ConversationHistory) while keeping legacy variants for backwards compatibility
+- Challenge: SegmentUsage.add() signature mismatch
+  - Solution: Fixed call site to pass budget reference as required by method signature
+
+**Files Modified:**
+
+| File | Lines Changed | Description |
+|------|---------------|-------------|
+| caliber-core/src/agent.rs | +991 | BDI model (Belief, Goal, Plan, Observation) |
+| caliber-core/src/context.rs | +491 | TokenBudget, builder, segment tracking |
+| caliber-core/src/event.rs | +330 | EventHeader, Causality, EvidenceRef |
+| caliber-core/src/enums.rs | +28 | ExtractionMethod enum |
+| caliber-core/src/identity.rs | +9 | New ID types |
+| caliber-core/src/entities.rs | +1 | Entity updates |
+| caliber-dsl/src/parser/ast.rs | +212 | PIIClassification, FieldSecurity |
+| caliber-dsl/src/compiler/mod.rs | +50 | CompiledFieldSecurity |
+| caliber-dsl/src/lexer/scanner.rs | +12 | PII keyword mapping |
+| caliber-dsl/src/lexer/token.rs | +27 | New TokenKind variants |
+| caliber-dsl/src/parser/parser.rs | +2 | FieldDef security field |
+| Cargo.toml | +3 | Workspace deps |
+| caliber-core/Cargo.toml | +1 | Crate deps |
+| Cargo.lock | +33 | Lock file updates |
+
+**Total: +2,173 lines across 14 files**
+
+**New Types Added:**
+
+Phase 1 - Event System:
+- `EventHeader` - Hash chaining for audit integrity
+- `DagPosition` - Event DAG ordering with parent hash references
+- `Causality` - Distributed tracing (W3C Trace Context compatible)
+- `EvidenceRef` - Typed evidence references (Memory, Tool, Agent, External)
+- `ExtractionMethod` - Tracking how evidence was extracted
+
+Phase 2 - Agent BDI:
+- `Belief` - Agent knowledge representation
+- `Goal` - Priority, deadline, success criteria
+- `Plan` - Preconditions and action steps
+- `Observation` - Environment perception
+- `GoalStatus`, `PlanStatus`, `BeliefSource`, `ObservationType` enums
+
+Phase 3 - DSL PII:
+- `PIIClassification` enum (Public, Internal, Confidential, Restricted, Secret)
+- `FieldSecurity` struct for field-level security modifiers
+- 10 new DSL keywords: opaque, sensitive, secret, redact, immutable, audited, public, internal, confidential, restricted
+- `CompiledFieldSecurity` for runtime representation
+
+Phase 4 - Token Budget:
+- `TokenBudget` - Segment-based allocation
+- `TokenBudgetBuilder` - Fluent API for custom ratios
+- `ContextSegment` enum
+- `SegmentUsage` - Per-segment token tracking
+- `SegmentBudgetError` - Budget violation handling
+
+**Architecture Notes:**
+
+Philosophy: **Expand primitives, NOT business logic. Framework types, NOT application code.**
+
+Key abstractions:
+1. **Event System**: Hash-chained events with causality tracking enable tamper-evident audit logs
+2. **Agent BDI**: Belief-Desire-Intention model provides cognitive architecture for agent reasoning
+3. **DSL PII**: Field-level security annotations allow agents to be prevented from seeing sensitive data
+4. **Token Budget**: Segment-based budgets give fine-grained control over context assembly
+
+**Status:** Primitive enhancement complete. Awaiting cargo check/clippy/test verification.

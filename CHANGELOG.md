@@ -8,11 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+#### Event System Enhancements
+- `EventHeader` struct with hash chaining for audit integrity
+- `DagPosition` for event DAG ordering with parent hash references
+- `Causality` struct for distributed tracing (W3C Trace Context compatible)
+- `EvidenceRef` enum for typed evidence references (Memory, Tool, Agent, External)
+- `ExtractionMethod` enum for tracking how evidence was extracted
+
+#### Agent BDI Model
+- `Belief` struct for agent knowledge representation
+- `Goal` struct with priority, deadline, and success criteria
+- `Plan` struct with preconditions and action steps
+- `Observation` struct for environment perception
+- `GoalStatus`, `PlanStatus` enums for lifecycle tracking
+- `BeliefSource`, `ObservationType` enums for classification
+
+#### DSL PII Protection
+- `PIIClassification` enum (Public, Internal, Confidential, Restricted, Secret)
+- `FieldSecurity` struct for field-level security modifiers
+- New DSL keywords: `opaque`, `sensitive`, `secret`, `redact`, `immutable`, `audited`, `public`, `internal`, `confidential`, `restricted`
+- Parser support for `[modifier, modifier, ...]` security annotation syntax
+- `CompiledFieldSecurity` for runtime security representation
+
+#### Token Budget Segmentation
+- `TokenBudget` struct with segment-based allocation (system, instructions, evidence, memory, tool_results, history, slack)
+- `TokenBudgetBuilder` with fluent API for custom ratio configuration
+- `ContextSegment` enum for budget categories
+- `SegmentUsage` struct for per-segment token tracking
+- `SegmentBudgetError` for budget violation handling
+- `ContextWindow.add_to_segment()` for segment-aware content addition
+- `ContextAssembler.with_segment_budget()` for segment-aware assembly
+
+#### Other
 - CI/CD pipelines for automated testing
 - Continuous fuzzing integration (planned)
 - Stripe payment integration (alternative to LemonSqueezy)
 - Mutation testing (planned)
 - Test coverage reporting (planned)
+
+### Changed
+- `ContextWindow` now supports optional segment-based budgets
+- `ContextAssembler` respects segment budgets when assembling context
+- `FieldDef` in DSL AST now includes optional `security` field
+- `SectionType` enum expanded with segment-specific variants (SystemPrompt, Instructions, Evidence, Memory, ToolResult, ConversationHistory)
 
 ## [0.4.4] - 2026-01-24
 

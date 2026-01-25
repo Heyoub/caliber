@@ -323,6 +323,18 @@ impl<'a> Lexer<'a> {
             "brief" => TokenKind::Brief,
             "detailed" => TokenKind::Detailed,
 
+            // PII & Security keywords
+            "opaque" => TokenKind::Opaque,
+            "sensitive" => TokenKind::Sensitive,
+            "secret" => TokenKind::Secret,
+            "redact" => TokenKind::Redact,
+            "immutable" => TokenKind::Immutable,
+            "audited" => TokenKind::Audited,
+            "public" => TokenKind::Public,
+            "internal" => TokenKind::Internal,
+            "confidential" => TokenKind::Confidential,
+            "restricted" => TokenKind::Restricted,
+
             // Lock mode keywords
             "exclusive" => TokenKind::Exclusive,
             "shared" => TokenKind::Shared,

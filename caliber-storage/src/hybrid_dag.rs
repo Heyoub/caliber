@@ -14,7 +14,7 @@ use heed::{Database, Env, EnvOpenOptions, types::SerdeBincode};
 
 use caliber_core::{
     DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag,
-    EventFlags, EventId, EventKind, UpstreamSignal,
+    EventFlags, EventId, EventKind, OperationalError, UpstreamSignal,
 };
 
 // ============================================================================
@@ -279,14 +279,8 @@ impl<C: ColdEventStorage> HybridDag<C> {
 
     /// Convert a HybridDagError to an Effect error.
     fn to_effect_error(event_id: EventId, error: HybridDagError) -> ErrorEffect {
-        ErrorEffect::Domain(DomainErrorContext {
-            error: DomainError::StorageFailure {
-                operation: "hybrid_dag".to_string(),
-                reason: error.to_string(),
-            },
-            source_event: event_id,
-            position: DagPosition::root(),
-            correlation_id: event_id,
+        ErrorEffect::Operational(OperationalError::DatabaseConnectionError {
+            message: format!("hybrid_dag: {}", error),
         })
     }
 }

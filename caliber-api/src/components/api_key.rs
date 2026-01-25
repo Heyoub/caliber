@@ -2,7 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::api_key::{
+use crate::types::{
     ApiKeyResponse, CreateApiKeyRequest, ListApiKeysRequest, UpdateApiKeyRequest,
 };
 use caliber_core::{ApiKeyId, TenantId};
