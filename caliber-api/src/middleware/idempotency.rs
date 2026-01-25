@@ -30,7 +30,7 @@
 use crate::auth::AuthContext;
 use crate::db::DbClient;
 use crate::error::{ApiError, ErrorCode};
-use caliber_core::EntityIdType;
+use caliber_core::{EntityIdType, TenantId};
 use axum::{
     body::{Body, Bytes},
     extract::{Request, State},
@@ -314,27 +314,30 @@ enum IdempotencyCheckResult {
 async fn check_idempotency_key(
     db: &DbClient,
     idempotency_key: &str,
-    tenant_id: uuid::Uuid,
+    tenant_id: TenantId,
     operation: &str,
     request_hash: &[u8],
     ttl_interval: &str,
 ) -> Result<IdempotencyCheckResult, IdempotencyError> {
-    let client = db.pool.get().await.map_err(|e| {
-        IdempotencyError::Internal(format!("Failed to get database connection: {}", e))
-    })?;
+    let client = db
+        .get_conn()
+        .await
+        .map_err(|e| IdempotencyError::Internal(format!("Failed to get database connection: {}", e)))?;
+    let tenant_uuid = tenant_id.as_uuid();
 
     // Note: Using raw SQL here because the function has special error handling
     // The function raises an exception on hash mismatch (conflict)
+    let params: [&(dyn ToSql + Sync); 5] = [
+        &idempotency_key,
+        &tenant_uuid,
+        &operation,
+        &request_hash,
+        &ttl_interval,
+    ];
     let result = client
         .query(
             "SELECT key_exists, cached_status, cached_body FROM caliber_check_idempotency_key($1, $2, $3, $4, $5::interval)",
-            &[
-                &idempotency_key,
-                &tenant_id,
-                &operation,
-                &request_hash,
-                &ttl_interval,
-            ],
+            &params,
         )
         .await;
 
@@ -375,18 +378,21 @@ async fn check_idempotency_key(
 async fn store_idempotency_response(
     db: &DbClient,
     idempotency_key: &str,
-    tenant_id: uuid::Uuid,
+    tenant_id: TenantId,
     status: i32,
     body: Option<&serde_json::Value>,
 ) -> Result<(), IdempotencyError> {
-    let client = db.pool.get().await.map_err(|e| {
-        IdempotencyError::Internal(format!("Failed to get database connection: {}", e))
-    })?;
+    let client = db
+        .get_conn()
+        .await
+        .map_err(|e| IdempotencyError::Internal(format!("Failed to get database connection: {}", e)))?;
+    let tenant_uuid = tenant_id.as_uuid();
 
+    let params: [&(dyn ToSql + Sync); 4] = [&idempotency_key, &tenant_uuid, &status, &body];
     client
         .execute(
             "SELECT caliber_store_idempotency_response($1, $2, $3, $4)",
-            &[&idempotency_key, &tenant_id, &status, &body],
+            &params,
         )
         .await
         .map_err(|e| {
@@ -414,6 +420,17 @@ pub enum IdempotencyError {
 
     /// Internal error (database, serialization, etc.)
     Internal(String),
+}
+
+impl std::fmt::Display for IdempotencyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdempotencyError::MissingKey => write!(f, "missing idempotency key"),
+            IdempotencyError::InvalidKey(msg) => write!(f, "invalid idempotency key: {}", msg),
+            IdempotencyError::Conflict(key) => write!(f, "idempotency conflict for key {}", key),
+            IdempotencyError::Internal(msg) => write!(f, "idempotency error: {}", msg),
+        }
+    }
 }
 
 impl IntoResponse for IdempotencyError {

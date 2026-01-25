@@ -4,7 +4,7 @@ use super::{types::*, McpState};
 use crate::types::TrajectoryResponse;
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::{TenantId, TrajectoryId};
+use caliber_core::{EntityIdType, TenantId, TrajectoryId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;

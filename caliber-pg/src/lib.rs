@@ -1283,7 +1283,7 @@ fn caliber_scope_update(id: pgrx::Uuid, updates: pgrx::JsonB, tenant_id: pgrx::U
     }
 
     // Add the WHERE clause parameter (entity_id)
-    let pg_entity_id = pgrx_uuid_from_id(entity_id);
+    let pg_entity_id = pgrx::Uuid::from_bytes(*entity_id.as_bytes());
     params.push(unsafe { DatumWithOid::new(pg_entity_id, pgrx::pg_sys::UUIDOID) });
     params.push(unsafe { DatumWithOid::new(tenant_id, pgrx::pg_sys::UUIDOID) });
 
@@ -5143,6 +5143,11 @@ caliber_pg_get!(edge, edge_heap, EdgeId, |row| {
                 ExtractionMethod::Explicit => "explicit",
                 ExtractionMethod::Inferred => "inferred",
                 ExtractionMethod::UserProvided => "userprovided",
+                ExtractionMethod::LlmExtraction => "llm_extraction",
+                ExtractionMethod::ToolExtraction => "tool_extraction",
+                ExtractionMethod::MemoryRecall => "memory_recall",
+                ExtractionMethod::ExternalApi => "external_api",
+                ExtractionMethod::Unknown => "unknown",
             },
             "confidence": edge.provenance.confidence,
         },
@@ -5795,13 +5800,12 @@ impl StorageTrait for PgStorage {
                 };
 
                 if let Some(tid) = trajectory_id {
-                    // Convert pgrx::Uuid to uuid::Uuid with explicit type annotations
-                    let parent_id = parent_trajectory_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()));
-                    let root_id = root_trajectory_id.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()));
-                    let agent_id = agent_id_val.map(|u: pgrx::Uuid| Uuid::from_bytes(*u.as_bytes()));
+                    let parent_id = parent_trajectory_id.map(id_from_pgrx::<TrajectoryId>);
+                    let root_id = root_trajectory_id.map(id_from_pgrx::<TrajectoryId>);
+                    let agent_id = agent_id_val.map(id_from_pgrx::<AgentId>);
 
                     trajectories.push(Trajectory {
-                        trajectory_id: Uuid::from_bytes(*tid.as_bytes()),
+                        trajectory_id: id_from_pgrx::<TrajectoryId>(tid),
                         name: name.unwrap_or_default(),
                         description,
                         status: traj_status,

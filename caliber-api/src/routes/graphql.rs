@@ -19,6 +19,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use caliber_core::{AgentId, ArtifactId, EntityIdType, NoteId, ScopeId, TrajectoryId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -346,6 +347,7 @@ impl QueryRoot {
         let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
+        let trajectory_id = TrajectoryId::new(uuid);
 
         match db.get::<crate::types::TrajectoryResponse>(uuid, auth.tenant_id).await {
             Ok(Some(t)) => Ok(Some(t.into())),
@@ -380,7 +382,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.get::<crate::types::ScopeResponse>(uuid, auth.tenant_id).await {
+        match db.get::<crate::types::ScopeResponse>(ScopeId::new(uuid), auth.tenant_id).await {
             Ok(Some(s)) => Ok(Some(s.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -395,7 +397,7 @@ impl QueryRoot {
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
         let filter = ScopeListFilter {
-            trajectory_id: Some(uuid),
+            trajectory_id: Some(TrajectoryId::new(uuid)),
             ..Default::default()
         };
         match db.list::<crate::types::ScopeResponse>(&filter, auth.tenant_id).await {
@@ -411,7 +413,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.get::<crate::types::ArtifactResponse>(uuid, auth.tenant_id).await {
+        match db.get::<crate::types::ArtifactResponse>(ArtifactId::new(uuid), auth.tenant_id).await {
             Ok(Some(a)) => Ok(Some(a.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -426,7 +428,7 @@ impl QueryRoot {
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
         let filter = ArtifactListFilter {
-            scope_id: Some(uuid),
+            scope_id: Some(ScopeId::new(uuid)),
             ..Default::default()
         };
         match db.list::<crate::types::ArtifactResponse>(&filter, auth.tenant_id).await {
@@ -442,7 +444,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.get::<crate::types::NoteResponse>(uuid, auth.tenant_id).await {
+        match db.get::<crate::types::NoteResponse>(NoteId::new(uuid), auth.tenant_id).await {
             Ok(Some(n)) => Ok(Some(n.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -457,7 +459,7 @@ impl QueryRoot {
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
         let filter = NoteListFilter {
-            source_trajectory_id: Some(uuid),
+            source_trajectory_id: Some(TrajectoryId::new(uuid)),
             ..Default::default()
         };
         match db.list::<crate::types::NoteResponse>(&filter, auth.tenant_id).await {
@@ -473,7 +475,7 @@ impl QueryRoot {
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
 
-        match db.get::<crate::types::AgentResponse>(uuid, auth.tenant_id).await {
+        match db.get::<crate::types::AgentResponse>(AgentId::new(uuid), auth.tenant_id).await {
             Ok(Some(a)) => Ok(Some(a.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -510,19 +512,19 @@ impl MutationRoot {
         let auth = ctx.data::<AuthContext>()?;
 
         let parent_id = if let Some(id) = input.parent_trajectory_id {
-            Some(
+            Some(TrajectoryId::new(
                 Uuid::parse_str(&id.0)
                     .map_err(|_| async_graphql::Error::new("Invalid parent_trajectory_id"))?,
-            )
+            ))
         } else {
             None
         };
 
         let agent_id = if let Some(id) = input.agent_id {
-            Some(
+            Some(AgentId::new(
                 Uuid::parse_str(&id.0)
                     .map_err(|_| async_graphql::Error::new("Invalid agent_id"))?,
-            )
+            ))
         } else {
             None
         };
@@ -567,7 +569,7 @@ impl MutationRoot {
             metadata: None,
         };
 
-        match db.update::<crate::types::TrajectoryResponse>(uuid, &req, auth.tenant_id).await {
+        match db.update::<crate::types::TrajectoryResponse>(TrajectoryId::new(uuid), &req, auth.tenant_id).await {
             Ok(trajectory) => {
                 ws.broadcast(WsEvent::TrajectoryUpdated {
                     trajectory: trajectory.clone(),
@@ -586,12 +588,13 @@ impl MutationRoot {
 
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
+        let trajectory_id = TrajectoryId::new(uuid);
 
-        match db.delete::<crate::types::TrajectoryResponse>(uuid, auth.tenant_id).await {
+        match db.delete::<crate::types::TrajectoryResponse>(trajectory_id, auth.tenant_id).await {
             Ok(_) => {
                 ws.broadcast(WsEvent::TrajectoryDeleted {
                     tenant_id: auth.tenant_id,
-                    id: uuid,
+                    id: trajectory_id,
                 });
                 Ok(true)
             }
@@ -609,7 +612,7 @@ impl MutationRoot {
             .map_err(|_| async_graphql::Error::new("Invalid trajectory_id"))?;
 
         let req = CreateScopeRequest {
-            trajectory_id,
+            trajectory_id: TrajectoryId::new(trajectory_id),
             parent_scope_id: None,
             name: input.name,
             purpose: input.purpose,
@@ -637,7 +640,7 @@ impl MutationRoot {
 
         // Get the scope first
         let existing = db
-            .get::<crate::types::ScopeResponse>(uuid, auth.tenant_id)
+            .get::<crate::types::ScopeResponse>(ScopeId::new(uuid), auth.tenant_id)
             .await
             .map_err(|e| async_graphql::Error::new(e.message))?
             .ok_or_else(|| async_graphql::Error::new("Scope not found"))?;
@@ -663,6 +666,7 @@ impl MutationRoot {
             .into_iter()
             .map(|id| {
                 Uuid::parse_str(&id.0)
+                    .map(TrajectoryId::new)
                     .map_err(|_| async_graphql::Error::new("Invalid source_trajectory_id"))
             })
             .collect();
@@ -673,6 +677,7 @@ impl MutationRoot {
             .into_iter()
             .map(|id| {
                 Uuid::parse_str(&id.0)
+                    .map(ArtifactId::new)
                     .map_err(|_| async_graphql::Error::new("Invalid source_artifact_id"))
             })
             .collect();

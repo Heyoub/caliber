@@ -178,7 +178,7 @@ pub async fn get_artifact(
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
 
     // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, artifact.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(artifact.tenant_id))?;
 
     Ok(Json(artifact))
 }
@@ -241,7 +241,7 @@ pub async fn update_artifact(
         .get::<ArtifactResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
-    validate_tenant_ownership(&auth, existing.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     let artifact = db.update::<ArtifactResponse>(id, &req, auth.tenant_id).await?;
     ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
@@ -277,7 +277,7 @@ pub async fn delete_artifact(
         .get::<ArtifactResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
-    validate_tenant_ownership(&auth, artifact.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(artifact.tenant_id))?;
 
     db.delete::<ArtifactResponse>(id, auth.tenant_id).await?;
     ws.broadcast(WsEvent::ArtifactDeleted {

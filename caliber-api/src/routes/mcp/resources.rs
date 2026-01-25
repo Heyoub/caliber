@@ -6,7 +6,7 @@ use crate::components::{NoteListFilter, TrajectoryListFilter};
 use crate::types::{ArtifactResponse, NoteResponse, TrajectoryResponse};
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::{ArtifactId, NoteId, TenantId, TrajectoryId};
+use caliber_core::{ArtifactId, EntityIdType, NoteId, TenantId, TrajectoryId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -156,7 +156,7 @@ async fn read_resource_content(
 
             let trajectory = state
                 .db
-                .get::<TrajectoryResponse>(id, tenant_id)
+                .get::<TrajectoryResponse>(TrajectoryId::new(id), tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
@@ -175,7 +175,7 @@ async fn read_resource_content(
 
             let note = state
                 .db
-                .get::<NoteResponse>(id, tenant_id)
+                .get::<NoteResponse>(NoteId::new(id), tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::note_not_found(id))?;
 
@@ -194,7 +194,7 @@ async fn read_resource_content(
 
             let artifact = state
                 .db
-                .get::<ArtifactResponse>(id, tenant_id)
+                .get::<ArtifactResponse>(ArtifactId::new(id), tenant_id)
                 .await?
                 .ok_or_else(|| ApiError::artifact_not_found(id))?;
 

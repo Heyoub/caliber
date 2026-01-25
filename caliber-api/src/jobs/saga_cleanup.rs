@@ -439,18 +439,21 @@ async fn find_stuck_delegations(
     timeout_interval: &str,
     batch_size: usize,
 ) -> Result<Vec<StuckDelegation>, tokio_postgres::Error> {
-    let client = db.pool.get().await.map_err(|e| {
-        // Convert pool error to postgres error (hacky but works)
+    let client = db.get_conn().await.map_err(|e| {
         tracing::error!(error = %e, "Failed to get database connection");
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let rows = client
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [
+        &timeout_interval,
+        &(batch_size as i64),
+    ];
+    let rows: Vec<tokio_postgres::Row> = client
         .query(
             "SELECT delegation_id, status, stuck_duration \
              FROM caliber_find_stuck_delegations($1::interval) \
              LIMIT $2",
-            &[&timeout_interval, &(batch_size as i64)],
+            &params,
         )
         .await?;
 
@@ -482,17 +485,21 @@ async fn find_stuck_handoffs(
     timeout_interval: &str,
     batch_size: usize,
 ) -> Result<Vec<StuckHandoff>, tokio_postgres::Error> {
-    let client = db.pool.get().await.map_err(|e| {
+    let client = db.get_conn().await.map_err(|e| {
         tracing::error!(error = %e, "Failed to get database connection");
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let rows = client
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [
+        &timeout_interval,
+        &(batch_size as i64),
+    ];
+    let rows: Vec<tokio_postgres::Row> = client
         .query(
             "SELECT handoff_id, status, stuck_duration \
              FROM caliber_find_stuck_handoffs($1::interval) \
              LIMIT $2",
-            &[&timeout_interval, &(batch_size as i64)],
+            &params,
         )
         .await?;
 
@@ -523,15 +530,16 @@ async fn timeout_delegation(
     delegation_id: uuid::Uuid,
     reason: &str,
 ) -> Result<bool, tokio_postgres::Error> {
-    let client = db.pool.get().await.map_err(|e| {
+    let client = db.get_conn().await.map_err(|e| {
         tracing::error!(error = %e, "Failed to get database connection");
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let row = client
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [&delegation_id, &reason];
+    let row: tokio_postgres::Row = client
         .query_one(
             "SELECT caliber_timeout_delegation($1, $2)",
-            &[&delegation_id, &reason],
+            &params,
         )
         .await?;
 
@@ -544,15 +552,16 @@ async fn timeout_handoff(
     handoff_id: uuid::Uuid,
     reason: &str,
 ) -> Result<bool, tokio_postgres::Error> {
-    let client = db.pool.get().await.map_err(|e| {
+    let client = db.get_conn().await.map_err(|e| {
         tracing::error!(error = %e, "Failed to get database connection");
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let row = client
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [&handoff_id, &reason];
+    let row: tokio_postgres::Row = client
         .query_one(
             "SELECT caliber_timeout_handoff($1, $2)",
-            &[&handoff_id, &reason],
+            &params,
         )
         .await?;
 
@@ -561,12 +570,12 @@ async fn timeout_handoff(
 
 /// Delete expired idempotency keys.
 async fn delete_expired_idempotency_keys(db: &DbClient) -> Result<i32, tokio_postgres::Error> {
-    let client = db.pool.get().await.map_err(|e| {
+    let client = db.get_conn().await.map_err(|e| {
         tracing::error!(error = %e, "Failed to get database connection");
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let row = client
+    let row: tokio_postgres::Row = client
         .query_one("SELECT caliber_cleanup_idempotency_keys()", &[])
         .await?;
 

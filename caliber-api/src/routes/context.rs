@@ -38,6 +38,8 @@ use caliber_core::{
     AgentId, CaliberConfig, ContextAssembler, ContextPackage, ContextWindow, KernelConfig,
     ScopeId, ScopeSummary, SessionMarkers, TrajectoryId,
 };
+use caliber_core::{ContextPersistence, RetryConfig, SectionPriorities, ValidationMode};
+use std::time::Duration;
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
@@ -394,7 +396,31 @@ pub async fn assemble_context(
     let token_budget = req.token_budget.unwrap_or(8000);
     let config = CaliberConfig {
         token_budget,
-        ..Default::default()
+        section_priorities: SectionPriorities {
+            user: 100,
+            system: 90,
+            persona: 85,
+            artifacts: 80,
+            notes: 70,
+            history: 60,
+            custom: vec![],
+        },
+        checkpoint_retention: 10,
+        stale_threshold: Duration::from_secs(3600),
+        contradiction_threshold: 0.8,
+        context_window_persistence: ContextPersistence::Ephemeral,
+        validation_mode: ValidationMode::OnMutation,
+        embedding_provider: None,
+        summarization_provider: None,
+        llm_retry_config: RetryConfig {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(10),
+            backoff_multiplier: 2.0,
+        },
+        lock_timeout: Duration::from_secs(30),
+        message_retention: Duration::from_secs(86400),
+        delegation_timeout: Duration::from_secs(300),
     };
 
     // Assemble the context

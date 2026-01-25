@@ -261,14 +261,14 @@ pub async fn deploy_dsl(
 
     // Step 1: Parse the DSL
     let ast = caliber_dsl::parse(&req.source)
-        .map_err(|err| ApiError::bad_request(format!(
+        .map_err(|err| ApiError::invalid_input(format!(
             "Parse error at line {}, column {}: {}", 
             err.line, err.column, err.message
         )))?;
 
     // Step 2: Compile the AST
     let compiled = caliber_dsl::DslCompiler::compile(&ast)
-        .map_err(|err| ApiError::bad_request(format!("Compilation error: {}", err)))?;
+        .map_err(|err| ApiError::invalid_input(format!("Compilation error: {}", err)))?;
 
     // Step 3: Serialize for storage
     let ast_json = serde_json::to_value(&ast)

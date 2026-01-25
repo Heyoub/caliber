@@ -382,7 +382,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
                 let outcome_json = serde_json::to_value(o)
                     .map_err(|e| CaliberError::Storage(StorageError::UpdateFailed {
                         entity_type: EntityType::Trajectory,
-                        id,
+                        id: id.as_uuid(),
                         reason: format!("Failed to serialize outcome: {}", e),
                     }))?;
                 values[trajectory::OUTCOME as usize - 1] = json_to_datum(&outcome_json);
@@ -412,7 +412,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
         .into_datum()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Trajectory,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to convert timestamp to datum".to_string(),
         }))?;
     

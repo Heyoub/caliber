@@ -200,13 +200,8 @@ pub async fn update_agent(
     }
 
     // Validate status if provided
-    if let Some(ref status) = req.status {
-        let valid_statuses = ["idle", "active", "blocked", "failed"];
-        if !valid_statuses.contains(&status.to_lowercase().as_str()) {
-            return Err(ApiError::invalid_input(
-                "status must be one of: idle, active, blocked, failed",
-            ));
-        }
+    if let Some(_status) = &req.status {
+        // AgentStatus is strongly typed; all variants are valid.
     }
 
     // Validate capabilities if provided
@@ -232,7 +227,7 @@ pub async fn update_agent(
         ws.broadcast(WsEvent::AgentStatusChanged {
             tenant_id: auth.tenant_id,
             agent_id: agent.agent_id,
-            status: status.clone(),
+            status: status.to_string(),
         });
     }
 

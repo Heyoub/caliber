@@ -152,7 +152,7 @@ impl DbClient {
     }
 
     /// Get a connection from the pool.
-    async fn get_conn(&self) -> ApiResult<deadpool_postgres::Object> {
+    pub async fn get_conn(&self) -> ApiResult<deadpool_postgres::Object> {
         self.pool.get().await.map_err(ApiError::from)
     }
 
@@ -212,7 +212,7 @@ impl DbClient {
     ) -> ApiResult<TrajectoryResponse> {
         let conn = self.get_conn().await?;
 
-        let agent_uuid = req.agent_id.as_uuid();
+        let agent_uuid = req.agent_id.map(|id| id.as_uuid());
 
         let row = conn
             .query_one(
@@ -646,7 +646,7 @@ impl DbClient {
         // Build update JSON
         let mut updates = serde_json::Map::new();
         if let Some(status) = &req.status {
-            updates.insert("status".to_string(), JsonValue::String(status.clone()));
+            updates.insert("status".to_string(), JsonValue::String(status.to_string()));
         }
         if let Some(trajectory_id) = req.current_trajectory_id {
             updates.insert("current_trajectory_id".to_string(), JsonValue::String(trajectory_id.to_string()));

@@ -17,7 +17,7 @@ use sha2::Sha256;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use caliber_core::TenantId;
+use caliber_core::{EntityIdType, TenantId};
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
@@ -442,12 +442,13 @@ async fn handle_subscription_event(
     webhook: &LemonSqueezyWebhook,
 ) -> ApiResult<()> {
     // Extract tenant ID from custom data
-    let tenant_id = webhook.data.attributes.custom_data
+    let tenant_uuid = webhook.data.attributes.custom_data
         .as_ref()
         .and_then(|d| d.get("tenant_id"))
         .and_then(|t| t.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| ApiError::invalid_input("Missing tenant_id in webhook custom data"))?;
+    let tenant_id = TenantId::new(tenant_uuid);
 
     // Determine plan from subscription status/variant
     let plan = match webhook.data.attributes.status.as_deref() {
@@ -476,12 +477,13 @@ async fn handle_subscription_cancelled(
     webhook: &LemonSqueezyWebhook,
 ) -> ApiResult<()> {
     // Extract tenant ID from custom data
-    let tenant_id = webhook.data.attributes.custom_data
+    let tenant_uuid = webhook.data.attributes.custom_data
         .as_ref()
         .and_then(|d| d.get("tenant_id"))
         .and_then(|t| t.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| ApiError::invalid_input("Missing tenant_id in webhook custom data"))?;
+    let tenant_id = TenantId::new(tenant_uuid);
 
     // Downgrade to trial (or free tier)
     state.db.billing_update_plan(tenant_id, BillingPlan::Trial).await?;

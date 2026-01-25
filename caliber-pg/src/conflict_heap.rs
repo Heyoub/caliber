@@ -7,8 +7,8 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AgentId, CaliberError, CaliberResult, Conflict, ConflictResolutionRecord, ConflictStatus,
-    ConflictType, EntityIdType, EntityType, StorageError, TenantId, TrajectoryId,
+    AgentId, CaliberError, CaliberResult, Conflict, ConflictId, ConflictResolutionRecord,
+    ConflictStatus, ConflictType, EntityIdType, EntityType, StorageError, TenantId, TrajectoryId,
 };
 
 use crate::column_maps::conflict;
@@ -41,7 +41,7 @@ impl From<ConflictRow> for Conflict {
 
 /// Create a new conflict by inserting a conflict record using direct heap operations.
 pub struct ConflictCreateParams<'a> {
-    pub conflict_id: uuid::Uuid,
+    pub conflict_id: ConflictId,
     pub conflict_type: ConflictType,
     pub item_a_type: &'a str,
     pub item_a_id: uuid::Uuid,
@@ -53,7 +53,7 @@ pub struct ConflictCreateParams<'a> {
     pub tenant_id: TenantId,
 }
 
-pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<uuid::Uuid> {
+pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<ConflictId> {
     let ConflictCreateParams {
         conflict_id,
         conflict_type,
@@ -136,7 +136,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<u
 }
 
 /// Get a conflict by ID using direct heap operations.
-pub fn conflict_get_heap(conflict_id: uuid::Uuid, tenant_id: TenantId) -> CaliberResult<Option<ConflictRow>> {
+pub fn conflict_get_heap(conflict_id: ConflictId, tenant_id: TenantId) -> CaliberResult<Option<ConflictRow>> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
     let snapshot = get_active_snapshot();
@@ -167,7 +167,7 @@ pub fn conflict_get_heap(conflict_id: uuid::Uuid, tenant_id: TenantId) -> Calibe
 
 /// Resolve a conflict by updating status, resolution, and resolved_at using direct heap operations.
 pub fn conflict_resolve_heap(
-    conflict_id: uuid::Uuid,
+    conflict_id: ConflictId,
     resolution: &ConflictResolutionRecord,
     tenant_id: TenantId,
 ) -> CaliberResult<bool> {
@@ -201,7 +201,7 @@ pub fn conflict_resolve_heap(
         let resolution_json = serde_json::to_value(resolution)
             .map_err(|e| CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Conflict,
-                id: conflict_id,
+                id: conflict_id.as_uuid(),
                 reason: format!("Failed to serialize resolution: {}", e),
             }))?;
         
@@ -212,8 +212,8 @@ pub fn conflict_resolve_heap(
         let now = current_timestamp();
         let now_datum = timestamp_to_pgrx(now)?.into_datum()
             .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
-                entity_type: EntityType::Conflict,
-                id: conflict_id,
+            entity_type: EntityType::Conflict,
+            id: conflict_id.as_uuid(),
                 reason: "Failed to convert timestamp to datum".to_string(),
             }))?;
         

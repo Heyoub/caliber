@@ -3,10 +3,10 @@
 //! Edges represent relationships between entities (artifacts, notes, etc.).
 //! Edges are immutable and can be cross-tenant (requires_tenant: false).
 
-use crate::component::{impl_component, ListFilter, Listable, SqlParam};
+use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateEdgeRequest, EdgeResponse};
-use caliber_core::{EdgeId, EdgeType, TenantId, TrajectoryId};
+use caliber_core::{EdgeId, EdgeType, EntityIdType, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for EdgeResponse
@@ -41,7 +41,12 @@ impl_component! {
     }
 }
 
-// Note: EdgeResponse does NOT implement TenantScoped because edges can be cross-tenant
+impl TenantScoped for EdgeResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id.unwrap_or_else(TenantId::nil)
+    }
+}
+
 impl Listable for EdgeResponse {}
 
 /// Filter for listing edges.
