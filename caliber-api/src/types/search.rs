@@ -1,6 +1,7 @@
 //! Search-related API types
 
-use caliber_core::{EntityId, EntityType};
+use caliber_core::EntityType;
+use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
 // Re-export FilterExpr from core for unified filtering
@@ -28,7 +29,7 @@ pub struct SearchResult {
     pub entity_type: EntityType,
     /// ID of the entity
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub id: EntityId,
+    pub id: Uuid,
     /// Name or title of the entity
     pub name: String,
     /// Snippet of matching content

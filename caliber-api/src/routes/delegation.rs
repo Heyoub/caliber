@@ -4,19 +4,20 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
+use caliber_core::DelegationId;
 use crate::{
     auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{CreateDelegationRequest, DelegationResponse, DelegationResultResponse},
@@ -93,7 +94,7 @@ pub async fn create_delegation(
 pub async fn get_delegation(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<DelegationId>,
 ) -> ApiResult<impl IntoResponse> {
     // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let delegation = db
@@ -130,7 +131,7 @@ pub async fn accept_delegation(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<DelegationId>,
     Json(req): Json<AcceptDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Get the delegation
@@ -184,7 +185,7 @@ pub async fn reject_delegation(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<DelegationId>,
     Json(req): Json<RejectDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Get the delegation
@@ -228,7 +229,7 @@ pub async fn complete_delegation(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<DelegationId>,
     Json(req): Json<CompleteDelegationRequest>,
 ) -> ApiResult<StatusCode> {
     // Get the delegation
@@ -258,7 +259,7 @@ pub async fn complete_delegation(
 pub struct AcceptDelegationRequest {
     /// Agent accepting the delegation
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub accepting_agent_id: caliber_core::EntityId,
+    pub accepting_agent_id: caliber_core::AgentId,
 }
 
 /// Request to reject a delegation.
@@ -267,7 +268,7 @@ pub struct AcceptDelegationRequest {
 pub struct RejectDelegationRequest {
     /// Agent rejecting the delegation
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub rejecting_agent_id: caliber_core::EntityId,
+    pub rejecting_agent_id: caliber_core::AgentId,
     /// Reason for rejection
     pub reason: String,
 }
@@ -297,16 +298,16 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityId;
+    use caliber_core::{AgentId, ScopeId, TrajectoryId};
 
     #[test]
     fn test_create_delegation_request_validation() {
-        let agent_id = EntityId::from(Uuid::new_v4());
+        let agent_id = AgentId::now_v7();
         let req = CreateDelegationRequest {
             from_agent_id: agent_id,
             to_agent_id: agent_id, // Same agent
-            trajectory_id: EntityId::from(Uuid::new_v4()),
-            scope_id: EntityId::from(Uuid::new_v4()),
+            trajectory_id: TrajectoryId::now_v7(),
+            scope_id: ScopeId::now_v7(),
             task_description: "".to_string(),
             expected_completion: None,
             context: None,
@@ -345,17 +346,17 @@ mod tests {
     #[test]
     fn test_accept_delegation_request() {
         let req = AcceptDelegationRequest {
-            accepting_agent_id: EntityId::from(Uuid::new_v4()),
+            accepting_agent_id: AgentId::now_v7(),
         };
 
         // Just verify the struct can be created
-        assert!(!req.accepting_agent_id.to_string().is_empty());
+        assert!(!req.accepting_agent_id.as_uuid().to_string().is_empty());
     }
 
     #[test]
     fn test_reject_delegation_request() {
         let req = RejectDelegationRequest {
-            rejecting_agent_id: EntityId::from(Uuid::new_v4()),
+            rejecting_agent_id: AgentId::now_v7(),
             reason: "Not enough capacity".to_string(),
         };
 

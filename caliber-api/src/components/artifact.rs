@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::{
     ArtifactResponse, CreateArtifactRequest, ListArtifactsRequest, UpdateArtifactRequest,
 };
-use caliber_core::{ArtifactType, EntityId};
+use caliber_core::{ArtifactId, ArtifactType, ScopeId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for ArtifactResponse
@@ -13,14 +13,15 @@ impl_component! {
     ArtifactResponse {
         entity_name: "artifact",
         pk_field: "artifact_id",
+        id_type: ArtifactId,
         requires_tenant: true,
         create_type: CreateArtifactRequest,
         update_type: UpdateArtifactRequest,
         filter_type: ArtifactListFilter,
         entity_id: |self| self.artifact_id,
         create_params: |req, tenant_id| vec![
-            SqlParam::Uuid(req.trajectory_id),
-            SqlParam::Uuid(req.scope_id),
+            SqlParam::Uuid(req.trajectory_id.as_uuid()),
+            SqlParam::Uuid(req.scope_id.as_uuid()),
             SqlParam::String(format!("{:?}", req.artifact_type)),
             SqlParam::String(req.name.clone()),
             SqlParam::String(req.content.clone()),
@@ -29,7 +30,7 @@ impl_component! {
             SqlParam::OptFloat(req.confidence),
             SqlParam::Json(serde_json::to_value(&req.ttl).unwrap_or(JsonValue::Null)),
             SqlParam::OptJson(req.metadata.clone()),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 11,
         build_updates: |req| {
@@ -53,18 +54,22 @@ impl_component! {
             }
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::artifact_not_found(id),
+        not_found_error: |id| ApiError::artifact_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for ArtifactResponse {}
+impl TenantScoped for ArtifactResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
 impl Listable for ArtifactResponse {}
 
 /// Filter for listing artifacts.
 #[derive(Debug, Clone, Default)]
 pub struct ArtifactListFilter {
-    pub trajectory_id: Option<EntityId>,
-    pub scope_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
+    pub scope_id: Option<ScopeId>,
     pub artifact_type: Option<ArtifactType>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
@@ -83,20 +88,20 @@ impl From<ListArtifactsRequest> for ArtifactListFilter {
 }
 
 impl ListFilter for ArtifactListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("trajectory_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(trajectory_id));
+            params.push(SqlParam::Uuid(trajectory_id.as_uuid()));
             param_idx += 1;
         }
 
         if let Some(scope_id) = self.scope_id {
             conditions.push(format!("scope_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(scope_id));
+            params.push(SqlParam::Uuid(scope_id.as_uuid()));
             param_idx += 1;
         }
 

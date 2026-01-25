@@ -1,6 +1,6 @@
 //! Message-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{AgentId, ArtifactId, MessageId, ScopeId, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -12,10 +12,10 @@ use crate::error::{ApiError, ApiResult};
 pub struct SendMessageRequest {
     /// Agent sending the message
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
+    pub from_agent_id: AgentId,
     /// Specific agent to receive (if targeted)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub to_agent_id: Option<EntityId>,
+    pub to_agent_id: Option<AgentId>,
     /// Agent type to receive (for broadcast)
     pub to_agent_type: Option<String>,
     /// Type of message
@@ -24,13 +24,13 @@ pub struct SendMessageRequest {
     pub payload: String,
     /// Related trajectory (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Related scope (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub scope_id: Option<EntityId>,
+    pub scope_id: Option<ScopeId>,
     /// Related artifacts (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifact_ids: Vec<EntityId>,
+    pub artifact_ids: Vec<ArtifactId>,
     /// Message priority
     pub priority: String,
     /// When the message expires (optional)
@@ -43,22 +43,22 @@ pub struct SendMessageRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub message_id: EntityId,
+    pub message_id: MessageId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
+    pub sender_id: AgentId,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub to_agent_id: Option<EntityId>,
+    pub recipient_id: Option<AgentId>,
     pub to_agent_type: Option<String>,
     pub message_type: String,
     pub payload: String,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub scope_id: Option<EntityId>,
+    pub scope_id: Option<ScopeId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifact_ids: Vec<EntityId>,
+    pub artifact_ids: Vec<ArtifactId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
@@ -78,15 +78,15 @@ pub struct ListMessagesRequest {
     pub message_type: Option<String>,
     /// Filter by sender agent
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub from_agent_id: Option<EntityId>,
+    pub from_agent_id: Option<AgentId>,
     /// Filter by recipient agent
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub to_agent_id: Option<EntityId>,
+    pub to_agent_id: Option<AgentId>,
     /// Filter by recipient agent type
     pub to_agent_type: Option<String>,
     /// Filter by trajectory
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Filter by priority
     pub priority: Option<String>,
     /// Only return undelivered messages

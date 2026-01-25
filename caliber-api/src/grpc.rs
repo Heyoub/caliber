@@ -37,18 +37,18 @@ use uuid::Uuid;
 /// Priority:
 /// 1. Try to get from metadata first (x-tenant-id header)
 /// 2. Fallback: try extensions (if set by interceptor)
-fn extract_tenant_id<T>(request: &Request<T>) -> Result<caliber_core::EntityId, Status> {
+fn extract_tenant_id<T>(request: &Request<T>) -> Result<caliber_core::TenantId, Status> {
     // Try to get from metadata first
     if let Some(tenant) = request.metadata().get("x-tenant-id") {
         let tenant_str = tenant.to_str()
             .map_err(|_| Status::invalid_argument("Invalid tenant ID header"))?;
         let tenant_id = tenant_str.parse::<Uuid>()
             .map_err(|_| Status::invalid_argument("Invalid tenant ID format"))?;
-        return Ok(caliber_core::EntityId::from(tenant_id));
+        return Ok(caliber_core::TenantId::new(tenant_id));
     }
 
     // Fallback: try extensions (if set by interceptor)
-    if let Some(tenant_id) = request.extensions().get::<caliber_core::EntityId>() {
+    if let Some(tenant_id) = request.extensions().get::<caliber_core::TenantId>() {
         return Ok(*tenant_id);
     }
 
@@ -274,7 +274,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
     ) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        let id: caliber_core::TrajectoryId = caliber_core::TrajectoryId::new(req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?);
 
         self.db.delete::<crate::types::TrajectoryResponse>(id, tenant_id).await?;
         Ok(Response::new(Empty {}))
@@ -286,7 +286,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
     ) -> Result<Response<ListScopesResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        let id: caliber_core::TrajectoryId = caliber_core::TrajectoryId::new(req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?);
 
         let filter = ScopeListFilter {
             trajectory_id: Some(id),
@@ -305,7 +305,7 @@ impl trajectory_service_server::TrajectoryService for TrajectoryServiceImpl {
     ) -> Result<Response<ListTrajectoriesResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?;
+        let id: caliber_core::TrajectoryId = caliber_core::TrajectoryId::new(req.trajectory_id.parse().map_err(|_| Status::invalid_argument("Invalid trajectory_id"))?);
 
         let filter = TrajectoryListFilter {
             parent_id: Some(id),
@@ -840,7 +840,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
     async fn update_artifact(&self, request: Request<UpdateArtifactRequest>) -> Result<Response<ArtifactResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
+        let id: caliber_core::ArtifactId = caliber_core::ArtifactId::new(req.artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?);
         let update_req = crate::types::UpdateArtifactRequest {
             name: req.name,
             content: req.content,
@@ -855,7 +855,7 @@ impl artifact_service_server::ArtifactService for ArtifactServiceImpl {
 
     async fn delete_artifact(&self, request: Request<DeleteArtifactRequest>) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
-        let id: caliber_core::EntityId = request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?;
+        let id: caliber_core::ArtifactId = caliber_core::ArtifactId::new(request.into_inner().artifact_id.parse().map_err(|_| Status::invalid_argument("Invalid artifact_id"))?);
         self.db.delete::<crate::types::ArtifactResponse>(id, tenant_id).await?;
         self.ws.broadcast(WsEvent::ArtifactDeleted { tenant_id, id });
         Ok(Response::new(Empty {}))
@@ -1038,7 +1038,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
     async fn update_note(&self, request: Request<UpdateNoteRequest>) -> Result<Response<NoteResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
+        let id: caliber_core::NoteId = caliber_core::NoteId::new(req.note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?);
         let update_req = crate::types::UpdateNoteRequest {
             title: req.title,
             content: req.content,
@@ -1053,7 +1053,7 @@ impl note_service_server::NoteService for NoteServiceImpl {
 
     async fn delete_note(&self, request: Request<DeleteNoteRequest>) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
-        let id: caliber_core::EntityId = request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?;
+        let id: caliber_core::NoteId = caliber_core::NoteId::new(request.into_inner().note_id.parse().map_err(|_| Status::invalid_argument("Invalid note_id"))?);
         self.db.delete::<crate::types::NoteResponse>(id, tenant_id).await?;
         self.ws.broadcast(WsEvent::NoteDeleted { tenant_id, id });
         Ok(Response::new(Empty {}))
@@ -1228,7 +1228,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
     async fn update_agent(&self, request: Request<UpdateAgentRequest>) -> Result<Response<AgentResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
+        let id: caliber_core::AgentId = caliber_core::AgentId::new(req.agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?);
         let memory_access = req.memory_access.map(|access| crate::types::MemoryAccessRequest {
             read: access.read.into_iter().map(|p| crate::types::MemoryPermissionRequest {
                 memory_type: p.memory_type,
@@ -1256,7 +1256,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
 
     async fn unregister_agent(&self, request: Request<UnregisterAgentRequest>) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
-        let id: caliber_core::EntityId = request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?;
+        let id: caliber_core::AgentId = caliber_core::AgentId::new(request.into_inner().agent_id.parse().map_err(|_| Status::invalid_argument("Invalid agent_id"))?);
         // Get agent and unregister via Response method
         let agent = self.db.get::<crate::types::AgentResponse>(id, tenant_id).await?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
@@ -1317,7 +1317,7 @@ impl lock_service_server::LockService for LockServiceImpl {
     async fn extend_lock(&self, request: Request<ExtendLockRequest>) -> Result<Response<LockResponse>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let id: caliber_core::EntityId = req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
+        let id: caliber_core::LockId = caliber_core::LockId::new(req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?);
         if req.additional_ms <= 0 {
             return Err(Status::invalid_argument("additional_ms must be positive"));
         }

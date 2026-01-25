@@ -5,7 +5,7 @@ use crate::components::TrajectoryListFilter;
 use crate::types::{ArtifactResponse, TrajectoryResponse};
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::EntityId;
+use caliber_core::{TenantId, TrajectoryId, ScopeId, AgentId};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -113,7 +113,7 @@ async fn execute_tool(
     state: &McpState,
     name: &str,
     args: JsonValue,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> ApiResult<Vec<ContentBlock>> {
     match name {
         "trajectory_create" => {
@@ -123,7 +123,8 @@ async fn execute_tool(
             let description = args["description"].as_str().map(|s| s.to_string());
             let agent_id = args["agent_id"]
                 .as_str()
-                .and_then(|s| Uuid::parse_str(s).ok());
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .map(AgentId::new);
 
             let req = CreateTrajectoryRequest {
                 name: name.to_string(),
@@ -149,6 +150,7 @@ async fn execute_tool(
                 .as_str()
                 .ok_or_else(|| ApiError::missing_field("trajectory_id"))?;
             let id = Uuid::parse_str(id_str)
+                .map(TrajectoryId::new)
                 .map_err(|_| ApiError::invalid_input("Invalid UUID"))?;
 
             let trajectory = state
@@ -203,7 +205,7 @@ async fn execute_tool(
                 .ok_or_else(|| ApiError::missing_field("source_trajectory_ids"))?
                 .iter()
                 .filter_map(|v| v.as_str())
-                .filter_map(|s| Uuid::parse_str(s).ok())
+                .filter_map(|s| Uuid::parse_str(s).ok().map(TrajectoryId::new))
                 .collect();
 
             let note_type = match note_type_str {
@@ -258,6 +260,7 @@ async fn execute_tool(
                     .as_str()
                     .ok_or_else(|| ApiError::missing_field("trajectory_id"))?,
             )
+            .map(TrajectoryId::new)
             .map_err(|_| ApiError::invalid_input("Invalid trajectory_id"))?;
 
             let scope_id = Uuid::parse_str(
@@ -265,6 +268,7 @@ async fn execute_tool(
                     .as_str()
                     .ok_or_else(|| ApiError::missing_field("scope_id"))?,
             )
+            .map(ScopeId::new)
             .map_err(|_| ApiError::invalid_input("Invalid scope_id"))?;
 
             let artifact_type_str = args["artifact_type"]
@@ -318,10 +322,12 @@ async fn execute_tool(
         }
 
         "artifact_get" => {
+            use caliber_core::ArtifactId;
             let id_str = args["artifact_id"]
                 .as_str()
                 .ok_or_else(|| ApiError::missing_field("artifact_id"))?;
             let id = Uuid::parse_str(id_str)
+                .map(ArtifactId::new)
                 .map_err(|_| ApiError::invalid_input("Invalid UUID"))?;
 
             let artifact = state
@@ -342,6 +348,7 @@ async fn execute_tool(
                     .as_str()
                     .ok_or_else(|| ApiError::missing_field("trajectory_id"))?,
             )
+            .map(TrajectoryId::new)
             .map_err(|_| ApiError::invalid_input("Invalid trajectory_id"))?;
 
             let name = args["name"]

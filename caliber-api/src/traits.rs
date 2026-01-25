@@ -1,17 +1,18 @@
 //! Common traits for API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{TenantId, Timestamp};
+use uuid::Uuid;
 
 /// A type that has an entity ID.
 ///
 /// This trait can be implemented for all response types that represent
 /// stored entities with a unique identifier.
 pub trait Entity {
-    /// Get the entity's unique identifier.
-    fn entity_id(&self) -> EntityId;
+    /// Get the entity's unique identifier as a raw UUID.
+    fn entity_id(&self) -> Uuid;
 
     /// Get the tenant ID if this is a multi-tenant entity.
-    fn tenant_id(&self) -> Option<EntityId> {
+    fn tenant_id(&self) -> Option<TenantId> {
         None
     }
 }
@@ -32,25 +33,25 @@ pub trait HasTimestamps {
 
 /// Normalize tenant IDs to an optional value.
 ///
-/// This allows entity responses to use either `EntityId` or `Option<EntityId>`
+/// This allows entity responses to use either `TenantId` or `Option<TenantId>`
 /// while still implementing `Entity::tenant_id`.
 pub trait IntoTenantId {
-    fn into_option(self) -> Option<EntityId>;
+    fn into_option(self) -> Option<TenantId>;
 }
 
-impl IntoTenantId for EntityId {
-    fn into_option(self) -> Option<EntityId> {
+impl IntoTenantId for TenantId {
+    fn into_option(self) -> Option<TenantId> {
         Some(self)
     }
 }
 
-impl IntoTenantId for Option<EntityId> {
-    fn into_option(self) -> Option<EntityId> {
+impl IntoTenantId for Option<TenantId> {
+    fn into_option(self) -> Option<TenantId> {
         self
     }
 }
 
-/// Convert a tenant ID field into `Option<EntityId>`.
-pub fn normalize_tenant_id<T: IntoTenantId>(value: T) -> Option<EntityId> {
+/// Convert a tenant ID field into `Option<TenantId>`.
+pub fn normalize_tenant_id<T: IntoTenantId>(value: T) -> Option<TenantId> {
     value.into_option()
 }

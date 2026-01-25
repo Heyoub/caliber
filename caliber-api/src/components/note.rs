@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateNoteRequest, ListNotesRequest, NoteResponse, UpdateNoteRequest};
-use caliber_core::{EntityId, NoteType};
+use caliber_core::{ArtifactId, NoteId, NoteType, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for NoteResponse
@@ -11,6 +11,7 @@ impl_component! {
     NoteResponse {
         entity_name: "note",
         pk_field: "note_id",
+        id_type: NoteId,
         requires_tenant: true,
         create_type: CreateNoteRequest,
         update_type: UpdateNoteRequest,
@@ -20,11 +21,11 @@ impl_component! {
             SqlParam::String(format!("{:?}", req.note_type)),
             SqlParam::String(req.title.clone()),
             SqlParam::String(req.content.clone()),
-            SqlParam::Json(serde_json::to_value(&req.source_trajectory_ids).unwrap_or(JsonValue::Array(vec![]))),
-            SqlParam::Json(serde_json::to_value(&req.source_artifact_ids).unwrap_or(JsonValue::Array(vec![]))),
+            SqlParam::Json(serde_json::to_value(&req.source_trajectory_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>()).unwrap_or(JsonValue::Array(vec![]))),
+            SqlParam::Json(serde_json::to_value(&req.source_artifact_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>()).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::Json(serde_json::to_value(&req.ttl).unwrap_or(JsonValue::Null)),
             SqlParam::OptJson(req.metadata.clone()),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 8,
         build_updates: |req| {
@@ -48,18 +49,22 @@ impl_component! {
             }
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::note_not_found(id),
+        not_found_error: |id| ApiError::note_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for NoteResponse {}
+impl TenantScoped for NoteResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
 impl Listable for NoteResponse {}
 
 /// Filter for listing notes.
 #[derive(Debug, Clone, Default)]
 pub struct NoteListFilter {
     pub note_type: Option<NoteType>,
-    pub source_trajectory_id: Option<EntityId>,
+    pub source_trajectory_id: Option<TrajectoryId>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
@@ -76,9 +81,9 @@ impl From<ListNotesRequest> for NoteListFilter {
 }
 
 impl ListFilter for NoteListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(note_type) = &self.note_type {
@@ -90,7 +95,7 @@ impl ListFilter for NoteListFilter {
         if let Some(trajectory_id) = self.source_trajectory_id {
             // Note: source_trajectory_ids is stored as a JSONB array, so we use the contains operator
             conditions.push(format!("source_trajectory_ids @> ${}::jsonb", param_idx));
-            params.push(SqlParam::Json(serde_json::json!([trajectory_id.to_string()])));
+            params.push(SqlParam::Json(serde_json::json!([trajectory_id.as_uuid().to_string()])));
             // param_idx += 1; // unused after this
         }
 

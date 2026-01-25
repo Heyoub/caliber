@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::trajectory::{
     CreateTrajectoryRequest, ListTrajectoriesRequest, TrajectoryResponse, UpdateTrajectoryRequest,
 };
-use caliber_core::{EntityId, TrajectoryStatus};
+use caliber_core::{AgentId, TenantId, TrajectoryId, TrajectoryStatus};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for TrajectoryResponse
@@ -13,6 +13,7 @@ impl_component! {
     TrajectoryResponse {
         entity_name: "trajectory",
         pk_field: "trajectory_id",
+        id_type: TrajectoryId,
         requires_tenant: true,
         create_type: CreateTrajectoryRequest,
         update_type: UpdateTrajectoryRequest,
@@ -21,8 +22,8 @@ impl_component! {
         create_params: |req, tenant_id| vec![
             SqlParam::String(req.name.clone()),
             SqlParam::OptString(req.description.clone()),
-            SqlParam::OptUuid(req.agent_id),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::OptUuid(req.agent_id.map(|id| id.as_uuid())),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 4,
         build_updates: |req| {
@@ -47,19 +48,23 @@ impl_component! {
             }
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::trajectory_not_found(id),
+        not_found_error: |id| ApiError::trajectory_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for TrajectoryResponse {}
+impl TenantScoped for TrajectoryResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
 impl Listable for TrajectoryResponse {}
 
 /// Filter for listing trajectories.
 #[derive(Debug, Clone, Default)]
 pub struct TrajectoryListFilter {
     pub status: Option<TrajectoryStatus>,
-    pub agent_id: Option<EntityId>,
-    pub parent_id: Option<EntityId>,
+    pub agent_id: Option<AgentId>,
+    pub parent_id: Option<TrajectoryId>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
@@ -77,9 +82,9 @@ impl From<ListTrajectoriesRequest> for TrajectoryListFilter {
 }
 
 impl ListFilter for TrajectoryListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(status) = &self.status {
@@ -96,13 +101,13 @@ impl ListFilter for TrajectoryListFilter {
 
         if let Some(agent_id) = self.agent_id {
             conditions.push(format!("agent_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(agent_id));
+            params.push(SqlParam::Uuid(agent_id.as_uuid()));
             param_idx += 1;
         }
 
         if let Some(parent_id) = self.parent_id {
             conditions.push(format!("parent_trajectory_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(parent_id));
+            params.push(SqlParam::Uuid(parent_id.as_uuid()));
             // param_idx += 1; // unused after this
         }
 

@@ -1,6 +1,6 @@
 //! Collapsible tree widget.
 
-use caliber_core::EntityId;
+use uuid::Uuid;
 use ratatui::{
     layout::Rect,
     style::{Style},
@@ -10,7 +10,7 @@ use ratatui::{
 
 #[derive(Debug, Clone)]
 pub struct TreeItem {
-    pub id: EntityId,
+    pub id: Uuid,
     pub label: String,
     pub depth: usize,
     pub expanded: bool,

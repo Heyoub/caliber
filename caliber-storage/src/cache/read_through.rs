@@ -8,7 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityId, EntityType};
+use caliber_core::{CaliberResult, EntityType};
+use uuid::Uuid;
 use chrono::Utc;
 
 use super::freshness::{CacheRead, Freshness};
@@ -86,7 +87,7 @@ impl CacheConfig {
 #[async_trait]
 pub trait StorageFetcher<T: CacheableEntity>: Send + Sync {
     /// Fetch an entity from storage by ID.
-    async fn fetch(&self, entity_id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<T>>;
+    async fn fetch(&self, entity_id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<T>>;
 }
 
 /// Read-through cache with correctness contracts.
@@ -182,8 +183,8 @@ where
     /// or `Ok(None)` if the entity doesn't exist in storage.
     pub async fn get<T, S>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
         freshness: Freshness,
         storage: &S,
     ) -> CaliberResult<Option<CacheRead<T>>>
@@ -205,8 +206,8 @@ where
     /// Best-effort read: cache first, refresh if too stale.
     async fn get_best_effort<T, S>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
         max_staleness: Duration,
         storage: &S,
     ) -> CaliberResult<Option<CacheRead<T>>>
@@ -235,8 +236,8 @@ where
     /// Consistent read: check watermark, fallback to storage if stale.
     async fn get_consistent<T, S>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
         storage: &S,
     ) -> CaliberResult<Option<CacheRead<T>>>
     where
@@ -276,8 +277,8 @@ where
     /// Fetch from storage and update cache.
     async fn fetch_and_cache<T, S>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
         storage: &S,
     ) -> CaliberResult<Option<CacheRead<T>>>
     where
@@ -292,8 +293,8 @@ where
     /// Fetch from storage and update cache with known watermark.
     async fn fetch_and_cache_with_watermark<T, S>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
         storage: &S,
         watermark: Watermark,
     ) -> CaliberResult<Option<CacheRead<T>>>
@@ -321,21 +322,21 @@ where
     /// Invalidate a single entity.
     pub async fn invalidate<T: CacheableEntity>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<()> {
         self.cache.delete::<T>(entity_id, tenant_id).await
     }
 
     /// Invalidate all cached entries for a tenant.
-    pub async fn invalidate_tenant(&self, tenant_id: EntityId) -> CaliberResult<u64> {
+    pub async fn invalidate_tenant(&self, tenant_id: Uuid) -> CaliberResult<u64> {
         self.cache.invalidate_tenant(tenant_id).await
     }
 
     /// Invalidate all cached entries of a specific entity type for a tenant.
     pub async fn invalidate_entity_type(
         &self,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
         entity_type: EntityType,
     ) -> CaliberResult<u64> {
         self.cache.invalidate_entity_type(tenant_id, entity_type).await
@@ -373,7 +374,7 @@ mod tests {
     }
 
     impl MockCacheBackend {
-        fn key(entity_type: EntityType, entity_id: EntityId, tenant_id: EntityId) -> String {
+        fn key(entity_type: EntityType, entity_id: Uuid, tenant_id: Uuid) -> String {
             format!("{:?}:{}:{}", entity_type, tenant_id, entity_id)
         }
     }
@@ -382,8 +383,8 @@ mod tests {
     impl CacheBackend for MockCacheBackend {
         async fn get<T: CacheableEntity>(
             &self,
-            entity_id: EntityId,
-            tenant_id: EntityId,
+            entity_id: Uuid,
+            tenant_id: Uuid,
         ) -> CaliberResult<Option<(T, chrono::DateTime<Utc>)>> {
             // For testing, always return None (cache miss)
             let mut stats = self.stats.write().unwrap();
@@ -401,8 +402,8 @@ mod tests {
 
         async fn delete<T: CacheableEntity>(
             &self,
-            _entity_id: EntityId,
-            _tenant_id: EntityId,
+            _entity_id: Uuid,
+            _tenant_id: Uuid,
         ) -> CaliberResult<()> {
             Ok(())
         }
@@ -410,19 +411,19 @@ mod tests {
         async fn delete_by_key(
             &self,
             _entity_type: EntityType,
-            _entity_id: EntityId,
-            _tenant_id: EntityId,
+            _entity_id: Uuid,
+            _tenant_id: Uuid,
         ) -> CaliberResult<()> {
             Ok(())
         }
 
-        async fn invalidate_tenant(&self, _tenant_id: EntityId) -> CaliberResult<u64> {
+        async fn invalidate_tenant(&self, _tenant_id: Uuid) -> CaliberResult<u64> {
             Ok(0)
         }
 
         async fn invalidate_entity_type(
             &self,
-            _tenant_id: EntityId,
+            _tenant_id: Uuid,
             _entity_type: EntityType,
         ) -> CaliberResult<u64> {
             Ok(0)
@@ -435,7 +436,7 @@ mod tests {
 
     // Mock storage fetcher for testing
     struct MockStorageFetcher {
-        artifacts: RwLock<HashMap<EntityId, Artifact>>,
+        artifacts: RwLock<HashMap<Uuid, Artifact>>,
     }
 
     impl MockStorageFetcher {
@@ -457,14 +458,14 @@ mod tests {
     impl StorageFetcher<Artifact> for MockStorageFetcher {
         async fn fetch(
             &self,
-            entity_id: EntityId,
-            _tenant_id: EntityId,
+            entity_id: Uuid,
+            _tenant_id: Uuid,
         ) -> CaliberResult<Option<Artifact>> {
             Ok(self.artifacts.read().unwrap().get(&entity_id).cloned())
         }
     }
 
-    fn make_test_artifact(trajectory_id: EntityId, scope_id: EntityId) -> Artifact {
+    fn make_test_artifact(trajectory_id: Uuid, scope_id: Uuid) -> Artifact {
         Artifact {
             artifact_id: Uuid::now_v7(),
             trajectory_id,

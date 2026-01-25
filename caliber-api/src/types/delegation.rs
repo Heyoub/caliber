@@ -1,6 +1,6 @@
 //! Delegation-related API types
 
-use caliber_core::{DelegationResultStatus, DelegationStatus, EntityId, Timestamp};
+use caliber_core::{AgentId, ArtifactId, DelegationId, DelegationResultStatus, DelegationStatus, ScopeId, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -12,16 +12,16 @@ use crate::error::{ApiError, ApiResult};
 pub struct CreateDelegationRequest {
     /// Agent delegating the task
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
+    pub from_agent_id: AgentId,
     /// Agent receiving the delegation
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub to_agent_id: EntityId,
+    pub to_agent_id: AgentId,
     /// Trajectory for the delegated task
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     /// Scope for the delegated task
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Task description
     pub task_description: String,
     /// Expected completion time
@@ -37,18 +37,18 @@ pub struct CreateDelegationRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub delegation_id: EntityId,
+    pub delegation_id: DelegationId,
     /// Tenant this delegation belongs to (for multi-tenant isolation)
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub tenant_id: TenantId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub delegator_id: AgentId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub delegatee_id: AgentId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub trajectory_id: TrajectoryId,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
-    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
-    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub to_agent_id: EntityId,
-    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
-    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: Option<ScopeId>,
     pub task_description: String,
     pub status: DelegationStatus,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -77,7 +77,7 @@ impl DelegationResponse {
     ///
     /// # Errors
     /// Returns error if delegation is not in Pending state.
-    pub async fn accept(&self, db: &DbClient, accepting_agent_id: EntityId) -> ApiResult<Self> {
+    pub async fn accept(&self, db: &DbClient, accepting_agent_id: AgentId) -> ApiResult<Self> {
         if self.status != DelegationStatus::Pending {
             return Err(ApiError::state_conflict(format!(
                 "Delegation is in '{:?}' state, cannot accept (expected Pending)",
@@ -86,22 +86,18 @@ impl DelegationResponse {
         }
 
         // Verify the accepting agent is the delegatee
-        if self.to_agent_id != accepting_agent_id {
+        if self.delegatee_id != accepting_agent_id {
             return Err(ApiError::forbidden(
                 "Only the delegatee can accept this delegation",
             ));
         }
-
-        let tenant_id = self.tenant_id.ok_or_else(|| {
-            ApiError::internal_error("Delegation missing tenant_id")
-        })?;
 
         let updates = serde_json::json!({
             "status": "Accepted",
             "accepted_at": chrono::Utc::now().to_rfc3339()
         });
 
-        db.update_raw::<Self>(self.delegation_id, updates, tenant_id).await
+        db.update_raw::<Self>(self.delegation_id, updates, self.tenant_id).await
     }
 
     /// Reject this delegation (Pending -> Rejected transition).
@@ -113,7 +109,7 @@ impl DelegationResponse {
     ///
     /// # Errors
     /// Returns error if delegation is not in Pending state.
-    pub async fn reject(&self, db: &DbClient, rejecting_agent_id: EntityId, reason: &str) -> ApiResult<Self> {
+    pub async fn reject(&self, db: &DbClient, rejecting_agent_id: AgentId, reason: &str) -> ApiResult<Self> {
         if self.status != DelegationStatus::Pending {
             return Err(ApiError::state_conflict(format!(
                 "Delegation is in '{:?}' state, cannot reject (expected Pending)",
@@ -122,22 +118,18 @@ impl DelegationResponse {
         }
 
         // Verify the rejecting agent is the delegatee
-        if self.to_agent_id != rejecting_agent_id {
+        if self.delegatee_id != rejecting_agent_id {
             return Err(ApiError::forbidden(
                 "Only the delegatee can reject this delegation",
             ));
         }
-
-        let tenant_id = self.tenant_id.ok_or_else(|| {
-            ApiError::internal_error("Delegation missing tenant_id")
-        })?;
 
         let updates = serde_json::json!({
             "status": "Rejected",
             "rejection_reason": reason
         });
 
-        db.update_raw::<Self>(self.delegation_id, updates, tenant_id).await
+        db.update_raw::<Self>(self.delegation_id, updates, self.tenant_id).await
     }
 
     /// Complete this delegation (Accepted/InProgress -> Completed transition).
@@ -161,10 +153,6 @@ impl DelegationResponse {
             )));
         }
 
-        let tenant_id = self.tenant_id.ok_or_else(|| {
-            ApiError::internal_error("Delegation missing tenant_id")
-        })?;
-
         let result_json = serde_json::to_value(result)?;
 
         let updates = serde_json::json!({
@@ -173,7 +161,7 @@ impl DelegationResponse {
             "result": result_json
         });
 
-        db.update_raw::<Self>(self.delegation_id, updates, tenant_id).await
+        db.update_raw::<Self>(self.delegation_id, updates, self.tenant_id).await
     }
 }
 
@@ -184,7 +172,7 @@ pub struct DelegationResultResponse {
     pub status: DelegationResultStatus,
     pub output: Option<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifacts: Vec<EntityId>,
+    pub artifacts: Vec<ArtifactId>,
     pub error: Option<String>,
 }
 
@@ -198,7 +186,7 @@ pub struct DelegationResultRequest {
     pub output: Option<String>,
     /// Artifacts produced during delegation
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifacts: Vec<EntityId>,
+    pub artifacts: Vec<ArtifactId>,
     /// Error message if failed
     pub error: Option<String>,
 }

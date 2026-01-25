@@ -1,8 +1,9 @@
 //! Lock-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{AgentId, LockId, TenantId, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use uuid::Uuid;
 
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
@@ -15,10 +16,10 @@ pub struct AcquireLockRequest {
     pub resource_type: String,
     /// ID of the resource to lock
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub resource_id: EntityId,
+    pub resource_id: Uuid,
     /// Agent requesting the lock
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub holder_agent_id: EntityId,
+    pub holder_agent_id: AgentId,
     /// Lock timeout in milliseconds
     pub timeout_ms: i64,
     /// Lock mode (Exclusive or Shared)
@@ -39,7 +40,7 @@ pub struct ExtendLockRequest {
 pub struct ReleaseLockRequest {
     /// Agent releasing the lock (must be the holder)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub releasing_agent_id: EntityId,
+    pub releasing_agent_id: AgentId,
 }
 
 /// Lock response with full details.
@@ -47,14 +48,14 @@ pub struct ReleaseLockRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LockResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub lock_id: EntityId,
+    pub lock_id: LockId,
     pub resource_type: String,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub resource_id: EntityId,
+    pub resource_id: Uuid,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub holder_agent_id: EntityId,
+    pub holder_agent_id: AgentId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub acquired_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -90,7 +91,7 @@ impl LockResponse {
     ///
     /// # Errors
     /// Returns error if the agent is not the lock holder or lock is expired.
-    pub async fn release(&self, db: &DbClient, releasing_agent_id: EntityId) -> ApiResult<()> {
+    pub async fn release(&self, db: &DbClient, releasing_agent_id: AgentId) -> ApiResult<()> {
         // Verify the releasing agent is the lock holder
         if self.holder_agent_id != releasing_agent_id {
             return Err(ApiError::forbidden(

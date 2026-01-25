@@ -20,7 +20,7 @@ use axum::{
     },
     response::Response,
 };
-use caliber_core::EntityId;
+use caliber_core::TenantId;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
@@ -126,7 +126,7 @@ pub async fn ws_handler(
 /// This function runs for the lifetime of the WebSocket connection.
 /// It subscribes to the broadcast channel and forwards tenant-specific
 /// events to the client.
-async fn handle_socket(socket: WebSocket, state: Arc<WsState>, tenant_id: EntityId) {
+async fn handle_socket(socket: WebSocket, state: Arc<WsState>, tenant_id: TenantId) {
     info!(tenant_id = %tenant_id, "WebSocket connected");
 
     // Split the socket into sender and receiver
@@ -263,7 +263,7 @@ async fn send_event(
 /// # Security
 /// This function implements DENY by default - if tenant_id cannot be determined
 /// from an event that is tenant-specific, the event will NOT be delivered.
-pub fn should_deliver_event(event: &WsEvent, client_tenant_id: EntityId) -> bool {
+pub fn should_deliver_event(event: &WsEvent, client_tenant_id: TenantId) -> bool {
     // Connection events are always sent
     if !event.is_tenant_specific() {
         return true;
@@ -288,7 +288,7 @@ pub fn should_deliver_event(event: &WsEvent, client_tenant_id: EntityId) -> bool
 /// This function is used for tenant filtering of WebSocket events.
 /// Returns `Some(tenant_id)` if the event contains tenant information,
 /// `None` otherwise.
-pub fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
+pub fn tenant_id_from_event(event: &WsEvent) -> Option<TenantId> {
     match event {
         // ========================================================================
         // TRAJECTORY EVENTS
@@ -381,12 +381,12 @@ pub fn tenant_id_from_event(event: &WsEvent) -> Option<EntityId> {
     }
 }
 
-fn tenant_id_from_metadata(metadata: &Option<JsonValue>) -> Option<EntityId> {
+fn tenant_id_from_metadata(metadata: &Option<JsonValue>) -> Option<TenantId> {
     let metadata = metadata.as_ref()?;
     let tenant_value = metadata.get("tenant_id")?;
     tenant_value
         .as_str()
-        .and_then(|value| value.parse::<EntityId>().ok())
+        .and_then(|value| value.parse::<TenantId>().ok())
 }
 
 #[cfg(test)]
@@ -405,7 +405,7 @@ mod tests {
     fn test_broadcast_no_receivers() {
         let state = WsState::new(100);
         let event = WsEvent::Connected {
-            tenant_id: caliber_core::new_entity_id(),
+            tenant_id: TenantId::now_v7(),
         };
         // Should not panic when no receivers
         state.broadcast(event);
@@ -417,7 +417,7 @@ mod tests {
         let mut rx = state.subscribe();
 
         let event = WsEvent::Connected {
-            tenant_id: caliber_core::new_entity_id(),
+            tenant_id: TenantId::now_v7(),
         };
         state.broadcast(event.clone());
 
@@ -431,7 +431,9 @@ mod tests {
 
     #[test]
     fn test_event_filtering() {
-        let tenant_id = caliber_core::new_entity_id();
+        use caliber_core::TrajectoryId;
+
+        let tenant_id = TenantId::now_v7();
 
         // Connection events should always be sent
         let connected = WsEvent::Connected { tenant_id };
@@ -446,7 +448,7 @@ mod tests {
         // (Currently sends to all, but test the logic)
         let trajectory_created = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: caliber_core::new_entity_id(),
+                trajectory_id: TrajectoryId::now_v7(),
                 tenant_id: Some(tenant_id),
                 name: "test".to_string(),
                 description: None,
@@ -463,10 +465,10 @@ mod tests {
         };
         assert!(should_deliver_event(&trajectory_created, tenant_id));
 
-        let other_tenant = caliber_core::new_entity_id();
+        let other_tenant = TenantId::now_v7();
         let other_tenant_event = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: caliber_core::new_entity_id(),
+                trajectory_id: TrajectoryId::now_v7(),
                 tenant_id: Some(other_tenant),
                 name: "other".to_string(),
                 description: None,

@@ -6,9 +6,10 @@
 
 use ::async_trait::async_trait;
 use caliber_core::{
-    Artifact, CaliberResult, EntityId, EntityType, Note, NoteType, Scope, Trajectory,
+    Artifact, CaliberResult, EntityType, Note, NoteType, Scope, Trajectory,
     TrajectoryStatus, Turn,
 };
+use uuid::Uuid;
 
 /// Async storage trait for database operations.
 ///
@@ -26,8 +27,8 @@ pub trait AsyncStorageTrait: Send + Sync {
     /// Get a trajectory by ID.
     async fn trajectory_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<Trajectory>>;
 
     /// Update a trajectory.
@@ -37,11 +38,11 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn trajectory_list_by_status(
         &self,
         status: TrajectoryStatus,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Trajectory>>;
 
     /// Delete a trajectory.
-    async fn trajectory_delete(&self, id: EntityId, tenant_id: EntityId) -> CaliberResult<()>;
+    async fn trajectory_delete(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<()>;
 
     // ========================================================================
     // SCOPE OPERATIONS
@@ -51,20 +52,20 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn scope_insert(&self, s: &Scope) -> CaliberResult<()>;
 
     /// Get a scope by ID.
-    async fn scope_get(&self, id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<Scope>>;
+    async fn scope_get(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<Scope>>;
 
     /// Get the current (active) scope for a trajectory.
     async fn scope_get_current(
         &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
+        trajectory_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<Scope>>;
 
     /// List all scopes in a trajectory.
     async fn scope_list_by_trajectory(
         &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
+        trajectory_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Scope>>;
 
     /// Update a scope.
@@ -80,28 +81,28 @@ pub trait AsyncStorageTrait: Send + Sync {
     /// Get an artifact by ID.
     async fn artifact_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<Artifact>>;
 
     /// List artifacts by trajectory.
     async fn artifact_list_by_trajectory(
         &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
+        trajectory_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Artifact>>;
 
     /// List artifacts by scope.
     async fn artifact_list_by_scope(
         &self,
-        scope_id: EntityId,
-        tenant_id: EntityId,
+        scope_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Artifact>>;
 
     /// List recent artifacts across all trajectories for a tenant.
     async fn artifact_list_recent(
         &self,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
         limit: i32,
     ) -> CaliberResult<Vec<Artifact>>;
 
@@ -109,7 +110,7 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn artifact_update(&self, a: &Artifact) -> CaliberResult<()>;
 
     /// Delete an artifact.
-    async fn artifact_delete(&self, id: EntityId, tenant_id: EntityId) -> CaliberResult<()>;
+    async fn artifact_delete(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<()>;
 
     // ========================================================================
     // NOTE OPERATIONS
@@ -119,20 +120,20 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn note_insert(&self, n: &Note) -> CaliberResult<()>;
 
     /// Get a note by ID.
-    async fn note_get(&self, id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<Note>>;
+    async fn note_get(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<Note>>;
 
     /// List notes by trajectory.
     async fn note_list_by_trajectory(
         &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
+        trajectory_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Note>>;
 
     /// List notes by type.
     async fn note_list_by_type(
         &self,
         note_type: NoteType,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Note>>;
 
     /// List all notes for a tenant with pagination.
@@ -140,7 +141,7 @@ pub trait AsyncStorageTrait: Send + Sync {
         &self,
         limit: i32,
         offset: i32,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Note>>;
 
     /// Search notes by content (full-text search).
@@ -148,14 +149,14 @@ pub trait AsyncStorageTrait: Send + Sync {
         &self,
         query: &str,
         limit: i32,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Note>>;
 
     /// Update a note.
     async fn note_update(&self, n: &Note) -> CaliberResult<()>;
 
     /// Delete a note.
-    async fn note_delete(&self, id: EntityId, tenant_id: EntityId) -> CaliberResult<()>;
+    async fn note_delete(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<()>;
 
     // ========================================================================
     // TURN OPERATIONS
@@ -165,20 +166,20 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn turn_insert(&self, t: &Turn) -> CaliberResult<()>;
 
     /// Get a turn by ID.
-    async fn turn_get(&self, id: EntityId, tenant_id: EntityId) -> CaliberResult<Option<Turn>>;
+    async fn turn_get(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<Turn>>;
 
     /// List turns by scope.
     async fn turn_list_by_scope(
         &self,
-        scope_id: EntityId,
-        tenant_id: EntityId,
+        scope_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Vec<Turn>>;
 
     /// Get the latest turn in a scope.
     async fn turn_get_latest(
         &self,
-        scope_id: EntityId,
-        tenant_id: EntityId,
+        scope_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<Turn>>;
 
     // ========================================================================
@@ -193,16 +194,16 @@ pub trait AsyncStorageTrait: Send + Sync {
         query_vector: &[f32],
         entity_type: EntityType,
         limit: i32,
-        tenant_id: EntityId,
-    ) -> CaliberResult<Vec<(EntityId, f32)>>;
+        tenant_id: Uuid,
+    ) -> CaliberResult<Vec<(Uuid, f32)>>;
 
     /// Store an embedding vector for an entity.
     async fn vector_store(
         &self,
-        entity_id: EntityId,
+        entity_id: Uuid,
         entity_type: EntityType,
         vector: &[f32],
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> CaliberResult<()>;
 
     // ========================================================================
@@ -213,7 +214,7 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn health_check(&self) -> CaliberResult<bool>;
 
     /// Get storage statistics (counts, sizes, etc.).
-    async fn get_statistics(&self, tenant_id: EntityId) -> CaliberResult<StorageStatistics>;
+    async fn get_statistics(&self, tenant_id: Uuid) -> CaliberResult<StorageStatistics>;
 }
 
 /// Storage statistics for diagnostics.

@@ -7,13 +7,17 @@ use crate::notifications::{Notification, NotificationLevel};
 use crate::theme::SynthBruteTheme;
 use caliber_api::events::WsEvent;
 use caliber_api::types::*;
-use caliber_core::{ArtifactType, EntityId, NoteType, Timestamp, TrajectoryStatus, TurnRole};
+use caliber_core::{
+    AgentId, ArtifactType, EntityIdType, LockId, MessageId, NoteType, ScopeId, TenantId,
+    Timestamp, TrajectoryId, TrajectoryStatus, TurnId, TurnRole,
+};
+use uuid::Uuid;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct TenantContext {
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     pub tenant_name: String,
     pub available_tenants: Vec<TenantInfo>,
 }
@@ -252,7 +256,7 @@ impl App {
     }
 }
 
-fn select_next_id<T: HasEntityId>(items: &[T], selected: &mut Option<EntityId>) {
+fn select_next_id<T: HasEntityId>(items: &[T], selected: &mut Option<Uuid>) {
     if items.is_empty() {
         *selected = None;
         return;
@@ -264,7 +268,7 @@ fn select_next_id<T: HasEntityId>(items: &[T], selected: &mut Option<EntityId>) 
     *selected = Some(items[next].entity_id());
 }
 
-fn select_prev_id<T: HasEntityId>(items: &[T], selected: &mut Option<EntityId>) {
+fn select_prev_id<T: HasEntityId>(items: &[T], selected: &mut Option<Uuid>) {
     if items.is_empty() {
         *selected = None;
         return;
@@ -277,60 +281,60 @@ fn select_prev_id<T: HasEntityId>(items: &[T], selected: &mut Option<EntityId>) 
 }
 
 trait HasEntityId {
-    fn entity_id(&self) -> EntityId;
+    fn entity_id(&self) -> Uuid;
 }
 
 impl HasEntityId for TrajectoryResponse {
-    fn entity_id(&self) -> EntityId {
-        self.trajectory_id
+    fn entity_id(&self) -> Uuid {
+        self.trajectory_id.as_uuid()
     }
 }
 
 impl HasEntityId for ScopeResponse {
-    fn entity_id(&self) -> EntityId {
-        self.scope_id
+    fn entity_id(&self) -> Uuid {
+        self.scope_id.as_uuid()
     }
 }
 
 impl HasEntityId for ArtifactResponse {
-    fn entity_id(&self) -> EntityId {
-        self.artifact_id
+    fn entity_id(&self) -> Uuid {
+        self.artifact_id.as_uuid()
     }
 }
 
 impl HasEntityId for NoteResponse {
-    fn entity_id(&self) -> EntityId {
-        self.note_id
+    fn entity_id(&self) -> Uuid {
+        self.note_id.as_uuid()
     }
 }
 
 impl HasEntityId for TurnResponse {
-    fn entity_id(&self) -> EntityId {
-        self.turn_id
+    fn entity_id(&self) -> Uuid {
+        self.turn_id.as_uuid()
     }
 }
 
 impl HasEntityId for AgentResponse {
-    fn entity_id(&self) -> EntityId {
-        self.agent_id
+    fn entity_id(&self) -> Uuid {
+        self.agent_id.as_uuid()
     }
 }
 
 impl HasEntityId for LockResponse {
-    fn entity_id(&self) -> EntityId {
-        self.lock_id
+    fn entity_id(&self) -> Uuid {
+        self.lock_id.as_uuid()
     }
 }
 
 impl HasEntityId for MessageResponse {
-    fn entity_id(&self) -> EntityId {
-        self.message_id
+    fn entity_id(&self) -> Uuid {
+        self.message_id.as_uuid()
     }
 }
 
 impl HasEntityId for TenantInfo {
-    fn entity_id(&self) -> EntityId {
-        self.tenant_id
+    fn entity_id(&self) -> Uuid {
+        self.tenant_id.as_uuid()
     }
 }
 
@@ -358,8 +362,8 @@ pub struct Modal {
 #[derive(Debug, Clone)]
 pub struct TrajectoryViewState {
     pub trajectories: Vec<TrajectoryResponse>,
-    pub expanded: HashSet<EntityId>,
-    pub selected: Option<EntityId>,
+    pub expanded: HashSet<Uuid>,
+    pub selected: Option<Uuid>,
     pub filter: TrajectoryFilter,
     pub loading: bool,
 }
@@ -387,7 +391,7 @@ impl TrajectoryViewState {
         }
     }
 
-    pub fn remove(&mut self, id: EntityId) {
+    pub fn remove(&mut self, id: TrajectoryId) {
         self.trajectories.retain(|t| t.trajectory_id != id);
     }
 }
@@ -395,7 +399,7 @@ impl TrajectoryViewState {
 #[derive(Debug, Clone)]
 pub struct TrajectoryFilter {
     pub status: Option<TrajectoryStatus>,
-    pub agent_id: Option<EntityId>,
+    pub agent_id: Option<AgentId>,
     pub date_from: Option<Timestamp>,
     pub date_to: Option<Timestamp>,
     pub search_query: Option<String>,
@@ -416,7 +420,7 @@ impl TrajectoryFilter {
 #[derive(Debug, Clone)]
 pub struct ScopeViewState {
     pub scopes: Vec<ScopeResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: ScopeFilter,
     pub loading: bool,
 }
@@ -446,7 +450,7 @@ impl ScopeViewState {
 
 #[derive(Debug, Clone)]
 pub struct ScopeFilter {
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     pub active_only: Option<bool>,
     pub date_from: Option<Timestamp>,
     pub date_to: Option<Timestamp>,
@@ -466,7 +470,7 @@ impl ScopeFilter {
 #[derive(Debug, Clone)]
 pub struct ArtifactViewState {
     pub artifacts: Vec<ArtifactResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: ArtifactFilter,
     pub sort: ArtifactSort,
     pub search_query: String,
@@ -497,8 +501,8 @@ impl ArtifactViewState {
         }
     }
 
-    pub fn remove(&mut self, id: EntityId) {
-        self.artifacts.retain(|a| a.artifact_id != id);
+    pub fn remove(&mut self, id: Uuid) {
+        self.artifacts.retain(|a| a.artifact_id.as_uuid() != id);
     }
 }
 
@@ -513,8 +517,8 @@ pub enum ArtifactSort {
 #[derive(Debug, Clone)]
 pub struct ArtifactFilter {
     pub artifact_type: Option<ArtifactType>,
-    pub trajectory_id: Option<EntityId>,
-    pub scope_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
+    pub scope_id: Option<ScopeId>,
     pub date_from: Option<Timestamp>,
     pub date_to: Option<Timestamp>,
 }
@@ -534,7 +538,7 @@ impl ArtifactFilter {
 #[derive(Debug, Clone)]
 pub struct NoteViewState {
     pub notes: Vec<NoteResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: NoteFilter,
     pub search_query: String,
     pub loading: bool,
@@ -563,15 +567,15 @@ impl NoteViewState {
         }
     }
 
-    pub fn remove(&mut self, id: EntityId) {
-        self.notes.retain(|n| n.note_id != id);
+    pub fn remove(&mut self, id: Uuid) {
+        self.notes.retain(|n| n.note_id.as_uuid() != id);
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct NoteFilter {
     pub note_type: Option<NoteType>,
-    pub source_trajectory_id: Option<EntityId>,
+    pub source_trajectory_id: Option<TrajectoryId>,
     pub date_from: Option<Timestamp>,
     pub date_to: Option<Timestamp>,
 }
@@ -590,7 +594,7 @@ impl NoteFilter {
 #[derive(Debug, Clone)]
 pub struct TurnViewState {
     pub turns: Vec<TurnResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: TurnFilter,
     pub auto_scroll: bool,
     pub loading: bool,
@@ -622,7 +626,7 @@ impl TurnFilter {
 #[derive(Debug, Clone)]
 pub struct AgentViewState {
     pub agents: Vec<AgentResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: AgentFilter,
     pub loading: bool,
 }
@@ -649,17 +653,17 @@ impl AgentViewState {
         }
     }
 
-    pub fn remove(&mut self, id: EntityId) {
+    pub fn remove(&mut self, id: AgentId) {
         self.agents.retain(|a| a.agent_id != id);
     }
 
-    pub fn update_status(&mut self, id: EntityId, status: String) {
+    pub fn update_status(&mut self, id: AgentId, status: String) {
         if let Some(agent) = self.agents.iter_mut().find(|a| a.agent_id == id) {
             agent.status = status;
         }
     }
 
-    pub fn update_heartbeat(&mut self, id: EntityId, timestamp: Timestamp) {
+    pub fn update_heartbeat(&mut self, id: AgentId, timestamp: Timestamp) {
         if let Some(agent) = self.agents.iter_mut().find(|a| a.agent_id == id) {
             agent.last_heartbeat = timestamp;
         }
@@ -684,7 +688,7 @@ impl AgentFilter {
 #[derive(Debug, Clone)]
 pub struct LockViewState {
     pub locks: Vec<LockResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: LockFilter,
     pub loading: bool,
 }
@@ -711,7 +715,7 @@ impl LockViewState {
         }
     }
 
-    pub fn remove(&mut self, id: EntityId) {
+    pub fn remove(&mut self, id: LockId) {
         self.locks.retain(|l| l.lock_id != id);
     }
 }
@@ -719,7 +723,7 @@ impl LockViewState {
 #[derive(Debug, Clone)]
 pub struct LockFilter {
     pub resource_type: Option<String>,
-    pub holder_agent_id: Option<EntityId>,
+    pub holder_agent_id: Option<AgentId>,
 }
 
 impl LockFilter {
@@ -734,7 +738,7 @@ impl LockFilter {
 #[derive(Debug, Clone)]
 pub struct MessageViewState {
     pub messages: Vec<MessageResponse>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub filter: MessageFilter,
     pub loading: bool,
 }
@@ -761,13 +765,13 @@ impl MessageViewState {
         }
     }
 
-    pub fn mark_delivered(&mut self, id: EntityId) {
+    pub fn mark_delivered(&mut self, id: MessageId) {
         if let Some(message) = self.messages.iter_mut().find(|m| m.message_id == id) {
             message.delivered_at = Some(chrono::Utc::now());
         }
     }
 
-    pub fn mark_acknowledged(&mut self, id: EntityId) {
+    pub fn mark_acknowledged(&mut self, id: MessageId) {
         if let Some(message) = self.messages.iter_mut().find(|m| m.message_id == id) {
             message.acknowledged_at = Some(chrono::Utc::now());
         }
@@ -777,8 +781,8 @@ impl MessageViewState {
 #[derive(Debug, Clone)]
 pub struct MessageFilter {
     pub message_type: Option<String>,
-    pub from_agent_id: Option<EntityId>,
-    pub to_agent_id: Option<EntityId>,
+    pub from_agent_id: Option<AgentId>,
+    pub to_agent_id: Option<AgentId>,
     pub priority: Option<String>,
 }
 
@@ -836,7 +840,7 @@ impl ConfigViewState {
 #[derive(Debug, Clone)]
 pub struct TenantViewState {
     pub tenants: Vec<TenantInfo>,
-    pub selected: Option<EntityId>,
+    pub selected: Option<Uuid>,
     pub loading: bool,
 }
 

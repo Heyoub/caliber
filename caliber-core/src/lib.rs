@@ -8,7 +8,7 @@
 //! This crate serves as the "type dictionary" for CALIBER. All types visible
 //! here form the vocabulary of the system:
 //!
-//! - **Identity**: `EntityId`, `EventId`, `Timestamp`, `ContentHash`
+//! - **Identity**: Type-safe ID newtypes (`TenantId`, `TrajectoryId`, etc.), `Timestamp`, `ContentHash`
 //! - **Enums**: Status types, entity types, categories
 //! - **Entities**: Core domain entities (Trajectory, Scope, Artifact, Note, Turn)
 //! - **Typestate**: Compile-time safe Lock, Handoff, Delegation lifecycles
@@ -25,6 +25,8 @@ mod error;
 mod config;
 mod filter;
 mod health;
+mod agent;
+mod llm;
 
 // Typestate modules (compile-time safety for critical paths)
 mod lock;
@@ -78,3 +80,9 @@ pub use effect::*;
 
 // Re-export context assembly types
 pub use context::*;
+
+// Re-export agent types (consolidated from caliber-agents)
+pub use agent::*;
+
+// Re-export LLM primitive types (consolidated from caliber-llm)
+pub use llm::*;

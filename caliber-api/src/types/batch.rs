@@ -1,6 +1,7 @@
 //! Batch operation types
 
-use caliber_core::EntityId;
+use caliber_core::{ArtifactId, NoteId, TrajectoryId};
+use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -30,7 +31,7 @@ pub struct TrajectoryBatchItem {
     pub operation: BatchOperation,
     /// Trajectory ID (required for update/delete)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Create request data (required for create)
     pub create: Option<CreateTrajectoryRequest>,
     /// Update request data (required for update)
@@ -89,7 +90,7 @@ pub struct ArtifactBatchItem {
     pub operation: BatchOperation,
     /// Artifact ID (required for update/delete)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub artifact_id: Option<EntityId>,
+    pub artifact_id: Option<ArtifactId>,
     /// Create request data (required for create)
     pub create: Option<CreateArtifactRequest>,
     /// Update request data (required for update)
@@ -127,7 +128,7 @@ pub struct NoteBatchItem {
     pub operation: BatchOperation,
     /// Note ID (required for update/delete)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub note_id: Option<EntityId>,
+    pub note_id: Option<NoteId>,
     /// Create request data (required for create)
     pub create: Option<CreateNoteRequest>,
     /// Update request data (required for update)
@@ -163,7 +164,7 @@ pub struct BatchNoteResponse {
 pub struct DeletedResponse {
     /// ID of the deleted entity
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub id: EntityId,
+    pub id: Uuid,
     /// Whether the entity was deleted
     pub deleted: bool,
 }

@@ -1,6 +1,6 @@
 //! Note-related API types
 
-use caliber_core::{EntityId, NoteType, Timestamp, TTL};
+use caliber_core::{ArtifactId, NoteId, NoteType, TenantId, Timestamp, TrajectoryId, TTL};
 use serde::{Deserialize, Serialize};
 
 use super::EmbeddingResponse;
@@ -17,10 +17,10 @@ pub struct CreateNoteRequest {
     pub content: String,
     /// Source trajectories
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_trajectory_ids: Vec<EntityId>,
+    pub source_trajectory_ids: Vec<TrajectoryId>,
     /// Source artifacts
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_artifact_ids: Vec<EntityId>,
+    pub source_artifact_ids: Vec<ArtifactId>,
     /// Time-to-live configuration
     pub ttl: TTL,
     /// Additional metadata
@@ -53,7 +53,7 @@ pub struct ListNotesRequest {
     pub note_type: Option<NoteType>,
     /// Filter by source trajectory
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub source_trajectory_id: Option<EntityId>,
+    pub source_trajectory_id: Option<TrajectoryId>,
     /// Filter by date range (from)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub created_after: Option<Timestamp>,
@@ -81,10 +81,10 @@ pub struct ListNotesResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NoteResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub note_id: EntityId,
+    pub note_id: NoteId,
     /// Tenant this note belongs to (for multi-tenant isolation)
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub tenant_id: TenantId,
     pub note_type: NoteType,
     pub title: String,
     pub content: String,
@@ -92,9 +92,9 @@ pub struct NoteResponse {
     pub content_hash: [u8; 32],
     pub embedding: Option<EmbeddingResponse>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_trajectory_ids: Vec<EntityId>,
+    pub source_trajectory_ids: Vec<TrajectoryId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_artifact_ids: Vec<EntityId>,
+    pub source_artifact_ids: Vec<ArtifactId>,
     pub ttl: TTL,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
@@ -104,7 +104,7 @@ pub struct NoteResponse {
     pub accessed_at: Timestamp,
     pub access_count: i32,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub superseded_by: Option<EntityId>,
+    pub superseded_by: Option<NoteId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }

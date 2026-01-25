@@ -10,7 +10,8 @@
 //! - Dragon 3: Change journal for cache invalidation
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityId, EntityType};
+use caliber_core::{CaliberResult, UuidType, EntityType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId};
+use uuid::Uuid;
 use caliber_storage::{
     CacheableEntity, ChangeJournal, Freshness, InMemoryChangeJournal, LmdbCacheBackend,
     ReadThroughCache, StorageFetcher,
@@ -36,13 +37,15 @@ impl CacheableEntity for TrajectoryResponse {
         EntityType::Trajectory
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.trajectory_id
+    fn entity_id(&self) -> Uuid {
+        self.trajectory_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Use the tenant_id if available, otherwise use trajectory_id as fallback
-        self.tenant_id.unwrap_or(self.trajectory_id)
+        self.tenant_id
+            .map(|t| t.as_uuid())
+            .unwrap_or_else(|| self.trajectory_id.as_uuid())
     }
 }
 
@@ -51,13 +54,15 @@ impl CacheableEntity for ScopeResponse {
         EntityType::Scope
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.scope_id
+    fn entity_id(&self) -> Uuid {
+        self.scope_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Use the tenant_id if available, otherwise use trajectory_id
-        self.tenant_id.unwrap_or(self.trajectory_id)
+        self.tenant_id
+            .map(|t| t.as_uuid())
+            .unwrap_or_else(|| self.trajectory_id.as_uuid())
     }
 }
 
@@ -66,13 +71,15 @@ impl CacheableEntity for ArtifactResponse {
         EntityType::Artifact
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.artifact_id
+    fn entity_id(&self) -> Uuid {
+        self.artifact_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Use the tenant_id if available, otherwise use trajectory_id
-        self.tenant_id.unwrap_or(self.trajectory_id)
+        self.tenant_id
+            .map(|t| t.as_uuid())
+            .unwrap_or_else(|| self.trajectory_id.as_uuid())
     }
 }
 
@@ -81,18 +88,20 @@ impl CacheableEntity for NoteResponse {
         EntityType::Note
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.note_id
+    fn entity_id(&self) -> Uuid {
+        self.note_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Use the tenant_id if available, otherwise use first source trajectory
-        self.tenant_id.unwrap_or_else(|| {
-            self.source_trajectory_ids
-                .first()
-                .copied()
-                .unwrap_or(self.note_id)
-        })
+        self.tenant_id
+            .map(|t| t.as_uuid())
+            .unwrap_or_else(|| {
+                self.source_trajectory_ids
+                    .first()
+                    .map(|id| id.as_uuid())
+                    .unwrap_or_else(|| self.note_id.as_uuid())
+            })
     }
 }
 
@@ -101,12 +110,12 @@ impl CacheableEntity for AgentResponse {
         EntityType::Agent
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.agent_id
+    fn entity_id(&self) -> Uuid {
+        self.agent_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
-        self.tenant_id
+    fn tenant_id(&self) -> Uuid {
+        self.tenant_id.as_uuid()
     }
 }
 
@@ -164,8 +173,8 @@ impl CachedDbClient {
     /// consistency by checking the change journal.
     pub async fn trajectory_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: Uuid,
+        tenant_id: Uuid,
     ) -> ApiResult<Option<TrajectoryResponse>> {
         // Use cache with consistent freshness
         let fetcher = TrajectoryFetcher { db: &self.db };
@@ -182,7 +191,7 @@ impl CachedDbClient {
     pub async fn trajectory_create(
         &self,
         req: &CreateTrajectoryRequest,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> ApiResult<TrajectoryResponse> {
         // Create in database
         let response = self.db.trajectory_create(req, tenant_id).await?;
@@ -206,9 +215,9 @@ impl CachedDbClient {
     /// Update a trajectory, recording the change in the journal.
     pub async fn trajectory_update(
         &self,
-        id: EntityId,
+        id: Uuid,
         req: &UpdateTrajectoryRequest,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> ApiResult<TrajectoryResponse> {
         // Update in database
         let response = self.db.trajectory_update(id, req, tenant_id).await?;
@@ -233,7 +242,7 @@ impl CachedDbClient {
     pub async fn trajectory_list_by_status(
         &self,
         status: caliber_core::TrajectoryStatus,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> ApiResult<Vec<TrajectoryResponse>> {
         self.db.trajectory_list_by_status(status, tenant_id).await
     }
@@ -245,8 +254,8 @@ impl CachedDbClient {
     /// Get a scope by ID, checking cache first.
     pub async fn scope_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: Uuid,
+        tenant_id: Uuid,
     ) -> ApiResult<Option<ScopeResponse>> {
         let fetcher = ScopeFetcher { db: &self.db };
         let result = self
@@ -265,8 +274,8 @@ impl CachedDbClient {
     /// Get an artifact by ID, checking cache first.
     pub async fn artifact_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: Uuid,
+        tenant_id: Uuid,
     ) -> ApiResult<Option<ArtifactResponse>> {
         let fetcher = ArtifactFetcher { db: &self.db };
         let result = self
@@ -281,8 +290,8 @@ impl CachedDbClient {
     /// List artifacts by trajectory (not cached).
     pub async fn artifact_list_by_trajectory_and_tenant(
         &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
+        trajectory_id: Uuid,
+        tenant_id: Uuid,
     ) -> ApiResult<Vec<ArtifactResponse>> {
         self.db
             .artifact_list_by_trajectory_and_tenant(trajectory_id, tenant_id)
@@ -292,7 +301,7 @@ impl CachedDbClient {
     /// List recent artifacts (not cached).
     pub async fn artifact_list_recent(
         &self,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
         limit: usize,
     ) -> ApiResult<Vec<ArtifactResponse>> {
         self.db.artifact_list_recent(tenant_id, limit).await
@@ -305,8 +314,8 @@ impl CachedDbClient {
     /// Get a note by ID, checking cache first.
     pub async fn note_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: Uuid,
+        tenant_id: Uuid,
     ) -> ApiResult<Option<NoteResponse>> {
         let fetcher = NoteFetcher { db: &self.db };
         let result = self
@@ -328,7 +337,7 @@ impl CachedDbClient {
     // ========================================================================
 
     /// Get an agent by ID (passthrough for now).
-    pub async fn agent_get(&self, id: EntityId) -> ApiResult<Option<AgentResponse>> {
+    pub async fn agent_get(&self, id: Uuid) -> ApiResult<Option<AgentResponse>> {
         self.db.agent_get(id).await
     }
 
@@ -336,7 +345,7 @@ impl CachedDbClient {
     pub async fn agent_register(
         &self,
         req: &RegisterAgentRequest,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
     ) -> ApiResult<AgentResponse> {
         self.db.agent_register(req, tenant_id).await
     }
@@ -344,7 +353,7 @@ impl CachedDbClient {
     /// Update an agent.
     pub async fn agent_update(
         &self,
-        id: EntityId,
+        id: Uuid,
         req: &UpdateAgentRequest,
     ) -> ApiResult<AgentResponse> {
         self.db.agent_update(id, req).await
@@ -388,8 +397,8 @@ struct TrajectoryFetcher<'a> {
 impl StorageFetcher<TrajectoryResponse> for TrajectoryFetcher<'_> {
     async fn fetch(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<TrajectoryResponse>> {
         self.db
             .trajectory_get(entity_id, tenant_id)
@@ -407,8 +416,8 @@ struct ScopeFetcher<'a> {
 impl StorageFetcher<ScopeResponse> for ScopeFetcher<'_> {
     async fn fetch(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<ScopeResponse>> {
         self.db
             .scope_get(entity_id, tenant_id)
@@ -426,8 +435,8 @@ struct ArtifactFetcher<'a> {
 impl StorageFetcher<ArtifactResponse> for ArtifactFetcher<'_> {
     async fn fetch(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<ArtifactResponse>> {
         self.db
             .artifact_get(entity_id, tenant_id)
@@ -445,8 +454,8 @@ struct NoteFetcher<'a> {
 impl StorageFetcher<NoteResponse> for NoteFetcher<'_> {
     async fn fetch(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<NoteResponse>> {
         self.db
             .note_get(entity_id, tenant_id)

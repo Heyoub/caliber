@@ -1,6 +1,6 @@
 //! Battle Intel: Summarization policy types
 
-use caliber_core::{AbstractionLevel, EntityId, SummarizationTrigger, Timestamp};
+use caliber_core::{AbstractionLevel, SummarizationPolicyId, SummarizationTrigger, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 
 /// Request to create a summarization policy.
@@ -21,7 +21,7 @@ pub struct CreateSummarizationPolicyRequest {
     pub create_edges: bool,
     /// Optional trajectory ID to scope this policy
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Optional metadata
     pub metadata: Option<serde_json::Value>,
 }
@@ -32,10 +32,10 @@ pub struct CreateSummarizationPolicyRequest {
 pub struct SummarizationPolicyResponse {
     /// Policy ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub policy_id: EntityId,
+    pub policy_id: SummarizationPolicyId,
     /// Tenant this policy belongs to (for multi-tenant isolation)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
     /// Policy name
     pub name: String,
     /// Triggers that fire this policy
@@ -50,7 +50,7 @@ pub struct SummarizationPolicyResponse {
     pub create_edges: bool,
     /// Trajectory ID if scoped
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// When the policy was created
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,

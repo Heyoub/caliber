@@ -3,6 +3,7 @@
 use crate::state::App;
 use crate::widgets::{DetailPanel, TreeItem, TreeStyle, TreeWidget};
 use caliber_api::types::TrajectoryResponse;
+use caliber_core::{EntityIdType, TrajectoryId};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Style,
@@ -84,18 +85,18 @@ fn build_tree(app: &App) -> Vec<TreeItem> {
 }
 
 fn walk_tree(
-    parent: Option<caliber_core::EntityId>,
+    parent: Option<TrajectoryId>,
     depth: usize,
-    grouped: &HashMap<Option<caliber_core::EntityId>, Vec<&TrajectoryResponse>>,
-    expanded: &std::collections::HashSet<caliber_core::EntityId>,
+    grouped: &HashMap<Option<TrajectoryId>, Vec<&TrajectoryResponse>>,
+    expanded: &std::collections::HashSet<uuid::Uuid>,
     output: &mut Vec<TreeItem>,
 ) {
     if let Some(children) = grouped.get(&parent) {
         for child in children {
             let has_children = grouped.contains_key(&Some(child.trajectory_id));
-            let is_expanded = expanded.contains(&child.trajectory_id);
+            let is_expanded = expanded.contains(&child.trajectory_id.as_uuid());
             output.push(TreeItem {
-                id: child.trajectory_id,
+                id: child.trajectory_id.as_uuid(),
                 label: format!("{} [{}]", child.name, child.status),
                 depth,
                 expanded: is_expanded,

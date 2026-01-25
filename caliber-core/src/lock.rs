@@ -11,7 +11,8 @@
 //!                             extend() ↺
 //! ```
 
-use crate::{EntityId, Timestamp};
+use crate::{AgentId, LockId, TenantId, Timestamp};
+use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
@@ -87,14 +88,15 @@ impl std::error::Error for LockModeParseError {}
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LockData {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub lock_id: EntityId,
+    pub lock_id: LockId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     pub resource_type: String,
+    /// The ID of the resource being locked (generic UUID since it can be any entity type)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub resource_id: EntityId,
+    pub resource_id: Uuid,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub holder_agent_id: EntityId,
+    pub holder_agent_id: AgentId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub acquired_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -174,12 +176,12 @@ impl<S: LockState> Lock<S> {
     }
 
     /// Get the lock ID.
-    pub fn lock_id(&self) -> EntityId {
+    pub fn lock_id(&self) -> LockId {
         self.data.lock_id
     }
 
     /// Get the tenant ID.
-    pub fn tenant_id(&self) -> EntityId {
+    pub fn tenant_id(&self) -> TenantId {
         self.data.tenant_id
     }
 
@@ -189,12 +191,12 @@ impl<S: LockState> Lock<S> {
     }
 
     /// Get the resource ID being locked.
-    pub fn resource_id(&self) -> EntityId {
+    pub fn resource_id(&self) -> Uuid {
         self.data.resource_id
     }
 
     /// Get the agent holding the lock.
-    pub fn holder_agent_id(&self) -> EntityId {
+    pub fn holder_agent_id(&self) -> AgentId {
         self.data.holder_agent_id
     }
 
@@ -316,9 +318,9 @@ impl StoredLock {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LockStateError {
     /// Lock is not in the active state.
-    NotActive { lock_id: EntityId },
+    NotActive { lock_id: LockId },
     /// Lock has expired.
-    Expired { lock_id: EntityId, expired_at: Timestamp },
+    Expired { lock_id: LockId, expired_at: Timestamp },
 }
 
 impl fmt::Display for LockStateError {
@@ -357,13 +359,14 @@ impl std::error::Error for LockStateError {}
 /// # Example
 ///
 /// ```
-/// use caliber_core::{compute_lock_key, new_entity_id};
+/// use caliber_core::compute_lock_key;
+/// use uuid::Uuid;
 ///
-/// let resource_id = new_entity_id();
+/// let resource_id = Uuid::now_v7();
 /// let lock_key = compute_lock_key("trajectory", resource_id);
 /// // Use lock_key with pg_advisory_lock(lock_key)
 /// ```
-pub fn compute_lock_key(resource_type: &str, resource_id: EntityId) -> i64 {
+pub fn compute_lock_key(resource_type: &str, resource_id: Uuid) -> i64 {
     const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
 
@@ -387,17 +390,18 @@ pub fn compute_lock_key(resource_type: &str, resource_id: EntityId) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EntityIdType;
     use chrono::Utc;
     use uuid::Uuid;
 
     fn make_lock_data() -> LockData {
         let now = Utc::now();
         LockData {
-            lock_id: Uuid::now_v7(),
-            tenant_id: Uuid::now_v7(),
+            lock_id: LockId::now_v7(),
+            tenant_id: TenantId::now_v7(),
             resource_type: "trajectory".to_string(),
             resource_id: Uuid::now_v7(),
-            holder_agent_id: Uuid::now_v7(),
+            holder_agent_id: AgentId::now_v7(),
             acquired_at: now,
             expires_at: now + chrono::Duration::minutes(5),
             mode: LockMode::Exclusive,

@@ -4,7 +4,8 @@
 //! Combines all inputs into a single coherent prompt following the Context Conveyor pattern.
 
 use crate::{
-    Artifact, CaliberConfig, CaliberResult, EntityId, EntityType, Note, Timestamp,
+    AgentId, Artifact, ArtifactId, CaliberConfig, CaliberResult, EntityType, Note, ScopeId,
+    Timestamp, TrajectoryId,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -19,9 +20,9 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextPackage {
     /// Trajectory this context belongs to
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     /// Scope this context belongs to
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Current user query/input
     pub user_input: Option<String>,
     /// Relevant notes (semantic memory)
@@ -40,7 +41,7 @@ pub struct ContextPackage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScopeSummary {
     /// ID of the scope being summarized
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Summary text
     pub summary: String,
     /// Token count of the summary
@@ -51,13 +52,13 @@ pub struct ScopeSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SessionMarkers {
     /// Currently active trajectory
-    pub active_trajectory_id: Option<EntityId>,
+    pub active_trajectory_id: Option<TrajectoryId>,
     /// Currently active scope
-    pub active_scope_id: Option<EntityId>,
+    pub active_scope_id: Option<ScopeId>,
     /// Recently accessed artifact IDs
-    pub recent_artifact_ids: Vec<EntityId>,
+    pub recent_artifact_ids: Vec<ArtifactId>,
     /// Current agent ID (if multi-agent)
-    pub agent_id: Option<EntityId>,
+    pub agent_id: Option<AgentId>,
 }
 
 /// Kernel configuration for persona and behavior.
@@ -75,7 +76,7 @@ pub struct KernelConfig {
 
 impl ContextPackage {
     /// Create a new context package with required fields.
-    pub fn new(trajectory_id: EntityId, scope_id: EntityId) -> Self {
+    pub fn new(trajectory_id: TrajectoryId, scope_id: ScopeId) -> Self {
         Self {
             trajectory_id,
             scope_id,
@@ -147,7 +148,7 @@ pub struct SourceRef {
     /// Type of the source entity
     pub source_type: EntityType,
     /// ID of the source entity (if applicable)
-    pub id: Option<EntityId>,
+    pub id: Option<Uuid>,
     /// Relevance score (if computed)
     pub relevance_score: Option<f32>,
 }
@@ -156,7 +157,7 @@ pub struct SourceRef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextSection {
     /// Unique identifier for this section
-    pub section_id: EntityId,
+    pub section_id: Uuid,
     /// Type of this section
     pub section_type: SectionType,
     /// Content of this section
@@ -194,7 +195,7 @@ pub struct AssemblyDecision {
     /// Type of target (e.g., "note", "artifact")
     pub target_type: String,
     /// ID of target entity (if applicable)
-    pub target_id: Option<EntityId>,
+    pub target_id: Option<Uuid>,
     /// Reason for this decision
     pub reason: String,
     /// Tokens affected by this decision
@@ -205,7 +206,7 @@ pub struct AssemblyDecision {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextWindow {
     /// Unique identifier for this window
-    pub window_id: EntityId,
+    pub window_id: Uuid,
     /// When this window was assembled
     pub assembled_at: Timestamp,
     /// Maximum token budget
@@ -564,7 +565,7 @@ impl ContextAssembler {
                 .iter()
                 .map(|n| SourceRef {
                     source_type: EntityType::Note,
-                    id: Some(n.note_id),
+                    id: Some(n.note_id.as_uuid()),
                     relevance_score: None,
                 })
                 .collect();
@@ -585,7 +586,7 @@ impl ContextAssembler {
                 .iter()
                 .map(|a| SourceRef {
                     source_type: EntityType::Artifact,
-                    id: Some(a.artifact_id),
+                    id: Some(a.artifact_id.as_uuid()),
                     relevance_score: None,
                 })
                 .collect();
@@ -606,7 +607,7 @@ impl ContextAssembler {
                 .iter()
                 .map(|s| SourceRef {
                     source_type: EntityType::Scope,
-                    id: Some(s.scope_id),
+                    id: Some(s.scope_id.as_uuid()),
                     relevance_score: None,
                 })
                 .collect();
@@ -684,8 +685,7 @@ impl ContextAssembler {
 mod tests {
     use super::*;
     use crate::{
-        ContextPersistence, NoteType, RetryConfig,
-        SectionPriorities, TTL, ValidationMode,
+        ContextPersistence, NoteId, NoteType, RetryConfig, SectionPriorities, TTL, ValidationMode,
     };
     use std::time::Duration;
 
@@ -722,7 +722,7 @@ mod tests {
 
     fn make_test_note(title: &str, content: &str) -> Note {
         Note {
-            note_id: Uuid::now_v7(),
+            note_id: NoteId::now_v7(),
             note_type: NoteType::Fact,
             title: title.to_string(),
             content: content.to_string(),
@@ -804,7 +804,7 @@ mod tests {
         let config = make_test_config(10000);
         let assembler = ContextAssembler::new(config)?;
 
-        let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
+        let pkg = ContextPackage::new(TrajectoryId::now_v7(), ScopeId::now_v7())
             .with_user_input("What is the weather?".to_string());
 
         let window = assembler.assemble(pkg)?;
@@ -823,7 +823,7 @@ mod tests {
             make_test_note("Note 2", "Content of note 2"),
         ];
 
-        let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
+        let pkg = ContextPackage::new(TrajectoryId::now_v7(), ScopeId::now_v7())
             .with_user_input("Query".to_string())
             .with_notes(notes);
 
@@ -838,7 +838,7 @@ mod tests {
         let config = make_test_config(10);
         let assembler = ContextAssembler::new(config)?;
 
-        let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
+        let pkg = ContextPackage::new(TrajectoryId::now_v7(), ScopeId::now_v7())
             .with_user_input("This is a very long user input that should exceed the token budget".to_string());
 
         let window = assembler.assemble(pkg)?;
@@ -895,7 +895,7 @@ mod prop_tests {
 
     fn arb_note() -> impl Strategy<Value = Note> {
         (any::<[u8; 16]>(), ".*", ".*").prop_map(|(id_bytes, title, content)| Note {
-            note_id: Uuid::from_bytes(id_bytes),
+            note_id: crate::NoteId::new(Uuid::from_bytes(id_bytes)),
             note_type: NoteType::Fact,
             title,
             content,
@@ -918,9 +918,9 @@ mod prop_tests {
     fn arb_artifact() -> impl Strategy<Value = Artifact> {
         (any::<[u8; 16]>(), any::<[u8; 16]>(), any::<[u8; 16]>(), ".*", ".*").prop_map(
             |(id_bytes, traj_bytes, scope_bytes, name, content)| Artifact {
-                artifact_id: Uuid::from_bytes(id_bytes),
-                trajectory_id: Uuid::from_bytes(traj_bytes),
-                scope_id: Uuid::from_bytes(scope_bytes),
+                artifact_id: crate::ArtifactId::new(Uuid::from_bytes(id_bytes)),
+                trajectory_id: crate::TrajectoryId::new(Uuid::from_bytes(traj_bytes)),
+                scope_id: crate::ScopeId::new(Uuid::from_bytes(scope_bytes)),
                 artifact_type: ArtifactType::Fact,
                 name,
                 content,
@@ -967,7 +967,7 @@ mod prop_tests {
                 }
             };
 
-            let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
+            let pkg = ContextPackage::new(crate::TrajectoryId::now_v7(), crate::ScopeId::now_v7())
                 .with_user_input(user_input)
                 .with_notes(notes)
                 .with_artifacts(artifacts);
@@ -1016,7 +1016,7 @@ mod prop_tests {
                 }
             };
 
-            let pkg = ContextPackage::new(Uuid::now_v7(), Uuid::now_v7())
+            let pkg = ContextPackage::new(crate::TrajectoryId::now_v7(), crate::ScopeId::now_v7())
                 .with_user_input(user_input)
                 .with_notes(notes)
                 .with_artifacts(artifacts);

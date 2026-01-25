@@ -6,7 +6,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam};
 use crate::error::ApiError;
 use crate::types::tenant::{CreateTenantRequest, TenantInfo, TenantStatus, UpdateTenantRequest};
-use caliber_core::EntityId;
+use caliber_core::TenantId;
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for TenantInfo
@@ -15,6 +15,7 @@ impl_component! {
     TenantInfo {
         entity_name: "tenant",
         pk_field: "tenant_id",
+        id_type: TenantId,
         requires_tenant: false,  // Tenant is the root entity, not tenant-scoped
         create_type: CreateTenantRequest,
         update_type: UpdateTenantRequest,
@@ -47,7 +48,7 @@ impl_component! {
             }
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::tenant_not_found(id),
+        not_found_error: |id| ApiError::tenant_not_found(id.as_uuid()),
     }
 }
 
@@ -68,7 +69,7 @@ pub struct TenantListFilter {
 }
 
 impl ListFilter for TenantListFilter {
-    fn build_where(&self, _tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, _tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         // Tenant is not tenant-scoped, so we don't filter by tenant_id
         let mut conditions = Vec::new();
         let mut params = Vec::new();

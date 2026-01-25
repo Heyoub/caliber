@@ -1,7 +1,11 @@
 //! Battle Intel features: Edges, Evolution, Summarization
 
-use crate::*;
+use crate::{
+    AbstractionLevel, ContentHash, EdgeId, EdgeType, EntityRef, Provenance,
+    SummarizationPolicyId, SummarizationTrigger, Timestamp, TrajectoryId, EvolutionPhase,
+};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Participant in an edge with optional role.
 /// Enables both binary edges (2 participants) and hyperedges (N participants).
@@ -20,7 +24,7 @@ pub struct EdgeParticipant {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Edge {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub edge_id: EntityId,
+    pub edge_id: EdgeId,
     pub edge_type: EdgeType,
     /// Participants in this edge (len=2 for binary, len>2 for hyperedge)
     pub participants: Vec<EdgeParticipant>,
@@ -28,7 +32,7 @@ pub struct Edge {
     pub weight: Option<f32>,
     /// Optional trajectory context
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// How this edge was created
     pub provenance: Provenance,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -84,8 +88,9 @@ pub struct EvolutionMetrics {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EvolutionSnapshot {
+    /// Snapshot ID (generic UUID, not a typed entity ID)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub snapshot_id: EntityId,
+    pub snapshot_id: Uuid,
     /// Human-readable snapshot name
     pub name: String,
     /// SHA-256 hash of the DSL config source
@@ -113,7 +118,7 @@ pub struct EvolutionSnapshot {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SummarizationPolicy {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub policy_id: EntityId,
+    pub policy_id: SummarizationPolicyId,
     /// Human-readable policy name
     pub name: String,
     /// Conditions that trigger summarization

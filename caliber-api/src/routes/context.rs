@@ -35,9 +35,10 @@ use crate::middleware::AuthContext;
 use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse, TurnResponse};
 use axum::{extract::State, Extension, Json};
 use caliber_core::{
-    CaliberConfig, ContextAssembler, ContextPackage, ContextWindow, EntityId, KernelConfig,
-    ScopeSummary, SessionMarkers,
+    AgentId, CaliberConfig, ContextAssembler, ContextPackage, ContextWindow, KernelConfig,
+    ScopeId, ScopeSummary, SessionMarkers, TrajectoryId,
 };
+use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]
@@ -53,11 +54,11 @@ use utoipa::ToSchema;
 pub struct AssembleContextRequest {
     /// Trajectory to assemble context for
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
 
     /// Scope to assemble context for (optional - auto-selects most recent active scope if not provided)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub scope_id: Option<EntityId>,
+    pub scope_id: Option<ScopeId>,
 
     /// Current user input/query (used for relevance ranking)
     pub user_input: Option<String>,
@@ -102,7 +103,7 @@ pub struct AssembleContextRequest {
 
     /// Agent ID for multi-agent scenarios
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub agent_id: Option<EntityId>,
+    pub agent_id: Option<AgentId>,
 
     /// Semantic search query for filtering notes/artifacts by relevance
     pub relevance_query: Option<String>,
@@ -188,7 +189,7 @@ pub struct AssembleContextResponse {
 pub struct ContextWindowDetails {
     /// Window ID for tracing
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub window_id: EntityId,
+    pub window_id: Uuid,
 
     /// Number of notes included
     pub notes_included: i32,

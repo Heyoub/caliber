@@ -2,7 +2,7 @@
 //!
 //! Types for managing API keys for programmatic access to the CALIBER API.
 
-use caliber_core::EntityId;
+use caliber_core::{ApiKeyId, TenantId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -13,8 +13,8 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ApiKeyResponse {
-    pub api_key_id: EntityId,
-    pub tenant_id: EntityId,
+    pub api_key_id: ApiKeyId,
+    pub tenant_id: TenantId,
     pub name: String,
     pub key_prefix: String, // First 8 chars for identification
     pub scopes: Vec<String>,

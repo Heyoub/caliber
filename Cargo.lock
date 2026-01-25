@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-agents"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "caliber-core",
  "caliber-pcp",
@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-api"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "async-graphql",
  "async-graphql-axum",
@@ -474,10 +474,10 @@ dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
  "async-stream",
+ "async-trait",
  "axum 0.7.9",
  "base64 0.22.1",
  "caliber-agents",
- "caliber-context",
  "caliber-core",
  "caliber-dsl",
  "caliber-pcp",
@@ -527,22 +527,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliber-context"
-version = "0.4.0"
-dependencies = [
- "caliber-core",
- "chrono",
- "proptest",
- "serde",
- "serde_json",
- "utoipa",
- "uuid",
-]
-
-[[package]]
 name = "caliber-core"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
+ "async-trait",
  "bitflags",
  "chrono",
  "proptest",
@@ -556,29 +544,17 @@ dependencies = [
 
 [[package]]
 name = "caliber-dsl"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "caliber-core",
  "proptest",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "caliber-events"
-version = "0.4.0"
-dependencies = [
- "caliber-core",
- "proptest",
- "serde",
- "serde_json",
- "utoipa",
- "uuid",
 ]
 
 [[package]]
 name = "caliber-llm"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "async-trait",
  "caliber-core",
@@ -593,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-pcp"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "caliber-core",
  "chrono",
@@ -607,10 +583,9 @@ dependencies = [
 
 [[package]]
 name = "caliber-pg"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "caliber-agents",
- "caliber-context",
  "caliber-core",
  "caliber-dsl",
  "caliber-llm",
@@ -619,6 +594,7 @@ dependencies = [
  "chrono",
  "hex",
  "once_cell",
+ "paste",
  "pgrx",
  "pgrx-tests",
  "proptest",
@@ -629,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-storage"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "async-trait",
  "caliber-core",
@@ -646,10 +622,9 @@ dependencies = [
 
 [[package]]
 name = "caliber-test-utils"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "caliber-agents",
- "caliber-context",
  "caliber-core",
  "caliber-dsl",
  "caliber-llm",
@@ -664,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-tui"
-version = "0.4.0"
+version = "0.4.3"
 dependencies = [
  "caliber-api",
  "caliber-core",

@@ -4,13 +4,13 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use caliber_core::NoteId;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
@@ -18,6 +18,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{
@@ -149,7 +150,7 @@ pub async fn list_notes(
 pub async fn get_note(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<NoteId>,
 ) -> ApiResult<impl IntoResponse> {
     let note = db
         .get::<NoteResponse>(id, auth.tenant_id)
@@ -158,6 +159,12 @@ pub async fn get_note(
 
     // Validate tenant ownership before returning
     validate_tenant_ownership(&auth, note.tenant_id)?;
+
+    // Increment access_count (fire-and-forget, don't block response)
+    // This tracks how often a note is accessed for relevance ranking
+    let _ = db
+        .increment_access_count::<NoteResponse>(id, auth.tenant_id)
+        .await;
 
     Ok(Json(note))
 }
@@ -186,7 +193,7 @@ pub async fn update_note(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<NoteId>,
     Json(req): Json<UpdateNoteRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -249,7 +256,7 @@ pub async fn delete_note(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<NoteId>,
 ) -> ApiResult<StatusCode> {
     // First verify the note exists and belongs to this tenant
     let note = db
@@ -326,12 +333,12 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{EntityId, NoteType, TTL};
+    use caliber_core::{NoteType, TrajectoryId, TTL};
 
     #[test]
     fn test_create_note_request_validation() {
-        // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil();
+        // Use a nil TrajectoryId for testing
+        let dummy_id = TrajectoryId::nil();
 
         let req = CreateNoteRequest {
             note_type: NoteType::Fact,

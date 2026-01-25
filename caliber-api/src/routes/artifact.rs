@@ -4,13 +4,13 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use caliber_core::ArtifactId;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
@@ -18,6 +18,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{
@@ -169,7 +170,7 @@ pub async fn list_artifacts(
 pub async fn get_artifact(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ArtifactId>,
 ) -> ApiResult<impl IntoResponse> {
     let artifact = db
         .get::<ArtifactResponse>(id, auth.tenant_id)
@@ -206,7 +207,7 @@ pub async fn update_artifact(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ArtifactId>,
     Json(req): Json<UpdateArtifactRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -269,7 +270,7 @@ pub async fn delete_artifact(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ArtifactId>,
 ) -> ApiResult<StatusCode> {
     // First verify the artifact exists and belongs to this tenant
     let artifact = db
@@ -343,16 +344,13 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{ArtifactType, EntityId, ExtractionMethod, TTL};
+    use caliber_core::{ArtifactType, ExtractionMethod, ScopeId, TrajectoryId, TTL};
 
     #[test]
     fn test_create_artifact_request_validation() {
-        // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil();
-
         let req = CreateArtifactRequest {
-            trajectory_id: dummy_id,
-            scope_id: dummy_id,
+            trajectory_id: TrajectoryId::nil(),
+            scope_id: ScopeId::nil(),
             artifact_type: ArtifactType::Fact,
             name: "".to_string(),
             content: "".to_string(),

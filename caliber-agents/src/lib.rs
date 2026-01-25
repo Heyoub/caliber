@@ -8,85 +8,46 @@
 //! - Task delegation
 //! - Agent handoffs
 //! - Conflict detection and resolution
+//!
+//! # Type Source
+//!
+//! Most types are now defined in `caliber-core` and re-exported here for
+//! backwards compatibility. New code should import directly from `caliber-core`.
 
-use caliber_core::{EntityId, LockMode, Timestamp, compute_lock_key};
+// Re-export all agent-related types from caliber-core
+pub use caliber_core::{
+    // Status enums (defined in caliber-core)
+    AgentStatus, DelegationStatus, HandoffStatus,
+    // Message types
+    MessageType, MessageTypeParseError, MessagePriority, MessagePriorityParseError,
+    // Memory access control
+    PermissionScope, MemoryRegion, MemoryPermission, MemoryAccess,
+    // Handoff
+    HandoffReason, HandoffReasonParseError,
+    // Conflicts
+    ConflictType, ConflictTypeParseError, ConflictStatus, ConflictStatusParseError,
+    ResolutionStrategy, ResolutionStrategyParseError,
+    // Delegation results
+    DelegationResultStatus, DelegationResult,
+    // Core types
+    LockMode, Timestamp, compute_lock_key,
+    // Typed IDs
+    AgentId, ArtifactId, DelegationId, HandoffId, LockId, MessageId, NoteId, ScopeId, TrajectoryId,
+};
+
 #[cfg(test)]
-use caliber_core::{AgentError, CaliberError, CaliberResult};
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use caliber_core::{AgentError, CaliberError, CaliberResult, EntityIdType};
 
 // Re-export ConflictResolution from caliber-pcp for consistency
 pub use caliber_pcp::ConflictResolution;
 
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
 // ============================================================================
-// AGENT IDENTITY (Task 10.1)
+// AGENT STRUCT
 // ============================================================================
-
-/// Agent status in the system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum AgentStatus {
-    /// Agent is idle and available for work
-    Idle,
-    /// Agent is actively working on a task
-    Active,
-    /// Agent is blocked waiting for a resource
-    Blocked,
-    /// Agent has failed and needs recovery
-    Failed,
-}
-
-/// Permission scope for memory access.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum PermissionScope {
-    /// Only own resources
-    Own,
-    /// Resources belonging to same team
-    Team,
-    /// All resources (global access)
-    Global,
-}
-
-/// A single memory permission entry.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct MemoryPermission {
-    /// Type of memory (e.g., "artifact", "note", "trajectory")
-    pub memory_type: String,
-    /// Scope of the permission
-    pub scope: PermissionScope,
-    /// Optional filter expression (serialized)
-    pub filter: Option<String>,
-}
-
-/// Memory access configuration for an agent.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct MemoryAccess {
-    /// Read permissions
-    pub read: Vec<MemoryPermission>,
-    /// Write permissions
-    pub write: Vec<MemoryPermission>,
-}
-
-impl Default for MemoryAccess {
-    fn default() -> Self {
-        Self {
-            read: vec![MemoryPermission {
-                memory_type: "*".to_string(),
-                scope: PermissionScope::Own,
-                filter: None,
-            }],
-            write: vec![MemoryPermission {
-                memory_type: "*".to_string(),
-                scope: PermissionScope::Own,
-                filter: None,
-            }],
-        }
-    }
-}
 
 /// An agent in the multi-agent system.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -94,7 +55,7 @@ impl Default for MemoryAccess {
 pub struct Agent {
     /// Unique identifier for this agent
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub agent_id: EntityId,
+    pub agent_id: AgentId,
     /// Type of agent (e.g., "coder", "reviewer", "planner")
     pub agent_type: String,
     /// Capabilities this agent has
@@ -106,16 +67,16 @@ pub struct Agent {
     pub status: AgentStatus,
     /// Current trajectory being worked on
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub current_trajectory_id: Option<EntityId>,
+    pub current_trajectory_id: Option<TrajectoryId>,
     /// Current scope being worked on
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub current_scope_id: Option<EntityId>,
+    pub current_scope_id: Option<ScopeId>,
 
     /// Agent types this agent can delegate to
     pub can_delegate_to: Vec<String>,
     /// Supervisor agent (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub reports_to: Option<EntityId>,
+    pub reports_to: Option<AgentId>,
 
     /// When this agent was created
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -130,7 +91,7 @@ impl Agent {
     pub fn new(agent_type: &str, capabilities: Vec<String>) -> Self {
         let now = Utc::now();
         Self {
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(Uuid::now_v7()),
             agent_type: agent_type.to_string(),
             capabilities,
             memory_access: MemoryAccess::default(),
@@ -157,7 +118,7 @@ impl Agent {
     }
 
     /// Set supervisor.
-    pub fn with_supervisor(mut self, supervisor_id: EntityId) -> Self {
+    pub fn with_supervisor(mut self, supervisor_id: AgentId) -> Self {
         self.reports_to = Some(supervisor_id);
         self
     }
@@ -178,24 +139,9 @@ impl Agent {
     }
 }
 
-
 // ============================================================================
-// MEMORY REGIONS (Task 10.2)
+// MEMORY REGION CONFIG
 // ============================================================================
-
-/// Type of memory region.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum MemoryRegion {
-    /// Only owning agent can access
-    Private,
-    /// Agents in same team can access
-    Team,
-    /// Any agent can read, owner can write
-    Public,
-    /// Any agent can read/write with coordination
-    Collaborative,
-}
 
 /// Configuration for a memory region.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -203,22 +149,22 @@ pub enum MemoryRegion {
 pub struct MemoryRegionConfig {
     /// Unique identifier for this region
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub region_id: EntityId,
+    pub region_id: Uuid,
     /// Type of region
     pub region_type: MemoryRegion,
     /// Agent that owns this region
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub owner_agent_id: EntityId,
+    pub owner_agent_id: Uuid,
     /// Team this region belongs to (if applicable)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub team_id: Option<EntityId>,
+    pub team_id: Option<Uuid>,
 
     /// Agents with read access
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub readers: Vec<EntityId>,
+    pub readers: Vec<Uuid>,
     /// Agents with write access
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub writers: Vec<EntityId>,
+    pub writers: Vec<Uuid>,
 
     /// Whether writes require a lock
     pub require_lock: bool,
@@ -230,7 +176,7 @@ pub struct MemoryRegionConfig {
 
 impl MemoryRegionConfig {
     /// Create a new private region.
-    pub fn private(owner_agent_id: EntityId) -> Self {
+    pub fn private(owner_agent_id: Uuid) -> Self {
         Self {
             region_id: Uuid::now_v7(),
             region_type: MemoryRegion::Private,
@@ -245,7 +191,7 @@ impl MemoryRegionConfig {
     }
 
     /// Create a new team region.
-    pub fn team(owner_agent_id: EntityId, team_id: EntityId) -> Self {
+    pub fn team(owner_agent_id: Uuid, team_id: Uuid) -> Self {
         Self {
             region_id: Uuid::now_v7(),
             region_type: MemoryRegion::Team,
@@ -260,13 +206,13 @@ impl MemoryRegionConfig {
     }
 
     /// Create a new public region.
-    pub fn public(owner_agent_id: EntityId) -> Self {
+    pub fn public(owner_agent_id: Uuid) -> Self {
         Self {
             region_id: Uuid::now_v7(),
             region_type: MemoryRegion::Public,
             owner_agent_id,
             team_id: None,
-            readers: Vec::new(), // Empty means all can read
+            readers: Vec::new(),
             writers: vec![owner_agent_id],
             require_lock: false,
             conflict_resolution: ConflictResolution::LastWriteWins,
@@ -275,7 +221,7 @@ impl MemoryRegionConfig {
     }
 
     /// Create a new collaborative region.
-    pub fn collaborative(owner_agent_id: EntityId) -> Self {
+    pub fn collaborative(owner_agent_id: Uuid) -> Self {
         Self {
             region_id: Uuid::now_v7(),
             region_type: MemoryRegion::Collaborative,
@@ -290,21 +236,21 @@ impl MemoryRegionConfig {
     }
 
     /// Add a reader to the region.
-    pub fn add_reader(&mut self, agent_id: EntityId) {
+    pub fn add_reader(&mut self, agent_id: Uuid) {
         if !self.readers.contains(&agent_id) {
             self.readers.push(agent_id);
         }
     }
 
     /// Add a writer to the region.
-    pub fn add_writer(&mut self, agent_id: EntityId) {
+    pub fn add_writer(&mut self, agent_id: Uuid) {
         if !self.writers.contains(&agent_id) {
             self.writers.push(agent_id);
         }
     }
 
     /// Check if an agent can read from this region.
-    pub fn can_read(&self, agent_id: EntityId) -> bool {
+    pub fn can_read(&self, agent_id: Uuid) -> bool {
         match self.region_type {
             MemoryRegion::Private => agent_id == self.owner_agent_id,
             MemoryRegion::Team => {
@@ -315,7 +261,7 @@ impl MemoryRegionConfig {
     }
 
     /// Check if an agent can write to this region.
-    pub fn can_write(&self, agent_id: EntityId) -> bool {
+    pub fn can_write(&self, agent_id: Uuid) -> bool {
         match self.region_type {
             MemoryRegion::Private => agent_id == self.owner_agent_id,
             MemoryRegion::Team => {
@@ -327,9 +273,8 @@ impl MemoryRegionConfig {
     }
 }
 
-
 // ============================================================================
-// DISTRIBUTED LOCKS (Task 10.3)
+// DISTRIBUTED LOCKS
 // ============================================================================
 
 /// A distributed lock on a resource.
@@ -338,15 +283,15 @@ impl MemoryRegionConfig {
 pub struct DistributedLock {
     /// Unique identifier for this lock
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub lock_id: EntityId,
+    pub lock_id: LockId,
     /// Type of resource being locked
     pub resource_type: String,
     /// ID of the resource being locked
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub resource_id: EntityId,
+    pub resource_id: Uuid,
     /// Agent holding the lock
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub holder_agent_id: EntityId,
+    pub holder_agent_id: Uuid,
     /// When the lock was acquired
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub acquired_at: Timestamp,
@@ -361,8 +306,8 @@ impl DistributedLock {
     /// Create a new lock.
     pub fn new(
         resource_type: &str,
-        resource_id: EntityId,
-        holder_agent_id: EntityId,
+        resource_id: Uuid,
+        holder_agent_id: Uuid,
         timeout_ms: i64,
         mode: LockMode,
     ) -> Self {
@@ -370,7 +315,7 @@ impl DistributedLock {
         let expires_at = now + chrono::Duration::milliseconds(timeout_ms);
 
         Self {
-            lock_id: Uuid::now_v7(),
+            lock_id: LockId::new(Uuid::now_v7()),
             resource_type: resource_type.to_string(),
             resource_id,
             holder_agent_id,
@@ -397,44 +342,8 @@ impl DistributedLock {
 }
 
 // ============================================================================
-// MESSAGE PASSING (Task 10.4, 10.5)
+// AGENT MESSAGE
 // ============================================================================
-
-/// Type of agent message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum MessageType {
-    /// Task delegation request
-    TaskDelegation,
-    /// Result of a delegated task
-    TaskResult,
-    /// Request for context from another agent
-    ContextRequest,
-    /// Sharing context with another agent
-    ContextShare,
-    /// Coordination signal (e.g., ready, waiting)
-    CoordinationSignal,
-    /// Handoff request
-    Handoff,
-    /// Interrupt signal
-    Interrupt,
-    /// Heartbeat/keepalive
-    Heartbeat,
-}
-
-/// Priority level for messages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum MessagePriority {
-    /// Low priority - can be delayed
-    Low,
-    /// Normal priority
-    Normal,
-    /// High priority - should be processed soon
-    High,
-    /// Critical - must be processed immediately
-    Critical,
-}
 
 /// A message between agents.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -442,14 +351,14 @@ pub enum MessagePriority {
 pub struct AgentMessage {
     /// Unique identifier for this message
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub message_id: EntityId,
+    pub message_id: MessageId,
 
     /// Agent sending the message
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
+    pub from_agent_id: Uuid,
     /// Specific agent to receive (if targeted)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub to_agent_id: Option<EntityId>,
+    pub to_agent_id: Option<Uuid>,
     /// Agent type to receive (for broadcast)
     pub to_agent_type: Option<String>,
 
@@ -460,13 +369,13 @@ pub struct AgentMessage {
 
     /// Related trajectory (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Related scope (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub scope_id: Option<EntityId>,
+    pub scope_id: Option<ScopeId>,
     /// Related artifacts (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifact_ids: Vec<EntityId>,
+    pub artifact_ids: Vec<ArtifactId>,
 
     /// When the message was created
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -488,13 +397,13 @@ pub struct AgentMessage {
 impl AgentMessage {
     /// Create a new message to a specific agent.
     pub fn to_agent(
-        from_agent_id: EntityId,
-        to_agent_id: EntityId,
+        from_agent_id: Uuid,
+        to_agent_id: Uuid,
         message_type: MessageType,
         payload: &str,
     ) -> Self {
         Self {
-            message_id: Uuid::now_v7(),
+            message_id: MessageId::new(Uuid::now_v7()),
             from_agent_id,
             to_agent_id: Some(to_agent_id),
             to_agent_type: None,
@@ -513,13 +422,13 @@ impl AgentMessage {
 
     /// Create a new broadcast message to an agent type.
     pub fn to_type(
-        from_agent_id: EntityId,
+        from_agent_id: Uuid,
         to_agent_type: &str,
         message_type: MessageType,
         payload: &str,
     ) -> Self {
         Self {
-            message_id: Uuid::now_v7(),
+            message_id: MessageId::new(Uuid::now_v7()),
             from_agent_id,
             to_agent_id: None,
             to_agent_type: Some(to_agent_type.to_string()),
@@ -537,19 +446,19 @@ impl AgentMessage {
     }
 
     /// Set trajectory context.
-    pub fn with_trajectory(mut self, trajectory_id: EntityId) -> Self {
+    pub fn with_trajectory(mut self, trajectory_id: TrajectoryId) -> Self {
         self.trajectory_id = Some(trajectory_id);
         self
     }
 
     /// Set scope context.
-    pub fn with_scope(mut self, scope_id: EntityId) -> Self {
+    pub fn with_scope(mut self, scope_id: ScopeId) -> Self {
         self.scope_id = Some(scope_id);
         self
     }
 
     /// Set related artifacts.
-    pub fn with_artifacts(mut self, artifact_ids: Vec<EntityId>) -> Self {
+    pub fn with_artifacts(mut self, artifact_ids: Vec<ArtifactId>) -> Self {
         self.artifact_ids = artifact_ids;
         self
     }
@@ -582,7 +491,7 @@ impl AgentMessage {
     }
 
     /// Check if message is for a specific agent.
-    pub fn is_for_agent(&self, agent_id: EntityId, agent_type: &str) -> bool {
+    pub fn is_for_agent(&self, agent_id: Uuid, agent_type: &str) -> bool {
         // Check direct targeting
         if let Some(to_id) = self.to_agent_id {
             return to_id == agent_id;
@@ -597,93 +506,9 @@ impl AgentMessage {
     }
 }
 
-
 // ============================================================================
-// TASK DELEGATION (Task 10.5)
+// DELEGATED TASK
 // ============================================================================
-
-/// Status of a delegated task.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum DelegationStatus {
-    /// Task is pending acceptance
-    Pending,
-    /// Task has been accepted
-    Accepted,
-    /// Task was rejected
-    Rejected,
-    /// Task is in progress
-    InProgress,
-    /// Task completed successfully
-    Completed,
-    /// Task failed
-    Failed,
-}
-
-/// Result status of a delegation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum DelegationResultStatus {
-    /// Task completed successfully
-    Success,
-    /// Task partially completed
-    Partial,
-    /// Task failed
-    Failure,
-}
-
-/// Result of a delegated task.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct DelegationResult {
-    /// Status of the result
-    pub status: DelegationResultStatus,
-    /// Artifacts produced by the task
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub produced_artifacts: Vec<EntityId>,
-    /// Notes produced by the task
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub produced_notes: Vec<EntityId>,
-    /// Summary of what was accomplished
-    pub summary: String,
-    /// Error message (if failed)
-    pub error: Option<String>,
-}
-
-impl DelegationResult {
-    /// Create a successful result.
-    pub fn success(summary: &str, artifacts: Vec<EntityId>) -> Self {
-        Self {
-            status: DelegationResultStatus::Success,
-            produced_artifacts: artifacts,
-            produced_notes: Vec::new(),
-            summary: summary.to_string(),
-            error: None,
-        }
-    }
-
-    /// Create a partial result.
-    pub fn partial(summary: &str, artifacts: Vec<EntityId>) -> Self {
-        Self {
-            status: DelegationResultStatus::Partial,
-            produced_artifacts: artifacts,
-            produced_notes: Vec::new(),
-            summary: summary.to_string(),
-            error: None,
-        }
-    }
-
-    /// Create a failure result.
-    pub fn failure(error: &str) -> Self {
-        Self {
-            status: DelegationResultStatus::Failure,
-            produced_artifacts: Vec::new(),
-            produced_notes: Vec::new(),
-            summary: String::new(),
-            error: Some(error.to_string()),
-        }
-    }
-}
 
 /// A delegated task between agents.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -691,14 +516,14 @@ impl DelegationResult {
 pub struct DelegatedTask {
     /// Unique identifier for this delegation
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub delegation_id: EntityId,
+    pub delegation_id: DelegationId,
 
     /// Agent delegating the task
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub delegator_agent_id: EntityId,
+    pub delegator_agent_id: Uuid,
     /// Specific agent to delegate to (if targeted)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub delegatee_agent_id: Option<EntityId>,
+    pub delegatee_agent_id: Option<Uuid>,
     /// Agent type to delegate to (for broadcast)
     pub delegatee_agent_type: Option<String>,
 
@@ -706,17 +531,17 @@ pub struct DelegatedTask {
     pub task_description: String,
     /// Parent trajectory
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub parent_trajectory_id: EntityId,
+    pub parent_trajectory_id: TrajectoryId,
     /// Child trajectory created for this task
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub child_trajectory_id: Option<EntityId>,
+    pub child_trajectory_id: Option<TrajectoryId>,
 
     /// Artifacts shared with the delegatee
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub shared_artifacts: Vec<EntityId>,
+    pub shared_artifacts: Vec<ArtifactId>,
     /// Notes shared with the delegatee
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub shared_notes: Vec<EntityId>,
+    pub shared_notes: Vec<NoteId>,
     /// Additional context (JSON)
     pub additional_context: Option<String>,
 
@@ -745,13 +570,13 @@ pub struct DelegatedTask {
 impl DelegatedTask {
     /// Create a new delegation to a specific agent.
     pub fn to_agent(
-        delegator_agent_id: EntityId,
-        delegatee_agent_id: EntityId,
+        delegator_agent_id: Uuid,
+        delegatee_agent_id: Uuid,
         task_description: &str,
-        parent_trajectory_id: EntityId,
+        parent_trajectory_id: TrajectoryId,
     ) -> Self {
         Self {
-            delegation_id: Uuid::now_v7(),
+            delegation_id: DelegationId::new(Uuid::now_v7()),
             delegator_agent_id,
             delegatee_agent_id: Some(delegatee_agent_id),
             delegatee_agent_type: None,
@@ -773,13 +598,13 @@ impl DelegatedTask {
 
     /// Create a new delegation to an agent type.
     pub fn to_type(
-        delegator_agent_id: EntityId,
+        delegator_agent_id: Uuid,
         delegatee_agent_type: &str,
         task_description: &str,
-        parent_trajectory_id: EntityId,
+        parent_trajectory_id: TrajectoryId,
     ) -> Self {
         Self {
-            delegation_id: Uuid::now_v7(),
+            delegation_id: DelegationId::new(Uuid::now_v7()),
             delegator_agent_id,
             delegatee_agent_id: None,
             delegatee_agent_type: Some(delegatee_agent_type.to_string()),
@@ -800,13 +625,13 @@ impl DelegatedTask {
     }
 
     /// Set shared artifacts.
-    pub fn with_shared_artifacts(mut self, artifacts: Vec<EntityId>) -> Self {
+    pub fn with_shared_artifacts(mut self, artifacts: Vec<ArtifactId>) -> Self {
         self.shared_artifacts = artifacts;
         self
     }
 
     /// Set shared notes.
-    pub fn with_shared_notes(mut self, notes: Vec<EntityId>) -> Self {
+    pub fn with_shared_notes(mut self, notes: Vec<NoteId>) -> Self {
         self.shared_notes = notes;
         self
     }
@@ -824,7 +649,7 @@ impl DelegatedTask {
     }
 
     /// Accept the delegation.
-    pub fn accept(&mut self, delegatee_agent_id: EntityId, child_trajectory_id: EntityId) {
+    pub fn accept(&mut self, delegatee_agent_id: Uuid, child_trajectory_id: TrajectoryId) {
         self.delegatee_agent_id = Some(delegatee_agent_id);
         self.child_trajectory_id = Some(child_trajectory_id);
         self.status = DelegationStatus::Accepted;
@@ -858,44 +683,9 @@ impl DelegatedTask {
     }
 }
 
-
 // ============================================================================
-// AGENT HANDOFF (Task 10.6)
+// AGENT HANDOFF
 // ============================================================================
-
-/// Status of a handoff.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum HandoffStatus {
-    /// Handoff has been initiated
-    Initiated,
-    /// Handoff has been accepted
-    Accepted,
-    /// Handoff has been completed
-    Completed,
-    /// Handoff was rejected
-    Rejected,
-}
-
-/// Reason for a handoff.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum HandoffReason {
-    /// Current agent lacks required capability
-    CapabilityMismatch,
-    /// Load balancing across agents
-    LoadBalancing,
-    /// Task requires specialized agent
-    Specialization,
-    /// Escalation to supervisor
-    Escalation,
-    /// Agent timed out
-    Timeout,
-    /// Agent failed
-    Failure,
-    /// Scheduled handoff
-    Scheduled,
-}
 
 /// A handoff between agents.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -903,27 +693,27 @@ pub enum HandoffReason {
 pub struct AgentHandoff {
     /// Unique identifier for this handoff
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub handoff_id: EntityId,
+    pub handoff_id: HandoffId,
 
     /// Agent initiating the handoff
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
+    pub from_agent_id: Uuid,
     /// Specific agent to hand off to (if targeted)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub to_agent_id: Option<EntityId>,
+    pub to_agent_id: Option<Uuid>,
     /// Agent type to hand off to (for broadcast)
     pub to_agent_type: Option<String>,
 
     /// Trajectory being handed off
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     /// Scope being handed off
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
 
     /// Context snapshot ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub context_snapshot_id: EntityId,
+    pub context_snapshot_id: Uuid,
     /// Notes for the receiving agent
     pub handoff_notes: String,
 
@@ -954,15 +744,15 @@ pub struct AgentHandoff {
 impl AgentHandoff {
     /// Create a new handoff to a specific agent.
     pub fn to_agent(
-        from_agent_id: EntityId,
-        to_agent_id: EntityId,
-        trajectory_id: EntityId,
-        scope_id: EntityId,
-        context_snapshot_id: EntityId,
+        from_agent_id: Uuid,
+        to_agent_id: Uuid,
+        trajectory_id: TrajectoryId,
+        scope_id: ScopeId,
+        context_snapshot_id: Uuid,
         reason: HandoffReason,
     ) -> Self {
         Self {
-            handoff_id: Uuid::now_v7(),
+            handoff_id: HandoffId::new(Uuid::now_v7()),
             from_agent_id,
             to_agent_id: Some(to_agent_id),
             to_agent_type: None,
@@ -983,15 +773,15 @@ impl AgentHandoff {
 
     /// Create a new handoff to an agent type.
     pub fn to_type(
-        from_agent_id: EntityId,
+        from_agent_id: Uuid,
         to_agent_type: &str,
-        trajectory_id: EntityId,
-        scope_id: EntityId,
-        context_snapshot_id: EntityId,
+        trajectory_id: TrajectoryId,
+        scope_id: ScopeId,
+        context_snapshot_id: Uuid,
         reason: HandoffReason,
     ) -> Self {
         Self {
-            handoff_id: Uuid::now_v7(),
+            handoff_id: HandoffId::new(Uuid::now_v7()),
             from_agent_id,
             to_agent_id: None,
             to_agent_type: Some(to_agent_type.to_string()),
@@ -1035,7 +825,7 @@ impl AgentHandoff {
     }
 
     /// Accept the handoff.
-    pub fn accept(&mut self, accepting_agent_id: EntityId) {
+    pub fn accept(&mut self, accepting_agent_id: Uuid) {
         self.to_agent_id = Some(accepting_agent_id);
         self.status = HandoffStatus::Accepted;
         self.accepted_at = Some(Utc::now());
@@ -1053,58 +843,9 @@ impl AgentHandoff {
     }
 }
 
-
 // ============================================================================
-// CONFLICT TYPES (Task 10.7)
+// CONFLICT RECORD
 // ============================================================================
-
-/// Type of conflict.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum ConflictType {
-    /// Two agents wrote to the same resource concurrently
-    ConcurrentWrite,
-    /// Two facts contradict each other
-    ContradictingFact,
-    /// Two decisions are incompatible
-    IncompatibleDecision,
-    /// Two agents are contending for the same resource
-    ResourceContention,
-    /// Two agents have conflicting goals
-    GoalConflict,
-}
-
-/// Status of a conflict.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum ConflictStatus {
-    /// Conflict has been detected
-    Detected,
-    /// Conflict is being resolved
-    Resolving,
-    /// Conflict has been resolved
-    Resolved,
-    /// Conflict has been escalated
-    Escalated,
-}
-
-/// Strategy for resolving a conflict.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum ResolutionStrategy {
-    /// Last write wins
-    LastWriteWins,
-    /// First write wins
-    FirstWriteWins,
-    /// Highest confidence wins
-    HighestConfidence,
-    /// Merge the conflicting items
-    Merge,
-    /// Escalate to human or supervisor
-    Escalate,
-    /// Reject both items
-    RejectBoth,
-}
 
 /// Record of how a conflict was resolved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1116,7 +857,7 @@ pub struct ConflictResolutionRecord {
     pub winner: Option<String>,
     /// ID of merged result (if applicable)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub merged_result_id: Option<EntityId>,
+    pub merged_result_id: Option<Uuid>,
     /// Reason for the resolution
     pub reason: String,
     /// Who resolved it: "automatic" or agent UUID
@@ -1140,7 +881,7 @@ impl ConflictResolutionRecord {
         strategy: ResolutionStrategy,
         winner: Option<&str>,
         reason: &str,
-        resolved_by: EntityId,
+        resolved_by: Uuid,
     ) -> Self {
         Self {
             strategy,
@@ -1152,7 +893,7 @@ impl ConflictResolutionRecord {
     }
 
     /// Set merged result ID.
-    pub fn with_merged_result(mut self, result_id: EntityId) -> Self {
+    pub fn with_merged_result(mut self, result_id: Uuid) -> Self {
         self.merged_result_id = Some(result_id);
         self
     }
@@ -1164,7 +905,7 @@ impl ConflictResolutionRecord {
 pub struct Conflict {
     /// Unique identifier for this conflict
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub conflict_id: EntityId,
+    pub conflict_id: Uuid,
     /// Type of conflict
     pub conflict_type: ConflictType,
 
@@ -1172,23 +913,23 @@ pub struct Conflict {
     pub item_a_type: String,
     /// ID of first item
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub item_a_id: EntityId,
+    pub item_a_id: Uuid,
     /// Type of second item
     pub item_b_type: String,
     /// ID of second item
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub item_b_id: EntityId,
+    pub item_b_id: Uuid,
 
     /// Agent that created first item (if known)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub agent_a_id: Option<EntityId>,
+    pub agent_a_id: Option<Uuid>,
     /// Agent that created second item (if known)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub agent_b_id: Option<EntityId>,
+    pub agent_b_id: Option<Uuid>,
 
     /// Related trajectory (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
 
     /// Current status
     pub status: ConflictStatus,
@@ -1208,9 +949,9 @@ impl Conflict {
     pub fn new(
         conflict_type: ConflictType,
         item_a_type: &str,
-        item_a_id: EntityId,
+        item_a_id: Uuid,
         item_b_type: &str,
-        item_b_id: EntityId,
+        item_b_id: Uuid,
     ) -> Self {
         Self {
             conflict_id: Uuid::now_v7(),
@@ -1230,14 +971,14 @@ impl Conflict {
     }
 
     /// Set agents involved.
-    pub fn with_agents(mut self, agent_a: Option<EntityId>, agent_b: Option<EntityId>) -> Self {
+    pub fn with_agents(mut self, agent_a: Option<Uuid>, agent_b: Option<Uuid>) -> Self {
         self.agent_a_id = agent_a;
         self.agent_b_id = agent_b;
         self
     }
 
     /// Set trajectory context.
-    pub fn with_trajectory(mut self, trajectory_id: EntityId) -> Self {
+    pub fn with_trajectory(mut self, trajectory_id: TrajectoryId) -> Self {
         self.trajectory_id = Some(trajectory_id);
         self
     }
@@ -1269,7 +1010,6 @@ impl Conflict {
     }
 }
 
-
 // ============================================================================
 // LOCK MANAGER (In-Memory for Testing)
 // ============================================================================
@@ -1294,9 +1034,9 @@ impl LockManager {
     /// Try to acquire a lock.
     fn acquire(
         &mut self,
-        agent_id: EntityId,
+        agent_id: Uuid,
         resource_type: &str,
-        resource_id: EntityId,
+        resource_id: Uuid,
         mode: LockMode,
         timeout_ms: i64,
     ) -> CaliberResult<DistributedLock> {
@@ -1323,7 +1063,7 @@ impl LockManager {
     }
 
     /// Release a lock.
-    fn release(&mut self, lock_id: EntityId) -> CaliberResult<bool> {
+    fn release(&mut self, lock_id: LockId) -> CaliberResult<bool> {
         let key = self
             .locks
             .iter()
@@ -1339,7 +1079,7 @@ impl LockManager {
     }
 
     /// Get a lock by ID.
-    fn get(&self, lock_id: EntityId) -> Option<&DistributedLock> {
+    fn get(&self, lock_id: LockId) -> Option<&DistributedLock> {
         self.locks.values().find(|l| l.lock_id == lock_id)
     }
 
@@ -1351,7 +1091,6 @@ impl LockManager {
     }
 }
 
-
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -1359,10 +1098,6 @@ impl LockManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ========================================================================
-    // Agent Tests
-    // ========================================================================
 
     #[test]
     fn test_agent_new() {
@@ -1391,10 +1126,6 @@ mod tests {
         assert!(agent.can_delegate_to_type("reviewer"));
         assert!(!agent.can_delegate_to_type("planner"));
     }
-
-    // ========================================================================
-    // Memory Region Tests
-    // ========================================================================
 
     #[test]
     fn test_memory_region_private() {
@@ -1433,15 +1164,12 @@ mod tests {
         assert!(region.require_lock);
     }
 
-    // ========================================================================
-    // Lock Tests
-    // ========================================================================
-
     #[test]
     fn test_distributed_lock_new() {
         let agent_id = Uuid::now_v7();
         let resource_id = Uuid::now_v7();
-        let lock = DistributedLock::new("artifact", resource_id, agent_id, 30000, LockMode::Exclusive);
+        let lock =
+            DistributedLock::new("artifact", resource_id, agent_id, 30000, LockMode::Exclusive);
 
         assert_eq!(lock.resource_type, "artifact");
         assert_eq!(lock.resource_id, resource_id);
@@ -1456,9 +1184,8 @@ mod tests {
         let agent_id = Uuid::now_v7();
         let resource_id = Uuid::now_v7();
 
-        let lock = manager
-            .acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)
-            ?;
+        let lock =
+            manager.acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)?;
 
         assert!(manager.get(lock.lock_id).is_some());
 
@@ -1476,9 +1203,8 @@ mod tests {
         let resource_id = Uuid::now_v7();
 
         // First agent acquires lock
-        let _lock1 = manager
-            .acquire(agent1, "artifact", resource_id, LockMode::Exclusive, 30000)
-            ?;
+        let _lock1 =
+            manager.acquire(agent1, "artifact", resource_id, LockMode::Exclusive, 30000)?;
 
         // Second agent tries to acquire - should fail
         let result = manager.acquire(agent2, "artifact", resource_id, LockMode::Exclusive, 30000);
@@ -1492,22 +1218,14 @@ mod tests {
         let agent_id = Uuid::now_v7();
         let resource_id = Uuid::now_v7();
 
-        // Acquire a lock with very short timeout (already expired by negative value trick)
-        // Actually, we can't easily test expiration without waiting.
-        // Instead, test that cleanup returns 0 when no locks are expired.
-        let _lock = manager
-            .acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)
-            ?;
+        let _lock =
+            manager.acquire(agent_id, "artifact", resource_id, LockMode::Exclusive, 30000)?;
 
         // Fresh lock should not be expired
         let cleaned = manager.cleanup_expired();
         assert_eq!(cleaned, 0);
         Ok(())
     }
-
-    // ========================================================================
-    // Message Tests
-    // ========================================================================
 
     #[test]
     fn test_agent_message_to_agent() {
@@ -1543,10 +1261,6 @@ mod tests {
         assert!(!msg.is_for_agent(other_id, "any"));
     }
 
-    // ========================================================================
-    // Delegation Tests
-    // ========================================================================
-
     #[test]
     fn test_delegated_task_lifecycle() {
         let delegator = Uuid::now_v7();
@@ -1554,7 +1268,8 @@ mod tests {
         let trajectory = Uuid::now_v7();
         let child_trajectory = Uuid::now_v7();
 
-        let mut task = DelegatedTask::to_type(delegator, "coder", "Implement feature X", trajectory);
+        let mut task =
+            DelegatedTask::to_type(delegator, "coder", "Implement feature X", trajectory);
 
         assert_eq!(task.status, DelegationStatus::Pending);
 
@@ -1569,10 +1284,6 @@ mod tests {
         assert_eq!(task.status, DelegationStatus::Completed);
         assert!(task.result.is_some());
     }
-
-    // ========================================================================
-    // Handoff Tests
-    // ========================================================================
 
     #[test]
     fn test_agent_handoff_lifecycle() {
@@ -1602,10 +1313,6 @@ mod tests {
         handoff.complete();
         assert_eq!(handoff.status, HandoffStatus::Completed);
     }
-
-    // ========================================================================
-    // Conflict Tests
-    // ========================================================================
 
     #[test]
     fn test_conflict_lifecycle() {
@@ -1652,9 +1359,8 @@ mod tests {
     }
 }
 
-
 // ============================================================================
-// PROPERTY-BASED TESTS (Task 10.8)
+// PROPERTY-BASED TESTS
 // ============================================================================
 
 #[cfg(test)]
@@ -1681,7 +1387,6 @@ mod prop_tests {
         #![proptest_config(ProptestConfig::with_cases(100))]
 
         /// Property 9: Lock acquisition records holder
-        /// When a lock is acquired, the holder_agent_id SHALL be set to the acquiring agent
         #[test]
         fn prop_lock_acquisition_records_holder(
             agent_type in arb_agent_type()

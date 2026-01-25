@@ -6,7 +6,7 @@ use crate::types::webhook::{
     CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse,
     WebhookRetryPolicy,
 };
-use caliber_core::EntityId;
+use caliber_core::{TenantId, WebhookId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for WebhookResponse
@@ -14,6 +14,7 @@ impl_component! {
     WebhookResponse {
         entity_name: "webhook",
         pk_field: "webhook_id",
+        id_type: WebhookId,
         requires_tenant: true,
         create_type: CreateWebhookRequest,
         update_type: UpdateWebhookRequest,
@@ -25,7 +26,7 @@ impl_component! {
             SqlParam::Json(serde_json::to_value(&req.events).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::OptString(req.secret.clone()),
             SqlParam::Json(serde_json::to_value(&req.retry_policy.clone().unwrap_or_default()).unwrap_or(JsonValue::Object(serde_json::Map::new()))),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 6,
         build_updates: |req| {
@@ -55,7 +56,11 @@ impl_component! {
     }
 }
 
-impl TenantScoped for WebhookResponse {}
+impl TenantScoped for WebhookResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
 impl Listable for WebhookResponse {}
 
 /// Filter for listing webhooks.
@@ -79,9 +84,9 @@ impl From<ListWebhooksRequest> for WebhookListFilter {
 }
 
 impl ListFilter for WebhookListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(is_active) = self.is_active {

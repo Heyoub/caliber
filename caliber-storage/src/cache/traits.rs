@@ -4,9 +4,10 @@
 //! and entities that can be cached.
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityId, EntityType};
+use caliber_core::{CaliberResult, EntityType};
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
+use uuid::Uuid;
 
 /// Marker trait for types that can be cached.
 ///
@@ -26,10 +27,10 @@ pub trait CacheableEntity: Clone + Serialize + DeserializeOwned + Send + Sync + 
     fn entity_type() -> EntityType;
 
     /// Get the unique identifier for this entity.
-    fn entity_id(&self) -> EntityId;
+    fn entity_id(&self) -> Uuid;
 
     /// Get the tenant ID that owns this entity.
-    fn tenant_id(&self) -> EntityId;
+    fn tenant_id(&self) -> Uuid;
 }
 
 /// Cache backend trait for pluggable cache implementations.
@@ -54,8 +55,8 @@ pub trait CacheBackend: Send + Sync {
     /// Returns the cached value and when it was cached, or None if not found.
     async fn get<T: CacheableEntity>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<(T, DateTime<Utc>)>>;
 
     /// Put a value into the cache.
@@ -73,8 +74,8 @@ pub trait CacheBackend: Send + Sync {
     /// This is typically called when an entity is deleted from storage.
     async fn delete<T: CacheableEntity>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<()>;
 
     /// Delete a value by key components without needing the entity type parameter.
@@ -83,8 +84,8 @@ pub trait CacheBackend: Send + Sync {
     async fn delete_by_key(
         &self,
         entity_type: EntityType,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<()>;
 
     /// Invalidate all cached entries for a tenant.
@@ -93,7 +94,7 @@ pub trait CacheBackend: Send + Sync {
     /// - A tenant's data is being reset
     /// - Cache corruption is suspected
     /// - During tenant migration
-    async fn invalidate_tenant(&self, tenant_id: EntityId) -> CaliberResult<u64>;
+    async fn invalidate_tenant(&self, tenant_id: Uuid) -> CaliberResult<u64>;
 
     /// Invalidate all cached entries of a specific entity type for a tenant.
     ///
@@ -101,7 +102,7 @@ pub trait CacheBackend: Send + Sync {
     /// affects all entities of a type.
     async fn invalidate_entity_type(
         &self,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
         entity_type: EntityType,
     ) -> CaliberResult<u64>;
 
@@ -140,21 +141,21 @@ impl CacheStats {
 // IMPLEMENTATIONS FOR CALIBER ENTITIES
 // ============================================================================
 
-use caliber_core::{Artifact, Note, Scope, Trajectory, Turn};
+use caliber_core::{Artifact, EntityIdType, Note, Scope, Trajectory, Turn};
 
 impl CacheableEntity for Trajectory {
     fn entity_type() -> EntityType {
         EntityType::Trajectory
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.trajectory_id
+    fn entity_id(&self) -> Uuid {
+        self.trajectory_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Trajectories use their own ID as tenant_id for now
         // This will be updated when multi-tenancy is fully implemented
-        self.trajectory_id
+        self.trajectory_id.as_uuid()
     }
 }
 
@@ -163,13 +164,13 @@ impl CacheableEntity for Scope {
         EntityType::Scope
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.scope_id
+    fn entity_id(&self) -> Uuid {
+        self.scope_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Scopes belong to trajectories
-        self.trajectory_id
+        self.trajectory_id.as_uuid()
     }
 }
 
@@ -178,12 +179,12 @@ impl CacheableEntity for Artifact {
         EntityType::Artifact
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.artifact_id
+    fn entity_id(&self) -> Uuid {
+        self.artifact_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
-        self.trajectory_id
+    fn tenant_id(&self) -> Uuid {
+        self.trajectory_id.as_uuid()
     }
 }
 
@@ -192,13 +193,16 @@ impl CacheableEntity for Note {
         EntityType::Note
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.note_id
+    fn entity_id(&self) -> Uuid {
+        self.note_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Notes can span multiple trajectories, use first source trajectory
-        *self.source_trajectory_ids.first().unwrap_or(&self.note_id)
+        self.source_trajectory_ids
+            .first()
+            .map(|id| id.as_uuid())
+            .unwrap_or_else(|| self.note_id.as_uuid())
     }
 }
 
@@ -207,13 +211,13 @@ impl CacheableEntity for Turn {
         EntityType::Turn
     }
 
-    fn entity_id(&self) -> EntityId {
-        self.turn_id
+    fn entity_id(&self) -> Uuid {
+        self.turn_id.as_uuid()
     }
 
-    fn tenant_id(&self) -> EntityId {
+    fn tenant_id(&self) -> Uuid {
         // Turns belong to scopes, use scope_id as proxy
-        self.scope_id
+        self.scope_id.as_uuid()
     }
 }
 

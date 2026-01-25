@@ -4,19 +4,20 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
+use caliber_core::HandoffId;
 use crate::{
     auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{CreateHandoffRequest, HandoffResponse},
@@ -117,7 +118,7 @@ pub async fn create_handoff(
 pub async fn get_handoff(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<HandoffId>,
 ) -> ApiResult<impl IntoResponse> {
     // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let handoff = db
@@ -154,7 +155,7 @@ pub async fn accept_handoff(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<HandoffId>,
     Json(req): Json<AcceptHandoffRequest>,
 ) -> ApiResult<StatusCode> {
     // Get the handoff
@@ -205,7 +206,7 @@ pub async fn complete_handoff(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<HandoffId>,
 ) -> ApiResult<StatusCode> {
     // Get the handoff
     let handoff = db
@@ -232,7 +233,7 @@ pub async fn complete_handoff(
 pub struct AcceptHandoffRequest {
     /// Agent accepting the handoff
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub accepting_agent_id: caliber_core::EntityId,
+    pub accepting_agent_id: caliber_core::AgentId,
 }
 
 // ============================================================================
@@ -251,16 +252,16 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityId;
+    use caliber_core::{AgentId, ScopeId, TrajectoryId};
 
     #[test]
     fn test_create_handoff_request_validation() {
-        let agent_id = EntityId::from(Uuid::new_v4());
+        let agent_id = AgentId::now_v7();
         let req = CreateHandoffRequest {
             from_agent_id: agent_id,
             to_agent_id: agent_id, // Same agent
-            trajectory_id: EntityId::from(Uuid::new_v4()),
-            scope_id: EntityId::from(Uuid::new_v4()),
+            trajectory_id: TrajectoryId::now_v7(),
+            scope_id: ScopeId::now_v7(),
             reason: "".to_string(),
             context_snapshot: vec![],
         };
@@ -305,11 +306,11 @@ mod tests {
     #[test]
     fn test_accept_handoff_request() {
         let req = AcceptHandoffRequest {
-            accepting_agent_id: EntityId::from(Uuid::new_v4()),
+            accepting_agent_id: AgentId::now_v7(),
         };
 
         // Just verify the struct can be created
-        assert!(!req.accepting_agent_id.to_string().is_empty());
+        assert!(!req.accepting_agent_id.as_uuid().to_string().is_empty());
     }
 
     #[test]

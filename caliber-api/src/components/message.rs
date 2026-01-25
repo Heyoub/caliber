@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::message::{ListMessagesRequest, MessageResponse, SendMessageRequest};
-use caliber_core::EntityId;
+use caliber_core::{AgentId, MessageId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for MessageResponse
@@ -12,23 +12,24 @@ impl_component! {
     MessageResponse {
         entity_name: "message",
         pk_field: "message_id",
+        id_type: MessageId,
         requires_tenant: true,
         create_type: SendMessageRequest,
         update_type: (),
         filter_type: MessageListFilter,
         entity_id: |self| self.message_id,
         create_params: |req, tenant_id| vec![
-            SqlParam::Uuid(req.from_agent_id),
-            SqlParam::OptUuid(req.to_agent_id),
+            SqlParam::Uuid(req.from_agent_id.as_uuid()),
+            SqlParam::OptUuid(req.to_agent_id.map(|id| id.as_uuid())),
             SqlParam::OptString(req.to_agent_type.clone()),
             SqlParam::String(req.message_type.clone()),
             SqlParam::String(req.payload.clone()),
-            SqlParam::OptUuid(req.trajectory_id),
+            SqlParam::OptUuid(req.trajectory_id.map(|id| id.as_uuid())),
             SqlParam::OptUuid(req.scope_id),
             SqlParam::Json(serde_json::to_value(&req.artifact_ids).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::String(req.priority.clone()),
             SqlParam::OptTimestamp(req.expires_at),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 11,
         build_updates: |_req| {
@@ -36,11 +37,16 @@ impl_component! {
             // Use deliver/acknowledge operations instead
             JsonValue::Object(serde_json::Map::new())
         },
-        not_found_error: |id| ApiError::message_not_found(id),
+        not_found_error: |id| ApiError::message_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for MessageResponse {}
+impl TenantScoped for MessageResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
+
 impl Listable for MessageResponse {}
 
 /// Filter for listing messages.
@@ -49,13 +55,13 @@ pub struct MessageListFilter {
     /// Filter by message type
     pub message_type: Option<String>,
     /// Filter by sender agent
-    pub from_agent_id: Option<EntityId>,
+    pub from_agent_id: Option<AgentId>,
     /// Filter by recipient agent
-    pub to_agent_id: Option<EntityId>,
+    pub to_agent_id: Option<AgentId>,
     /// Filter by recipient agent type
     pub to_agent_type: Option<String>,
     /// Filter by trajectory
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Filter by priority
     pub priority: Option<String>,
     /// Only return undelivered messages
@@ -84,9 +90,9 @@ impl From<ListMessagesRequest> for MessageListFilter {
 }
 
 impl ListFilter for MessageListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(message_type) = &self.message_type {
@@ -97,13 +103,13 @@ impl ListFilter for MessageListFilter {
 
         if let Some(from_agent_id) = self.from_agent_id {
             conditions.push(format!("from_agent_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(from_agent_id));
+            params.push(SqlParam::Uuid(from_agent_id.as_uuid()));
             param_idx += 1;
         }
 
         if let Some(to_agent_id) = self.to_agent_id {
             conditions.push(format!("to_agent_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(to_agent_id));
+            params.push(SqlParam::Uuid(to_agent_id.as_uuid()));
             param_idx += 1;
         }
 
@@ -115,7 +121,7 @@ impl ListFilter for MessageListFilter {
 
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("trajectory_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(trajectory_id));
+            params.push(SqlParam::Uuid(trajectory_id.as_uuid()));
             param_idx += 1;
         }
 

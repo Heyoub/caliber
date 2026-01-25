@@ -8,11 +8,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use caliber_core::TenantId;
 use uuid::Uuid;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    extractors::PathId,
     state::AppState,
     types::{ListTenantsResponse, TenantInfo},
 };
@@ -63,7 +65,7 @@ pub async fn list_tenants(
 )]
 pub async fn get_tenant(
     State(db): State<DbClient>,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TenantId>,
 ) -> ApiResult<impl IntoResponse> {
     let tenant = db
         .tenant_get(id)

@@ -1,6 +1,6 @@
 //! Scope-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{ScopeId, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -12,10 +12,10 @@ use crate::error::{ApiError, ApiResult};
 pub struct CreateScopeRequest {
     /// Trajectory this scope belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     /// Parent scope (for nested scopes)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub parent_scope_id: Option<EntityId>,
+    pub parent_scope_id: Option<ScopeId>,
     /// Name of the scope
     pub name: String,
     /// Purpose/description
@@ -58,14 +58,14 @@ pub struct CreateCheckpointRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ScopeResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Tenant this scope belongs to (for multi-tenant isolation)
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub tenant_id: TenantId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub trajectory_id: TrajectoryId,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub parent_scope_id: Option<EntityId>,
+    pub parent_scope_id: Option<ScopeId>,
     pub name: String,
     pub purpose: Option<String>,
     pub is_active: bool,
@@ -108,9 +108,7 @@ impl ScopeResponse {
             ));
         }
 
-        let tenant_id = self.tenant_id.ok_or_else(|| {
-            ApiError::internal_error("Scope missing tenant_id")
-        })?;
+        let tenant_id = self.tenant_id;
 
         let updates = serde_json::json!({
             "is_active": false,
@@ -135,9 +133,7 @@ impl ScopeResponse {
             ));
         }
 
-        let tenant_id = self.tenant_id.ok_or_else(|| {
-            ApiError::internal_error("Scope missing tenant_id")
-        })?;
+        let tenant_id = self.tenant_id;
 
         let checkpoint = CheckpointResponse {
             context_state: req.context_state.clone(),

@@ -1,6 +1,6 @@
 //! Tenant-related API types
 
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{TenantId, Timestamp};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -45,7 +45,7 @@ pub struct UpdateTenantRequest {
 pub struct TenantInfo {
     /// Tenant ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     /// Tenant name
     pub name: String,
     /// Email domain for auto-association (e.g., "acme.com")
@@ -155,12 +155,12 @@ pub struct ChangeRecord {
     pub change_id: i64,
     /// Tenant that owns the changed entity
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     /// Type of entity that changed (e.g., "trajectory", "scope", "artifact")
     pub entity_type: String,
-    /// ID of the changed entity
+    /// ID of the changed entity (can be any entity type)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub entity_id: EntityId,
+    pub entity_id: uuid::Uuid,
     /// Type of operation performed
     pub operation: ChangeOperation,
     /// When the change occurred
@@ -176,7 +176,7 @@ pub struct WatermarkResponse {
     pub watermark: i64,
     /// Tenant ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
 }
 
 /// Response for changes query.

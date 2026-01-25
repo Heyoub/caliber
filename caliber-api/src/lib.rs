@@ -16,6 +16,7 @@ pub mod constants;
 pub mod db;
 pub mod error;
 pub mod events;
+pub mod extractors;
 pub mod grpc;
 pub mod jobs;
 pub mod macros;
@@ -76,3 +77,6 @@ pub use ws::{should_deliver_event, tenant_id_from_event, WsState};
 // Re-export ECS component types
 pub use component::{Component, Listable, ListFilter, NoFilter, SqlParam, TenantScoped};
 pub use components::{ScopeListFilter, TrajectoryListFilter};
+
+// Re-export custom extractors
+pub use extractors::{PathId, PathIds, PathIdError};

@@ -6,7 +6,7 @@ use crate::components::{NoteListFilter, TrajectoryListFilter};
 use crate::types::{ArtifactResponse, NoteResponse, TrajectoryResponse};
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::EntityId;
+use caliber_core::{ArtifactId, NoteId, TenantId, TrajectoryId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -51,7 +51,7 @@ pub async fn read_resource(
 async fn read_resource_content(
     state: &McpState,
     uri: &str,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> ApiResult<ResourceContent> {
     match uri {
         "caliber://trajectories" => {
@@ -91,7 +91,7 @@ async fn read_resource_content(
 
             #[derive(serde::Serialize)]
             struct NoteResourceView {
-                note_id: EntityId,
+                note_id: NoteId,
                 note_type: String,
                 title: String,
                 created_at: caliber_core::Timestamp,
@@ -123,8 +123,8 @@ async fn read_resource_content(
 
             #[derive(serde::Serialize)]
             struct ArtifactResourceView {
-                artifact_id: EntityId,
-                trajectory_id: EntityId,
+                artifact_id: ArtifactId,
+                trajectory_id: TrajectoryId,
                 artifact_type: String,
                 name: String,
                 uri: String,

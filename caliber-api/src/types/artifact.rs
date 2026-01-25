@@ -1,6 +1,6 @@
 //! Artifact-related API types
 
-use caliber_core::{ArtifactType, EntityId, ExtractionMethod, Timestamp, TTL};
+use caliber_core::{ArtifactId, ArtifactType, ExtractionMethod, ScopeId, TenantId, Timestamp, TrajectoryId, TTL};
 use serde::{Deserialize, Serialize};
 
 /// Request to create a new artifact.
@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 pub struct CreateArtifactRequest {
     /// Trajectory this artifact belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     /// Scope this artifact was created in
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Type of artifact
     pub artifact_type: ArtifactType,
     /// Name of the artifact
@@ -57,10 +57,10 @@ pub struct ListArtifactsRequest {
     pub artifact_type: Option<ArtifactType>,
     /// Filter by trajectory
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Filter by scope
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub scope_id: Option<EntityId>,
+    pub scope_id: Option<ScopeId>,
     /// Filter by date range (from)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub created_after: Option<Timestamp>,
@@ -88,14 +88,14 @@ pub struct ListArtifactsResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ArtifactResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub artifact_id: EntityId,
+    pub artifact_id: ArtifactId,
     /// Tenant this artifact belongs to (for multi-tenant isolation)
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub tenant_id: TenantId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub trajectory_id: TrajectoryId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub scope_id: ScopeId,
     pub artifact_type: ArtifactType,
     pub name: String,
     pub content: String,
@@ -109,7 +109,7 @@ pub struct ArtifactResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub updated_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub superseded_by: Option<EntityId>,
+    pub superseded_by: Option<ArtifactId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }

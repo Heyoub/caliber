@@ -1,14 +1,15 @@
 //! Error types for CALIBER operations
 
-use crate::*;
+use crate::EntityType;
 use std::time::Duration;
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Storage layer errors.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum StorageError {
     #[error("Entity not found: {entity_type:?} with id {id}")]
-    NotFound { entity_type: EntityType, id: EntityId },
+    NotFound { entity_type: EntityType, id: Uuid },
 
     #[error("Insert failed for {entity_type:?}: {reason}")]
     InsertFailed { entity_type: EntityType, reason: String },
@@ -16,7 +17,7 @@ pub enum StorageError {
     #[error("Update failed for {entity_type:?} with id {id}: {reason}")]
     UpdateFailed {
         entity_type: EntityType,
-        id: EntityId,
+        id: Uuid,
         reason: String,
     },
 
@@ -77,20 +78,20 @@ pub enum ValidationError {
     #[error("Circular reference detected in {entity_type:?}: {ids:?}")]
     CircularReference {
         entity_type: EntityType,
-        ids: Vec<EntityId>,
+        ids: Vec<Uuid>,
     },
 
     #[error("Stale data for {entity_type:?} with id {id}, age: {age:?}")]
     StaleData {
         entity_type: EntityType,
-        id: EntityId,
+        id: Uuid,
         age: Duration,
     },
 
     #[error("Contradiction detected between artifacts {artifact_a} and {artifact_b}")]
     Contradiction {
-        artifact_a: EntityId,
-        artifact_b: EntityId,
+        artifact_a: Uuid,
+        artifact_b: Uuid,
     },
 }
 
@@ -131,16 +132,16 @@ pub enum VectorError {
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum AgentError {
     #[error("Agent not registered: {agent_id}")]
-    NotRegistered { agent_id: EntityId },
+    NotRegistered { agent_id: Uuid },
 
     #[error("Lock acquisition failed for {resource}: held by {holder}")]
-    LockAcquisitionFailed { resource: String, holder: EntityId },
+    LockAcquisitionFailed { resource: String, holder: Uuid },
 
     #[error("Lock expired: {lock_id}")]
-    LockExpired { lock_id: EntityId },
+    LockExpired { lock_id: Uuid },
 
     #[error("Message delivery failed for {message_id}: {reason}")]
-    MessageDeliveryFailed { message_id: EntityId, reason: String },
+    MessageDeliveryFailed { message_id: Uuid, reason: String },
 
     #[error("Delegation failed: {reason}")]
     DelegationFailed { reason: String },
@@ -150,7 +151,7 @@ pub enum AgentError {
 
     #[error("Permission denied for agent {agent_id}: {action} on {resource}")]
     PermissionDenied {
-        agent_id: EntityId,
+        agent_id: Uuid,
         action: String,
         resource: String,
     },

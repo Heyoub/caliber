@@ -4,19 +4,20 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
+use caliber_core::MessageId;
 use crate::{
     auth::validate_tenant_ownership,
     db::{DbClient, MessageListParams},
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{ListMessagesRequest, ListMessagesResponse, MessageResponse, SendMessageRequest},
@@ -55,32 +56,10 @@ pub async fn send_message(
         ));
     }
 
-    // Validate message type
-    let valid_types = [
-        "TaskDelegation",
-        "TaskResult",
-        "ContextRequest",
-        "ContextShare",
-        "CoordinationSignal",
-        "Handoff",
-        "Interrupt",
-        "Heartbeat",
-    ];
-    if !valid_types.contains(&req.message_type.as_str()) {
-        return Err(ApiError::invalid_input(format!(
-            "message_type must be one of: {}",
-            valid_types.join(", ")
-        )));
-    }
-
-    // Validate priority
-    let valid_priorities = ["Low", "Normal", "High", "Critical"];
-    if !valid_priorities.contains(&req.priority.as_str()) {
-        return Err(ApiError::invalid_input(format!(
-            "priority must be one of: {}",
-            valid_priorities.join(", ")
-        )));
-    }
+    // TODO: Convert SendMessageRequest.message_type and .priority from String to
+    // caliber_core::{MessageType, MessagePriority} enums. Serde will then handle
+    // validation automatically during deserialization.
+    // For now, db layer validates these values.
 
     // Validate payload is valid JSON
     if serde_json::from_str::<serde_json::Value>(&req.payload).is_err() {
@@ -178,7 +157,7 @@ pub async fn list_messages(
 pub async fn get_message(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<MessageId>,
 ) -> ApiResult<impl IntoResponse> {
     let message = db
         .message_get(id)
@@ -213,7 +192,7 @@ pub async fn acknowledge_message(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<MessageId>,
 ) -> ApiResult<StatusCode> {
     // Get the message and verify tenant ownership
     let message = db
@@ -256,7 +235,7 @@ pub async fn deliver_message(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<MessageId>,
 ) -> ApiResult<StatusCode> {
     // Get the message and verify tenant ownership
     let message = db
@@ -293,12 +272,12 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityId;
+    use caliber_core::AgentId;
 
     #[test]
     fn test_send_message_request_validation() {
         let req = SendMessageRequest {
-            from_agent_id: EntityId::from(Uuid::new_v4()),
+            from_agent_id: AgentId::now_v7(),
             to_agent_id: None,
             to_agent_type: None,
             message_type: "TaskDelegation".to_string(),
@@ -353,7 +332,7 @@ mod tests {
     fn test_list_messages_request_filters() {
         let req = ListMessagesRequest {
             message_type: Some("TaskDelegation".to_string()),
-            from_agent_id: Some(EntityId::from(Uuid::new_v4())),
+            from_agent_id: Some(AgentId::now_v7()),
             to_agent_id: None,
             to_agent_type: Some("coder".to_string()),
             trajectory_id: None,

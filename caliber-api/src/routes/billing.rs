@@ -17,6 +17,7 @@ use sha2::Sha256;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use caliber_core::TenantId;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
@@ -48,7 +49,7 @@ pub enum BillingPlan {
 pub struct BillingStatus {
     /// Tenant ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: Uuid,
+    pub tenant_id: TenantId,
     /// Current billing plan
     pub plan: BillingPlan,
     /// Trial end date (if on trial)
@@ -526,7 +527,7 @@ mod tests {
     #[test]
     fn test_billing_status_serialization() -> Result<(), serde_json::Error> {
         let status = BillingStatus {
-            tenant_id: Uuid::new_v4(),
+            tenant_id: TenantId::new(Uuid::new_v4()),
             plan: BillingPlan::Trial,
             trial_ends_at: Some(chrono::Utc::now()),
             storage_used_bytes: 1024,

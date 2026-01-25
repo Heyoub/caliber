@@ -7,7 +7,10 @@ use caliber_tui::theme::{
 use caliber_api::types::{
     ArtifactResponse, NoteResponse, ProvenanceResponse, TrajectoryResponse,
 };
-use caliber_core::{ArtifactType, EntityId, NoteType, TrajectoryStatus, TurnRole};
+use caliber_core::{
+    AgentId, ArtifactId, ArtifactType, EntityIdType, NoteId, NoteType, ScopeId, TrajectoryId,
+    TrajectoryStatus, TurnRole,
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use proptest::prelude::*;
 use proptest::strategy::Just;
@@ -262,7 +265,7 @@ proptest! {
         
         // Create parents
         for _ in 0..parent_count {
-            let id = caliber_core::new_entity_id();
+            let id = TrajectoryId::now_v7();
             parent_ids.push(id);
             trajectories.push(create_test_trajectory(id, None));
         }
@@ -270,13 +273,13 @@ proptest! {
         // Create children
         for parent_id in &parent_ids {
             for _ in 0..children_per_parent {
-                let child_id = caliber_core::new_entity_id();
+                let child_id = TrajectoryId::now_v7();
                 trajectories.push(create_test_trajectory(child_id, Some(*parent_id)));
             }
         }
-        
+
         // Verify hierarchy
-        let mut grouped: HashMap<Option<EntityId>, Vec<&TrajectoryResponse>> = HashMap::new();
+        let mut grouped: HashMap<Option<TrajectoryId>, Vec<&TrajectoryResponse>> = HashMap::new();
         for traj in &trajectories {
             grouped.entry(traj.parent_trajectory_id).or_default().push(traj);
         }
@@ -302,7 +305,7 @@ proptest! {
         let mut trajectories = Vec::new();
         
         for i in 0..total_count {
-            let id = caliber_core::new_entity_id();
+            let id = TrajectoryId::now_v7();
             let status = if i < active_count {
                 TrajectoryStatus::Active
             } else {
@@ -368,11 +371,11 @@ proptest! {
 
     /// Property: Multiple filters combine correctly
     fn multiple_filters_combine_correctly(total_count in 10usize..30, active_ratio in 0.3f32..0.7f32, has_agent_ratio in 0.3f32..0.7f32) {
-        let agent_id = caliber_core::new_entity_id();
+        let agent_id = AgentId::now_v7();
         let mut trajectories = Vec::new();
-        
+
         for i in 0..total_count {
-            let id = caliber_core::new_entity_id();
+            let id = TrajectoryId::now_v7();
             let status = if (i as f32 / total_count as f32) < active_ratio {
                 TrajectoryStatus::Active
             } else {
@@ -409,9 +412,9 @@ proptest! {
 
     fn detail_panel_shows_all_non_null_fields(_ignored in Just(())) {
         let trajectory = create_test_trajectory_full(
-            caliber_core::new_entity_id(),
+            TrajectoryId::now_v7(),
             TrajectoryStatus::Active,
-            Some(caliber_core::new_entity_id())
+            Some(AgentId::now_v7())
         );
         
         // Count non-null fields
@@ -537,7 +540,7 @@ proptest! {
 
 #[test]
 fn test_helper_builders_smoke() {
-    let id: EntityId = Uuid::now_v7();
+    let id = TrajectoryId::now_v7();
     let traj = create_test_trajectory(id, None);
     assert_eq!(traj.tenant_id, None);
 
@@ -554,11 +557,11 @@ fn test_helper_builders_smoke() {
     assert_eq!(note.tenant_id, None);
 }
 
-fn create_test_trajectory(id: EntityId, parent_id: Option<EntityId>) -> TrajectoryResponse {
+fn create_test_trajectory(id: TrajectoryId, parent_id: Option<TrajectoryId>) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
         tenant_id: None,
-        name: format!("Test Trajectory {}", id),
+        name: format!("Test Trajectory {}", id.as_uuid()),
         description: Some("Test description".to_string()),
         status: TrajectoryStatus::Active,
         parent_trajectory_id: parent_id,
@@ -572,11 +575,11 @@ fn create_test_trajectory(id: EntityId, parent_id: Option<EntityId>) -> Trajecto
     }
 }
 
-fn create_test_trajectory_with_status(id: EntityId, status: TrajectoryStatus) -> TrajectoryResponse {
+fn create_test_trajectory_with_status(id: TrajectoryId, status: TrajectoryStatus) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
         tenant_id: None,
-        name: format!("Test Trajectory {}", id),
+        name: format!("Test Trajectory {}", id.as_uuid()),
         description: None,
         status,
         parent_trajectory_id: None,
@@ -591,14 +594,14 @@ fn create_test_trajectory_with_status(id: EntityId, status: TrajectoryStatus) ->
 }
 
 fn create_test_trajectory_full(
-    id: EntityId,
+    id: TrajectoryId,
     status: TrajectoryStatus,
-    agent_id: Option<EntityId>,
+    agent_id: Option<AgentId>,
 ) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
         tenant_id: None,
-        name: format!("Test Trajectory {}", id),
+        name: format!("Test Trajectory {}", id.as_uuid()),
         description: Some("Test description".to_string()),
         status,
         parent_trajectory_id: None,
@@ -614,10 +617,10 @@ fn create_test_trajectory_full(
 
 fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
     ArtifactResponse {
-        artifact_id: caliber_core::new_entity_id(),
+        artifact_id: ArtifactId::now_v7(),
         tenant_id: None,
-        trajectory_id: caliber_core::new_entity_id(),
-        scope_id: caliber_core::new_entity_id(),
+        trajectory_id: TrajectoryId::now_v7(),
+        scope_id: ScopeId::now_v7(),
         artifact_type,
         name: "Test Artifact".to_string(),
         content: "Test content".to_string(),
@@ -638,7 +641,7 @@ fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
 
 fn create_test_note(note_type: NoteType) -> NoteResponse {
     NoteResponse {
-        note_id: caliber_core::new_entity_id(),
+        note_id: NoteId::now_v7(),
         tenant_id: None,
         note_type,
         title: "Test Note".to_string(),

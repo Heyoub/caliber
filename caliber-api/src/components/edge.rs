@@ -6,7 +6,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam};
 use crate::error::ApiError;
 use crate::types::{CreateEdgeRequest, EdgeResponse};
-use caliber_core::{EdgeType, EntityId};
+use caliber_core::{EdgeId, EdgeType, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for EdgeResponse
@@ -16,6 +16,7 @@ impl_component! {
     EdgeResponse {
         entity_name: "edge",
         pk_field: "edge_id",
+        id_type: EdgeId,
         requires_tenant: false,
         create_type: CreateEdgeRequest,
         update_type: (),
@@ -25,7 +26,7 @@ impl_component! {
             SqlParam::String(format!("{:?}", req.edge_type)),
             SqlParam::Json(serde_json::to_value(&req.participants).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::OptFloat(req.weight),
-            SqlParam::OptUuid(req.trajectory_id),
+            SqlParam::OptUuid(req.trajectory_id.map(|id| id.as_uuid())),
             SqlParam::Int(req.provenance.source_turn),
             SqlParam::String(format!("{:?}", req.provenance.extraction_method)),
             SqlParam::OptFloat(req.provenance.confidence),
@@ -36,7 +37,7 @@ impl_component! {
             // Edges are immutable - no updates allowed
             JsonValue::Object(serde_json::Map::new())
         },
-        not_found_error: |id| ApiError::entity_not_found("Edge", id),
+        not_found_error: |id| ApiError::entity_not_found("Edge", id.as_uuid()),
     }
 }
 
@@ -47,23 +48,23 @@ impl Listable for EdgeResponse {}
 #[derive(Debug, Clone, Default)]
 pub struct EdgeListFilter {
     /// Filter by source entity ID (any participant with "source" role)
-    pub source_id: Option<EntityId>,
+    pub source_id: Option<uuid::Uuid>,
     /// Filter by target entity ID (any participant with "target" role)
-    pub target_id: Option<EntityId>,
+    pub target_id: Option<uuid::Uuid>,
     /// Filter by any participant entity ID (regardless of role)
-    pub participant_id: Option<EntityId>,
+    pub participant_id: Option<uuid::Uuid>,
     /// Filter by tenant ID for cross-tenant edges
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
     /// Filter by edge type
     pub edge_type: Option<EdgeType>,
     /// Filter by trajectory context
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
 
 impl ListFilter for EdgeListFilter {
-    fn build_where(&self, _tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, _tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         // Edges don't require tenant filtering, but we still build conditions
         let mut conditions = Vec::new();
         let mut params = Vec::new();
@@ -72,7 +73,7 @@ impl ListFilter for EdgeListFilter {
         // Filter by tenant_id (for cross-tenant edge filtering)
         if let Some(tenant_id) = self.tenant_id {
             conditions.push(format!("tenant_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(tenant_id));
+            params.push(SqlParam::Uuid(tenant_id.as_uuid()));
             param_idx += 1;
         }
 
@@ -84,7 +85,7 @@ impl ListFilter for EdgeListFilter {
 
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("trajectory_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(trajectory_id));
+            params.push(SqlParam::Uuid(trajectory_id.as_uuid()));
             param_idx += 1;
         }
 

@@ -25,9 +25,11 @@ pub use cache::{
 
 use caliber_core::{
     AbstractionLevel, Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, Edge,
-    EdgeType, EmbeddingVector, EntityId, EntityType, Note, Scope, StorageError, Trajectory,
+    EdgeType, EmbeddingVector, UuidType, EntityType, Note, Scope, StorageError, Trajectory,
+    TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, EdgeId,
     TrajectoryStatus, Turn,
 };
+use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -65,7 +67,7 @@ pub struct ArtifactUpdate {
     /// Updated embedding
     pub embedding: Option<EmbeddingVector>,
     /// Superseded by another artifact
-    pub superseded_by: Option<EntityId>,
+    pub superseded_by: Option<Uuid>,
 }
 
 /// Update payload for notes.
@@ -76,7 +78,7 @@ pub struct NoteUpdate {
     /// Updated embedding
     pub embedding: Option<EmbeddingVector>,
     /// Superseded by another note
-    pub superseded_by: Option<EntityId>,
+    pub superseded_by: Option<Uuid>,
 }
 
 
@@ -93,10 +95,10 @@ pub trait StorageTrait: Send + Sync {
     fn trajectory_insert(&self, t: &Trajectory) -> CaliberResult<()>;
 
     /// Get a trajectory by ID.
-    fn trajectory_get(&self, id: EntityId) -> CaliberResult<Option<Trajectory>>;
+    fn trajectory_get(&self, id: Uuid) -> CaliberResult<Option<Trajectory>>;
 
     /// Update a trajectory.
-    fn trajectory_update(&self, id: EntityId, update: TrajectoryUpdate) -> CaliberResult<()>;
+    fn trajectory_update(&self, id: Uuid, update: TrajectoryUpdate) -> CaliberResult<()>;
 
     /// List trajectories by status.
     fn trajectory_list_by_status(&self, status: TrajectoryStatus) -> CaliberResult<Vec<Trajectory>>;
@@ -107,16 +109,16 @@ pub trait StorageTrait: Send + Sync {
     fn scope_insert(&self, s: &Scope) -> CaliberResult<()>;
 
     /// Get a scope by ID.
-    fn scope_get(&self, id: EntityId) -> CaliberResult<Option<Scope>>;
+    fn scope_get(&self, id: Uuid) -> CaliberResult<Option<Scope>>;
 
     /// Get the current active scope for a trajectory.
-    fn scope_get_current(&self, trajectory_id: EntityId) -> CaliberResult<Option<Scope>>;
+    fn scope_get_current(&self, trajectory_id: Uuid) -> CaliberResult<Option<Scope>>;
 
     /// Update a scope.
-    fn scope_update(&self, id: EntityId, update: ScopeUpdate) -> CaliberResult<()>;
+    fn scope_update(&self, id: Uuid, update: ScopeUpdate) -> CaliberResult<()>;
 
     /// List scopes for a trajectory.
-    fn scope_list_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Scope>>;
+    fn scope_list_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Scope>>;
 
     // === Artifact Operations ===
 
@@ -124,20 +126,20 @@ pub trait StorageTrait: Send + Sync {
     fn artifact_insert(&self, a: &Artifact) -> CaliberResult<()>;
 
     /// Get an artifact by ID.
-    fn artifact_get(&self, id: EntityId) -> CaliberResult<Option<Artifact>>;
+    fn artifact_get(&self, id: Uuid) -> CaliberResult<Option<Artifact>>;
 
     /// Query artifacts by type within a trajectory.
     fn artifact_query_by_type(
         &self,
-        trajectory_id: EntityId,
+        trajectory_id: Uuid,
         artifact_type: ArtifactType,
     ) -> CaliberResult<Vec<Artifact>>;
 
     /// Query artifacts by scope.
-    fn artifact_query_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Artifact>>;
+    fn artifact_query_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Artifact>>;
 
     /// Update an artifact.
-    fn artifact_update(&self, id: EntityId, update: ArtifactUpdate) -> CaliberResult<()>;
+    fn artifact_update(&self, id: Uuid, update: ArtifactUpdate) -> CaliberResult<()>;
 
     // === Note Operations ===
 
@@ -145,13 +147,13 @@ pub trait StorageTrait: Send + Sync {
     fn note_insert(&self, n: &Note) -> CaliberResult<()>;
 
     /// Get a note by ID.
-    fn note_get(&self, id: EntityId) -> CaliberResult<Option<Note>>;
+    fn note_get(&self, id: Uuid) -> CaliberResult<Option<Note>>;
 
     /// Query notes by trajectory.
-    fn note_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Note>>;
+    fn note_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Note>>;
 
     /// Update a note.
-    fn note_update(&self, id: EntityId, update: NoteUpdate) -> CaliberResult<()>;
+    fn note_update(&self, id: Uuid, update: NoteUpdate) -> CaliberResult<()>;
 
     // === Turn Operations ===
 
@@ -159,7 +161,7 @@ pub trait StorageTrait: Send + Sync {
     fn turn_insert(&self, t: &Turn) -> CaliberResult<()>;
 
     /// Get turns by scope.
-    fn turn_get_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Turn>>;
+    fn turn_get_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Turn>>;
 
     // === Vector Search (Task 11.2) ===
 
@@ -169,7 +171,7 @@ pub trait StorageTrait: Send + Sync {
         &self,
         query: &EmbeddingVector,
         limit: i32,
-    ) -> CaliberResult<Vec<(EntityId, f32)>>;
+    ) -> CaliberResult<Vec<(Uuid, f32)>>;
 
     // === Edge Operations (Battle Intel Feature 1) ===
 
@@ -177,16 +179,16 @@ pub trait StorageTrait: Send + Sync {
     fn edge_insert(&self, e: &Edge) -> CaliberResult<()>;
 
     /// Get an edge by ID.
-    fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>>;
+    fn edge_get(&self, id: Uuid) -> CaliberResult<Option<Edge>>;
 
     /// Query edges by type.
     fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>>;
 
     /// Query edges by trajectory.
-    fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>>;
+    fn edge_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Edge>>;
 
     /// Query edges involving a specific entity (as any participant).
-    fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>>;
+    fn edge_query_by_participant(&self, entity_id: Uuid) -> CaliberResult<Vec<Edge>>;
 
     // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
 
@@ -197,7 +199,7 @@ pub trait StorageTrait: Send + Sync {
     ) -> CaliberResult<Vec<Note>>;
 
     /// Query notes derived from a source note (derivation chain).
-    fn note_query_by_source_note(&self, source_note_id: EntityId) -> CaliberResult<Vec<Note>>;
+    fn note_query_by_source_note(&self, source_note_id: Uuid) -> CaliberResult<Vec<Note>>;
 }
 
 
@@ -208,13 +210,13 @@ pub trait StorageTrait: Send + Sync {
 /// In-memory mock storage for testing.
 #[derive(Debug, Default)]
 pub struct MockStorage {
-    trajectories: Arc<RwLock<HashMap<EntityId, Trajectory>>>,
-    scopes: Arc<RwLock<HashMap<EntityId, Scope>>>,
-    artifacts: Arc<RwLock<HashMap<EntityId, Artifact>>>,
-    notes: Arc<RwLock<HashMap<EntityId, Note>>>,
-    turns: Arc<RwLock<HashMap<EntityId, Turn>>>,
+    trajectories: Arc<RwLock<HashMap<Uuid, Trajectory>>>,
+    scopes: Arc<RwLock<HashMap<Uuid, Scope>>>,
+    artifacts: Arc<RwLock<HashMap<Uuid, Artifact>>>,
+    notes: Arc<RwLock<HashMap<Uuid, Note>>>,
+    turns: Arc<RwLock<HashMap<Uuid, Turn>>>,
     // Battle Intel Feature 1: Graph edges
-    edges: Arc<RwLock<HashMap<EntityId, Edge>>>,
+    edges: Arc<RwLock<HashMap<Uuid, Edge>>>,
 }
 
 impl MockStorage {
@@ -274,12 +276,12 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn trajectory_get(&self, id: EntityId) -> CaliberResult<Option<Trajectory>> {
+    fn trajectory_get(&self, id: Uuid) -> CaliberResult<Option<Trajectory>> {
         let trajectories = self.trajectories.read().unwrap();
         Ok(trajectories.get(&id).cloned())
     }
 
-    fn trajectory_update(&self, id: EntityId, update: TrajectoryUpdate) -> CaliberResult<()> {
+    fn trajectory_update(&self, id: Uuid, update: TrajectoryUpdate) -> CaliberResult<()> {
         let mut trajectories = self.trajectories.write().unwrap();
         let trajectory = trajectories.get_mut(&id).ok_or(
             CaliberError::Storage(StorageError::NotFound {
@@ -322,12 +324,12 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn scope_get(&self, id: EntityId) -> CaliberResult<Option<Scope>> {
+    fn scope_get(&self, id: Uuid) -> CaliberResult<Option<Scope>> {
         let scopes = self.scopes.read().unwrap();
         Ok(scopes.get(&id).cloned())
     }
 
-    fn scope_get_current(&self, trajectory_id: EntityId) -> CaliberResult<Option<Scope>> {
+    fn scope_get_current(&self, trajectory_id: Uuid) -> CaliberResult<Option<Scope>> {
         let scopes = self.scopes.read().unwrap();
         Ok(scopes
             .values()
@@ -336,7 +338,7 @@ impl StorageTrait for MockStorage {
             .cloned())
     }
 
-    fn scope_update(&self, id: EntityId, update: ScopeUpdate) -> CaliberResult<()> {
+    fn scope_update(&self, id: Uuid, update: ScopeUpdate) -> CaliberResult<()> {
         let mut scopes = self.scopes.write().unwrap();
         let scope = scopes.get_mut(&id).ok_or(
             CaliberError::Storage(StorageError::NotFound {
@@ -361,7 +363,7 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn scope_list_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Scope>> {
+    fn scope_list_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Scope>> {
         let scopes = self.scopes.read().unwrap();
         Ok(scopes
             .values()
@@ -385,14 +387,14 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn artifact_get(&self, id: EntityId) -> CaliberResult<Option<Artifact>> {
+    fn artifact_get(&self, id: Uuid) -> CaliberResult<Option<Artifact>> {
         let artifacts = self.artifacts.read().unwrap();
         Ok(artifacts.get(&id).cloned())
     }
 
     fn artifact_query_by_type(
         &self,
-        trajectory_id: EntityId,
+        trajectory_id: Uuid,
         artifact_type: ArtifactType,
     ) -> CaliberResult<Vec<Artifact>> {
         let artifacts = self.artifacts.read().unwrap();
@@ -403,7 +405,7 @@ impl StorageTrait for MockStorage {
             .collect())
     }
 
-    fn artifact_query_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Artifact>> {
+    fn artifact_query_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Artifact>> {
         let artifacts = self.artifacts.read().unwrap();
         Ok(artifacts
             .values()
@@ -412,7 +414,7 @@ impl StorageTrait for MockStorage {
             .collect())
     }
 
-    fn artifact_update(&self, id: EntityId, update: ArtifactUpdate) -> CaliberResult<()> {
+    fn artifact_update(&self, id: Uuid, update: ArtifactUpdate) -> CaliberResult<()> {
         let mut artifacts = self.artifacts.write().unwrap();
         let artifact = artifacts.get_mut(&id).ok_or(
             CaliberError::Storage(StorageError::NotFound {
@@ -450,12 +452,12 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn note_get(&self, id: EntityId) -> CaliberResult<Option<Note>> {
+    fn note_get(&self, id: Uuid) -> CaliberResult<Option<Note>> {
         let notes = self.notes.read().unwrap();
         Ok(notes.get(&id).cloned())
     }
 
-    fn note_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Note>> {
+    fn note_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Note>> {
         let notes = self.notes.read().unwrap();
         Ok(notes
             .values()
@@ -464,7 +466,7 @@ impl StorageTrait for MockStorage {
             .collect())
     }
 
-    fn note_update(&self, id: EntityId, update: NoteUpdate) -> CaliberResult<()> {
+    fn note_update(&self, id: Uuid, update: NoteUpdate) -> CaliberResult<()> {
         let mut notes = self.notes.write().unwrap();
         let note = notes.get_mut(&id).ok_or(
             CaliberError::Storage(StorageError::NotFound {
@@ -502,7 +504,7 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn turn_get_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
+    fn turn_get_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Turn>> {
         let turns = self.turns.read().unwrap();
         let mut result: Vec<Turn> = turns
             .values()
@@ -519,8 +521,8 @@ impl StorageTrait for MockStorage {
         &self,
         query: &EmbeddingVector,
         limit: i32,
-    ) -> CaliberResult<Vec<(EntityId, f32)>> {
-        let mut results: Vec<(EntityId, f32)> = Vec::new();
+    ) -> CaliberResult<Vec<(Uuid, f32)>> {
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
 
         // Search artifacts
         let artifacts = self.artifacts.read().unwrap();
@@ -565,7 +567,7 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>> {
+    fn edge_get(&self, id: Uuid) -> CaliberResult<Option<Edge>> {
         let edges = self.edges.read().unwrap();
         Ok(edges.get(&id).cloned())
     }
@@ -579,7 +581,7 @@ impl StorageTrait for MockStorage {
             .collect())
     }
 
-    fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>> {
+    fn edge_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Edge>> {
         let edges = self.edges.read().unwrap();
         Ok(edges
             .values()
@@ -588,7 +590,7 @@ impl StorageTrait for MockStorage {
             .collect())
     }
 
-    fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>> {
+    fn edge_query_by_participant(&self, entity_id: Uuid) -> CaliberResult<Vec<Edge>> {
         let edges = self.edges.read().unwrap();
         Ok(edges
             .values()
@@ -615,7 +617,7 @@ impl StorageTrait for MockStorage {
             .collect())
     }
 
-    fn note_query_by_source_note(&self, source_note_id: EntityId) -> CaliberResult<Vec<Note>> {
+    fn note_query_by_source_note(&self, source_note_id: Uuid) -> CaliberResult<Vec<Note>> {
         let notes = self.notes.read().unwrap();
         Ok(notes
             .values()
@@ -656,7 +658,7 @@ mod tests {
         }
     }
 
-    fn make_test_scope(trajectory_id: EntityId) -> Scope {
+    fn make_test_scope(trajectory_id: Uuid) -> Scope {
         Scope {
             scope_id: Uuid::now_v7(),
             trajectory_id,
@@ -673,7 +675,7 @@ mod tests {
         }
     }
 
-    fn make_test_artifact(trajectory_id: EntityId, scope_id: EntityId) -> Artifact {
+    fn make_test_artifact(trajectory_id: Uuid, scope_id: Uuid) -> Artifact {
         let content = "Test artifact content";
         Artifact {
             artifact_id: Uuid::now_v7(),
@@ -697,7 +699,7 @@ mod tests {
         }
     }
 
-    fn make_test_note(trajectory_id: EntityId) -> Note {
+    fn make_test_note(trajectory_id: Uuid) -> Note {
         let content = "Test note content";
         Note {
             note_id: Uuid::now_v7(),
@@ -720,7 +722,7 @@ mod tests {
         }
     }
 
-    fn make_test_turn(scope_id: EntityId) -> Turn {
+    fn make_test_turn(scope_id: Uuid) -> Turn {
         Turn {
             turn_id: Uuid::now_v7(),
             scope_id,

@@ -7,14 +7,14 @@
 //! on scope close to enable L0→L1→L2 abstraction transitions.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use caliber_core::ScopeId;
 use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
@@ -22,6 +22,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{
@@ -98,7 +99,7 @@ pub async fn create_scope(
 pub async fn get_scope(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ScopeId>,
 ) -> ApiResult<impl IntoResponse> {
     let scope = db
         .get::<ScopeResponse>(id, auth.tenant_id)
@@ -135,7 +136,7 @@ pub async fn update_scope(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ScopeId>,
     Json(req): Json<UpdateScopeRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -197,7 +198,7 @@ pub async fn update_scope(
 pub async fn create_checkpoint(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ScopeId>,
     Json(req): Json<CreateCheckpointRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate context_state is not empty
@@ -248,7 +249,7 @@ pub async fn close_scope(
     State(ws): State<Arc<WsState>>,
     State(pcp): State<Arc<PCPRuntime>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ScopeId>,
 ) -> ApiResult<impl IntoResponse> {
     // Get the scope and verify tenant ownership
     let existing = db
@@ -268,7 +269,7 @@ pub async fn close_scope(
     // =========================================================================
     // BATTLE INTEL: Check ScopeClose summarization triggers
     // =========================================================================
-    let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
+    let trajectory_id = scope.trajectory_id;
 
     // Fetch summarization policies for this trajectory
     if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
@@ -380,7 +381,7 @@ pub async fn close_scope(
 pub async fn list_scope_turns(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ScopeId>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
     let scope = db
@@ -420,7 +421,7 @@ pub async fn list_scope_turns(
 pub async fn list_scope_artifacts(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<ScopeId>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the scope exists and belongs to this tenant
     let scope = db
@@ -458,15 +459,12 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityId;
+    use caliber_core::TrajectoryId;
 
     #[test]
     fn test_create_scope_request_validation() {
-        // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil();
-
         let req = CreateScopeRequest {
-            trajectory_id: dummy_id,
+            trajectory_id: TrajectoryId::nil(),
             parent_scope_id: None,
             name: "".to_string(),
             purpose: None,

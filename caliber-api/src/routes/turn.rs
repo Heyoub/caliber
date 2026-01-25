@@ -7,14 +7,14 @@
 //! after turn creation to enable L0→L1→L2 abstraction transitions.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
+use caliber_core::TurnId;
 use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
@@ -22,6 +22,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{ArtifactResponse, CreateTurnRequest, ScopeResponse, TurnResponse},
@@ -89,7 +90,7 @@ pub async fn create_turn(
     // Get the scope to check trigger conditions
     if let Ok(Some(scope)) = db.get::<ScopeResponse>(req.scope_id, auth.tenant_id).await {
         // Get the trajectory ID from the scope for fetching policies
-        let trajectory_id: caliber_core::EntityId = scope.trajectory_id;
+        let trajectory_id = scope.trajectory_id;
 
         // Fetch summarization policies for this trajectory (custom function)
         if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
@@ -201,7 +202,7 @@ pub async fn create_turn(
 pub async fn get_turn(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TurnId>,
 ) -> ApiResult<Json<TurnResponse>> {
     // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let turn = db
@@ -226,12 +227,12 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{EntityId, TurnRole};
+    use caliber_core::{ScopeId, TurnRole};
 
     #[test]
     fn test_create_turn_request_validation() {
-        // Use a dummy UUID for testing (all zeros is valid)
-        let dummy_id: EntityId = uuid::Uuid::nil();
+        // Use a dummy ScopeId for testing (all zeros is valid)
+        let dummy_id = ScopeId::nil();
 
         let req = CreateTurnRequest {
             scope_id: dummy_id,
@@ -282,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_optional_fields() {
-        let dummy_id: EntityId = uuid::Uuid::nil();
+        let dummy_id = ScopeId::nil();
 
         let req = CreateTurnRequest {
             scope_id: dummy_id,
@@ -302,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_tool_calls_and_results() {
-        let dummy_id: EntityId = uuid::Uuid::nil();
+        let dummy_id = ScopeId::nil();
 
         let tool_calls = serde_json::json!([
             {

@@ -17,7 +17,11 @@
 //! create, get, update, delete, and list operations.
 
 use crate::error::{ApiError, ApiResult};
-use caliber_core::EntityId;
+use caliber_core::{
+    EntityIdType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId,
+    TurnId, AgentId, EdgeId, LockId, MessageId, DelegationId, HandoffId,
+    ApiKeyId, WebhookId, SummarizationPolicyId,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -38,10 +42,14 @@ use serde_json::Value as JsonValue;
 /// # Type Parameters
 ///
 /// The associated types define the request/response shapes:
+/// - `Id`: The ID type for this entity (e.g., TenantId, TrajectoryId)
 /// - `Create`: Request type for creating new entities
 /// - `Update`: Request type for updating entities
 /// - `ListFilter`: Filter type for list queries
 pub trait Component: Sized + Send + Sync + Clone + DeserializeOwned + Serialize {
+    /// The ID type for this entity (e.g., TenantId, TrajectoryId).
+    type Id: EntityIdType;
+
     /// Request type for creating new entities.
     type Create: Serialize + Send + Sync;
 
@@ -61,7 +69,7 @@ pub trait Component: Sized + Send + Sync + Clone + DeserializeOwned + Serialize 
     const REQUIRES_TENANT: bool = true;
 
     /// Get the entity ID from this component instance.
-    fn entity_id(&self) -> EntityId;
+    fn entity_id(&self) -> Self::Id;
 
     /// Build the SQL function name for a given operation.
     ///
@@ -76,7 +84,7 @@ pub trait Component: Sized + Send + Sync + Clone + DeserializeOwned + Serialize 
     /// the stored procedure.
     fn create_params(
         req: &Self::Create,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     ) -> Vec<SqlParam>;
 
     /// Get the number of parameters for create (excluding tenant_id).
@@ -88,7 +96,7 @@ pub trait Component: Sized + Send + Sync + Clone + DeserializeOwned + Serialize 
     fn build_updates(req: &Self::Update) -> JsonValue;
 
     /// Create a not-found error for this entity type.
-    fn not_found_error(id: EntityId) -> ApiError;
+    fn not_found_error(id: Self::Id) -> ApiError;
 
     /// Parse a JSON value into this component type.
     ///
@@ -188,7 +196,7 @@ pub trait ListFilter {
     /// Returns a tuple of (where_clause, parameters).
     /// The where_clause should NOT include the "WHERE" keyword - just the conditions.
     /// Returns None if no filtering is needed.
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>);
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>);
 
     /// Get the limit for this query (default: 100).
     fn limit(&self) -> i32 {
@@ -209,7 +217,7 @@ pub struct NoFilter {
 }
 
 impl ListFilter for NoFilter {
-    fn build_where(&self, _tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, _tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         (None, vec![])
     }
 
@@ -230,7 +238,10 @@ impl ListFilter for NoFilter {
 ///
 /// Most components are tenant-scoped. This trait ensures that
 /// tenant_id is always passed to the database operations.
-pub trait TenantScoped: Component {}
+pub trait TenantScoped: Component {
+    /// Get the tenant ID from this component instance.
+    fn tenant_id(&self) -> TenantId;
+}
 
 // ============================================================================
 // LISTABLE MARKER TRAIT
@@ -254,6 +265,7 @@ pub trait Listable: Component {}
 ///     TrajectoryResponse {
 ///         entity_name: "trajectory",
 ///         pk_field: "trajectory_id",
+///         id_type: TrajectoryId,
 ///         requires_tenant: true,
 ///         create_type: CreateTrajectoryRequest,
 ///         update_type: UpdateTrajectoryRequest,
@@ -262,7 +274,7 @@ pub trait Listable: Component {}
 ///         create_params: |req, tenant_id| vec![
 ///             SqlParam::String(req.name.clone()),
 ///             SqlParam::OptString(req.description.clone()),
-///             SqlParam::OptUuid(req.agent_id),
+///             SqlParam::OptUuid(req.agent_id.as_uuid()),
 ///         ],
 ///         create_param_count: 3,
 ///         build_updates: |req| {
@@ -282,6 +294,7 @@ macro_rules! impl_component {
         $response_type:ty {
             entity_name: $entity_name:literal,
             pk_field: $pk_field:literal,
+            id_type: $id_type:ty,
             requires_tenant: $requires_tenant:expr,
             create_type: $create_type:ty,
             update_type: $update_type:ty,
@@ -294,6 +307,7 @@ macro_rules! impl_component {
         }
     ) => {
         impl $crate::component::Component for $response_type {
+            type Id = $id_type;
             type Create = $create_type;
             type Update = $update_type;
             type ListFilter = $filter_type;
@@ -302,13 +316,13 @@ macro_rules! impl_component {
             const PK_FIELD: &'static str = $pk_field;
             const REQUIRES_TENANT: bool = $requires_tenant;
 
-            fn entity_id(&$self_id) -> caliber_core::EntityId {
+            fn entity_id(&$self_id) -> Self::Id {
                 $entity_id_expr
             }
 
             fn create_params(
                 $req: &Self::Create,
-                $tenant_id: caliber_core::EntityId,
+                $tenant_id: caliber_core::TenantId,
             ) -> Vec<$crate::component::SqlParam> {
                 $create_params_expr
             }
@@ -321,7 +335,7 @@ macro_rules! impl_component {
                 $build_updates_expr
             }
 
-            fn not_found_error($err_id: caliber_core::EntityId) -> $crate::error::ApiError {
+            fn not_found_error($err_id: Self::Id) -> $crate::error::ApiError {
                 $not_found_expr
             }
         }

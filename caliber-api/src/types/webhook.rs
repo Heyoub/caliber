@@ -2,7 +2,7 @@
 //!
 //! Types for managing webhook configurations for event notifications.
 
-use caliber_core::EntityId;
+use caliber_core::{WebhookId, TenantId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -13,8 +13,8 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct WebhookResponse {
-    pub webhook_id: EntityId,
-    pub tenant_id: EntityId,
+    pub webhook_id: WebhookId,
+    pub tenant_id: TenantId,
     pub name: String,
     pub url: String,
     pub events: Vec<String>, // e.g., ["trajectory.created", "artifact.updated"]

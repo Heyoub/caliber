@@ -10,7 +10,7 @@ use caliber_api::types::{
     ListTenantsResponse, ListTrajectoriesRequest, ListTrajectoriesResponse, LockResponse,
     MessageResponse, ScopeResponse, TurnResponse,
 };
-use caliber_core::EntityId;
+use caliber_core::{AgentId, EntityIdType, LockId, MessageId, ScopeId, TenantId, TrajectoryId};
 use futures_util::TryStreamExt;
 use reqwest::header::{HeaderMap, HeaderValue};
 use std::time::Duration;
@@ -100,7 +100,7 @@ impl RestClient {
 
     pub async fn list_trajectories(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         params: &ListTrajectoriesRequest,
     ) -> Result<ListTrajectoriesResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/trajectories", Some(params))
@@ -109,27 +109,27 @@ impl RestClient {
 
     pub async fn list_scopes(
         &self,
-        tenant_id: EntityId,
-        trajectory_id: EntityId,
+        tenant_id: TenantId,
+        trajectory_id: TrajectoryId,
     ) -> Result<Vec<ScopeResponse>, ApiClientError> {
-        let path = format!("/api/v1/trajectories/{}/scopes", trajectory_id);
+        let path = format!("/api/v1/trajectories/{}/scopes", trajectory_id.as_uuid());
         self.get_json::<Vec<ScopeResponse>, ()>(tenant_id, &path, None)
             .await
     }
 
     pub async fn list_turns(
         &self,
-        tenant_id: EntityId,
-        scope_id: EntityId,
+        tenant_id: TenantId,
+        scope_id: ScopeId,
     ) -> Result<Vec<TurnResponse>, ApiClientError> {
-        let path = format!("/api/v1/scopes/{}/turns", scope_id);
+        let path = format!("/api/v1/scopes/{}/turns", scope_id.as_uuid());
         self.get_json::<Vec<TurnResponse>, ()>(tenant_id, &path, None)
             .await
     }
 
     pub async fn list_artifacts(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         params: &ListArtifactsRequest,
     ) -> Result<ListArtifactsResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/artifacts", Some(params))
@@ -138,7 +138,7 @@ impl RestClient {
 
     pub async fn list_notes(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         params: &ListNotesRequest,
     ) -> Result<ListNotesResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/notes", Some(params))
@@ -147,7 +147,7 @@ impl RestClient {
 
     pub async fn list_agents(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         params: &ListAgentsRequest,
     ) -> Result<ListAgentsResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/agents", Some(params))
@@ -156,32 +156,32 @@ impl RestClient {
 
     pub async fn get_agent(
         &self,
-        tenant_id: EntityId,
-        agent_id: EntityId,
+        tenant_id: TenantId,
+        agent_id: AgentId,
     ) -> Result<AgentResponse, ApiClientError> {
-        let path = format!("/api/v1/agents/{}", agent_id);
+        let path = format!("/api/v1/agents/{}", agent_id.as_uuid());
         self.get_json::<AgentResponse, ()>(tenant_id, &path, None)
             .await
     }
 
-    pub async fn list_locks(&self, tenant_id: EntityId) -> Result<ListLocksResponse, ApiClientError> {
+    pub async fn list_locks(&self, tenant_id: TenantId) -> Result<ListLocksResponse, ApiClientError> {
         self.get_json::<ListLocksResponse, ()>(tenant_id, "/api/v1/locks", None)
             .await
     }
 
     pub async fn get_lock(
         &self,
-        tenant_id: EntityId,
-        lock_id: EntityId,
+        tenant_id: TenantId,
+        lock_id: LockId,
     ) -> Result<LockResponse, ApiClientError> {
-        let path = format!("/api/v1/locks/{}", lock_id);
+        let path = format!("/api/v1/locks/{}", lock_id.as_uuid());
         self.get_json::<LockResponse, ()>(tenant_id, &path, None)
             .await
     }
 
     pub async fn list_messages(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         params: &ListMessagesRequest,
     ) -> Result<ListMessagesResponse, ApiClientError> {
         self.get_json(tenant_id, "/api/v1/messages", Some(params))
@@ -190,10 +190,10 @@ impl RestClient {
 
     pub async fn get_message(
         &self,
-        tenant_id: EntityId,
-        message_id: EntityId,
+        tenant_id: TenantId,
+        message_id: MessageId,
     ) -> Result<MessageResponse, ApiClientError> {
-        let path = format!("/api/v1/messages/{}", message_id);
+        let path = format!("/api/v1/messages/{}", message_id.as_uuid());
         self.get_json::<MessageResponse, ()>(tenant_id, &path, None)
             .await
     }
@@ -207,7 +207,7 @@ impl RestClient {
 
     async fn get_json<T, Q>(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         path: &str,
         query: Option<&Q>,
     ) -> Result<T, ApiClientError>
@@ -220,7 +220,7 @@ impl RestClient {
             .client
             .get(url)
             .headers(self.auth_header.clone())
-            .header("x-tenant-id", tenant_id.to_string());
+            .header("x-tenant-id", tenant_id.as_uuid().to_string());
         if let Some(query) = query {
             request = request.query(query);
         }
@@ -276,7 +276,7 @@ impl GrpcClient {
         Ok(channel)
     }
 
-    pub fn auth_headers(&self, tenant_id: EntityId) -> HeaderMap {
+    pub fn auth_headers(&self, tenant_id: TenantId) -> HeaderMap {
         self.auth.to_header_map(tenant_id)
     }
 }
@@ -300,7 +300,7 @@ impl WsClient {
 
     pub async fn connect(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     ) -> Result<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, ApiClientError>
     {
         let mut request = Request::builder()
@@ -317,7 +317,7 @@ impl WsClient {
 
     pub async fn stream_events(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         sender: mpsc::Sender<TuiEvent>,
     ) -> Result<(), ApiClientError> {
         let mut stream = self.connect(tenant_id).await?;
@@ -357,7 +357,7 @@ impl AuthHeaders {
         })
     }
 
-    fn to_header_map(&self, tenant_id: EntityId) -> HeaderMap {
+    fn to_header_map(&self, tenant_id: TenantId) -> HeaderMap {
         let mut headers = HeaderMap::new();
         if let Some(api_key) = &self.api_key {
             headers.insert(
@@ -374,7 +374,7 @@ impl AuthHeaders {
         }
         headers.insert(
             HeaderName::from_static("x-tenant-id"),
-            HeaderValue::from_str(&tenant_id.to_string()).unwrap_or_else(|_| HeaderValue::from_static("")),
+            HeaderValue::from_str(&tenant_id.as_uuid().to_string()).unwrap_or_else(|_| HeaderValue::from_static("")),
         );
         headers
     }

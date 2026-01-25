@@ -69,28 +69,15 @@ pub trait EmbeddingProvider: Send + Sync {
 // ASYNC SUMMARIZATION PROVIDER TRAIT
 // ============================================================================
 
-/// Style of summarization output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SummarizeStyle {
-    Brief,
-    Detailed,
-    Structured,
-}
-
-/// Configuration for summarization requests.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SummarizeConfig {
-    pub max_tokens: i32,
-    pub style: SummarizeStyle,
-}
-
-/// An artifact extracted from content.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ExtractedArtifact {
-    pub artifact_type: ArtifactType,
-    pub content: String,
-    pub confidence: f32,
-}
+// Re-export LLM primitive types from caliber-core
+pub use caliber_core::{
+    SummarizeStyle, SummarizeStyleParseError,
+    SummarizeConfig,
+    ExtractedArtifact,
+    ProviderCapability, ProviderCapabilityParseError,
+    CircuitState, CircuitStateParseError,
+    RoutingStrategy,
+};
 
 /// Async trait for summarization providers.
 #[async_trait]
@@ -107,19 +94,6 @@ pub trait SummarizationProvider: Send + Sync {
 
     /// Detect if two pieces of content contradict each other.
     async fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool>;
-}
-
-// ============================================================================
-// PROVIDER CAPABILITIES & HEALTH
-// ============================================================================
-
-/// Capabilities a provider can offer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum ProviderCapability {
-    Embedding,
-    Summarization,
-    ArtifactExtraction,
-    ContradictionDetection,
 }
 
 // Re-export HealthStatus from core for unified health checks
@@ -298,24 +272,6 @@ impl Default for ListenerChain {
 // CIRCUIT BREAKER
 // ============================================================================
 
-/// Circuit breaker state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CircuitState {
-    Closed = 0,
-    Open = 1,
-    HalfOpen = 2,
-}
-
-impl From<u8> for CircuitState {
-    fn from(v: u8) -> Self {
-        match v {
-            0 => CircuitState::Closed,
-            1 => CircuitState::Open,
-            _ => CircuitState::HalfOpen,
-        }
-    }
-}
-
 /// Configuration for circuit breaker.
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
@@ -422,25 +378,6 @@ impl std::fmt::Debug for CircuitBreaker {
             .field("success_count", &self.success_count.load(Ordering::Relaxed))
             .finish()
     }
-}
-
-// ============================================================================
-// ROUTING STRATEGIES
-// ============================================================================
-
-/// Strategy for routing requests to providers.
-#[derive(Debug, Clone)]
-pub enum RoutingStrategy {
-    /// Round-robin between providers
-    RoundRobin,
-    /// Route to provider with lowest latency
-    LeastLatency,
-    /// Random selection
-    Random,
-    /// Route based on capability
-    Capability(ProviderCapability),
-    /// Always use first available provider
-    First,
 }
 
 // ============================================================================
@@ -774,59 +711,8 @@ impl std::fmt::Debug for ProviderRegistry {
     }
 }
 
-// ============================================================================
-// EMBEDDING CACHE
-// ============================================================================
-
-/// Cache for embedding vectors to avoid redundant API calls.
-pub struct EmbeddingCache {
-    cache: RwLock<HashMap<[u8; 32], EmbeddingVector>>,
-    max_size: usize,
-}
-
-impl EmbeddingCache {
-    pub fn new(max_size: usize) -> Self {
-        Self {
-            cache: RwLock::new(HashMap::new()),
-            max_size,
-        }
-    }
-
-    pub fn get(&self, hash: &[u8; 32]) -> Option<EmbeddingVector> {
-        self.cache.read().ok()?.get(hash).cloned()
-    }
-
-    pub fn insert(&self, hash: [u8; 32], embedding: EmbeddingVector) {
-        if let Ok(mut cache) = self.cache.write() {
-            if cache.len() < self.max_size {
-                cache.insert(hash, embedding);
-            }
-        }
-    }
-
-    pub fn clear(&self) {
-        if let Ok(mut cache) = self.cache.write() {
-            cache.clear();
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.cache.read().map(|c| c.len()).unwrap_or(0)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl std::fmt::Debug for EmbeddingCache {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EmbeddingCache")
-            .field("max_size", &self.max_size)
-            .field("current_size", &self.len())
-            .finish()
-    }
-}
+// NOTE: EmbeddingCache was removed. Use caliber_storage::ReadThroughCache instead
+// with LmdbCacheBackend for embedding caching with proper freshness contracts.
 
 // ============================================================================
 // COST TRACKER
@@ -1185,16 +1071,8 @@ mod tests {
         assert!(!cb.is_allowed());
     }
 
-    #[test]
-    fn test_embedding_cache() {
-        let cache = EmbeddingCache::new(100);
-        let hash = [0u8; 32];
-        let embedding = EmbeddingVector::new(vec![1.0, 2.0, 3.0], "test".to_string());
-
-        cache.insert(hash, embedding.clone());
-        let retrieved = cache.get(&hash).unwrap();
-        assert_eq!(retrieved.data, embedding.data);
-    }
+    // NOTE: test_embedding_cache removed - EmbeddingCache was deleted in favor of
+    // caliber_storage::ReadThroughCache
 
     #[test]
     fn test_cost_tracker() {

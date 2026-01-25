@@ -4,20 +4,21 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
+use caliber_core::TrajectoryId;
 use crate::{
     auth::validate_tenant_ownership,
     components::{ScopeListFilter, TrajectoryListFilter},
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{
@@ -137,7 +138,7 @@ pub async fn list_trajectories(
 pub async fn get_trajectory(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TrajectoryId>,
 ) -> ApiResult<impl IntoResponse> {
     let trajectory = db
         .get::<TrajectoryResponse>(id, auth.tenant_id)
@@ -174,7 +175,7 @@ pub async fn update_trajectory(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TrajectoryId>,
     Json(req): Json<UpdateTrajectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -228,7 +229,7 @@ pub async fn delete_trajectory(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TrajectoryId>,
 ) -> ApiResult<StatusCode> {
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = db
@@ -270,7 +271,7 @@ pub async fn delete_trajectory(
 pub async fn list_trajectory_scopes(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TrajectoryId>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = db
@@ -310,7 +311,7 @@ pub async fn list_trajectory_scopes(
 pub async fn list_trajectory_children(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<TrajectoryId>,
 ) -> ApiResult<impl IntoResponse> {
     // First verify the trajectory exists and belongs to this tenant
     let trajectory = db

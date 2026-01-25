@@ -1,6 +1,6 @@
 //! Turn-related API types
 
-use caliber_core::{EntityId, Timestamp, TurnRole};
+use caliber_core::{ScopeId, TenantId, Timestamp, TurnId, TurnRole};
 use serde::{Deserialize, Serialize};
 
 /// Request to create a new turn.
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct CreateTurnRequest {
     /// Scope this turn belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Sequence number within the scope
     pub sequence: i32,
     /// Role of the turn
@@ -34,12 +34,12 @@ pub struct CreateTurnRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TurnResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub turn_id: EntityId,
+    pub turn_id: TurnId,
     /// Tenant this turn belongs to (for multi-tenant isolation)
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub tenant_id: TenantId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub scope_id: ScopeId,
     pub sequence: i32,
     pub role: TurnRole,
     pub content: String,

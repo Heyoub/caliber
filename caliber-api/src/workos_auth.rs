@@ -23,7 +23,7 @@
 
 use crate::auth::{AuthContext, AuthMethod};
 use crate::error::{ApiError, ApiResult};
-use caliber_core::EntityId;
+use caliber_core::TenantId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -129,21 +129,21 @@ impl WorkOsClaims {
     /// WorkOS organization IDs are mapped to CALIBER tenant IDs.
     /// If the organization ID is a valid UUID, it's used directly.
     /// Otherwise, we generate a deterministic UUID from the organization ID.
-    pub fn tenant_id(&self) -> Option<EntityId> {
+    pub fn tenant_id(&self) -> Option<TenantId> {
         self.organization_id.as_ref().map(|org_id| {
             // Try to parse as UUID first
             if let Ok(uuid) = Uuid::parse_str(org_id) {
-                uuid
+                TenantId::new(uuid)
             } else {
                 // Generate a deterministic UUID v5 from the org ID
                 // Using DNS namespace for consistency
-                Uuid::new_v5(&Uuid::NAMESPACE_DNS, org_id.as_bytes())
+                TenantId::new(Uuid::new_v5(&Uuid::NAMESPACE_DNS, org_id.as_bytes()))
             }
         })
     }
 
     /// Convert to AuthContext for use in the rest of the API.
-    pub fn to_auth_context(&self, tenant_id: EntityId) -> AuthContext {
+    pub fn to_auth_context(&self, tenant_id: TenantId) -> AuthContext {
         AuthContext::with_profile(
             self.user_id.clone(),
             tenant_id,

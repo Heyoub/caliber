@@ -24,19 +24,20 @@
 //! ```
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use uuid::Uuid;
 
+use caliber_core::EntityIdType;
 use crate::{
     component::{Component, Listable, TenantScoped},
     db::DbClient,
     error::ApiResult,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
 };
@@ -71,7 +72,7 @@ where
 pub async fn get_handler<C>(
     db: DbClient,
     auth: crate::middleware::AuthInfo,
-    id: Uuid,
+    id: C::Id,
 ) -> ApiResult<Json<C>>
 where
     C: Component + TenantScoped,
@@ -87,7 +88,7 @@ where
 pub async fn update_handler<C>(
     db: DbClient,
     auth: crate::middleware::AuthInfo,
-    id: Uuid,
+    id: C::Id,
     req: C::Update,
 ) -> ApiResult<Json<C>>
 where
@@ -102,7 +103,7 @@ where
 pub async fn delete_handler<C>(
     db: DbClient,
     auth: crate::middleware::AuthInfo,
-    id: Uuid,
+    id: C::Id,
 ) -> ApiResult<StatusCode>
 where
     C: Component + TenantScoped,
@@ -186,7 +187,7 @@ where
 async fn get_route<C>(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<C::Id>,
 ) -> ApiResult<impl IntoResponse>
 where
     C: Component + TenantScoped,
@@ -197,7 +198,7 @@ where
 async fn update_route<C>(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<C::Id>,
     Json(req): Json<C::Update>,
 ) -> ApiResult<impl IntoResponse>
 where
@@ -210,7 +211,7 @@ where
 async fn delete_route<C>(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<C::Id>,
 ) -> ApiResult<StatusCode>
 where
     C: Component + TenantScoped,

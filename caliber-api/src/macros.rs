@@ -35,8 +35,8 @@ macro_rules! impl_from_ref {
 /// impl_entity!(TrajectoryResponse, trajectory_id);
 /// // Expands to:
 /// impl crate::traits::Entity for TrajectoryResponse {
-///     fn entity_id(&self) -> caliber_core::EntityId {
-///         self.trajectory_id
+///     fn entity_id(&self) -> uuid::Uuid {
+///         self.trajectory_id.as_uuid()
 ///     }
 /// }
 /// ```
@@ -44,18 +44,18 @@ macro_rules! impl_from_ref {
 macro_rules! impl_entity {
     ($type:ty, $id_field:ident) => {
         impl $crate::traits::Entity for $type {
-            fn entity_id(&self) -> caliber_core::EntityId {
-                self.$id_field
+            fn entity_id(&self) -> uuid::Uuid {
+                caliber_core::EntityIdType::as_uuid(&self.$id_field)
             }
         }
     };
     ($type:ty, $id_field:ident, $tenant_field:ident) => {
         impl $crate::traits::Entity for $type {
-            fn entity_id(&self) -> caliber_core::EntityId {
-                self.$id_field
+            fn entity_id(&self) -> uuid::Uuid {
+                caliber_core::EntityIdType::as_uuid(&self.$id_field)
             }
 
-            fn tenant_id(&self) -> Option<caliber_core::EntityId> {
+            fn tenant_id(&self) -> Option<caliber_core::TenantId> {
                 $crate::traits::normalize_tenant_id(self.$tenant_field)
             }
         }

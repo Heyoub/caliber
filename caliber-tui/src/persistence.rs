@@ -1,14 +1,14 @@
 //! Persistence for lightweight UI state.
 
 use crate::nav::View;
-use caliber_core::EntityId;
+use caliber_core::TenantId;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedState {
     pub active_view: View,
-    pub selected_tenant_id: Option<EntityId>,
+    pub selected_tenant_id: Option<TenantId>,
 }
 
 #[derive(Debug, thiserror::Error)]

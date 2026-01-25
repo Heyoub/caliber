@@ -10,7 +10,7 @@
 //!                      └── timeout() ─→ Failed (terminal)
 //! ```
 
-use crate::{EntityId, Timestamp};
+use crate::{AgentId, ArtifactId, DelegationId, ScopeId, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
@@ -173,7 +173,7 @@ pub struct DelegationResult {
     pub status: DelegationResultStatus,
     pub output: Option<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifacts: Vec<EntityId>,
+    pub artifacts: Vec<ArtifactId>,
     pub error: Option<String>,
 }
 
@@ -187,17 +187,17 @@ pub struct DelegationResult {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationData {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub delegation_id: EntityId,
+    pub delegation_id: DelegationId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub from_agent_id: EntityId,
+    pub from_agent_id: AgentId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub to_agent_id: EntityId,
+    pub to_agent_id: AgentId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     pub task_description: String,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
@@ -292,32 +292,32 @@ impl<S: DelegationState> Delegation<S> {
     }
 
     /// Get the delegation ID.
-    pub fn delegation_id(&self) -> EntityId {
+    pub fn delegation_id(&self) -> DelegationId {
         self.data.delegation_id
     }
 
     /// Get the tenant ID.
-    pub fn tenant_id(&self) -> EntityId {
+    pub fn tenant_id(&self) -> TenantId {
         self.data.tenant_id
     }
 
     /// Get the delegating agent ID.
-    pub fn from_agent_id(&self) -> EntityId {
+    pub fn from_agent_id(&self) -> AgentId {
         self.data.from_agent_id
     }
 
     /// Get the delegate agent ID.
-    pub fn to_agent_id(&self) -> EntityId {
+    pub fn to_agent_id(&self) -> AgentId {
         self.data.to_agent_id
     }
 
     /// Get the trajectory ID.
-    pub fn trajectory_id(&self) -> EntityId {
+    pub fn trajectory_id(&self) -> TrajectoryId {
         self.data.trajectory_id
     }
 
     /// Get the scope ID.
-    pub fn scope_id(&self) -> EntityId {
+    pub fn scope_id(&self) -> ScopeId {
         self.data.scope_id
     }
 
@@ -619,7 +619,7 @@ impl StoredDelegation {
 pub enum DelegationStateError {
     /// Delegation is not in the expected state.
     WrongState {
-        delegation_id: EntityId,
+        delegation_id: DelegationId,
         expected: DelegationStatus,
         actual: DelegationStatus,
     },
@@ -648,18 +648,18 @@ impl std::error::Error for DelegationStateError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EntityIdType;
     use chrono::Utc;
-    use uuid::Uuid;
 
     fn make_delegation_data() -> DelegationData {
         let now = Utc::now();
         DelegationData {
-            delegation_id: Uuid::now_v7(),
-            tenant_id: Uuid::now_v7(),
-            from_agent_id: Uuid::now_v7(),
-            to_agent_id: Uuid::now_v7(),
-            trajectory_id: Uuid::now_v7(),
-            scope_id: Uuid::now_v7(),
+            delegation_id: DelegationId::now_v7(),
+            tenant_id: TenantId::now_v7(),
+            from_agent_id: AgentId::now_v7(),
+            to_agent_id: AgentId::now_v7(),
+            trajectory_id: TrajectoryId::now_v7(),
+            scope_id: ScopeId::now_v7(),
             task_description: "Analyze codebase".to_string(),
             created_at: now,
             accepted_at: None,

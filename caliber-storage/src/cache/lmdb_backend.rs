@@ -22,7 +22,8 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityId, EntityType};
+use caliber_core::{CaliberResult, EntityType};
+use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
@@ -100,7 +101,7 @@ pub struct LmdbCacheBackend {
     /// The main database (single unnamed database).
     db: Database<Bytes, Bytes>,
     /// Per-tenant statistics.
-    tenant_stats: Arc<RwLock<HashMap<EntityId, TenantStatsInner>>>,
+    tenant_stats: Arc<RwLock<HashMap<Uuid, TenantStatsInner>>>,
     /// Global statistics.
     global_stats: Arc<RwLock<CacheStats>>,
 }
@@ -153,7 +154,7 @@ impl LmdbCacheBackend {
     }
 
     /// Record a cache hit for a tenant.
-    fn record_hit(&self, tenant_id: EntityId) {
+    fn record_hit(&self, tenant_id: Uuid) {
         if let Ok(mut stats) = self.tenant_stats.write() {
             stats.entry(tenant_id).or_default().hits += 1;
         }
@@ -163,7 +164,7 @@ impl LmdbCacheBackend {
     }
 
     /// Record a cache miss for a tenant.
-    fn record_miss(&self, tenant_id: EntityId) {
+    fn record_miss(&self, tenant_id: Uuid) {
         if let Ok(mut stats) = self.tenant_stats.write() {
             stats.entry(tenant_id).or_default().misses += 1;
         }
@@ -173,7 +174,7 @@ impl LmdbCacheBackend {
     }
 
     /// Update entry statistics after a successful put.
-    fn update_entry_stats(&self, tenant_id: EntityId, size_bytes: usize, is_new: bool) {
+    fn update_entry_stats(&self, tenant_id: Uuid, size_bytes: usize, is_new: bool) {
         if let Ok(mut stats) = self.tenant_stats.write() {
             let tenant_stats = stats.entry(tenant_id).or_default();
             if is_new {
@@ -189,7 +190,7 @@ impl LmdbCacheBackend {
     }
 
     /// Get statistics for a specific tenant.
-    pub fn tenant_stats(&self, tenant_id: EntityId) -> CacheStats {
+    pub fn tenant_stats(&self, tenant_id: Uuid) -> CacheStats {
         if let Ok(stats) = self.tenant_stats.read() {
             if let Some(tenant_stats) = stats.get(&tenant_id) {
                 return CacheStats {
@@ -236,8 +237,8 @@ impl LmdbCacheBackend {
 impl CacheBackend for LmdbCacheBackend {
     async fn get<T: CacheableEntity>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<Option<(T, DateTime<Utc>)>> {
         let key = TenantScopedKey::new(tenant_id, T::entity_type(), entity_id);
         let encoded_key = key.encode();
@@ -329,8 +330,8 @@ impl CacheBackend for LmdbCacheBackend {
 
     async fn delete<T: CacheableEntity>(
         &self,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<()> {
         self.delete_by_key(T::entity_type(), entity_id, tenant_id)
             .await
@@ -339,8 +340,8 @@ impl CacheBackend for LmdbCacheBackend {
     async fn delete_by_key(
         &self,
         entity_type: EntityType,
-        entity_id: EntityId,
-        tenant_id: EntityId,
+        entity_id: Uuid,
+        tenant_id: Uuid,
     ) -> CaliberResult<()> {
         let key = TenantScopedKey::new(tenant_id, entity_type, entity_id);
         let encoded_key = key.encode();
@@ -372,7 +373,7 @@ impl CacheBackend for LmdbCacheBackend {
         Ok(())
     }
 
-    async fn invalidate_tenant(&self, tenant_id: EntityId) -> CaliberResult<u64> {
+    async fn invalidate_tenant(&self, tenant_id: Uuid) -> CaliberResult<u64> {
         let prefix = TenantScopedKey::tenant_prefix(tenant_id);
         let keys_to_delete = self.collect_keys_with_prefix(&prefix)?;
 
@@ -406,7 +407,7 @@ impl CacheBackend for LmdbCacheBackend {
 
     async fn invalidate_entity_type(
         &self,
-        tenant_id: EntityId,
+        tenant_id: Uuid,
         entity_type: EntityType,
     ) -> CaliberResult<u64> {
         let prefix = TenantScopedKey::tenant_type_prefix(tenant_id, entity_type);
@@ -470,7 +471,7 @@ mod tests {
         (backend, temp_dir)
     }
 
-    fn make_test_trajectory(tenant_id: EntityId) -> caliber_core::Trajectory {
+    fn make_test_trajectory(tenant_id: Uuid) -> caliber_core::Trajectory {
         caliber_core::Trajectory {
             trajectory_id: tenant_id, // Using trajectory_id as tenant_id for this entity type
             name: "Test Trajectory".to_string(),
@@ -487,7 +488,7 @@ mod tests {
         }
     }
 
-    fn make_test_note(trajectory_id: EntityId) -> caliber_core::Note {
+    fn make_test_note(trajectory_id: Uuid) -> caliber_core::Note {
         caliber_core::Note {
             note_id: Uuid::now_v7(),
             note_type: NoteType::Fact,
@@ -510,8 +511,8 @@ mod tests {
     }
 
     fn make_test_artifact(
-        trajectory_id: EntityId,
-        scope_id: EntityId,
+        trajectory_id: Uuid,
+        scope_id: Uuid,
     ) -> caliber_core::Artifact {
         caliber_core::Artifact {
             artifact_id: Uuid::now_v7(),

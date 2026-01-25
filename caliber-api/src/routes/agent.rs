@@ -4,21 +4,22 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use chrono::Utc;
 use std::sync::Arc;
-use uuid::Uuid;
 
+use caliber_core::AgentId;
 use crate::{
     auth::validate_tenant_ownership,
     components::AgentListFilter,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{AgentResponse, ListAgentsRequest, ListAgentsResponse, RegisterAgentRequest, UpdateAgentRequest},
@@ -148,7 +149,7 @@ pub async fn list_agents(
 pub async fn get_agent(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<AgentId>,
 ) -> ApiResult<impl IntoResponse> {
     // Generic get filters by tenant_id, so not_found includes wrong tenant case
     let agent = db
@@ -183,7 +184,7 @@ pub async fn update_agent(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<AgentId>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Validate that at least one field is being updated
@@ -261,7 +262,7 @@ pub async fn unregister_agent(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<AgentId>,
 ) -> ApiResult<StatusCode> {
     // Get the agent
     let agent = db
@@ -310,7 +311,7 @@ pub async fn agent_heartbeat(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<AgentId>,
 ) -> ApiResult<impl IntoResponse> {
     // Get the agent
     let agent = db

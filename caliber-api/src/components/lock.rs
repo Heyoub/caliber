@@ -3,8 +3,9 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::lock::{AcquireLockRequest, ExtendLockRequest, LockResponse};
-use caliber_core::EntityId;
+use caliber_core::{AgentId, LockId, TenantId};
 use serde_json::Value as JsonValue;
+use uuid::Uuid;
 
 // Implement Component trait for LockResponse
 // Note: Lock creation is "acquire" and update is "extend"
@@ -12,6 +13,7 @@ impl_component! {
     LockResponse {
         entity_name: "lock",
         pk_field: "lock_id",
+        id_type: LockId,
         requires_tenant: true,
         create_type: AcquireLockRequest,
         update_type: ExtendLockRequest,
@@ -20,10 +22,10 @@ impl_component! {
         create_params: |req, tenant_id| vec![
             SqlParam::String(req.resource_type.clone()),
             SqlParam::Uuid(req.resource_id),
-            SqlParam::Uuid(req.holder_agent_id),
+            SqlParam::Uuid(req.holder_agent_id.as_uuid()),
             SqlParam::Long(req.timeout_ms),
             SqlParam::String(req.mode.clone()),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 6,
         build_updates: |req| {
@@ -32,22 +34,27 @@ impl_component! {
             updates.insert("additional_ms".to_string(), JsonValue::Number(req.additional_ms.into()));
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::lock_not_found(id),
+        not_found_error: |id| ApiError::lock_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for LockResponse {}
+impl TenantScoped for LockResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
+
 impl Listable for LockResponse {}
 
 /// Filter for listing locks.
 #[derive(Debug, Clone, Default)]
 pub struct LockListFilter {
     /// Filter by holder agent
-    pub holder_agent_id: Option<EntityId>,
+    pub holder_agent_id: Option<AgentId>,
     /// Filter by resource type
     pub resource_type: Option<String>,
-    /// Filter by resource ID
-    pub resource_id: Option<EntityId>,
+    /// Filter by resource ID (can lock any entity type)
+    pub resource_id: Option<Uuid>,
     /// Filter by lock mode (Exclusive or Shared)
     pub mode: Option<String>,
     pub limit: Option<i32>,
@@ -55,14 +62,14 @@ pub struct LockListFilter {
 }
 
 impl ListFilter for LockListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(holder_agent_id) = self.holder_agent_id {
             conditions.push(format!("holder_agent_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(holder_agent_id));
+            params.push(SqlParam::Uuid(holder_agent_id.as_uuid()));
             param_idx += 1;
         }
 

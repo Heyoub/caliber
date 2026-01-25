@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::agent::{
     AgentResponse, ListAgentsRequest, RegisterAgentRequest, UpdateAgentRequest,
 };
-use caliber_core::EntityId;
+use caliber_core::{AgentId, TenantId, TrajectoryId, ScopeId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for AgentResponse
@@ -13,6 +13,7 @@ impl_component! {
     AgentResponse {
         entity_name: "agent",
         pk_field: "agent_id",
+        id_type: AgentId,
         requires_tenant: true,
         create_type: RegisterAgentRequest,
         update_type: UpdateAgentRequest,
@@ -24,7 +25,7 @@ impl_component! {
             SqlParam::Json(serde_json::to_value(&req.memory_access).unwrap_or(JsonValue::Null)),
             SqlParam::Json(serde_json::to_value(&req.can_delegate_to).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::OptUuid(req.reports_to),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 6,
         build_updates: |req| {
@@ -46,11 +47,16 @@ impl_component! {
             }
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::agent_not_found(id),
+        not_found_error: |id| ApiError::agent_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for AgentResponse {}
+impl TenantScoped for AgentResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
+
 impl Listable for AgentResponse {}
 
 /// Filter for listing agents.
@@ -61,7 +67,7 @@ pub struct AgentListFilter {
     /// Filter by status
     pub status: Option<String>,
     /// Filter by current trajectory
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Only return active agents
     pub active_only: Option<bool>,
     pub limit: Option<i32>,
@@ -82,9 +88,9 @@ impl From<ListAgentsRequest> for AgentListFilter {
 }
 
 impl ListFilter for AgentListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(agent_type) = &self.agent_type {
@@ -101,7 +107,7 @@ impl ListFilter for AgentListFilter {
 
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("current_trajectory_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(trajectory_id));
+            params.push(SqlParam::Uuid(trajectory_id.as_uuid()));
             param_idx += 1;
         }
 

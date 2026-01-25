@@ -4,7 +4,7 @@ use super::{types::*, McpState};
 use crate::types::TrajectoryResponse;
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::EntityId;
+use caliber_core::{TenantId, TrajectoryId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -76,11 +76,11 @@ async fn execute_prompt(
     state: &McpState,
     name: &str,
     args: HashMap<String, String>,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
 ) -> ApiResult<GetPromptResponse> {
     match name {
         "summarize_trajectory" => {
-            let trajectory_id = parse_uuid(&args, "trajectory_id")?;
+            let trajectory_id = TrajectoryId::new(parse_uuid(&args, "trajectory_id")?);
             let trajectory = state
                 .db
                 .get::<TrajectoryResponse>(trajectory_id, tenant_id)
@@ -139,7 +139,7 @@ async fn execute_prompt(
         }
 
         "analyze_contradictions" => {
-            let trajectory_id = parse_uuid(&args, "trajectory_id")?;
+            let trajectory_id = TrajectoryId::new(parse_uuid(&args, "trajectory_id")?);
             let trajectory = state
                 .db
                 .get::<TrajectoryResponse>(trajectory_id, tenant_id)
@@ -169,7 +169,7 @@ async fn execute_prompt(
         }
 
         "create_artifact_summary" => {
-            let trajectory_id = parse_uuid(&args, "trajectory_id")?;
+            let trajectory_id = TrajectoryId::new(parse_uuid(&args, "trajectory_id")?);
             let trajectory = state
                 .db
                 .get::<TrajectoryResponse>(trajectory_id, tenant_id)
@@ -200,7 +200,7 @@ async fn execute_prompt(
 }
 
 /// Helper to parse UUID from args.
-fn parse_uuid(args: &HashMap<String, String>, key: &str) -> ApiResult<EntityId> {
+fn parse_uuid(args: &HashMap<String, String>, key: &str) -> ApiResult<Uuid> {
     let value = args
         .get(key)
         .ok_or_else(|| ApiError::missing_field(key))?;

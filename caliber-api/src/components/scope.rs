@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::scope::{CreateScopeRequest, ScopeResponse, UpdateScopeRequest};
-use caliber_core::EntityId;
+use caliber_core::{ScopeId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for ScopeResponse
@@ -11,17 +11,18 @@ impl_component! {
     ScopeResponse {
         entity_name: "scope",
         pk_field: "scope_id",
+        id_type: ScopeId,
         requires_tenant: true,
         create_type: CreateScopeRequest,
         update_type: UpdateScopeRequest,
         filter_type: ScopeListFilter,
         entity_id: |self| self.scope_id,
         create_params: |req, tenant_id| vec![
-            SqlParam::Uuid(req.trajectory_id),
+            SqlParam::Uuid(req.trajectory_id.as_uuid()),
             SqlParam::String(req.name.clone()),
             SqlParam::OptString(req.purpose.clone()),
             SqlParam::Int(req.token_budget),
-            SqlParam::Uuid(tenant_id),
+            SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 5,
         build_updates: |req| {
@@ -40,31 +41,35 @@ impl_component! {
             }
             JsonValue::Object(updates)
         },
-        not_found_error: |id| ApiError::scope_not_found(id),
+        not_found_error: |id| ApiError::scope_not_found(id.as_uuid()),
     }
 }
 
-impl TenantScoped for ScopeResponse {}
+impl TenantScoped for ScopeResponse {
+    fn tenant_id(&self) -> TenantId {
+        self.tenant_id
+    }
+}
 impl Listable for ScopeResponse {}
 
 /// Filter for listing scopes.
 #[derive(Debug, Clone, Default)]
 pub struct ScopeListFilter {
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     pub is_active: Option<bool>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
 
 impl ListFilter for ScopeListFilter {
-    fn build_where(&self, tenant_id: EntityId) -> (Option<String>, Vec<SqlParam>) {
+    fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
-        let mut params = vec![SqlParam::Uuid(tenant_id)];
+        let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
         let mut param_idx = 2;
 
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("trajectory_id = ${}", param_idx));
-            params.push(SqlParam::Uuid(trajectory_id));
+            params.push(SqlParam::Uuid(trajectory_id.as_uuid()));
             param_idx += 1;
         }
 

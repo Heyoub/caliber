@@ -9,6 +9,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use caliber_core::EdgeId;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -18,6 +19,7 @@ use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{CreateEdgeRequest, EdgeResponse, ListEdgesResponse},
@@ -140,7 +142,7 @@ pub async fn create_edges_batch(
 pub async fn get_edge(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<EdgeId>,
 ) -> ApiResult<impl IntoResponse> {
     // Edge doesn't enforce tenant filtering, so validate ownership after get
     let edge = db

@@ -16,7 +16,7 @@
 //!
 //! ```rust,ignore
 //! // Internal: use Result
-//! async fn fetch_notes(&self, id: EntityId) -> Result<Vec<Note>, StorageError> {
+//! async fn fetch_notes(&self, id: ScopeId) -> Result<Vec<Note>, StorageError> {
 //!     let rows = self.db.query(...).await?;
 //!     Ok(rows)
 //! }
@@ -39,7 +39,8 @@
 //! Domain errors are part of the business logic and must be tracked.
 //! Operational errors are infrastructure concerns and can be handled separately.
 
-use crate::{EntityId, EventId, DagPosition};
+use crate::{EventId, DagPosition};
+use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
@@ -371,17 +372,17 @@ pub enum DomainError {
     EntityNotFound {
         entity_type: String,
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        id: EntityId,
+        id: Uuid,
     },
     EntityAlreadyExists {
         entity_type: String,
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        id: EntityId,
+        id: Uuid,
     },
     EntityConflict {
         entity_type: String,
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        id: EntityId,
+        id: Uuid,
         reason: String,
     },
 
@@ -395,7 +396,7 @@ pub enum DomainError {
     StaleData {
         entity_type: String,
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        id: EntityId,
+        id: Uuid,
         expected_version: u64,
         actual_version: u64,
     },
@@ -412,15 +413,15 @@ pub enum DomainError {
     CircularReference {
         entity_type: String,
         #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-        ids: Vec<EntityId>,
+        ids: Vec<Uuid>,
     },
 
     // Business logic errors
     Contradiction {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        artifact_a: EntityId,
+        artifact_a: Uuid,
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        artifact_b: EntityId,
+        artifact_b: Uuid,
         description: String,
     },
     QuotaExceeded {
@@ -430,7 +431,7 @@ pub enum DomainError {
     },
     PermissionDenied {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        agent_id: EntityId,
+        agent_id: Uuid,
         action: String,
         resource: String,
     },
@@ -439,20 +440,20 @@ pub enum DomainError {
     LockAcquisitionFailed {
         resource: String,
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        holder: EntityId,
+        holder: Uuid,
     },
     LockExpired {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        lock_id: EntityId,
+        lock_id: Uuid,
     },
     DelegationFailed {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        delegation_id: EntityId,
+        delegation_id: Uuid,
         reason: String,
     },
     HandoffFailed {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        handoff_id: EntityId,
+        handoff_id: Uuid,
         reason: String,
     },
 }
@@ -677,13 +678,13 @@ pub enum CompensationAction {
     /// Notify an agent about the failure
     NotifyAgent {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        agent_id: EntityId,
+        agent_id: Uuid,
         message: String,
     },
     /// Release held resources
     ReleaseResources {
         #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-        resource_ids: Vec<EntityId>,
+        resource_ids: Vec<Uuid>,
     },
     /// Custom compensation
     Custom {
@@ -709,12 +710,12 @@ pub enum WaitCondition {
     /// Waiting for a lock to be released
     Lock {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        lock_id: EntityId,
+        lock_id: Uuid,
     },
     /// Waiting for a delegation to complete
     Delegation {
         #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-        delegation_id: EntityId,
+        delegation_id: Uuid,
     },
     /// Waiting for a timeout
     Timeout {

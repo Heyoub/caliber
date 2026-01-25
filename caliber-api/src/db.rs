@@ -10,7 +10,12 @@
 
 use crate::error::{ApiError, ApiResult};
 use crate::types::*;
-use caliber_core::{EntityId, Timestamp};
+use caliber_core::{
+    EntityIdType, Timestamp,
+    TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId,
+    TurnId, AgentId, LockId, MessageId, DelegationId, HandoffId,
+    EdgeId, ApiKeyId, WebhookId, SummarizationPolicyId,
+};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use serde_json::Value as JsonValue;
 use std::time::Duration;
@@ -113,10 +118,10 @@ pub struct DbClient {
 
 /// Parameters for message_list filters.
 pub struct MessageListParams<'a> {
-    pub from_agent_id: Option<EntityId>,
-    pub to_agent_id: Option<EntityId>,
+    pub from_agent_id: Option<AgentId>,
+    pub to_agent_id: Option<AgentId>,
     pub to_agent_type: Option<&'a str>,
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     pub message_type: Option<&'a str>,
     pub priority: Option<&'a str>,
     pub undelivered_only: bool,
@@ -159,38 +164,38 @@ impl DbClient {
     pub async fn trajectory_create(
         &self,
         req: &CreateTrajectoryRequest,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     ) -> ApiResult<TrajectoryResponse> {
         let conn = self.get_conn().await?;
 
-        let agent_uuid = req.agent_id;
+        let agent_uuid = req.agent_id.as_uuid();
 
         let row = conn
             .query_one(
                 "SELECT caliber_trajectory_create($1, $2, $3, $4)",
-                &[&req.name, &req.description, &agent_uuid, &tenant_id],
+                &[&req.name, &req.description, &agent_uuid, &tenant_id.as_uuid()],
             )
             .await?;
 
         let trajectory_id: Uuid = row.get(0);
 
         // Get the full trajectory details
-        self.trajectory_get(trajectory_id, tenant_id).await?
+        self.trajectory_get(TrajectoryId::new(trajectory_id), tenant_id).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created trajectory"))
     }
 
     /// Get a trajectory by ID by calling caliber_trajectory_get.
     pub async fn trajectory_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: TrajectoryId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<TrajectoryResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_trajectory_get($1, $2)",
-                &[&id, &tenant_id],
+                &[&id.as_uuid(), &tenant_id.as_uuid()],
             )
             .await?;
 
@@ -208,9 +213,9 @@ impl DbClient {
     /// Update a trajectory by calling caliber_trajectory_update.
     pub async fn trajectory_update(
         &self,
-        id: EntityId,
+        id: TrajectoryId,
         req: &UpdateTrajectoryRequest,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     ) -> ApiResult<TrajectoryResponse> {
         let conn = self.get_conn().await?;
 
@@ -240,7 +245,7 @@ impl DbClient {
         let updated: bool = conn
             .query_one(
                 "SELECT caliber_trajectory_update($1, $2, $3)",
-                &[&id, &updates_json, &tenant_id],
+                &[&id.as_uuid(), &updates_json, &tenant_id.as_uuid()],
             )
             .await?
             .get(0);
@@ -257,7 +262,7 @@ impl DbClient {
     pub async fn trajectory_list_by_status(
         &self,
         status: caliber_core::TrajectoryStatus,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     ) -> ApiResult<Vec<TrajectoryResponse>> {
         let conn = self.get_conn().await?;
 
@@ -271,7 +276,7 @@ impl DbClient {
         let row = conn
             .query_one(
                 "SELECT caliber_trajectory_list_by_status($1, $2)",
-                &[&status_str, &tenant_id],
+                &[&status_str, &tenant_id.as_uuid()],
             )
             .await?;
 
@@ -313,13 +318,13 @@ impl DbClient {
     /// Get a scope by ID by calling caliber_scope_get.
     pub async fn scope_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: ScopeId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<ScopeResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_scope_get($1, $2)", &[&id, &tenant_id])
+            .query_one("SELECT caliber_scope_get($1, $2)", &[&id.as_uuid(), &tenant_id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -359,13 +364,13 @@ impl DbClient {
     /// Get an artifact by ID by calling caliber_artifact_get.
     pub async fn artifact_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: ArtifactId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<ArtifactResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_artifact_get($1, $2)", &[&id, &tenant_id])
+            .query_one("SELECT caliber_artifact_get($1, $2)", &[&id.as_uuid(), &tenant_id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -382,7 +387,7 @@ impl DbClient {
     /// List recent artifacts across all trajectories for a tenant.
     pub async fn artifact_list_recent(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         limit: usize,
     ) -> ApiResult<Vec<ArtifactResponse>> {
         let statuses = [
@@ -411,15 +416,15 @@ impl DbClient {
     /// Query artifacts by trajectory for a specific tenant.
     pub async fn artifact_list_by_trajectory_and_tenant(
         &self,
-        trajectory_id: EntityId,
-        tenant_id: EntityId,
+        trajectory_id: TrajectoryId,
+        tenant_id: TenantId,
     ) -> ApiResult<Vec<ArtifactResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_artifact_query_by_trajectory_and_tenant($1, $2)",
-                &[&trajectory_id, &tenant_id],
+                &[&trajectory_id.as_uuid(), &tenant_id.as_uuid()],
             )
             .await?;
 
@@ -463,13 +468,13 @@ impl DbClient {
     /// Get a note by ID by calling caliber_note_get.
     pub async fn note_get(
         &self,
-        id: EntityId,
-        tenant_id: EntityId,
+        id: NoteId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<NoteResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_note_get($1, $2)", &[&id, &tenant_id])
+            .query_one("SELECT caliber_note_get($1, $2)", &[&id.as_uuid(), &tenant_id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -540,7 +545,7 @@ impl DbClient {
     ///
     /// The `tenant_id` parameter ensures tenant isolation by associating
     /// the agent with the authenticated user's tenant.
-    pub async fn agent_register(&self, req: &RegisterAgentRequest, tenant_id: EntityId) -> ApiResult<AgentResponse> {
+    pub async fn agent_register(&self, req: &RegisterAgentRequest, tenant_id: TenantId) -> ApiResult<AgentResponse> {
         let conn = self.get_conn().await?;
 
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
@@ -555,24 +560,24 @@ impl DbClient {
                     &capabilities_json,
                     &memory_access_json,
                     &can_delegate_to_json,
-                    &req.reports_to,
-                    &tenant_id,
+                    &req.reports_to.as_ref().map(|id| id.as_uuid()),
+                    &tenant_id.as_uuid(),
                 ],
             )
             .await?;
 
         let agent_id: Uuid = row.get(0);
 
-        self.agent_get(agent_id).await?
+        self.agent_get(AgentId::new(agent_id)).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve registered agent"))
     }
 
     /// Get an agent by ID by calling caliber_agent_get.
-    pub async fn agent_get(&self, id: EntityId) -> ApiResult<Option<AgentResponse>> {
+    pub async fn agent_get(&self, id: AgentId) -> ApiResult<Option<AgentResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_agent_get($1)", &[&id])
+            .query_one("SELECT caliber_agent_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -589,7 +594,7 @@ impl DbClient {
     /// Update an agent by calling caliber_agent_update.
     pub async fn agent_update(
         &self,
-        id: EntityId,
+        id: AgentId,
         req: &UpdateAgentRequest,
     ) -> ApiResult<AgentResponse> {
         let conn = self.get_conn().await?;
@@ -617,7 +622,7 @@ impl DbClient {
         let updated: bool = conn
             .query_one(
                 "SELECT caliber_agent_update($1, $2)",
-                &[&id, &updates_json],
+                &[&id.as_uuid(), &updates_json],
             )
             .await?
             .get(0);
@@ -720,35 +725,35 @@ impl DbClient {
     // ========================================================================
 
     /// Acquire a lock by calling caliber_lock_acquire.
-    pub async fn lock_acquire(&self, req: &AcquireLockRequest, tenant_id: EntityId) -> ApiResult<LockResponse> {
+    pub async fn lock_acquire(&self, req: &AcquireLockRequest, tenant_id: TenantId) -> ApiResult<LockResponse> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_lock_acquire($1, $2, $3, $4, $5, $6)",
                 &[
-                    &req.holder_agent_id,
+                    &req.holder_agent_id.as_uuid(),
                     &req.resource_type,
                     &req.resource_id,
                     &req.timeout_ms,
                     &req.mode,
-                    &tenant_id,
+                    &tenant_id.as_uuid(),
                 ],
             )
             .await?;
 
         let lock_id: Uuid = row.get(0);
 
-        self.lock_get(lock_id).await?
+        self.lock_get(LockId::new(lock_id)).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve acquired lock"))
     }
 
     /// Release a lock by calling caliber_lock_release.
-    pub async fn lock_release(&self, id: EntityId) -> ApiResult<()> {
+    pub async fn lock_release(&self, id: LockId) -> ApiResult<()> {
         let conn = self.get_conn().await?;
 
         let released: bool = conn
-            .query_one("SELECT caliber_lock_release($1)", &[&id])
+            .query_one("SELECT caliber_lock_release($1)", &[&id.as_uuid()])
             .await?
             .get(0);
 
@@ -760,11 +765,11 @@ impl DbClient {
     }
 
     /// Get a lock by ID by calling caliber_lock_get.
-    pub async fn lock_get(&self, id: EntityId) -> ApiResult<Option<LockResponse>> {
+    pub async fn lock_get(&self, id: LockId) -> ApiResult<Option<LockResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_lock_get($1)", &[&id])
+            .query_one("SELECT caliber_lock_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -797,9 +802,9 @@ impl DbClient {
     }
 
     /// List all active locks for a specific tenant.
-    pub async fn lock_list_active_by_tenant(&self, tenant_id: EntityId) -> ApiResult<Vec<LockResponse>> {
+    pub async fn lock_list_active_by_tenant(&self, tenant_id: TenantId) -> ApiResult<Vec<LockResponse>> {
         let conn = self.get_conn().await?;
-        let row = conn.query_one("SELECT caliber_lock_list_active_by_tenant($1)", &[&tenant_id]).await?;
+        let row = conn.query_one("SELECT caliber_lock_list_active_by_tenant($1)", &[&tenant_id.as_uuid()]).await?;
         let json: JsonValue = row.get(0);
         let locks_json = json.as_array().ok_or_else(|| {
             ApiError::internal_error("caliber_lock_list_active_by_tenant returned non-array")
@@ -833,41 +838,41 @@ impl DbClient {
     // ========================================================================
 
     /// Send a message by calling caliber_message_send.
-    pub async fn message_send(&self, req: &SendMessageRequest, tenant_id: EntityId) -> ApiResult<MessageResponse> {
+    pub async fn message_send(&self, req: &SendMessageRequest, tenant_id: TenantId) -> ApiResult<MessageResponse> {
         let conn = self.get_conn().await?;
-        let artifact_ids = req.artifact_ids.to_vec();
+        let artifact_ids: Vec<Uuid> = req.artifact_ids.iter().map(|id| id.as_uuid()).collect();
 
         let row = conn
             .query_one(
                 "SELECT caliber_message_send($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
                 &[
-                    &req.from_agent_id,
-                    &req.to_agent_id,
+                    &req.from_agent_id.as_uuid(),
+                    &req.to_agent_id.as_ref().map(|id| id.as_uuid()),
                     &req.to_agent_type,
                     &req.message_type,
                     &req.payload,
-                    &req.trajectory_id,
-                    &req.scope_id,
+                    &req.trajectory_id.as_ref().map(|id| id.as_uuid()),
+                    &req.scope_id.as_ref().map(|id| id.as_uuid()),
                     &artifact_ids,
                     &req.priority,
                     &req.expires_at.map(|ts| ts.timestamp()),
-                    &tenant_id,
+                    &tenant_id.as_uuid(),
                 ],
             )
             .await?;
 
         let message_id: Uuid = row.get(0);
 
-        self.message_get(message_id).await?
+        self.message_get(MessageId::new(message_id)).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve sent message"))
     }
 
     /// Get a message by ID by calling caliber_message_get.
-    pub async fn message_get(&self, id: EntityId) -> ApiResult<Option<MessageResponse>> {
+    pub async fn message_get(&self, id: MessageId) -> ApiResult<Option<MessageResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_message_get($1)", &[&id])
+            .query_one("SELECT caliber_message_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -921,7 +926,7 @@ impl DbClient {
     pub async fn message_list_by_tenant(
         &self,
         params: MessageListParams<'_>,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     ) -> ApiResult<Vec<MessageResponse>> {
         let conn = self.get_conn().await?;
 
@@ -981,37 +986,37 @@ impl DbClient {
     // ========================================================================
 
     /// Create a delegation by calling caliber_delegation_create.
-    pub async fn delegation_create(&self, req: &CreateDelegationRequest, tenant_id: EntityId) -> ApiResult<DelegationResponse> {
+    pub async fn delegation_create(&self, req: &CreateDelegationRequest, tenant_id: TenantId) -> ApiResult<DelegationResponse> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_delegation_create($1, $2, $3, $4, $5, $6, $7, $8)",
                 &[
-                    &req.from_agent_id,
-                    &req.to_agent_id,
-                    &req.trajectory_id,
-                    &req.scope_id,
+                    &req.from_agent_id.as_uuid(),
+                    &req.to_agent_id.as_uuid(),
+                    &req.trajectory_id.as_uuid(),
+                    &req.scope_id.as_uuid(),
                     &req.task_description,
                     &req.expected_completion.map(|ts| ts.timestamp()),
                     &req.context,
-                    &tenant_id,
+                    &tenant_id.as_uuid(),
                 ],
             )
             .await?;
 
         let delegation_id: Uuid = row.get(0);
 
-        self.delegation_get(delegation_id).await?
+        self.delegation_get(DelegationId::new(delegation_id)).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created delegation"))
     }
 
     /// Get a delegation by ID by calling caliber_delegation_get.
-    pub async fn delegation_get(&self, id: EntityId) -> ApiResult<Option<DelegationResponse>> {
+    pub async fn delegation_get(&self, id: DelegationId) -> ApiResult<Option<DelegationResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_delegation_get($1)", &[&id])
+            .query_one("SELECT caliber_delegation_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -1028,7 +1033,7 @@ impl DbClient {
     /// Reject a delegation by calling caliber_delegation_reject.
     pub async fn delegation_reject(
         &self,
-        id: EntityId,
+        id: DelegationId,
         reason: String,
     ) -> ApiResult<DelegationResponse> {
         let conn = self.get_conn().await?;
@@ -1036,17 +1041,17 @@ impl DbClient {
         let updated: bool = conn
             .query_one(
                 "SELECT caliber_delegation_reject($1, $2)",
-                &[&id, &reason],
+                &[&id.as_uuid(), &reason],
             )
             .await?
             .get(0);
 
         if !updated {
-            return Err(ApiError::entity_not_found("Delegation", id));
+            return Err(ApiError::entity_not_found("Delegation", id.as_uuid()));
         }
 
         self.delegation_get(id).await?
-            .ok_or_else(|| ApiError::entity_not_found("Delegation", id))
+            .ok_or_else(|| ApiError::entity_not_found("Delegation", id.as_uuid()))
     }
 
     /// Parse delegation JSON into DelegationResponse.
@@ -1080,36 +1085,36 @@ impl DbClient {
     // ========================================================================
 
     /// Create a handoff by calling caliber_handoff_create.
-    pub async fn handoff_create(&self, req: &CreateHandoffRequest, tenant_id: EntityId) -> ApiResult<HandoffResponse> {
+    pub async fn handoff_create(&self, req: &CreateHandoffRequest, tenant_id: TenantId) -> ApiResult<HandoffResponse> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_handoff_create($1, $2, $3, $4, $5, $6, $7)",
                 &[
-                    &req.from_agent_id,
-                    &req.to_agent_id,
-                    &req.trajectory_id,
-                    &req.scope_id,
+                    &req.from_agent_id.as_uuid(),
+                    &req.to_agent_id.as_uuid(),
+                    &req.trajectory_id.as_uuid(),
+                    &req.scope_id.as_uuid(),
                     &req.reason,
                     &req.context_snapshot,
-                    &tenant_id,
+                    &tenant_id.as_uuid(),
                 ],
             )
             .await?;
 
         let handoff_id: Uuid = row.get(0);
 
-        self.handoff_get(handoff_id).await?
+        self.handoff_get(HandoffId::new(handoff_id)).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created handoff"))
     }
 
     /// Get a handoff by ID by calling caliber_handoff_get.
-    pub async fn handoff_get(&self, id: EntityId) -> ApiResult<Option<HandoffResponse>> {
+    pub async fn handoff_get(&self, id: HandoffId) -> ApiResult<Option<HandoffResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_handoff_get($1)", &[&id])
+            .query_one("SELECT caliber_handoff_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -1146,20 +1151,20 @@ impl DbClient {
     // ========================================================================
 
     /// Parse a UUID from JSON field.
-    fn parse_uuid(&self, json: &JsonValue, field: &str) -> ApiResult<EntityId> {
+    fn parse_uuid(&self, json: &JsonValue, field: &str) -> ApiResult<Uuid> {
         let uuid_str = json
             .get(field)
             .and_then(|v| v.as_str())
             .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
-        
+
         let uuid = Uuid::parse_str(uuid_str)
             .map_err(|_| ApiError::internal_error(format!("Invalid UUID in field: {}", field)))?;
-        
+
         Ok(uuid)
     }
 
     /// Parse an optional UUID from JSON field.
-    fn parse_optional_uuid(&self, json: &JsonValue, field: &str) -> Option<EntityId> {
+    fn parse_optional_uuid(&self, json: &JsonValue, field: &str) -> Option<Uuid> {
         json.get(field)
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
@@ -1311,12 +1316,12 @@ impl DbClient {
     }
 
     /// Parse a UUID array from JSON field.
-    fn parse_uuid_array(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<EntityId>> {
+    fn parse_uuid_array(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<Uuid>> {
         let array = json
             .get(field)
             .and_then(|v| v.as_array())
             .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
-        
+
         let mut uuids = Vec::new();
         for item in array {
             if let Some(uuid_str) = item.as_str() {
@@ -1325,7 +1330,7 @@ impl DbClient {
                 }
             }
         }
-        
+
         Ok(uuids)
     }
 
@@ -1476,11 +1481,11 @@ impl DbClient {
     // ========================================================================
 
     /// Delete a trajectory by calling caliber_trajectory_delete.
-    pub async fn trajectory_delete(&self, id: EntityId) -> ApiResult<()> {
+    pub async fn trajectory_delete(&self, id: TrajectoryId) -> ApiResult<()> {
         let conn = self.get_conn().await?;
 
         let deleted: bool = conn
-            .query_one("SELECT caliber_trajectory_delete($1)", &[&id])
+            .query_one("SELECT caliber_trajectory_delete($1)", &[&id.as_uuid()])
             .await?
             .get(0);
 
@@ -1492,11 +1497,11 @@ impl DbClient {
     }
 
     /// List child trajectories by calling caliber_trajectory_list_children.
-    pub async fn trajectory_list_children(&self, id: EntityId) -> ApiResult<Vec<TrajectoryResponse>> {
+    pub async fn trajectory_list_children(&self, id: TrajectoryId) -> ApiResult<Vec<TrajectoryResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_trajectory_list_children($1)", &[&id])
+            .query_one("SELECT caliber_trajectory_list_children($1)", &[&id.as_uuid()])
             .await?;
 
         let json: JsonValue = row.get(0);
@@ -1526,11 +1531,11 @@ impl DbClient {
     // ========================================================================
 
     /// Get an edge by ID by calling caliber_edge_get.
-    pub async fn edge_get(&self, id: EntityId) -> ApiResult<Option<EdgeResponse>> {
+    pub async fn edge_get(&self, id: EdgeId) -> ApiResult<Option<EdgeResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_edge_get($1)", &[&id])
+            .query_one("SELECT caliber_edge_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_value: Option<JsonValue> = row.get(0);
@@ -1569,7 +1574,7 @@ impl DbClient {
                     &target_level_str,
                     &req.max_sources,
                     &req.create_edges,
-                    &req.trajectory_id,
+                    &req.trajectory_id.as_ref().map(|id| id.as_uuid()),
                     &req.metadata,
                 ],
             )
@@ -1578,7 +1583,7 @@ impl DbClient {
         let policy_id: Option<Uuid> = row.get(0);
         let policy_id = policy_id.ok_or_else(|| ApiError::internal_error("Failed to create policy"))?;
 
-        self.summarization_policy_get(policy_id)
+        self.summarization_policy_get(SummarizationPolicyId::new(policy_id))
             .await?
             .ok_or_else(|| ApiError::internal_error("Policy created but not found"))
     }
@@ -1586,12 +1591,12 @@ impl DbClient {
     /// Get a summarization policy by ID.
     pub async fn summarization_policy_get(
         &self,
-        id: EntityId,
+        id: SummarizationPolicyId,
     ) -> ApiResult<Option<SummarizationPolicyResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_summarization_policy_get($1)", &[&id])
+            .query_one("SELECT caliber_summarization_policy_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_value: Option<JsonValue> = row.get(0);
@@ -1608,14 +1613,14 @@ impl DbClient {
     /// List summarization policies for a trajectory.
     pub async fn summarization_policies_for_trajectory(
         &self,
-        trajectory_id: EntityId,
+        trajectory_id: TrajectoryId,
     ) -> ApiResult<Vec<SummarizationPolicyResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_summarization_policies_by_trajectory($1)",
-                &[&trajectory_id],
+                &[&trajectory_id.as_uuid()],
             )
             .await?;
 
@@ -1626,16 +1631,16 @@ impl DbClient {
     }
 
     /// Delete a summarization policy by ID.
-    pub async fn summarization_policy_delete(&self, id: EntityId) -> ApiResult<()> {
+    pub async fn summarization_policy_delete(&self, id: SummarizationPolicyId) -> ApiResult<()> {
         let conn = self.get_conn().await?;
 
         let deleted: bool = conn
-            .query_one("SELECT caliber_summarization_policy_delete($1)", &[&id])
+            .query_one("SELECT caliber_summarization_policy_delete($1)", &[&id.as_uuid()])
             .await?
             .get(0);
 
         if !deleted {
-            return Err(ApiError::entity_not_found("SummarizationPolicy", id));
+            return Err(ApiError::entity_not_found("SummarizationPolicy", id.as_uuid()));
         }
 
         Ok(())
@@ -1751,11 +1756,11 @@ impl DbClient {
     }
 
     /// Get a tenant by ID.
-    pub async fn tenant_get(&self, id: EntityId) -> ApiResult<Option<TenantInfo>> {
+    pub async fn tenant_get(&self, id: TenantId) -> ApiResult<Option<TenantInfo>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_tenant_get($1)", &[&id])
+            .query_one("SELECT caliber_tenant_get($1)", &[&id.as_uuid()])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -1774,13 +1779,13 @@ impl DbClient {
     // ========================================================================
 
     /// Search across entities.
-    pub async fn search(&self, req: &SearchRequest, tenant_id: EntityId) -> ApiResult<SearchResponse> {
+    pub async fn search(&self, req: &SearchRequest, tenant_id: TenantId) -> ApiResult<SearchResponse> {
         let conn = self.get_conn().await?;
 
         let query_json = serde_json::to_string(&req)?;
 
         let row = conn
-            .query_one("SELECT caliber_search($1::jsonb, $2)", &[&query_json, &tenant_id])
+            .query_one("SELECT caliber_search($1::jsonb, $2)", &[&query_json, &tenant_id.as_uuid()])
             .await?;
 
         let json: JsonValue = row.get(0);
@@ -1827,7 +1832,7 @@ impl DbClient {
     // ========================================================================
 
     /// Get billing status for a tenant.
-    pub async fn billing_get_status(&self, tenant_id: EntityId) -> ApiResult<crate::routes::billing::BillingStatus> {
+    pub async fn billing_get_status(&self, tenant_id: TenantId) -> ApiResult<crate::routes::billing::BillingStatus> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -1835,7 +1840,7 @@ impl DbClient {
                 "SELECT plan, trial_ends_at, storage_used_bytes, storage_limit_bytes,
                         hot_cache_used_bytes, hot_cache_limit_bytes
                  FROM caliber_billing WHERE tenant_id = $1",
-                &[&tenant_id],
+                &[&tenant_id.as_uuid()],
             )
             .await?;
 
@@ -1879,7 +1884,7 @@ impl DbClient {
     /// Update billing plan for a tenant.
     pub async fn billing_update_plan(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         plan: crate::routes::billing::BillingPlan,
     ) -> ApiResult<()> {
         let conn = self.get_conn().await?;
@@ -1894,7 +1899,7 @@ impl DbClient {
             "INSERT INTO caliber_billing (tenant_id, plan, updated_at)
              VALUES ($1, $2, NOW())
              ON CONFLICT (tenant_id) DO UPDATE SET plan = $2, updated_at = NOW()",
-            &[&tenant_id, &plan_str],
+            &[&tenant_id.as_uuid(), &plan_str],
         )
         .await?;
 
@@ -1902,13 +1907,13 @@ impl DbClient {
     }
 
     /// Get LemonSqueezy customer ID for a tenant.
-    pub async fn billing_get_customer_id(&self, tenant_id: EntityId) -> ApiResult<String> {
+    pub async fn billing_get_customer_id(&self, tenant_id: TenantId) -> ApiResult<String> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_opt(
                 "SELECT customer_id FROM caliber_billing WHERE tenant_id = $1 AND customer_id IS NOT NULL",
-                &[&tenant_id],
+                &[&tenant_id.as_uuid()],
             )
             .await?;
 
@@ -1917,14 +1922,14 @@ impl DbClient {
     }
 
     /// Set LemonSqueezy customer ID for a tenant.
-    pub async fn billing_set_customer_id(&self, tenant_id: EntityId, customer_id: &str) -> ApiResult<()> {
+    pub async fn billing_set_customer_id(&self, tenant_id: TenantId, customer_id: &str) -> ApiResult<()> {
         let conn = self.get_conn().await?;
 
         conn.execute(
             "INSERT INTO caliber_billing (tenant_id, customer_id, updated_at)
              VALUES ($1, $2, NOW())
              ON CONFLICT (tenant_id) DO UPDATE SET customer_id = $2, updated_at = NOW()",
-            &[&tenant_id, &customer_id],
+            &[&tenant_id.as_uuid(), &customer_id],
         )
         .await?;
 
@@ -1955,7 +1960,7 @@ impl DbClient {
         name: &str,
         domain: Option<&str>,
         workos_organization_id: Option<&str>,
-    ) -> ApiResult<EntityId> {
+    ) -> ApiResult<TenantId> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -1966,7 +1971,7 @@ impl DbClient {
             .await?;
 
         let tenant_id: Uuid = row.get(0);
-        Ok(tenant_id)
+        Ok(TenantId::new(tenant_id))
     }
 
     /// Get a tenant by domain.
@@ -2010,19 +2015,19 @@ impl DbClient {
     /// Upsert a tenant member (insert or update).
     pub async fn tenant_member_upsert(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         user_id: &str,
         email: &str,
         role: &str,
         first_name: Option<&str>,
         last_name: Option<&str>,
-    ) -> ApiResult<EntityId> {
+    ) -> ApiResult<Uuid> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_tenant_member_upsert($1, $2, $3, $4, $5, $6)",
-                &[&tenant_id, &user_id, &email, &role, &first_name, &last_name],
+                &[&tenant_id.as_uuid(), &user_id, &email, &role, &first_name, &last_name],
             )
             .await?;
 
@@ -2031,13 +2036,13 @@ impl DbClient {
     }
 
     /// Count the number of members in a tenant.
-    pub async fn tenant_member_count(&self, tenant_id: EntityId) -> ApiResult<i32> {
+    pub async fn tenant_member_count(&self, tenant_id: TenantId) -> ApiResult<i32> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_tenant_member_count($1)",
-                &[&tenant_id],
+                &[&tenant_id.as_uuid()],
             )
             .await?;
 
@@ -2075,13 +2080,13 @@ impl DbClient {
     ///
     /// This is used to establish a baseline for cache invalidation polling.
     /// Returns 0 if no changes have been recorded for the tenant.
-    pub async fn current_watermark(&self, tenant_id: EntityId) -> ApiResult<i64> {
+    pub async fn current_watermark(&self, tenant_id: TenantId) -> ApiResult<i64> {
         let conn = self.get_conn().await?;
 
         let row = conn
             .query_one(
                 "SELECT caliber_current_watermark($1)",
-                &[&tenant_id],
+                &[&tenant_id.as_uuid()],
             )
             .await?;
 
@@ -2095,7 +2100,7 @@ impl DbClient {
     /// Optionally filter by entity types for selective cache invalidation.
     pub async fn has_changes_since(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         watermark: i64,
         entity_types: Option<&[&str]>,
     ) -> ApiResult<bool> {
@@ -2108,7 +2113,7 @@ impl DbClient {
         let row = conn
             .query_one(
                 "SELECT caliber_has_changes_since($1, $2, $3)",
-                &[&tenant_id, &watermark, &entity_types_arr],
+                &[&tenant_id.as_uuid(), &watermark, &entity_types_arr],
             )
             .await?;
 
@@ -2122,7 +2127,7 @@ impl DbClient {
     /// Use the limit parameter to paginate through large result sets.
     pub async fn changes_since(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         watermark: i64,
         limit: i32,
     ) -> ApiResult<Vec<crate::types::ChangeRecord>> {
@@ -2132,7 +2137,7 @@ impl DbClient {
             .query(
                 "SELECT change_id, entity_type, entity_id, operation, changed_at
                  FROM caliber_changes_since($1, $2, $3)",
-                &[&tenant_id, &watermark, &limit],
+                &[&tenant_id.as_uuid(), &watermark, &limit],
             )
             .await?;
 
@@ -2166,7 +2171,7 @@ impl DbClient {
     /// and whether there are more changes beyond the limit.
     pub async fn changes_since_with_metadata(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         watermark: i64,
         limit: i32,
     ) -> ApiResult<crate::types::ChangesResponse> {
@@ -2236,7 +2241,7 @@ impl DbClient {
     /// # Returns
     ///
     /// The created entity on success, or an error on failure.
-    pub async fn create<C>(&self, req: &C::Create, tenant_id: EntityId) -> ApiResult<C>
+    pub async fn create<C>(&self, req: &C::Create, tenant_id: TenantId) -> ApiResult<C>
     where
         C: Component + TenantScoped,
     {
@@ -2279,7 +2284,7 @@ impl DbClient {
     /// # Returns
     ///
     /// `Some(entity)` if found, `None` if not found, or an error on failure.
-    pub async fn get<C>(&self, id: EntityId, tenant_id: EntityId) -> ApiResult<Option<C>>
+    pub async fn get<C>(&self, id: C::Id, tenant_id: TenantId) -> ApiResult<Option<C>>
     where
         C: Component + TenantScoped,
     {
@@ -2290,7 +2295,7 @@ impl DbClient {
         );
 
         let row = conn
-            .query_opt(&sql, &[&id, &tenant_id])
+            .query_opt(&sql, &[&id.as_uuid(), &tenant_id.as_uuid()])
             .await
             .map_err(|e| ApiError::database_error(e.to_string()))?;
 
@@ -2328,7 +2333,7 @@ impl DbClient {
     /// # Returns
     ///
     /// The updated entity on success, or an error if not found or on failure.
-    pub async fn update<C>(&self, id: EntityId, req: &C::Update, tenant_id: EntityId) -> ApiResult<C>
+    pub async fn update<C>(&self, id: C::Id, req: &C::Update, tenant_id: TenantId) -> ApiResult<C>
     where
         C: Component + TenantScoped,
     {
@@ -2341,7 +2346,7 @@ impl DbClient {
         );
 
         let row = conn
-            .query_opt(&sql, &[&id, &updates, &tenant_id])
+            .query_opt(&sql, &[&id.as_uuid(), &updates, &tenant_id.as_uuid()])
             .await
             .map_err(|e| ApiError::database_error(e.to_string()))?;
 
@@ -2376,7 +2381,7 @@ impl DbClient {
     /// # Returns
     ///
     /// The updated entity on success, or an error if not found or on failure.
-    pub async fn update_raw<C>(&self, id: EntityId, updates: JsonValue, tenant_id: EntityId) -> ApiResult<C>
+    pub async fn update_raw<C>(&self, id: C::Id, updates: JsonValue, tenant_id: TenantId) -> ApiResult<C>
     where
         C: Component + TenantScoped,
     {
@@ -2388,7 +2393,7 @@ impl DbClient {
         );
 
         let row = conn
-            .query_opt(&sql, &[&id, &updates, &tenant_id])
+            .query_opt(&sql, &[&id.as_uuid(), &updates, &tenant_id.as_uuid()])
             .await
             .map_err(|e| ApiError::database_error(e.to_string()))?;
 
@@ -2403,6 +2408,40 @@ impl DbClient {
             }
             None => Err(C::not_found_error(id)),
         }
+    }
+
+    /// Increment the access_count field for an entity.
+    ///
+    /// This is a fire-and-forget operation used to track how often entities
+    /// are accessed for relevance ranking. Errors are silently ignored.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `id`: The entity ID to update
+    /// - `tenant_id`: The tenant ID for isolation
+    pub async fn increment_access_count<C>(&self, id: C::Id, tenant_id: TenantId) -> ApiResult<()>
+    where
+        C: Component + TenantScoped,
+    {
+        let conn = self.get_conn().await?;
+
+        // Direct SQL update to increment access_count and set accessed_at
+        // This bypasses the component's update function for efficiency
+        let sql = format!(
+            "UPDATE caliber.{} SET access_count = COALESCE(access_count, 0) + 1, accessed_at = NOW() WHERE {} = $1 AND tenant_id = $2",
+            C::ENTITY_NAME,
+            C::PK_FIELD
+        );
+
+        conn.execute(&sql, &[&id.as_uuid(), &tenant_id.as_uuid()])
+            .await
+            .map_err(|e| ApiError::database_error(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Generic delete operation for any Component type.
@@ -2422,7 +2461,7 @@ impl DbClient {
     /// # Returns
     ///
     /// `true` if the entity was deleted, `false` if not found.
-    pub async fn delete<C>(&self, id: EntityId, tenant_id: EntityId) -> ApiResult<bool>
+    pub async fn delete<C>(&self, id: C::Id, tenant_id: TenantId) -> ApiResult<bool>
     where
         C: Component + TenantScoped,
     {
@@ -2430,7 +2469,7 @@ impl DbClient {
         let sql = format!("SELECT {}($1, $2)", C::sql_function("delete"));
 
         let row = conn
-            .query_one(&sql, &[&id, &tenant_id])
+            .query_one(&sql, &[&id.as_uuid(), &tenant_id.as_uuid()])
             .await
             .map_err(|e| ApiError::database_error(e.to_string()))?;
 
@@ -2455,7 +2494,7 @@ impl DbClient {
     /// # Returns
     ///
     /// A vector of matching entities, ordered by `created_at DESC`.
-    pub async fn list<C>(&self, filter: &C::ListFilter, tenant_id: EntityId) -> ApiResult<Vec<C>>
+    pub async fn list<C>(&self, filter: &C::ListFilter, tenant_id: TenantId) -> ApiResult<Vec<C>>
     where
         C: Component + Listable + TenantScoped,
     {

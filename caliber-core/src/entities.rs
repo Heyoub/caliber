@@ -1,7 +1,15 @@
 //! Core entity structures
 
-use crate::*;
+use crate::{
+    // ID types
+    TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, AgentId,
+    // Other types
+    EntityType, TrajectoryStatus, ArtifactType, NoteType, TurnRole,
+    TTL, AbstractionLevel, ExtractionMethod, OutcomeStatus,
+    EmbeddingVector, ContentHash, RawContent, Timestamp,
+};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Reference to an entity by type and ID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -9,7 +17,7 @@ use serde::{Deserialize, Serialize};
 pub struct EntityRef {
     pub entity_type: EntityType,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub id: EntityId,
+    pub id: Uuid,  // Keep as Uuid - this is intentional, represents ANY entity
 }
 
 /// Trajectory - top-level task container.
@@ -18,16 +26,16 @@ pub struct EntityRef {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Trajectory {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     pub name: String,
     pub description: Option<String>,
     pub status: TrajectoryStatus,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub parent_trajectory_id: Option<EntityId>,
+    pub parent_trajectory_id: Option<TrajectoryId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub root_trajectory_id: Option<EntityId>,
+    pub root_trajectory_id: Option<TrajectoryId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub agent_id: Option<EntityId>,
+    pub agent_id: Option<AgentId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -46,9 +54,9 @@ pub struct TrajectoryOutcome {
     pub status: OutcomeStatus,
     pub summary: String,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub produced_artifacts: Vec<EntityId>,
+    pub produced_artifacts: Vec<ArtifactId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub produced_notes: Vec<EntityId>,
+    pub produced_notes: Vec<NoteId>,
     pub error: Option<String>,
 }
 
@@ -58,11 +66,11 @@ pub struct TrajectoryOutcome {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Scope {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub parent_scope_id: Option<EntityId>,
+    pub parent_scope_id: Option<ScopeId>,
     pub name: String,
     pub purpose: Option<String>,
     pub is_active: bool,
@@ -92,11 +100,11 @@ pub struct Checkpoint {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Artifact {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub artifact_id: EntityId,
+    pub artifact_id: ArtifactId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     pub artifact_type: ArtifactType,
     pub name: String,
     pub content: String,
@@ -110,7 +118,7 @@ pub struct Artifact {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub updated_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub superseded_by: Option<EntityId>,
+    pub superseded_by: Option<ArtifactId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
@@ -130,7 +138,7 @@ pub struct Provenance {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Note {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub note_id: EntityId,
+    pub note_id: NoteId,
     pub note_type: NoteType,
     pub title: String,
     pub content: String,
@@ -138,9 +146,9 @@ pub struct Note {
     pub content_hash: ContentHash,
     pub embedding: Option<EmbeddingVector>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_trajectory_ids: Vec<EntityId>,
+    pub source_trajectory_ids: Vec<TrajectoryId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_artifact_ids: Vec<EntityId>,
+    pub source_artifact_ids: Vec<ArtifactId>,
     pub ttl: TTL,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
@@ -150,7 +158,7 @@ pub struct Note {
     pub accessed_at: Timestamp,
     pub access_count: i32,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub superseded_by: Option<EntityId>,
+    pub superseded_by: Option<NoteId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
     // ══════════════════════════════════════════════════════════════════════════
@@ -160,7 +168,7 @@ pub struct Note {
     pub abstraction_level: AbstractionLevel,
     /// Notes this was derived from (for L1/L2 derivation chains)
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub source_note_ids: Vec<EntityId>,
+    pub source_note_ids: Vec<NoteId>,
 }
 
 /// Turn - ephemeral conversation buffer entry.
@@ -169,9 +177,9 @@ pub struct Note {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Turn {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub turn_id: EntityId,
+    pub turn_id: TurnId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     pub sequence: i32,
     pub role: TurnRole,
     pub content: String,

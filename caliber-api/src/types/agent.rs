@@ -1,6 +1,6 @@
 //! Agent-related API types
 
-use caliber_core::{AgentStatus, EntityId, Timestamp};
+use caliber_core::{AgentId, AgentStatus, TenantId, Timestamp, TrajectoryId, ScopeId};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -20,7 +20,7 @@ pub struct RegisterAgentRequest {
     pub can_delegate_to: Vec<String>,
     /// Supervisor agent (if any)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub reports_to: Option<EntityId>,
+    pub reports_to: Option<AgentId>,
 }
 
 /// Memory access configuration.
@@ -53,10 +53,10 @@ pub struct UpdateAgentRequest {
     pub status: Option<AgentStatus>,
     /// New current trajectory (if changing)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub current_trajectory_id: Option<EntityId>,
+    pub current_trajectory_id: Option<TrajectoryId>,
     /// New current scope (if changing)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub current_scope_id: Option<EntityId>,
+    pub current_scope_id: Option<ScopeId>,
     /// New capabilities (if changing)
     pub capabilities: Option<Vec<String>>,
     /// New memory access (if changing)
@@ -68,20 +68,20 @@ pub struct UpdateAgentRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub tenant_id: EntityId,
+    pub tenant_id: TenantId,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub agent_id: EntityId,
+    pub agent_id: AgentId,
     pub agent_type: String,
     pub capabilities: Vec<String>,
     pub memory_access: MemoryAccessResponse,
     pub status: AgentStatus,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub current_trajectory_id: Option<EntityId>,
+    pub current_trajectory_id: Option<TrajectoryId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub current_scope_id: Option<EntityId>,
+    pub current_scope_id: Option<ScopeId>,
     pub can_delegate_to: Vec<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub reports_to: Option<EntityId>,
+    pub reports_to: Option<AgentId>,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub created_at: Timestamp,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
@@ -115,7 +115,7 @@ pub struct ListAgentsRequest {
     pub status: Option<String>,
     /// Filter by current trajectory
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Only return active agents
     pub active_only: Option<bool>,
 }

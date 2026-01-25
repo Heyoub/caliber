@@ -352,12 +352,12 @@ pub fn extract_auth_context_owned(request: &Request) -> ApiResult<AuthContext> {
 /// use axum::{Router, middleware, extract::Path};
 /// use caliber_api::middleware::{auth_middleware, tenant_access_middleware, AuthMiddlewareState};
 /// use caliber_api::AuthConfig;
-/// use caliber_core::EntityId;
+/// use caliber_core::TenantId;
 ///
 /// let auth_config = AuthConfig::from_env();
 /// let auth_state = AuthMiddlewareState::new(auth_config);
 ///
-/// async fn get_tenant_data(Path(tenant_id): Path<EntityId>) -> &'static str {
+/// async fn get_tenant_data(Path(tenant_id): Path<TenantId>) -> &'static str {
 ///     "Tenant data"
 /// }
 ///
@@ -396,11 +396,10 @@ pub async fn tenant_access_middleware(
 // ============================================================================
 
 use crate::config::ApiConfig;
+use dashmap::DashMap;
 use governor::{clock::DefaultClock, Quota, RateLimiter};
-use std::collections::HashMap;
 use std::net::IpAddr;
 use std::num::NonZeroU32;
-use std::sync::RwLock;
 
 /// Type alias for the rate limiter we use.
 type DirectRateLimiter = RateLimiter<
@@ -423,8 +422,8 @@ pub enum RateLimitKey {
 pub struct RateLimitState {
     /// API configuration
     config: Arc<ApiConfig>,
-    /// Per-key rate limiters
-    limiters: Arc<RwLock<HashMap<RateLimitKey, Arc<DirectRateLimiter>>>>,
+    /// Per-key rate limiters - uses DashMap for lock-free concurrent access
+    limiters: Arc<DashMap<RateLimitKey, Arc<DirectRateLimiter>>>,
 }
 
 impl RateLimitState {
@@ -432,52 +431,33 @@ impl RateLimitState {
     pub fn new(config: ApiConfig) -> Self {
         Self {
             config: Arc::new(config),
-            limiters: Arc::new(RwLock::new(HashMap::new())),
+            limiters: Arc::new(DashMap::new()),
         }
     }
 
     /// Get or create a rate limiter for the given key.
     ///
-    /// Returns Err if the RwLock is poisoned, which should trigger a rate limit response.
+    /// DashMap provides lock-free concurrent access, eliminating lock poisoning issues.
     fn get_or_create_limiter(&self, key: &RateLimitKey) -> Result<Arc<DirectRateLimiter>, RateLimitError> {
-        // Check if limiter exists (read lock)
-        {
-            let limiters = self.limiters.read().map_err(|_| {
-                tracing::error!("Rate limiter read lock poisoned");
-                RateLimitError { retry_after: 1 }
-            })?;
-            if let Some(limiter) = limiters.get(key) {
-                return Ok(limiter.clone());
-            }
-        }
+        // DashMap's entry API handles the get-or-insert atomically
+        let limiter = self.limiters.entry(key.clone()).or_insert_with(|| {
+            // Determine rate limit based on key type
+            let requests_per_minute = match key {
+                RateLimitKey::Ip(_) => self.config.rate_limit_unauthenticated,
+                RateLimitKey::Tenant(_) => self.config.rate_limit_authenticated,
+            };
 
-        // Create new limiter (write lock)
-        let mut limiters = self.limiters.write().map_err(|_| {
-            tracing::error!("Rate limiter write lock poisoned");
-            RateLimitError { retry_after: 1 }
-        })?;
+            // Create limiter with configured quota
+            let quota =
+                Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap_or(NonZeroU32::MIN))
+                    .allow_burst(
+                        NonZeroU32::new(self.config.rate_limit_burst).unwrap_or(NonZeroU32::MIN),
+                    );
 
-        // Double-check in case another thread created it
-        if let Some(limiter) = limiters.get(key) {
-            return Ok(limiter.clone());
-        }
+            Arc::new(RateLimiter::direct(quota))
+        });
 
-        // Determine rate limit based on key type
-        let requests_per_minute = match key {
-            RateLimitKey::Ip(_) => self.config.rate_limit_unauthenticated,
-            RateLimitKey::Tenant(_) => self.config.rate_limit_authenticated,
-        };
-
-        // Create limiter with configured quota
-        let quota =
-            Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap_or(NonZeroU32::MIN))
-                .allow_burst(
-                    NonZeroU32::new(self.config.rate_limit_burst).unwrap_or(NonZeroU32::MIN),
-                );
-
-        let limiter = Arc::new(RateLimiter::direct(quota));
-        limiters.insert(key.clone(), limiter.clone());
-        Ok(limiter)
+        Ok(limiter.clone())
     }
 }
 

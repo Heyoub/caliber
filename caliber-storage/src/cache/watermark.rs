@@ -5,8 +5,9 @@
 //! in the mutation history.
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityId, EntityType};
+use caliber_core::{CaliberResult, TenantId, EntityType};
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 /// A watermark representing a point in the change journal.
 ///
@@ -86,7 +87,7 @@ pub trait ChangeJournal: Send + Sync {
     ///
     /// This returns the latest sequence number for all mutations
     /// affecting the tenant's data.
-    async fn current_watermark(&self, tenant_id: EntityId) -> CaliberResult<Watermark>;
+    async fn current_watermark(&self, tenant_id: TenantId) -> CaliberResult<Watermark>;
 
     /// Get the watermark at a specific point in time.
     ///
@@ -95,7 +96,7 @@ pub trait ChangeJournal: Send + Sync {
     /// and the journal has been pruned.
     async fn watermark_at(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         at: DateTime<Utc>,
     ) -> CaliberResult<Option<Watermark>>;
 
@@ -113,7 +114,7 @@ pub trait ChangeJournal: Send + Sync {
     ///   If empty, checks all entity types.
     async fn changes_since(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         watermark: &Watermark,
         entity_types: &[EntityType],
     ) -> CaliberResult<bool>;
@@ -124,9 +125,9 @@ pub trait ChangeJournal: Send + Sync {
     /// It increments the watermark and records the affected entity.
     async fn record_change(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         entity_type: EntityType,
-        entity_id: EntityId,
+        entity_id: Uuid,
     ) -> CaliberResult<Watermark>;
 
     /// Prune old entries from the journal.
@@ -134,14 +135,24 @@ pub trait ChangeJournal: Send + Sync {
     /// Implementations should periodically prune old entries to prevent
     /// unbounded growth. The `before` timestamp indicates that all entries
     /// older than this can be safely removed.
-    async fn prune(&self, tenant_id: EntityId, before: DateTime<Utc>) -> CaliberResult<u64>;
+    async fn prune(&self, tenant_id: TenantId, before: DateTime<Utc>) -> CaliberResult<u64>;
 }
 
 /// In-memory change journal for testing.
-#[derive(Debug, Default)]
+///
+/// Uses tokio::sync::RwLock for safe async access.
+#[derive(Debug)]
 pub struct InMemoryChangeJournal {
     /// Changes indexed by tenant_id.
-    changes: std::sync::RwLock<std::collections::HashMap<EntityId, TenantChanges>>,
+    changes: tokio::sync::RwLock<std::collections::HashMap<TenantId, TenantChanges>>,
+}
+
+impl Default for InMemoryChangeJournal {
+    fn default() -> Self {
+        Self {
+            changes: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -157,7 +168,7 @@ struct ChangeEntry {
     sequence: i64,
     timestamp: DateTime<Utc>,
     entity_type: EntityType,
-    entity_id: EntityId,
+    entity_id: Uuid,
 }
 
 impl InMemoryChangeJournal {
@@ -169,8 +180,8 @@ impl InMemoryChangeJournal {
 
 #[async_trait]
 impl ChangeJournal for InMemoryChangeJournal {
-    async fn current_watermark(&self, tenant_id: EntityId) -> CaliberResult<Watermark> {
-        let changes = self.changes.read().unwrap();
+    async fn current_watermark(&self, tenant_id: TenantId) -> CaliberResult<Watermark> {
+        let changes = self.changes.read().await;
         let sequence = changes
             .get(&tenant_id)
             .map(|tc| tc.sequence)
@@ -180,10 +191,10 @@ impl ChangeJournal for InMemoryChangeJournal {
 
     async fn watermark_at(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         at: DateTime<Utc>,
     ) -> CaliberResult<Option<Watermark>> {
-        let changes = self.changes.read().unwrap();
+        let changes = self.changes.read().await;
         if let Some(tenant_changes) = changes.get(&tenant_id) {
             // Find the latest entry at or before the given timestamp
             let sequence = tenant_changes
@@ -201,11 +212,11 @@ impl ChangeJournal for InMemoryChangeJournal {
 
     async fn changes_since(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         watermark: &Watermark,
         entity_types: &[EntityType],
     ) -> CaliberResult<bool> {
-        let changes = self.changes.read().unwrap();
+        let changes = self.changes.read().await;
         if let Some(tenant_changes) = changes.get(&tenant_id) {
             // Check if any changes exist after the watermark
             let has_changes = tenant_changes.log.iter().any(|e| {
@@ -220,11 +231,11 @@ impl ChangeJournal for InMemoryChangeJournal {
 
     async fn record_change(
         &self,
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         entity_type: EntityType,
-        entity_id: EntityId,
+        entity_id: Uuid,
     ) -> CaliberResult<Watermark> {
-        let mut changes = self.changes.write().unwrap();
+        let mut changes = self.changes.write().await;
         let tenant_changes = changes.entry(tenant_id).or_default();
 
         tenant_changes.sequence += 1;
@@ -239,8 +250,8 @@ impl ChangeJournal for InMemoryChangeJournal {
         Ok(Watermark::new(tenant_changes.sequence))
     }
 
-    async fn prune(&self, tenant_id: EntityId, before: DateTime<Utc>) -> CaliberResult<u64> {
-        let mut changes = self.changes.write().unwrap();
+    async fn prune(&self, tenant_id: TenantId, before: DateTime<Utc>) -> CaliberResult<u64> {
+        let mut changes = self.changes.write().await;
         if let Some(tenant_changes) = changes.get_mut(&tenant_id) {
             let before_len = tenant_changes.log.len();
             tenant_changes.log.retain(|e| e.timestamp >= before);
@@ -255,7 +266,6 @@ impl ChangeJournal for InMemoryChangeJournal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
     #[test]
     fn test_watermark_ordering() {
@@ -290,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_journal() {
         let journal = InMemoryChangeJournal::new();
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
         // Initial watermark should be 0
@@ -322,7 +332,7 @@ mod tests {
     #[tokio::test]
     async fn test_journal_entity_type_filter() {
         let journal = InMemoryChangeJournal::new();
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
         let w0 = journal.current_watermark(tenant_id).await.unwrap();
@@ -351,8 +361,8 @@ mod tests {
     #[tokio::test]
     async fn test_journal_tenant_isolation() {
         let journal = InMemoryChangeJournal::new();
-        let tenant_a = Uuid::now_v7();
-        let tenant_b = Uuid::now_v7();
+        let tenant_a = TenantId::now_v7();
+        let tenant_b = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
         let w0_a = journal.current_watermark(tenant_a).await.unwrap();

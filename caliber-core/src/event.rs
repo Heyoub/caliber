@@ -8,17 +8,17 @@
 //! The `EventHeader` is a 64-byte cache-aligned structure for optimal memory access.
 //! It contains all metadata needed to process an event without accessing the payload.
 
-use crate::EntityId;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
 
 // ============================================================================
 // EVENT IDENTIFICATION
 // ============================================================================
 
-/// Unique identifier for an event (same as EntityId but semantically distinct).
-pub type EventId = EntityId;
+/// Unique identifier for an event.
+pub type EventId = Uuid;
 
 // ============================================================================
 // DAG POSITION

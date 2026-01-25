@@ -4,19 +4,20 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
+use caliber_core::LockId;
 use crate::{
     auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
     types::{AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse, ReleaseLockRequest},
@@ -101,7 +102,7 @@ pub async fn release_lock(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<LockId>,
     Json(req): Json<ReleaseLockRequest>,
 ) -> ApiResult<StatusCode> {
     // Get the lock and verify tenant ownership
@@ -146,7 +147,7 @@ pub async fn release_lock(
 pub async fn extend_lock(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<LockId>,
     Json(req): Json<ExtendLockRequest>,
 ) -> ApiResult<Json<LockResponse>> {
     // Validate additional time
@@ -216,7 +217,7 @@ pub async fn list_locks(
 pub async fn get_lock(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<LockId>,
 ) -> ApiResult<impl IntoResponse> {
     let lock = db
         .lock_get(id)
@@ -246,14 +247,15 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityId;
+    use caliber_core::AgentId;
+    use uuid::Uuid;
 
     #[test]
     fn test_acquire_lock_request_validation() {
         let req = AcquireLockRequest {
             resource_type: "".to_string(),
-            resource_id: EntityId::from(Uuid::new_v4()),
-            holder_agent_id: EntityId::from(Uuid::new_v4()),
+            resource_id: Uuid::now_v7(),
+            holder_agent_id: AgentId::now_v7(),
             timeout_ms: 0,
             mode: "exclusive".to_string(),
         };

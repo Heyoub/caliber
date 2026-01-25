@@ -9,11 +9,13 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use caliber_core::{SummarizationPolicyId, TrajectoryId};
 use uuid::Uuid;
 
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
+    extractors::PathId,
     state::AppState,
     types::{
         CreateSummarizationPolicyRequest, ListSummarizationPoliciesResponse,
@@ -102,7 +104,7 @@ pub async fn create_policy(
 )]
 pub async fn get_policy(
     State(db): State<DbClient>,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<SummarizationPolicyId>,
 ) -> ApiResult<impl IntoResponse> {
     let policy = db.summarization_policy_get(id).await?;
 
@@ -131,7 +133,7 @@ pub async fn get_policy(
 )]
 pub async fn list_policies_by_trajectory(
     State(db): State<DbClient>,
-    Path(trajectory_id): Path<Uuid>,
+    PathId(trajectory_id): PathId<TrajectoryId>,
 ) -> ApiResult<impl IntoResponse> {
     let policies = db
         .summarization_policies_for_trajectory(trajectory_id)
@@ -160,7 +162,7 @@ pub async fn list_policies_by_trajectory(
 )]
 pub async fn delete_policy(
     State(db): State<DbClient>,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<SummarizationPolicyId>,
 ) -> ApiResult<impl IntoResponse> {
     db.summarization_policy_delete(id).await?;
 

@@ -101,5 +101,6 @@ crate::impl_entity!(HandoffResponse, handoff_id, tenant_id);
 crate::impl_entity!(EdgeResponse, edge_id);
 
 // Admin/Infrastructure types
+crate::impl_entity!(TenantInfo, tenant_id);
 crate::impl_entity!(ApiKeyResponse, api_key_id, tenant_id);
 crate::impl_entity!(WebhookResponse, webhook_id, tenant_id);

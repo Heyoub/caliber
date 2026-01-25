@@ -11,7 +11,7 @@
 //! - Per-webhook event type filtering
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
@@ -28,10 +28,12 @@ use std::{
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use caliber_core::WebhookId;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
+    extractors::PathId,
     state::AppState,
     ws::WsState,
 };
@@ -155,7 +157,7 @@ impl WebhookEventType {
 pub struct Webhook {
     /// Unique webhook ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub id: Uuid,
+    pub id: WebhookId,
     /// Target URL for webhook delivery
     pub url: String,
     /// Event types this webhook subscribes to
@@ -230,7 +232,7 @@ pub struct WebhookPayload {
 
 /// In-memory webhook store. In production, this would be persisted to the database.
 pub struct WebhookStore {
-    webhooks: RwLock<HashMap<Uuid, Webhook>>,
+    webhooks: RwLock<HashMap<WebhookId, Webhook>>,
 }
 
 impl WebhookStore {
@@ -245,7 +247,7 @@ impl WebhookStore {
         webhooks.insert(webhook.id, webhook);
     }
 
-    pub async fn get(&self, id: Uuid) -> Option<Webhook> {
+    pub async fn get(&self, id: WebhookId) -> Option<Webhook> {
         let webhooks = self.webhooks.read().await;
         webhooks.get(&id).cloned()
     }
@@ -255,12 +257,12 @@ impl WebhookStore {
         webhooks.values().cloned().collect()
     }
 
-    pub async fn remove(&self, id: Uuid) -> Option<Webhook> {
+    pub async fn remove(&self, id: WebhookId) -> Option<Webhook> {
         let mut webhooks = self.webhooks.write().await;
         webhooks.remove(&id)
     }
 
-    pub async fn update_stats(&self, id: Uuid, success: bool) {
+    pub async fn update_stats(&self, id: WebhookId, success: bool) {
         let mut webhooks = self.webhooks.write().await;
         if let Some(webhook) = webhooks.get_mut(&id) {
             webhook.last_delivery_at = Some(chrono::Utc::now());
@@ -348,7 +350,7 @@ pub async fn create_webhook(
     }
 
     let webhook = Webhook {
-        id: Uuid::new_v4(),
+        id: WebhookId::new(Uuid::new_v4()),
         url: url.to_string(),
         events: req.events,
         description: req.description,
@@ -413,7 +415,7 @@ pub async fn list_webhooks(
 )]
 pub async fn get_webhook(
     State(state): State<Arc<WebhookState>>,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<WebhookId>,
 ) -> ApiResult<impl IntoResponse> {
     let webhook = state
         .store
@@ -444,7 +446,7 @@ pub async fn get_webhook(
 )]
 pub async fn delete_webhook(
     State(state): State<Arc<WebhookState>>,
-    Path(id): Path<Uuid>,
+    PathId(id): PathId<WebhookId>,
 ) -> ApiResult<StatusCode> {
     let removed = state.store.remove(id).await;
 
@@ -657,11 +659,13 @@ mod tests {
 
     #[test]
     fn test_webhook_event_type_matching() {
+        use caliber_core::{TenantId, TrajectoryId};
+
         // Test wildcard matches all
         assert!(WebhookEventType::All.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: Uuid::new_v4(),
-                tenant_id: Some(Uuid::new_v4()),
+                trajectory_id: TrajectoryId::new(Uuid::new_v4()),
+                tenant_id: Some(TenantId::new(Uuid::new_v4())),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -679,8 +683,8 @@ mod tests {
         // Test specific event type
         assert!(WebhookEventType::TrajectoryCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: Uuid::new_v4(),
-                tenant_id: Some(Uuid::new_v4()),
+                trajectory_id: TrajectoryId::new(Uuid::new_v4()),
+                tenant_id: Some(TenantId::new(Uuid::new_v4())),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -698,8 +702,8 @@ mod tests {
         // Test non-matching event type
         assert!(!WebhookEventType::NoteCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: Uuid::new_v4(),
-                tenant_id: Some(Uuid::new_v4()),
+                trajectory_id: TrajectoryId::new(Uuid::new_v4()),
+                tenant_id: Some(TenantId::new(Uuid::new_v4())),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -731,7 +735,7 @@ mod tests {
     #[test]
     fn test_webhook_serialization() -> Result<(), serde_json::Error> {
         let webhook = Webhook {
-            id: Uuid::new_v4(),
+            id: WebhookId::new(Uuid::new_v4()),
             url: "https://example.com/webhook".to_string(),
             events: vec![WebhookEventType::All],
             description: Some("Test webhook".to_string()),

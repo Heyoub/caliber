@@ -4,7 +4,10 @@
 //! to connected clients for real-time updates.
 
 use crate::types::*;
-use caliber_core::EntityId;
+use caliber_core::{
+    TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId,
+    LockId, MessageId, DelegationId, HandoffId, EdgeId, SummarizationPolicyId,
+};
 use serde::{Deserialize, Serialize};
 
 /// WebSocket event types for real-time updates.
@@ -32,9 +35,9 @@ pub enum WsEvent {
     /// A trajectory was deleted.
     TrajectoryDeleted {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the deleted trajectory
-        id: EntityId,
+        id: TrajectoryId,
     },
 
     // ========================================================================
@@ -76,9 +79,9 @@ pub enum WsEvent {
     /// An artifact was deleted.
     ArtifactDeleted {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the deleted artifact
-        id: EntityId,
+        id: ArtifactId,
     },
 
     // ========================================================================
@@ -99,9 +102,9 @@ pub enum WsEvent {
     /// A note was deleted.
     NoteDeleted {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the deleted note
-        id: EntityId,
+        id: NoteId,
     },
 
     // ========================================================================
@@ -125,9 +128,9 @@ pub enum WsEvent {
     /// An agent's status changed.
     AgentStatusChanged {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the agent
-        agent_id: EntityId,
+        agent_id: AgentId,
         /// New status
         status: String,
     },
@@ -135,9 +138,9 @@ pub enum WsEvent {
     /// An agent sent a heartbeat.
     AgentHeartbeat {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the agent
-        agent_id: EntityId,
+        agent_id: AgentId,
         /// Timestamp of the heartbeat
         timestamp: caliber_core::Timestamp,
     },
@@ -145,9 +148,9 @@ pub enum WsEvent {
     /// An agent was unregistered.
     AgentUnregistered {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the unregistered agent
-        id: EntityId,
+        id: AgentId,
     },
 
     // ========================================================================
@@ -162,17 +165,17 @@ pub enum WsEvent {
     /// A lock was released.
     LockReleased {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the released lock
-        lock_id: EntityId,
+        lock_id: LockId,
     },
 
     /// A lock expired.
     LockExpired {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the expired lock
-        lock_id: EntityId,
+        lock_id: LockId,
     },
 
     // ========================================================================
@@ -187,17 +190,17 @@ pub enum WsEvent {
     /// A message was delivered.
     MessageDelivered {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the delivered message
-        message_id: EntityId,
+        message_id: MessageId,
     },
 
     /// A message was acknowledged.
     MessageAcknowledged {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the acknowledged message
-        message_id: EntityId,
+        message_id: MessageId,
     },
 
     // ========================================================================
@@ -212,17 +215,17 @@ pub enum WsEvent {
     /// A delegation was accepted.
     DelegationAccepted {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the accepted delegation
-        delegation_id: EntityId,
+        delegation_id: DelegationId,
     },
 
     /// A delegation was rejected.
     DelegationRejected {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the rejected delegation
-        delegation_id: EntityId,
+        delegation_id: DelegationId,
     },
 
     /// A delegation was completed.
@@ -243,9 +246,9 @@ pub enum WsEvent {
     /// A handoff was accepted.
     HandoffAccepted {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the accepted handoff
-        handoff_id: EntityId,
+        handoff_id: HandoffId,
     },
 
     /// A handoff was completed.
@@ -269,7 +272,7 @@ pub enum WsEvent {
     /// Client successfully connected.
     Connected {
         /// Tenant ID the client is connected to
-        tenant_id: EntityId,
+        tenant_id: TenantId,
     },
 
     /// Client disconnected.
@@ -290,15 +293,15 @@ pub enum WsEvent {
     /// A summarization policy trigger was fired.
     SummarizationTriggered {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the policy that triggered
-        policy_id: EntityId,
+        policy_id: SummarizationPolicyId,
         /// The trigger that fired
         trigger: caliber_core::SummarizationTrigger,
         /// Scope ID where trigger fired
-        scope_id: EntityId,
+        scope_id: ScopeId,
         /// Trajectory ID for context
-        trajectory_id: EntityId,
+        trajectory_id: TrajectoryId,
         /// Source abstraction level for summarization
         source_level: caliber_core::AbstractionLevel,
         /// Target abstraction level for summarization
@@ -312,9 +315,9 @@ pub enum WsEvent {
     /// An edge was created.
     EdgeCreated {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// ID of the created edge
-        edge_id: EntityId,
+        edge_id: EdgeId,
         /// Type of the edge
         edge_type: caliber_core::EdgeType,
     },
@@ -322,7 +325,7 @@ pub enum WsEvent {
     /// Multiple edges were created in a batch.
     EdgesBatchCreated {
         /// Tenant ID for filtering
-        tenant_id: EntityId,
+        tenant_id: TenantId,
         /// Number of edges created
         count: usize,
     },
@@ -393,8 +396,8 @@ mod tests {
     fn test_event_type_names() {
         let event = WsEvent::TrajectoryCreated {
             trajectory: TrajectoryResponse {
-                trajectory_id: caliber_core::new_entity_id(),
-                tenant_id: Some(caliber_core::new_entity_id()),
+                trajectory_id: TrajectoryId::now_v7(),
+                tenant_id: Some(TenantId::now_v7()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -415,8 +418,8 @@ mod tests {
     fn test_tenant_specific_events() {
         let trajectory_event = WsEvent::TrajectoryCreated {
             trajectory: TrajectoryResponse {
-                trajectory_id: caliber_core::new_entity_id(),
-                tenant_id: Some(caliber_core::new_entity_id()),
+                trajectory_id: TrajectoryId::now_v7(),
+                tenant_id: Some(TenantId::now_v7()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -433,7 +436,7 @@ mod tests {
         assert!(trajectory_event.is_tenant_specific());
 
         let connected_event = WsEvent::Connected {
-            tenant_id: caliber_core::new_entity_id(),
+            tenant_id: TenantId::now_v7(),
         };
         assert!(!connected_event.is_tenant_specific());
     }
@@ -441,8 +444,8 @@ mod tests {
     #[test]
     fn test_event_serialization() -> Result<(), serde_json::Error> {
         let event = WsEvent::AgentStatusChanged {
-            tenant_id: caliber_core::new_entity_id(),
-            agent_id: caliber_core::new_entity_id(),
+            tenant_id: TenantId::now_v7(),
+            agent_id: AgentId::now_v7(),
             status: "Active".to_string(),
         };
 

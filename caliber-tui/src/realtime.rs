@@ -3,7 +3,7 @@
 use crate::api_client::WsClient;
 use crate::events::TuiEvent;
 use caliber_api::events::WsEvent;
-use caliber_core::EntityId;
+use caliber_core::TenantId;
 use futures_util::StreamExt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 pub fn spawn_ws_manager(
     ws: WsClient,
-    tenant_id: EntityId,
+    tenant_id: TenantId,
     sender: mpsc::Sender<TuiEvent>,
 ) {
     tokio::spawn(async move {

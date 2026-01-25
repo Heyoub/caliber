@@ -5,8 +5,9 @@
 //! and recovery mechanisms.
 
 use caliber_core::{
-    AbstractionLevel, Artifact, CaliberConfig, CaliberError, CaliberResult, EntityId,
-    RawContent, Scope, SummarizationPolicy, SummarizationTrigger, Timestamp, ValidationError,
+    AbstractionLevel, AgentId, Artifact, ArtifactId, CaliberConfig, CaliberError, CaliberResult,
+    NoteId, RawContent, Scope, ScopeId, SummarizationPolicy, SummarizationPolicyId,
+    SummarizationTrigger, Timestamp, TrajectoryId, ValidationError,
 };
 use chrono::Utc;
 use regex::Regex;
@@ -24,13 +25,13 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemoryCommit {
     /// Unique identifier for this commit
-    pub commit_id: EntityId,
+    pub commit_id: Uuid,
     /// Trajectory this commit belongs to
-    pub trajectory_id: EntityId,
+    pub trajectory_id: TrajectoryId,
     /// Scope this commit belongs to
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Agent that created this commit (if multi-agent)
-    pub agent_id: Option<EntityId>,
+    pub agent_id: Option<AgentId>,
 
     /// The user's query/input
     pub query: String,
@@ -45,9 +46,9 @@ pub struct MemoryCommit {
     /// Whether RAG contributed to this response
     pub rag_contributed: bool,
     /// Artifacts referenced in this interaction
-    pub artifacts_referenced: Vec<EntityId>,
+    pub artifacts_referenced: Vec<ArtifactId>,
     /// Notes referenced in this interaction
-    pub notes_referenced: Vec<EntityId>,
+    pub notes_referenced: Vec<NoteId>,
 
     /// Tools invoked during this interaction
     pub tools_invoked: Vec<String>,
@@ -66,8 +67,8 @@ pub struct MemoryCommit {
 impl MemoryCommit {
     /// Create a new memory commit.
     pub fn new(
-        trajectory_id: EntityId,
-        scope_id: EntityId,
+        trajectory_id: TrajectoryId,
+        scope_id: ScopeId,
         query: String,
         response: String,
         mode: String,
@@ -93,7 +94,7 @@ impl MemoryCommit {
     }
 
     /// Set the agent ID.
-    pub fn with_agent_id(mut self, agent_id: EntityId) -> Self {
+    pub fn with_agent_id(mut self, agent_id: AgentId) -> Self {
         self.agent_id = Some(agent_id);
         self
     }
@@ -111,13 +112,13 @@ impl MemoryCommit {
     }
 
     /// Set referenced artifacts.
-    pub fn with_artifacts_referenced(mut self, artifacts: Vec<EntityId>) -> Self {
+    pub fn with_artifacts_referenced(mut self, artifacts: Vec<ArtifactId>) -> Self {
         self.artifacts_referenced = artifacts;
         self
     }
 
     /// Set referenced notes.
-    pub fn with_notes_referenced(mut self, notes: Vec<EntityId>) -> Self {
+    pub fn with_notes_referenced(mut self, notes: Vec<NoteId>) -> Self {
         self.notes_referenced = notes;
         self
     }
@@ -156,7 +157,7 @@ impl MemoryCommit {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DecisionRecall {
     /// Commit ID this decision came from
-    pub commit_id: EntityId,
+    pub commit_id: Uuid,
     /// Original query
     pub query: String,
     /// Extracted decision summary
@@ -171,7 +172,7 @@ pub struct DecisionRecall {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScopeHistory {
     /// Scope ID
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// Number of interactions in this scope
     pub interaction_count: i32,
     /// Total tokens used in this scope
@@ -250,8 +251,8 @@ impl RecallService {
     /// Vector of memory commits matching the criteria
     pub fn recall_previous(
         &self,
-        trajectory_id: Option<EntityId>,
-        scope_id: Option<EntityId>,
+        trajectory_id: Option<TrajectoryId>,
+        scope_id: Option<ScopeId>,
         limit: i32,
     ) -> CaliberResult<Vec<MemoryCommit>> {
         let mut results: Vec<MemoryCommit> = self
@@ -362,7 +363,7 @@ impl RecallService {
     ///
     /// # Returns
     /// Scope history with all commits
-    pub fn get_scope_history(&self, scope_id: EntityId) -> CaliberResult<ScopeHistory> {
+    pub fn get_scope_history(&self, scope_id: ScopeId) -> CaliberResult<ScopeHistory> {
         let commits: Vec<MemoryCommit> = self
             .commits
             .iter()
@@ -389,7 +390,7 @@ impl RecallService {
     ///
     /// # Returns
     /// Memory statistics
-    pub fn get_memory_stats(&self, trajectory_id: Option<EntityId>) -> CaliberResult<MemoryStats> {
+    pub fn get_memory_stats(&self, trajectory_id: Option<TrajectoryId>) -> CaliberResult<MemoryStats> {
         let filtered: Vec<&MemoryCommit> = self
             .commits
             .iter()
@@ -405,7 +406,7 @@ impl RecallService {
         let total_cost: f64 = filtered.iter().filter_map(|c| c.estimated_cost).sum();
 
         // Count unique scopes
-        let mut unique_scope_ids: Vec<EntityId> = filtered.iter().map(|c| c.scope_id).collect();
+        let mut unique_scope_ids: Vec<ScopeId> = filtered.iter().map(|c| c.scope_id).collect();
         unique_scope_ids.sort();
         unique_scope_ids.dedup();
         let unique_scopes = unique_scope_ids.len() as i64;
@@ -788,7 +789,7 @@ pub struct ValidationIssue {
     /// Human-readable message
     pub message: String,
     /// Entity ID related to this issue (if applicable)
-    pub entity_id: Option<EntityId>,
+    pub entity_id: Option<Uuid>,
 }
 
 /// Result of context validation.
@@ -868,7 +869,7 @@ pub struct LintIssue {
     /// Human-readable message
     pub message: String,
     /// Artifact ID this issue relates to
-    pub artifact_id: EntityId,
+    pub artifact_id: ArtifactId,
 }
 
 /// Result of artifact linting.
@@ -910,18 +911,18 @@ pub struct CheckpointState {
     /// Serialized context snapshot
     pub context_snapshot: RawContent,
     /// Artifact IDs at checkpoint time
-    pub artifact_ids: Vec<EntityId>,
+    pub artifact_ids: Vec<ArtifactId>,
     /// Note IDs at checkpoint time
-    pub note_ids: Vec<EntityId>,
+    pub note_ids: Vec<NoteId>,
 }
 
 /// A PCP checkpoint for recovery.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PCPCheckpoint {
     /// Unique identifier for this checkpoint
-    pub checkpoint_id: EntityId,
+    pub checkpoint_id: Uuid,
     /// Scope this checkpoint belongs to
-    pub scope_id: EntityId,
+    pub scope_id: ScopeId,
     /// State captured in this checkpoint
     pub state: CheckpointState,
     /// When this checkpoint was created
@@ -963,9 +964,9 @@ impl RecoveryResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Contradiction {
     /// First artifact in the contradiction
-    pub artifact_a: EntityId,
+    pub artifact_a: ArtifactId,
     /// Second artifact in the contradiction
-    pub artifact_b: EntityId,
+    pub artifact_b: ArtifactId,
     /// Similarity score that triggered detection
     pub similarity_score: f32,
     /// Description of the contradiction
@@ -1194,7 +1195,7 @@ pub struct DosageResult {
     /// Whether limits were exceeded
     pub exceeded: bool,
     /// Artifacts that were pruned (if any)
-    pub pruned_artifacts: Vec<EntityId>,
+    pub pruned_artifacts: Vec<ArtifactId>,
     /// Tokens that were trimmed
     pub tokens_trimmed: i32,
     /// Warning messages
@@ -1223,7 +1224,7 @@ impl DosageResult {
     }
 
     /// Add a pruned artifact.
-    pub fn add_pruned(&mut self, artifact_id: EntityId) {
+    pub fn add_pruned(&mut self, artifact_id: ArtifactId) {
         self.pruned_artifacts.push(artifact_id);
     }
 
@@ -1461,7 +1462,7 @@ impl PCPRuntime {
         &mut self,
         scope: &Scope,
         artifacts: &[Artifact],
-        note_ids: &[EntityId],
+        note_ids: &[NoteId],
     ) -> CaliberResult<PCPCheckpoint> {
         // Check if recovery is enabled
         if !self.config.recovery.enabled {
@@ -1480,7 +1481,7 @@ impl PCPRuntime {
         })?;
 
         // Collect artifact IDs
-        let artifact_ids: Vec<EntityId> = artifacts.iter().map(|a| a.artifact_id).collect();
+        let artifact_ids: Vec<ArtifactId> = artifacts.iter().map(|a| a.artifact_id).collect();
 
         // Create checkpoint state
         let state = CheckpointState {
@@ -1555,7 +1556,7 @@ impl PCPRuntime {
     ///
     /// # Returns
     /// The latest checkpoint if found
-    pub fn get_latest_checkpoint(&self, scope_id: EntityId) -> Option<&PCPCheckpoint> {
+    pub fn get_latest_checkpoint(&self, scope_id: ScopeId) -> Option<&PCPCheckpoint> {
         self.checkpoints
             .iter()
             .filter(|c| c.scope_id == scope_id)
@@ -1569,7 +1570,7 @@ impl PCPRuntime {
     ///
     /// # Returns
     /// Vector of checkpoints for the scope
-    pub fn get_checkpoints_for_scope(&self, scope_id: EntityId) -> Vec<&PCPCheckpoint> {
+    pub fn get_checkpoints_for_scope(&self, scope_id: ScopeId) -> Vec<&PCPCheckpoint> {
         self.checkpoints
             .iter()
             .filter(|c| c.scope_id == scope_id)
@@ -1583,7 +1584,7 @@ impl PCPRuntime {
     ///
     /// # Returns
     /// true if checkpoint was deleted
-    pub fn delete_checkpoint(&mut self, checkpoint_id: EntityId) -> bool {
+    pub fn delete_checkpoint(&mut self, checkpoint_id: Uuid) -> bool {
         let initial_len = self.checkpoints.len();
         self.checkpoints
             .retain(|c| c.checkpoint_id != checkpoint_id);
@@ -1597,7 +1598,7 @@ impl PCPRuntime {
     ///
     /// # Returns
     /// Number of checkpoints deleted
-    pub fn clear_checkpoints_for_scope(&mut self, scope_id: EntityId) -> usize {
+    pub fn clear_checkpoints_for_scope(&mut self, scope_id: ScopeId) -> usize {
         let initial_len = self.checkpoints.len();
         self.checkpoints.retain(|c| c.scope_id != scope_id);
         initial_len - self.checkpoints.len()
@@ -1644,7 +1645,7 @@ impl PCPRuntime {
         turn_count: i32,
         artifact_count: i32,
         policies: &[SummarizationPolicy],
-    ) -> CaliberResult<Vec<(EntityId, SummarizationTrigger)>> {
+    ) -> CaliberResult<Vec<(SummarizationPolicyId, SummarizationTrigger)>> {
         let mut triggered = Vec::new();
 
         // Calculate current token usage percentage

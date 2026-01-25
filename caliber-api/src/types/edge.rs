@@ -1,7 +1,8 @@
 //! Battle Intel: Edge-related API types
 
-use caliber_core::{EdgeType, EntityId, EntityType, ExtractionMethod, Timestamp};
+use caliber_core::{EdgeId, EdgeType, EntityType, ExtractionMethod, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::ProvenanceResponse;
 
@@ -17,7 +18,7 @@ pub struct CreateEdgeRequest {
     pub weight: Option<f32>,
     /// Optional trajectory ID for context
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Provenance information
     pub provenance: ProvenanceRequest,
     /// Optional metadata
@@ -30,9 +31,9 @@ pub struct CreateEdgeRequest {
 pub struct EdgeParticipantRequest {
     /// Type of the entity
     pub entity_type: EntityType,
-    /// ID of the entity
+    /// ID of the entity (can reference ANY entity type)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub entity_id: EntityId,
+    pub entity_id: Uuid,
     /// Role in the relationship (e.g., "source", "target", "input", "output")
     pub role: Option<String>,
 }
@@ -55,10 +56,10 @@ pub struct ProvenanceRequest {
 pub struct EdgeResponse {
     /// Edge ID
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub edge_id: EntityId,
+    pub edge_id: EdgeId,
     /// Tenant this edge belongs to (for multi-tenant isolation)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub tenant_id: Option<EntityId>,
+    pub tenant_id: Option<TenantId>,
     /// Type of edge
     pub edge_type: EdgeType,
     /// Edge participants
@@ -67,7 +68,7 @@ pub struct EdgeResponse {
     pub weight: Option<f32>,
     /// Trajectory ID for context
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
-    pub trajectory_id: Option<EntityId>,
+    pub trajectory_id: Option<TrajectoryId>,
     /// Provenance information
     pub provenance: ProvenanceResponse,
     /// When the edge was created
@@ -84,9 +85,9 @@ pub struct EdgeResponse {
 pub struct EdgeParticipantResponse {
     /// Type of the entity
     pub entity_type: EntityType,
-    /// ID of the entity
+    /// ID of the entity (can reference ANY entity type)
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub entity_id: EntityId,
+    pub entity_id: Uuid,
     /// Role in the relationship
     pub role: Option<String>,
 }

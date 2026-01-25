@@ -4,7 +4,8 @@
 //! cross-tenant access UNCOMPILABLE. You cannot construct a key without
 //! explicitly providing a tenant ID.
 
-use caliber_core::{EntityId, EntityType};
+use caliber_core::EntityType;
+use uuid::Uuid;
 
 /// Separator byte between tenant_id and the rest of the key.
 const SEPARATOR: u8 = 0xFF;
@@ -38,9 +39,9 @@ pub struct TenantScopedKey {
 /// Private inner struct - prevents external construction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TenantKeyInner {
-    tenant_id: EntityId,
+    tenant_id: Uuid,
     entity_type: EntityType,
-    entity_id: EntityId,
+    entity_id: Uuid,
 }
 
 impl TenantScopedKey {
@@ -54,7 +55,7 @@ impl TenantScopedKey {
     /// * `tenant_id` - The tenant this key belongs to
     /// * `entity_type` - The type of entity being cached
     /// * `entity_id` - The unique identifier of the entity
-    pub fn new(tenant_id: EntityId, entity_type: EntityType, entity_id: EntityId) -> Self {
+    pub fn new(tenant_id: Uuid, entity_type: EntityType, entity_id: Uuid) -> Self {
         Self {
             inner: TenantKeyInner {
                 tenant_id,
@@ -65,7 +66,7 @@ impl TenantScopedKey {
     }
 
     /// Get the tenant ID this key is scoped to.
-    pub fn tenant_id(&self) -> EntityId {
+    pub fn tenant_id(&self) -> Uuid {
         self.inner.tenant_id
     }
 
@@ -75,7 +76,7 @@ impl TenantScopedKey {
     }
 
     /// Get the entity ID for this key.
-    pub fn entity_id(&self) -> EntityId {
+    pub fn entity_id(&self) -> Uuid {
         self.inner.entity_id
     }
 
@@ -140,7 +141,7 @@ impl TenantScopedKey {
     ///
     /// This can be used with LMDB's range queries to efficiently
     /// iterate over all cached entities for a single tenant.
-    pub fn tenant_prefix(tenant_id: EntityId) -> [u8; 17] {
+    pub fn tenant_prefix(tenant_id: Uuid) -> [u8; 17] {
         let mut prefix = [0u8; 17];
         prefix[0..16].copy_from_slice(tenant_id.as_bytes());
         prefix[16] = SEPARATOR;
@@ -151,7 +152,7 @@ impl TenantScopedKey {
     ///
     /// This is more targeted than `tenant_prefix`, useful for invalidating
     /// all cached entities of a specific type.
-    pub fn tenant_type_prefix(tenant_id: EntityId, entity_type: EntityType) -> [u8; 18] {
+    pub fn tenant_type_prefix(tenant_id: Uuid, entity_type: EntityType) -> [u8; 18] {
         let mut prefix = [0u8; 18];
         prefix[0..16].copy_from_slice(tenant_id.as_bytes());
         prefix[16] = SEPARATOR;
