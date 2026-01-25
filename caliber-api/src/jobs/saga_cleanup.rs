@@ -33,7 +33,6 @@
 
 use crate::db::DbClient;
 use caliber_core::EntityIdType;
-use postgres_types::Interval;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -434,15 +433,9 @@ struct StuckHandoff {
     stuck_duration: chrono::Duration,
 }
 
-fn interval_to_duration(interval: Interval) -> chrono::Duration {
-    let mut duration = chrono::Duration::microseconds(interval.microseconds);
-    if interval.days != 0 {
-        duration = duration + chrono::Duration::days(interval.days as i64);
-    }
-    if interval.months != 0 {
-        duration = duration + chrono::Duration::days((interval.months as i64) * 30);
-    }
-    duration
+fn seconds_to_duration(seconds: f64) -> chrono::Duration {
+    let millis = (seconds * 1000.0) as i64;
+    chrono::Duration::milliseconds(millis)
 }
 
 /// Find delegations that are stuck (timed out or stale).
@@ -462,7 +455,7 @@ async fn find_stuck_delegations(
     ];
     let rows: Vec<tokio_postgres::Row> = client
         .query(
-            "SELECT delegation_id, status, stuck_duration \
+            "SELECT delegation_id, status, EXTRACT(EPOCH FROM stuck_duration) \
              FROM caliber_find_stuck_delegations($1::interval) \
              LIMIT $2",
             &params,
@@ -474,11 +467,8 @@ async fn find_stuck_delegations(
         .map(|row| {
             let id: uuid::Uuid = row.get(0);
             let status: String = row.get(1);
-            let stuck_duration = row
-                .try_get::<_, Interval>(2)
-                .ok()
-                .map(interval_to_duration)
-                .unwrap_or_else(chrono::Duration::zero);
+            let stuck_seconds: f64 = row.get(2);
+            let stuck_duration = seconds_to_duration(stuck_seconds);
 
             StuckDelegation {
                 id,
@@ -508,7 +498,7 @@ async fn find_stuck_handoffs(
     ];
     let rows: Vec<tokio_postgres::Row> = client
         .query(
-            "SELECT handoff_id, status, stuck_duration \
+            "SELECT handoff_id, status, EXTRACT(EPOCH FROM stuck_duration) \
              FROM caliber_find_stuck_handoffs($1::interval) \
              LIMIT $2",
             &params,
@@ -520,11 +510,8 @@ async fn find_stuck_handoffs(
         .map(|row| {
             let id: uuid::Uuid = row.get(0);
             let status: String = row.get(1);
-            let stuck_duration = row
-                .try_get::<_, Interval>(2)
-                .ok()
-                .map(interval_to_duration)
-                .unwrap_or_else(chrono::Duration::zero);
+            let stuck_seconds: f64 = row.get(2);
+            let stuck_duration = seconds_to_duration(stuck_seconds);
 
             StuckHandoff {
                 id,
