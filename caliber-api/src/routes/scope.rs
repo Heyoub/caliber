@@ -109,7 +109,7 @@ pub async fn get_scope(
         .ok_or_else(|| ApiError::scope_not_found(id))?;
 
     // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, scope.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(scope.tenant_id))?;
 
     Ok(Json(scope))
 }
@@ -165,7 +165,7 @@ pub async fn update_scope(
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
-    validate_tenant_ownership(&auth, existing.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update scope via database client with event emission for audit trail
     let scope = db.update_with_event::<ScopeResponse>(id, &req, auth.tenant_id, &event_dag).await?;
@@ -216,7 +216,7 @@ pub async fn create_checkpoint(
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
-    validate_tenant_ownership(&auth, scope.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(scope.tenant_id))?;
 
     // Create checkpoint via Response method (validates scope is active)
     let updated_scope = scope.create_checkpoint(&db, &req).await?;
@@ -417,7 +417,7 @@ pub async fn list_scope_turns(
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
-    validate_tenant_ownership(&auth, scope.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(scope.tenant_id))?;
 
     // Get turns for this scope using generic list with filter
     let filter = TurnListFilter {
@@ -457,7 +457,7 @@ pub async fn list_scope_artifacts(
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
-    validate_tenant_ownership(&auth, scope.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(scope.tenant_id))?;
 
     // Get artifacts for this scope using generic list with filter
     let filter = ArtifactListFilter {

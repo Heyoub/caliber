@@ -147,7 +147,7 @@ pub async fn get_trajectory(
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
 
     // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(trajectory.tenant_id))?;
 
     Ok(Json(trajectory))
 }
@@ -196,7 +196,7 @@ pub async fn update_trajectory(
         .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
-    validate_tenant_ownership(&auth, existing.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update trajectory via database client with event emission for audit trail
     let trajectory = db.update_with_event::<TrajectoryResponse>(id, &req, auth.tenant_id, &event_dag).await?;
@@ -239,7 +239,7 @@ pub async fn delete_trajectory(
         .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
-    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(trajectory.tenant_id))?;
 
     // Delete trajectory via database client with event emission for audit trail
     db.delete_with_event::<TrajectoryResponse>(id, auth.tenant_id, &event_dag).await?;
@@ -281,7 +281,7 @@ pub async fn list_trajectory_scopes(
         .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
-    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(trajectory.tenant_id))?;
 
     // Get scopes for this trajectory using generic list with filter
     let filter = ScopeListFilter {
@@ -321,7 +321,7 @@ pub async fn list_trajectory_children(
         .get::<TrajectoryResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
-    validate_tenant_ownership(&auth, trajectory.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(trajectory.tenant_id))?;
 
     // Get child trajectories using generic list with parent filter
     let filter = TrajectoryListFilter {

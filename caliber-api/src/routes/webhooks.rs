@@ -28,7 +28,7 @@ use std::{
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use caliber_core::WebhookId;
+use caliber_core::{EntityIdType, WebhookId};
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},

@@ -33,6 +33,7 @@
 
 use crate::db::DbClient;
 use caliber_core::EntityIdType;
+use postgres_types::Interval;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -433,6 +434,17 @@ struct StuckHandoff {
     stuck_duration: chrono::Duration,
 }
 
+fn interval_to_duration(interval: Interval) -> chrono::Duration {
+    let mut duration = chrono::Duration::microseconds(interval.microseconds);
+    if interval.days != 0 {
+        duration = duration + chrono::Duration::days(interval.days as i64);
+    }
+    if interval.months != 0 {
+        duration = duration + chrono::Duration::days((interval.months as i64) * 30);
+    }
+    duration
+}
+
 /// Find delegations that are stuck (timed out or stale).
 async fn find_stuck_delegations(
     db: &DbClient,
@@ -462,11 +474,11 @@ async fn find_stuck_delegations(
         .map(|row| {
             let id: uuid::Uuid = row.get(0);
             let status: String = row.get(1);
-            // PostgreSQL interval to chrono Duration
-            let pg_interval: std::time::Duration = row.try_get::<_, std::time::Duration>(3)
-                .unwrap_or(std::time::Duration::ZERO);
-            let stuck_duration = chrono::Duration::from_std(pg_interval)
-                .unwrap_or(chrono::Duration::zero());
+            let stuck_duration = row
+                .try_get::<_, Interval>(2)
+                .ok()
+                .map(interval_to_duration)
+                .unwrap_or_else(chrono::Duration::zero);
 
             StuckDelegation {
                 id,
@@ -508,10 +520,11 @@ async fn find_stuck_handoffs(
         .map(|row| {
             let id: uuid::Uuid = row.get(0);
             let status: String = row.get(1);
-            let pg_interval: std::time::Duration = row.try_get::<_, std::time::Duration>(3)
-                .unwrap_or(std::time::Duration::ZERO);
-            let stuck_duration = chrono::Duration::from_std(pg_interval)
-                .unwrap_or(chrono::Duration::zero());
+            let stuck_duration = row
+                .try_get::<_, Interval>(2)
+                .ok()
+                .map(interval_to_duration)
+                .unwrap_or_else(chrono::Duration::zero);
 
             StuckHandoff {
                 id,

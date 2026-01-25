@@ -158,7 +158,7 @@ pub async fn get_note(
         .ok_or_else(|| ApiError::note_not_found(id))?;
 
     // Validate tenant ownership before returning
-    validate_tenant_ownership(&auth, note.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(note.tenant_id))?;
 
     // Increment access_count (fire-and-forget, don't block response)
     // This tracks how often a note is accessed for relevance ranking
@@ -227,7 +227,7 @@ pub async fn update_note(
         .get::<NoteResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
-    validate_tenant_ownership(&auth, existing.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     let note = db.update::<NoteResponse>(id, &req, auth.tenant_id).await?;
     ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
@@ -263,7 +263,7 @@ pub async fn delete_note(
         .get::<NoteResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::note_not_found(id))?;
-    validate_tenant_ownership(&auth, note.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(note.tenant_id))?;
 
     db.delete::<NoteResponse>(id, auth.tenant_id).await?;
     ws.broadcast(WsEvent::NoteDeleted {

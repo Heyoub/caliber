@@ -12,6 +12,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use caliber_core::EntityIdType;
 
 use crate::{
     db::DbClient,
@@ -91,7 +92,7 @@ pub async fn get_current_user(
         email: auth.email.clone().unwrap_or_default(),
         first_name: auth.first_name.clone(),
         last_name: auth.last_name.clone(),
-        tenant_id: Some(auth.tenant_id),
+        tenant_id: Some(auth.tenant_id.as_uuid()),
         api_key,
         created_at: chrono::Utc::now(), // In production, fetch from DB
     };

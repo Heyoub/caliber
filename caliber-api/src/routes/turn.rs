@@ -74,7 +74,7 @@ pub async fn create_turn(
         .get::<ScopeResponse>(req.scope_id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(req.scope_id))?;
-    validate_tenant_ownership(&auth, scope.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(scope.tenant_id))?;
 
     // Create turn via database client with tenant_id for isolation
     let turn = db.create::<TurnResponse>(&req, auth.tenant_id).await?;

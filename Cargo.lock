@@ -507,6 +507,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-prometheus",
  "opentelemetry_sdk",
+ "postgres-types",
  "prometheus",
  "proptest",
  "prost 0.14.3",

@@ -349,7 +349,7 @@ impl QueryRoot {
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
         let trajectory_id = TrajectoryId::new(uuid);
 
-        match db.get::<crate::types::TrajectoryResponse>(uuid, auth.tenant_id).await {
+        match db.get::<crate::types::TrajectoryResponse>(TrajectoryId::new(uuid), auth.tenant_id).await {
             Ok(Some(t)) => Ok(Some(t.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
