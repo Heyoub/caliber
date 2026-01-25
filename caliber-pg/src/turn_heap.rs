@@ -270,11 +270,13 @@ unsafe fn tuple_to_turn(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "turn_id is NULL".to_string(),
         }))?;
+    let turn_id = TurnId::new(turn_id);
     
     let scope_id = extract_uuid(tuple, tuple_desc, turn::SCOPE_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "scope_id is NULL".to_string(),
         }))?;
+    let scope_id = ScopeId::new(scope_id);
     
     let sequence = extract_i32(tuple, tuple_desc, turn::SEQUENCE)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

@@ -428,8 +428,8 @@ unsafe fn tuple_to_handoff(
             to_agent_type,
             trajectory_id: TrajectoryId::new(trajectory_id),
             scope_id: ScopeId::new(scope_id),
-            context_snapshot_id: ArtifactId::new(context_snapshot_id),
-            handoff_notes,
+            context_snapshot_id: Some(ArtifactId::new(context_snapshot_id)),
+            handoff_notes: Some(handoff_notes),
             next_steps,
             blockers,
             open_questions,
@@ -639,8 +639,8 @@ mod tests {
                 prop_assert_eq!(h.to_agent_type, to_agent_type);
                 prop_assert_eq!(h.trajectory_id.as_uuid(), trajectory_id.as_uuid());
                 prop_assert_eq!(h.scope_id.as_uuid(), scope_id.as_uuid());
-                prop_assert_eq!(h.context_snapshot_id.as_uuid(), context_snapshot_id.as_uuid());
-                prop_assert_eq!(h.handoff_notes, handoff_notes);
+                prop_assert_eq!(h.context_snapshot_id.map(|id| id.as_uuid()), Some(context_snapshot_id.as_uuid()));
+                prop_assert_eq!(h.handoff_notes, Some(handoff_notes));
                 prop_assert_eq!(h.next_steps, next_steps);
                 prop_assert_eq!(h.blockers, blockers);
                 prop_assert_eq!(h.open_questions, open_questions);
@@ -978,8 +978,8 @@ mod tests {
                 prop_assert_eq!(h.to_agent_type, to_agent_type);
                 prop_assert_eq!(h.trajectory_id.as_uuid(), trajectory_id.as_uuid());
                 prop_assert_eq!(h.scope_id.as_uuid(), scope_id.as_uuid());
-                prop_assert_eq!(h.context_snapshot_id.as_uuid(), context_snapshot_id.as_uuid());
-                prop_assert_eq!(h.handoff_notes, handoff_notes);
+                prop_assert_eq!(h.context_snapshot_id.map(|id| id.as_uuid()), Some(context_snapshot_id.as_uuid()));
+                prop_assert_eq!(h.handoff_notes, Some(handoff_notes));
                 prop_assert_eq!(h.next_steps, next_steps);
                 prop_assert_eq!(h.blockers, blockers);
                 prop_assert_eq!(h.open_questions, open_questions);

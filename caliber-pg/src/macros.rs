@@ -35,19 +35,19 @@
 
 /// Generate a `caliber_{entity}_get` function that wraps heap operations.
 ///
-/// Takes entity name, heap module, and a closure that builds JSON from the row.
+/// Takes entity name, heap module, entity ID type, and a closure that builds JSON from the row.
 /// The closure receives the full row (with tenant_id) and returns serde_json::Value.
 #[macro_export]
 macro_rules! caliber_pg_get {
-    ($entity:ident, $heap_mod:ident, |$row:ident| $json_expr:expr) => {
+    ($entity:ident, $heap_mod:ident, $id_ty:ty, |$row:ident| $json_expr:expr) => {
         paste::paste! {
             #[pg_extern]
             fn [<caliber_ $entity _get>](
                 id: pgrx::Uuid,
                 tenant_id: pgrx::Uuid,
             ) -> Option<pgrx::JsonB> {
-                let entity_id = uuid::Uuid::from_bytes(*id.as_bytes());
-                let tenant_uuid = uuid::Uuid::from_bytes(*tenant_id.as_bytes());
+                let entity_id: $id_ty = crate::id_from_pgrx(id);
+                let tenant_uuid = crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
 
                 match $heap_mod::[<$entity _get_heap>](entity_id, tenant_uuid) {
                     Ok(Some($row)) => {
@@ -73,7 +73,7 @@ macro_rules! caliber_pg_list_active {
         paste::paste! {
             #[pg_extern]
             fn [<caliber_ $entity _list_active>](tenant_id: pgrx::Uuid) -> pgrx::JsonB {
-                let tenant_uuid = uuid::Uuid::from_bytes(*tenant_id.as_bytes());
+                let tenant_uuid = crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
 
                 match $heap_mod::[<$entity _list_active_heap>](tenant_uuid) {
                     Ok(rows) => {
@@ -96,15 +96,15 @@ macro_rules! caliber_pg_list_active {
 /// Generate a `caliber_{entity}_delete` function.
 #[macro_export]
 macro_rules! caliber_pg_delete {
-    ($entity:ident, $heap_mod:ident) => {
+    ($entity:ident, $heap_mod:ident, $id_ty:ty) => {
         paste::paste! {
             #[pg_extern]
             fn [<caliber_ $entity _delete>](
                 id: pgrx::Uuid,
                 tenant_id: pgrx::Uuid,
             ) -> bool {
-                let entity_id = uuid::Uuid::from_bytes(*id.as_bytes());
-                let tenant_uuid = uuid::Uuid::from_bytes(*tenant_id.as_bytes());
+                let entity_id: $id_ty = crate::id_from_pgrx(id);
+                let tenant_uuid = crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
 
                 match $heap_mod::[<$entity _delete_heap>](entity_id, tenant_uuid) {
                     Ok(deleted) => deleted,

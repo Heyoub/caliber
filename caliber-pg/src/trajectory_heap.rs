@@ -367,7 +367,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
     if let Some(new_agent) = agent_id {
         match new_agent {
             Some(a) => {
-                values[trajectory::AGENT_ID as usize - 1] = uuid_to_datum(a);
+                values[trajectory::AGENT_ID as usize - 1] = uuid_to_datum(a.as_uuid());
                 nulls[trajectory::AGENT_ID as usize - 1] = false;
             }
             None => {
@@ -610,6 +610,7 @@ unsafe fn tuple_to_trajectory(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "trajectory_id is NULL".to_string(),
         }))?;
+    let trajectory_id = TrajectoryId::new(trajectory_id);
     
     let name = extract_text(tuple, tuple_desc, trajectory::NAME)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
@@ -624,9 +625,9 @@ unsafe fn tuple_to_trajectory(
         }))?;
     let status = str_to_status(&status_str);
     
-    let parent_trajectory_id = extract_uuid(tuple, tuple_desc, trajectory::PARENT_TRAJECTORY_ID)?;
-    let root_trajectory_id = extract_uuid(tuple, tuple_desc, trajectory::ROOT_TRAJECTORY_ID)?;
-    let agent_id = extract_uuid(tuple, tuple_desc, trajectory::AGENT_ID)?;
+    let parent_trajectory_id = extract_uuid(tuple, tuple_desc, trajectory::PARENT_TRAJECTORY_ID)?.map(TrajectoryId::new);
+    let root_trajectory_id = extract_uuid(tuple, tuple_desc, trajectory::ROOT_TRAJECTORY_ID)?.map(TrajectoryId::new);
+    let agent_id = extract_uuid(tuple, tuple_desc, trajectory::AGENT_ID)?.map(AgentId::new);
     
     let created_at_ts = extract_timestamp(tuple, tuple_desc, trajectory::CREATED_AT)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

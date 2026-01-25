@@ -80,7 +80,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<u
     let mut nulls: [bool; conflict::NUM_COLS] = [false; conflict::NUM_COLS];
     
     // Set required fields
-    values[conflict::CONFLICT_ID as usize - 1] = uuid_to_datum(conflict_id);
+    values[conflict::CONFLICT_ID as usize - 1] = uuid_to_datum(conflict_id.as_uuid());
     
     // Set conflict_type
     let conflict_type_str = match conflict_type {
@@ -147,7 +147,7 @@ pub fn conflict_get_heap(conflict_id: uuid::Uuid, tenant_id: TenantId) -> Calibe
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(conflict_id),
+        uuid_to_datum(conflict_id.as_uuid()),
     );
     
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
@@ -181,7 +181,7 @@ pub fn conflict_resolve_heap(
         1,
         BTreeStrategy::Equal,
         operator_oids::UUID_EQ,
-        uuid_to_datum(conflict_id),
+        uuid_to_datum(conflict_id.as_uuid()),
     );
     
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
@@ -327,6 +327,7 @@ unsafe fn tuple_to_conflict(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "conflict_id is NULL".to_string(),
         }))?;
+    let conflict_id = ConflictId::new(conflict_id);
     
     let conflict_type_str = extract_text(tuple, tuple_desc, conflict::CONFLICT_TYPE)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

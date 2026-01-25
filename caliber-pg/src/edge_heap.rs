@@ -397,6 +397,7 @@ unsafe fn tuple_to_edge(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "edge_id is NULL".to_string(),
         }))?;
+    let edge_id = EdgeId::new(edge_id);
 
     let edge_type_str = extract_text(tuple, tuple_desc, edge::EDGE_TYPE)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

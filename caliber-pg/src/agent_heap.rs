@@ -310,6 +310,7 @@ unsafe fn tuple_to_agent(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "agent_id is NULL".to_string(),
         }))?;
+    let agent_id = AgentId::new(agent_id);
     
     let agent_type = extract_text(tuple, tuple_desc, agent::AGENT_TYPE)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

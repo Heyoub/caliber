@@ -536,13 +536,15 @@ unsafe fn tuple_to_scope(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "scope_id is NULL".to_string(),
         }))?;
+    let scope_id = ScopeId::new(scope_id);
     
     let trajectory_id = extract_uuid(tuple, tuple_desc, scope::TRAJECTORY_ID)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "trajectory_id is NULL".to_string(),
         }))?;
+    let trajectory_id = TrajectoryId::new(trajectory_id);
     
-    let parent_scope_id = extract_uuid(tuple, tuple_desc, scope::PARENT_SCOPE_ID)?;
+    let parent_scope_id = extract_uuid(tuple, tuple_desc, scope::PARENT_SCOPE_ID)?.map(ScopeId::new);
     
     let name = extract_text(tuple, tuple_desc, scope::NAME)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

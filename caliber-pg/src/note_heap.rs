@@ -650,6 +650,7 @@ unsafe fn tuple_to_note(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "note_id is NULL".to_string(),
         }))?;
+    let note_id = NoteId::new(note_id);
     
     let note_type_str = extract_text(tuple, tuple_desc, note::NOTE_TYPE)?
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {

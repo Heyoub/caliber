@@ -7,9 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AgentId, CaliberError, CaliberResult, DelegatedTask, DelegationId, DelegationResult,
-    DelegationResultStatus, DelegationStatus, EntityIdType, EntityType, StorageError, TenantId,
-    TrajectoryId,
+    AgentId, ArtifactId, CaliberError, CaliberResult, DelegatedTask, DelegationId, DelegationResult,
+    DelegationResultStatus, DelegationStatus, EntityIdType, EntityType, NoteId, StorageError,
+    TenantId, TrajectoryId,
 };
 
 use crate::column_maps::delegation;
@@ -56,10 +56,10 @@ pub struct DelegationCreateParams<'a> {
     pub task_description: &'a str,
     pub parent_trajectory_id: TrajectoryId,
     pub child_trajectory_id: Option<TrajectoryId>,
-    pub shared_artifacts: &'a [uuid::Uuid],
-    pub shared_notes: &'a [uuid::Uuid],
+    pub shared_artifacts: &'a [ArtifactId],
+    pub shared_notes: &'a [NoteId],
     pub additional_context: Option<&'a str>,
-    pub constraints: &'a str,
+    pub constraints: Option<&'a serde_json::Value>,
     pub deadline: Option<chrono::DateTime<chrono::Utc>>,
     pub tenant_id: TenantId,
 }
@@ -126,14 +126,16 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
     if shared_artifacts.is_empty() {
         nulls[delegation::SHARED_ARTIFACTS as usize - 1] = true;
     } else {
-        values[delegation::SHARED_ARTIFACTS as usize - 1] = uuid_array_to_datum(shared_artifacts);
+        let artifact_uuids: Vec<uuid::Uuid> = shared_artifacts.iter().map(|id| id.as_uuid()).collect();
+        values[delegation::SHARED_ARTIFACTS as usize - 1] = uuid_array_to_datum(&artifact_uuids);
     }
 
     // Set shared_notes array
     if shared_notes.is_empty() {
         nulls[delegation::SHARED_NOTES as usize - 1] = true;
     } else {
-        values[delegation::SHARED_NOTES as usize - 1] = uuid_array_to_datum(shared_notes);
+        let note_uuids: Vec<uuid::Uuid> = shared_notes.iter().map(|id| id.as_uuid()).collect();
+        values[delegation::SHARED_NOTES as usize - 1] = uuid_array_to_datum(&note_uuids);
     }
 
     // Set optional additional_context
@@ -143,8 +145,11 @@ pub fn delegation_create_heap(params: DelegationCreateParams<'_>) -> CaliberResu
         nulls[delegation::ADDITIONAL_CONTEXT as usize - 1] = true;
     }
 
-    // Set constraints
-    values[delegation::CONSTRAINTS as usize - 1] = string_to_datum(constraints);
+    // Set constraints (stored as JSON string)
+    let constraints_str = constraints
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "{}".to_string());
+    values[delegation::CONSTRAINTS as usize - 1] = string_to_datum(&constraints_str);
 
     // Set optional deadline
     values[delegation::DEADLINE as usize - 1] = deadline_datum;
@@ -443,10 +448,16 @@ unsafe fn tuple_to_delegation(
     let child_trajectory_id = extract_uuid(tuple, tuple_desc, delegation::CHILD_TRAJECTORY_ID)?.map(TrajectoryId::new);
     
     let shared_artifacts = extract_uuid_array(tuple, tuple_desc, delegation::SHARED_ARTIFACTS)?
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(ArtifactId::new)
+        .collect();
     
     let shared_notes = extract_uuid_array(tuple, tuple_desc, delegation::SHARED_NOTES)?
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(NoteId::new)
+        .collect();
     
     let additional_context = extract_text(tuple, tuple_desc, delegation::ADDITIONAL_CONTEXT)?;
     
@@ -454,6 +465,9 @@ unsafe fn tuple_to_delegation(
         .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
             reason: "constraints is NULL".to_string(),
         }))?;
+    let constraints = serde_json::from_str::<serde_json::Value>(&constraints)
+        .ok()
+        .or_else(|| Some(serde_json::Value::String(constraints)));
     
     let deadline = extract_timestamp(tuple, tuple_desc, delegation::DEADLINE)?
         .map(timestamp_to_chrono);
