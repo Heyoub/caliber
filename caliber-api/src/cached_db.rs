@@ -10,7 +10,7 @@
 //! - Dragon 3: Change journal for cache invalidation
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId};
+use caliber_core::{CaliberResult, EntityIdType, EntityType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId};
 use uuid::Uuid;
 use caliber_storage::{
     CacheableEntity, ChangeJournal, Freshness, InMemoryChangeJournal, LmdbCacheBackend,
@@ -42,10 +42,7 @@ impl CacheableEntity for TrajectoryResponse {
     }
 
     fn tenant_id(&self) -> Uuid {
-        // Use the tenant_id if available, otherwise use trajectory_id as fallback
-        self.tenant_id
-            .map(|t| t.as_uuid())
-            .unwrap_or_else(|| self.trajectory_id.as_uuid())
+        self.tenant_id.as_uuid()
     }
 }
 
@@ -59,10 +56,7 @@ impl CacheableEntity for ScopeResponse {
     }
 
     fn tenant_id(&self) -> Uuid {
-        // Use the tenant_id if available, otherwise use trajectory_id
-        self.tenant_id
-            .map(|t| t.as_uuid())
-            .unwrap_or_else(|| self.trajectory_id.as_uuid())
+        self.tenant_id.as_uuid()
     }
 }
 
@@ -76,10 +70,7 @@ impl CacheableEntity for ArtifactResponse {
     }
 
     fn tenant_id(&self) -> Uuid {
-        // Use the tenant_id if available, otherwise use trajectory_id
-        self.tenant_id
-            .map(|t| t.as_uuid())
-            .unwrap_or_else(|| self.trajectory_id.as_uuid())
+        self.tenant_id.as_uuid()
     }
 }
 
@@ -93,15 +84,7 @@ impl CacheableEntity for NoteResponse {
     }
 
     fn tenant_id(&self) -> Uuid {
-        // Use the tenant_id if available, otherwise use first source trajectory
-        self.tenant_id
-            .map(|t| t.as_uuid())
-            .unwrap_or_else(|| {
-                self.source_trajectory_ids
-                    .first()
-                    .map(|id| id.as_uuid())
-                    .unwrap_or_else(|| self.note_id.as_uuid())
-            })
+        self.tenant_id.as_uuid()
     }
 }
 
@@ -173,14 +156,14 @@ impl CachedDbClient {
     /// consistency by checking the change journal.
     pub async fn trajectory_get(
         &self,
-        id: Uuid,
-        tenant_id: Uuid,
+        id: TrajectoryId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<TrajectoryResponse>> {
         // Use cache with consistent freshness
         let fetcher = TrajectoryFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<TrajectoryResponse, _>(id, tenant_id, Freshness::default(), &fetcher)
+            .get::<TrajectoryResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -191,7 +174,7 @@ impl CachedDbClient {
     pub async fn trajectory_create(
         &self,
         req: &CreateTrajectoryRequest,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
     ) -> ApiResult<TrajectoryResponse> {
         // Create in database
         let response = self.db.trajectory_create(req, tenant_id).await?;
@@ -199,7 +182,7 @@ impl CachedDbClient {
         // Record change in journal for cache invalidation
         self.cache
             .journal()
-            .record_change(tenant_id, EntityType::Trajectory, response.trajectory_id)
+            .record_change(tenant_id, EntityType::Trajectory, response.trajectory_id.as_uuid())
             .await
             .map_err(|e| ApiError::internal_error(format!("Journal error: {}", e)))?;
 
@@ -215,9 +198,9 @@ impl CachedDbClient {
     /// Update a trajectory, recording the change in the journal.
     pub async fn trajectory_update(
         &self,
-        id: Uuid,
+        id: TrajectoryId,
         req: &UpdateTrajectoryRequest,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
     ) -> ApiResult<TrajectoryResponse> {
         // Update in database
         let response = self.db.trajectory_update(id, req, tenant_id).await?;
@@ -225,7 +208,7 @@ impl CachedDbClient {
         // Record change in journal for cache invalidation
         self.cache
             .journal()
-            .record_change(tenant_id, EntityType::Trajectory, id)
+            .record_change(tenant_id, EntityType::Trajectory, id.as_uuid())
             .await
             .map_err(|e| ApiError::internal_error(format!("Journal error: {}", e)))?;
 
@@ -242,7 +225,7 @@ impl CachedDbClient {
     pub async fn trajectory_list_by_status(
         &self,
         status: caliber_core::TrajectoryStatus,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
     ) -> ApiResult<Vec<TrajectoryResponse>> {
         self.db.trajectory_list_by_status(status, tenant_id).await
     }
@@ -254,13 +237,13 @@ impl CachedDbClient {
     /// Get a scope by ID, checking cache first.
     pub async fn scope_get(
         &self,
-        id: Uuid,
-        tenant_id: Uuid,
+        id: ScopeId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<ScopeResponse>> {
         let fetcher = ScopeFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<ScopeResponse, _>(id, tenant_id, Freshness::default(), &fetcher)
+            .get::<ScopeResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -274,13 +257,13 @@ impl CachedDbClient {
     /// Get an artifact by ID, checking cache first.
     pub async fn artifact_get(
         &self,
-        id: Uuid,
-        tenant_id: Uuid,
+        id: ArtifactId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<ArtifactResponse>> {
         let fetcher = ArtifactFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<ArtifactResponse, _>(id, tenant_id, Freshness::default(), &fetcher)
+            .get::<ArtifactResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -290,8 +273,8 @@ impl CachedDbClient {
     /// List artifacts by trajectory (not cached).
     pub async fn artifact_list_by_trajectory_and_tenant(
         &self,
-        trajectory_id: Uuid,
-        tenant_id: Uuid,
+        trajectory_id: TrajectoryId,
+        tenant_id: TenantId,
     ) -> ApiResult<Vec<ArtifactResponse>> {
         self.db
             .artifact_list_by_trajectory_and_tenant(trajectory_id, tenant_id)
@@ -301,7 +284,7 @@ impl CachedDbClient {
     /// List recent artifacts (not cached).
     pub async fn artifact_list_recent(
         &self,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
         limit: usize,
     ) -> ApiResult<Vec<ArtifactResponse>> {
         self.db.artifact_list_recent(tenant_id, limit).await
@@ -314,13 +297,13 @@ impl CachedDbClient {
     /// Get a note by ID, checking cache first.
     pub async fn note_get(
         &self,
-        id: Uuid,
-        tenant_id: Uuid,
+        id: NoteId,
+        tenant_id: TenantId,
     ) -> ApiResult<Option<NoteResponse>> {
         let fetcher = NoteFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<NoteResponse, _>(id, tenant_id, Freshness::default(), &fetcher)
+            .get::<NoteResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -337,7 +320,7 @@ impl CachedDbClient {
     // ========================================================================
 
     /// Get an agent by ID (passthrough for now).
-    pub async fn agent_get(&self, id: Uuid) -> ApiResult<Option<AgentResponse>> {
+    pub async fn agent_get(&self, id: AgentId) -> ApiResult<Option<AgentResponse>> {
         self.db.agent_get(id).await
     }
 
@@ -345,7 +328,7 @@ impl CachedDbClient {
     pub async fn agent_register(
         &self,
         req: &RegisterAgentRequest,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
     ) -> ApiResult<AgentResponse> {
         self.db.agent_register(req, tenant_id).await
     }
@@ -353,7 +336,7 @@ impl CachedDbClient {
     /// Update an agent.
     pub async fn agent_update(
         &self,
-        id: Uuid,
+        id: AgentId,
         req: &UpdateAgentRequest,
     ) -> ApiResult<AgentResponse> {
         self.db.agent_update(id, req).await
@@ -401,7 +384,7 @@ impl StorageFetcher<TrajectoryResponse> for TrajectoryFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<TrajectoryResponse>> {
         self.db
-            .trajectory_get(entity_id, tenant_id)
+            .trajectory_get(TrajectoryId::from(entity_id), TenantId::from(tenant_id))
             .await
             .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
     }
@@ -420,7 +403,7 @@ impl StorageFetcher<ScopeResponse> for ScopeFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<ScopeResponse>> {
         self.db
-            .scope_get(entity_id, tenant_id)
+            .scope_get(ScopeId::from(entity_id), TenantId::from(tenant_id))
             .await
             .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
     }
@@ -439,7 +422,7 @@ impl StorageFetcher<ArtifactResponse> for ArtifactFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<ArtifactResponse>> {
         self.db
-            .artifact_get(entity_id, tenant_id)
+            .artifact_get(ArtifactId::from(entity_id), TenantId::from(tenant_id))
             .await
             .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
     }
@@ -458,7 +441,7 @@ impl StorageFetcher<NoteResponse> for NoteFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<NoteResponse>> {
         self.db
-            .note_get(entity_id, tenant_id)
+            .note_get(NoteId::from(entity_id), TenantId::from(tenant_id))
             .await
             .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
     }
@@ -470,11 +453,12 @@ mod tests {
 
     #[test]
     fn test_trajectory_response_cacheable_entity() {
-        use uuid::Uuid;
+        let trajectory_id = TrajectoryId::from(Uuid::now_v7());
+        let tenant_id = TenantId::from(Uuid::now_v7());
 
         let trajectory = TrajectoryResponse {
-            trajectory_id: Uuid::now_v7(),
-            tenant_id: Some(Uuid::now_v7()),
+            trajectory_id,
+            tenant_id,
             name: "Test".to_string(),
             description: None,
             status: caliber_core::TrajectoryStatus::Active,
@@ -489,19 +473,22 @@ mod tests {
         };
 
         assert_eq!(TrajectoryResponse::entity_type(), EntityType::Trajectory);
-        assert_eq!(trajectory.entity_id(), trajectory.trajectory_id);
-        assert_eq!(trajectory.tenant_id(), trajectory.tenant_id.unwrap());
+        assert_eq!(trajectory.entity_id(), trajectory.trajectory_id.as_uuid());
+        assert_eq!(trajectory.tenant_id(), trajectory.tenant_id.as_uuid());
     }
 
     #[test]
     fn test_artifact_response_cacheable_entity() {
-        use uuid::Uuid;
+        let artifact_id = ArtifactId::from(Uuid::now_v7());
+        let tenant_id = TenantId::from(Uuid::now_v7());
+        let trajectory_id = TrajectoryId::from(Uuid::now_v7());
+        let scope_id = ScopeId::from(Uuid::now_v7());
 
         let artifact = ArtifactResponse {
-            artifact_id: Uuid::now_v7(),
-            tenant_id: Some(Uuid::now_v7()),
-            trajectory_id: Uuid::now_v7(),
-            scope_id: Uuid::now_v7(),
+            artifact_id,
+            tenant_id,
+            trajectory_id,
+            scope_id,
             artifact_type: caliber_core::ArtifactType::Fact,
             name: "Test".to_string(),
             content: "content".to_string(),
@@ -520,7 +507,7 @@ mod tests {
         };
 
         assert_eq!(ArtifactResponse::entity_type(), EntityType::Artifact);
-        assert_eq!(artifact.entity_id(), artifact.artifact_id);
-        assert_eq!(artifact.tenant_id(), artifact.tenant_id.unwrap());
+        assert_eq!(artifact.entity_id(), artifact.artifact_id.as_uuid());
+        assert_eq!(artifact.tenant_id(), artifact.tenant_id.as_uuid());
     }
 }

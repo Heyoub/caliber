@@ -9,7 +9,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use caliber_core::EdgeId;
+use caliber_core::{EdgeId, EntityIdType};
 use std::sync::Arc;
 use uuid::Uuid;
 

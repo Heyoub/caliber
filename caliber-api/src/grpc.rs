@@ -24,6 +24,7 @@ use crate::{
     ws::WsState,
 };
 use uuid::Uuid;
+use caliber_core::EntityIdType;
 
 // ============================================================================
 // TENANT EXTRACTION HELPER
@@ -118,6 +119,8 @@ impl From<ApiError> for Status {
             crate::error::ErrorCode::InternalError => Status::internal(err.message),
             crate::error::ErrorCode::DatabaseError => Status::internal(err.message),
             crate::error::ErrorCode::ServiceUnavailable => Status::unavailable(err.message),
+            crate::error::ErrorCode::ApiKeyNotFound => Status::not_found(err.message),
+            crate::error::ErrorCode::WebhookNotFound => Status::not_found(err.message),
         }
     }
 }
@@ -1213,7 +1216,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
             } else {
                 // Otherwise, list all and filter by status
                 let all_agents = self.db.agent_list_all().await?;
-                all_agents.into_iter().filter(|a| a.status == status).collect()
+                all_agents.into_iter().filter(|a| a.status.to_string() == status).collect()
             }
         } else {
             // List all agents
@@ -1249,7 +1252,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
             memory_access,
         };
         let agent = self.db.update::<crate::types::AgentResponse>(id, &update_req, tenant_id).await?;
-        let status = agent.status.clone();
+        let status = agent.status.to_string();
         self.ws.broadcast(WsEvent::AgentStatusChanged { tenant_id, agent_id: id, status });
         Ok(Response::new(agent_to_proto(&agent)))
     }

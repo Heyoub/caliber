@@ -361,7 +361,12 @@ fn extraction_method_to_str(method: &ExtractionMethod) -> &'static str {
     match method {
         ExtractionMethod::Explicit => "explicit",
         ExtractionMethod::Inferred => "inferred",
-        ExtractionMethod::UserProvided => "userprovided",
+        ExtractionMethod::UserProvided => "user_provided",
+        ExtractionMethod::LlmExtraction => "llm_extraction",
+        ExtractionMethod::ToolExtraction => "tool_extraction",
+        ExtractionMethod::MemoryRecall => "memory_recall",
+        ExtractionMethod::ExternalApi => "external_api",
+        ExtractionMethod::Unknown => "unknown",
     }
 }
 
@@ -370,10 +375,15 @@ fn str_to_extraction_method(s: &str) -> ExtractionMethod {
     match s {
         "explicit" => ExtractionMethod::Explicit,
         "inferred" => ExtractionMethod::Inferred,
-        "userprovided" => ExtractionMethod::UserProvided,
+        "user_provided" | "userprovided" => ExtractionMethod::UserProvided,
+        "llm_extraction" => ExtractionMethod::LlmExtraction,
+        "tool_extraction" => ExtractionMethod::ToolExtraction,
+        "memory_recall" => ExtractionMethod::MemoryRecall,
+        "external_api" => ExtractionMethod::ExternalApi,
+        "unknown" => ExtractionMethod::Unknown,
         _ => {
-            pgrx::warning!("CALIBER: Unknown extraction method '{}', defaulting to Inferred", s);
-            ExtractionMethod::Inferred
+            pgrx::warning!("CALIBER: Unknown extraction method '{}', defaulting to Unknown", s);
+            ExtractionMethod::Unknown
         }
     }
 }

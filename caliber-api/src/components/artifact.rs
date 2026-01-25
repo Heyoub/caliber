@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::{
     ArtifactResponse, CreateArtifactRequest, ListArtifactsRequest, UpdateArtifactRequest,
 };
-use caliber_core::{ArtifactId, ArtifactType, ScopeId, TenantId, TrajectoryId};
+use caliber_core::{ArtifactId, ArtifactType, EntityIdType, ScopeId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for ArtifactResponse

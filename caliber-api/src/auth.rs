@@ -11,7 +11,7 @@
 //! Requirements: 1.5, 1.6
 
 use crate::error::{ApiError, ApiResult};
-use caliber_core::{CaliberError, ConfigError, TenantId};
+use caliber_core::{CaliberError, ConfigError, EntityIdType, TenantId};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};

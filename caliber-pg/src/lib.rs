@@ -30,12 +30,15 @@ use caliber_core::{
     AbstractionLevel, Agent, AgentError, AgentHandoff, AgentMessage, AgentStatus, Artifact,
     ArtifactType, CaliberConfig, CaliberError, CaliberResult, Checkpoint, Conflict,
     ConflictStatus, ConflictType, DelegatedTask, DelegationResult, DelegationResultStatus,
-    DelegationStatus, Edge, EdgeParticipant, EdgeType, EmbeddingVector, EntityId, EntityType,
-    ExtractionMethod, HandoffReason, HandoffStatus, LockData, LockMode, MemoryAccess,
+    DelegationStatus, Edge, EdgeParticipant, EdgeType, EmbeddingVector, EntityType,
+    ExtractionMethod, HandoffReason, HandoffStatus, HandoffId, LockData, LockMode, MemoryAccess,
     MemoryCategory, MemoryRegion, MemoryRegionConfig, MessagePriority, MessageType, Note,
     NoteType, Provenance, RawContent, ResolutionStrategy, Scope, StorageError,
     SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
-    ValidationError, compute_content_hash, compute_lock_key, new_entity_id,
+    ValidationError, compute_content_hash, compute_lock_key,
+    // Strongly-typed entity IDs and their trait
+    TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, EdgeId, AgentId,
+    LockId, MessageId, DelegationId, SummarizationPolicyId, ConflictId, EntityIdType,
 };
 
 // pgrx datum types
@@ -580,7 +583,7 @@ fn create_memory_access(access: &str, memory_type: &str) -> MemoryAccess {
 /// Create a memory region config for a given owner.
 /// Uses the appropriate constructor based on region_type.
 #[allow(dead_code)]
-fn create_region_config(owner_id: EntityId, region_type: &str) -> MemoryRegionConfig {
+fn create_region_config(owner_id: Uuid, region_type: &str) -> MemoryRegionConfig {
     match region_type {
         "private" => MemoryRegionConfig::private(owner_id),
         "public" => MemoryRegionConfig::public(owner_id),
@@ -680,7 +683,7 @@ fn caliber_version() -> &'static str {
 /// UUIDv7 is timestamp-sortable, making it ideal for time-ordered data.
 #[pg_extern]
 fn caliber_new_id() -> pgrx::Uuid {
-    let id = new_entity_id();
+    let id = Uuid::now_v7();
     pgrx::Uuid::from_bytes(*id.as_bytes())
 }
 
@@ -700,13 +703,13 @@ fn caliber_trajectory_create(
     // Record operation for metrics
     storage_write().record_op("trajectory_create");
 
-    let trajectory_id = new_entity_id();
+    let trajectory_id = TrajectoryId::now_v7();
 
-    // Convert pgrx::Uuid to EntityId if provided
-    let agent_entity_id = agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
-    
+    // Convert pgrx::Uuid to AgentId if provided
+    let agent_entity_id = agent_id.map(|u| AgentId::new(Uuid::from_bytes(*u.as_bytes())));
+
     // Use direct heap operations instead of SPI
-    let tenant_entity_id = Uuid::from_bytes(*tenant_id.as_bytes());
+    let tenant_entity_id = TenantId::new(Uuid::from_bytes(*tenant_id.as_bytes()));
 
     let result = trajectory_heap::trajectory_create_heap(
         trajectory_id,
@@ -960,7 +963,7 @@ fn caliber_scope_create(
     token_budget: i32,
     tenant_id: pgrx::Uuid,
 ) -> pgrx::Uuid {
-    let scope_id = new_entity_id();
+    let scope_id = ScopeId::now_v7();
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
     let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
@@ -1313,7 +1316,7 @@ fn caliber_artifact_create(
         }
     };
 
-    let artifact_id = new_entity_id();
+    let artifact_id = ArtifactId::now_v7();
     let traj_id = Uuid::from_bytes(*trajectory_id.as_bytes());
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
 
@@ -1842,7 +1845,7 @@ fn caliber_note_create(
     // Record operation for metrics
     storage_write().record_op("note_create");
 
-    let note_id = new_entity_id();
+    let note_id = NoteId::now_v7();
 
     // Validate note_type - reject unknown values instead of defaulting (REQ-12)
     let note_type_enum = match note_type {
@@ -1889,11 +1892,11 @@ fn caliber_note_create(
     };
 
     // Build source IDs arrays
-    let source_traj_ids: Vec<EntityId> = source_trajectory_ids
+    let source_traj_ids: Vec<Uuid> = source_trajectory_ids
         .into_iter()
         .map(|u| Uuid::from_bytes(*u.as_bytes()))
         .collect();
-    let source_artifact_ids: Vec<EntityId> = source_artifact_ids
+    let source_artifact_ids: Vec<Uuid> = source_artifact_ids
         .into_iter()
         .map(|u| Uuid::from_bytes(*u.as_bytes()))
         .collect();
@@ -2220,7 +2223,7 @@ fn caliber_turn_create(
     token_count: i32,
     tenant_id: pgrx::Uuid,
 ) -> Option<pgrx::Uuid> {
-    let turn_id = new_entity_id();
+    let turn_id = TurnId::now_v7();
     let scp_id = Uuid::from_bytes(*scope_id.as_bytes());
 
     // Validate role - reject unknown values instead of defaulting (REQ-12)
@@ -2422,7 +2425,7 @@ fn caliber_lock_acquire(
 
     if acquired {
         // Create lock record using direct heap operations for cross-session visibility
-        let lock_id = new_entity_id();
+        let lock_id = LockId::now_v7();
         let now = Utc::now();
         let expires_at = now + chrono::Duration::milliseconds(timeout_ms);
 
@@ -2665,7 +2668,7 @@ fn caliber_message_send(
     let to_agent = to_agent_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
     let traj_id = trajectory_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
     let scp_id = scope_id.map(|u| Uuid::from_bytes(*u.as_bytes()));
-    let artifact_ids: Vec<EntityId> = artifact_ids
+    let artifact_ids: Vec<Uuid> = artifact_ids
         .into_iter()
         .map(|u| Uuid::from_bytes(*u.as_bytes()))
         .collect();
@@ -2700,7 +2703,7 @@ fn caliber_message_send(
         }
     };
 
-    let message_id = new_entity_id();
+    let message_id = MessageId::now_v7();
 
     // Use direct heap operations instead of SPI
     let result = message_heap::message_send_heap(message_heap::MessageSendParams {
@@ -3438,7 +3441,7 @@ fn caliber_delegation_create(
     let delegatee = delegatee_agent_id.map(|id| Uuid::from_bytes(*id.as_bytes()));
 
     // Generate a new delegation ID
-    let delegation_id = new_entity_id();
+    let delegation_id = DelegationId::now_v7();
 
     // Use direct heap operations instead of SPI
     let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
@@ -3642,7 +3645,7 @@ fn caliber_handoff_create(
         }
     };
 
-    let handoff_id = caliber_core::new_entity_id();
+    let handoff_id = HandoffId::now_v7();
 
     let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
 
@@ -4646,7 +4649,7 @@ fn caliber_region_create(
     use pgrx::datum::DatumWithOid;
 
     let pg_owner = owner_agent_id;
-    let region_id = new_entity_id();
+    let region_id = Uuid::now_v7();
     let pg_region_id = pgrx::Uuid::from_bytes(*region_id.as_bytes());
     let now = match tuple_extract::chrono_to_timestamp(Utc::now()) {
         Ok(ts) => ts,
@@ -5008,7 +5011,7 @@ fn caliber_edge_create(
     // Record operation for metrics
     storage_write().record_op("edge_create");
 
-    let edge_id = new_entity_id();
+    let edge_id = EdgeId::now_v7();
 
     // Validate edge_type - reject unknown values (REQ-12)
     let edge_type_enum = match edge_type {
@@ -5285,7 +5288,7 @@ fn caliber_summarization_policy_create(
     // Record operation for metrics
     storage_write().record_op("summarization_policy_create");
 
-    let policy_id = new_entity_id();
+    let policy_id = SummarizationPolicyId::now_v7();
 
     // Validate abstraction levels
     let source_level_enum = match source_level {
@@ -5599,7 +5602,7 @@ impl StorageTrait for PgStorage {
         })
     }
 
-    fn trajectory_get(&self, id: EntityId) -> CaliberResult<Option<Trajectory>> {
+    fn trajectory_get(&self, id: Uuid) -> CaliberResult<Option<Trajectory>> {
         Spi::connect(|client| {
             let mut result = client.select(
                 "SELECT trajectory_id, name, description, status, parent_trajectory_id,
@@ -5661,7 +5664,7 @@ impl StorageTrait for PgStorage {
         })
     }
 
-    fn trajectory_update(&self, id: EntityId, update: TrajectoryUpdate) -> CaliberResult<()> {
+    fn trajectory_update(&self, id: Uuid, update: TrajectoryUpdate) -> CaliberResult<()> {
         Spi::connect_mut(|client| {
             // First check if trajectory exists
             let exists_result = client.select(
@@ -5789,7 +5792,7 @@ impl StorageTrait for PgStorage {
 
     fn scope_insert(&self, s: &Scope) -> CaliberResult<()> {
         // Check if already exists using heap module
-        if scope_heap::scope_get_heap(s.scope_id, Uuid::nil())?.is_some() {
+        if scope_heap::scope_get_heap(s.scope_id, TenantId::nil())?.is_some() {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Scope,
                 reason: "already exists".to_string(),
@@ -5801,19 +5804,19 @@ impl StorageTrait for PgStorage {
             &s.name,
             s.purpose.as_deref(),
             s.token_budget,
-            Uuid::nil(),
+            TenantId::nil(),
         )?;
         Ok(())
     }
 
-    fn scope_get(&self, id: EntityId) -> CaliberResult<Option<Scope>> {
-        scope_heap::scope_get_heap(id, Uuid::nil())
+    fn scope_get(&self, id: Uuid) -> CaliberResult<Option<Scope>> {
+        scope_heap::scope_get_heap(ScopeId::new(id), TenantId::nil())
             .map(|row| row.map(Into::into))
     }
 
-    fn scope_get_current(&self, trajectory_id: EntityId) -> CaliberResult<Option<Scope>> {
+    fn scope_get_current(&self, trajectory_id: Uuid) -> CaliberResult<Option<Scope>> {
         // Get all scopes for trajectory and find the active one with latest created_at
-        let scopes = scope_heap::scope_list_by_trajectory_heap(trajectory_id, Uuid::nil())?;
+        let scopes = scope_heap::scope_list_by_trajectory_heap(TrajectoryId::new(trajectory_id), TenantId::nil())?;
         Ok(scopes
             .into_iter()
             .map(Into::into)
@@ -5821,9 +5824,10 @@ impl StorageTrait for PgStorage {
             .max_by_key(|s| s.created_at))
     }
 
-    fn scope_update(&self, id: EntityId, update: ScopeUpdate) -> CaliberResult<()> {
+    fn scope_update(&self, id: Uuid, update: ScopeUpdate) -> CaliberResult<()> {
         // Verify scope exists
-        let existing = scope_heap::scope_get_heap(id, Uuid::nil())?;
+        let scope_id = ScopeId::new(id);
+        let existing = scope_heap::scope_get_heap(scope_id, TenantId::nil())?;
         if existing.is_none() {
             return Err(CaliberError::Storage(StorageError::NotFound {
                 entity_type: EntityType::Scope,
@@ -5833,23 +5837,23 @@ impl StorageTrait for PgStorage {
 
         // For now, handle close specifically (most common update)
         if update.is_active == Some(false) {
-            scope_heap::scope_close_heap(id, Uuid::nil())?;
+            scope_heap::scope_close_heap(scope_id, TenantId::nil())?;
         }
         // Token updates via dedicated function
         if let Some(tokens) = update.tokens_used {
-            scope_heap::scope_update_tokens_heap(id, tokens, Uuid::nil())?;
+            scope_heap::scope_update_tokens_heap(scope_id, tokens, TenantId::nil())?;
         }
         Ok(())
     }
 
-    fn scope_list_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Scope>> {
-        scope_heap::scope_list_by_trajectory_heap(trajectory_id, Uuid::nil())
+    fn scope_list_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Scope>> {
+        scope_heap::scope_list_by_trajectory_heap(TrajectoryId::new(trajectory_id), TenantId::nil())
             .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
     fn artifact_insert(&self, a: &Artifact) -> CaliberResult<()> {
         // Check if already exists using heap module
-        if artifact_heap::artifact_get_heap(a.artifact_id, Uuid::nil())?.is_some() {
+        if artifact_heap::artifact_get_heap(a.artifact_id, TenantId::nil())?.is_some() {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Artifact,
                 reason: "already exists".to_string(),
@@ -5866,58 +5870,59 @@ impl StorageTrait for PgStorage {
             embedding: a.embedding.as_ref(),
             provenance: &a.provenance,
             ttl: a.ttl.clone(),
-            tenant_id: Uuid::nil(),
+            tenant_id: TenantId::nil(),
         })?;
         Ok(())
     }
 
-    fn artifact_get(&self, id: EntityId) -> CaliberResult<Option<Artifact>> {
-        artifact_heap::artifact_get_heap(id, Uuid::nil())
+    fn artifact_get(&self, id: Uuid) -> CaliberResult<Option<Artifact>> {
+        artifact_heap::artifact_get_heap(ArtifactId::new(id), TenantId::nil())
             .map(|row| row.map(Into::into))
     }
 
     fn artifact_query_by_type(
         &self,
-        trajectory_id: EntityId,
+        trajectory_id: Uuid,
         artifact_type: ArtifactType,
     ) -> CaliberResult<Vec<Artifact>> {
         // Get all artifacts of type and filter by trajectory
-        let artifacts = artifact_heap::artifact_query_by_type_heap(artifact_type, Uuid::nil())?
+        let traj_id = TrajectoryId::new(trajectory_id);
+        let artifacts = artifact_heap::artifact_query_by_type_heap(artifact_type, TenantId::nil())?
             .into_iter()
             .map(Into::into)
-            .filter(|a: &Artifact| a.trajectory_id == trajectory_id)
+            .filter(|a: &Artifact| a.trajectory_id == traj_id)
             .collect();
         Ok(artifacts)
     }
 
-    fn artifact_query_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Artifact>> {
-        artifact_heap::artifact_query_by_scope_heap(scope_id, Uuid::nil())
+    fn artifact_query_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Artifact>> {
+        artifact_heap::artifact_query_by_scope_heap(ScopeId::new(scope_id), TenantId::nil())
             .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
-    fn artifact_update(&self, id: EntityId, update: ArtifactUpdate) -> CaliberResult<()> {
+    fn artifact_update(&self, id: Uuid, update: ArtifactUpdate) -> CaliberResult<()> {
         // Compute content hash if content is being updated
         let content_hash = update.content.as_ref().map(|c| compute_content_hash(c.as_bytes()));
         // Convert embedding to the nested Option format (Some(Some(x)) = update, Some(None) = set to null, None = don't update)
         let embedding_opt = update.embedding.as_ref().map(Some);
         // Same for superseded_by
-        let superseded_opt = update.superseded_by.map(Some);
+        let superseded_opt = update.superseded_by.map(|s| s.map(ArtifactId::new));
 
         artifact_heap::artifact_update_heap(
-            id,
+            ArtifactId::new(id),
             update.content.as_deref(),
             content_hash,
             embedding_opt,
             superseded_opt,
             None, // metadata not in ArtifactUpdate struct
-            Uuid::nil(),
+            TenantId::nil(),
         )?;
         Ok(())
     }
 
     fn note_insert(&self, n: &Note) -> CaliberResult<()> {
         // Check if already exists using heap module
-        if note_heap::note_get_heap(n.note_id, Uuid::nil())?.is_some() {
+        if note_heap::note_get_heap(n.note_id, TenantId::nil())?.is_some() {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Note,
                 reason: "already exists".to_string(),
@@ -5935,37 +5940,37 @@ impl StorageTrait for PgStorage {
             ttl: n.ttl.clone(),
             abstraction_level: n.abstraction_level,
             source_note_ids: &n.source_note_ids,
-            tenant_id: Uuid::nil(),
+            tenant_id: TenantId::nil(),
         })?;
         Ok(())
     }
 
-    fn note_get(&self, id: EntityId) -> CaliberResult<Option<Note>> {
-        note_heap::note_get_heap(id, Uuid::nil())
+    fn note_get(&self, id: Uuid) -> CaliberResult<Option<Note>> {
+        note_heap::note_get_heap(NoteId::new(id), TenantId::nil())
             .map(|row| row.map(Into::into))
     }
 
-    fn note_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Note>> {
-        note_heap::note_query_by_trajectory_heap(trajectory_id, Uuid::nil())
+    fn note_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Note>> {
+        note_heap::note_query_by_trajectory_heap(TrajectoryId::new(trajectory_id), TenantId::nil())
             .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
-    fn note_update(&self, id: EntityId, update: NoteUpdate) -> CaliberResult<()> {
+    fn note_update(&self, id: Uuid, update: NoteUpdate) -> CaliberResult<()> {
         // Compute content hash if content is being updated
         let content_hash = update.content.as_ref().map(|c| compute_content_hash(c.as_bytes()));
         // Convert embedding to the nested Option format (Some(Some(x)) = update, Some(None) = set to null, None = don't update)
         let embedding_opt = update.embedding.as_ref().map(Some);
         // Same for superseded_by
-        let superseded_opt = update.superseded_by.map(Some);
+        let superseded_opt = update.superseded_by.map(|s| s.map(NoteId::new));
 
         note_heap::note_update_heap(
-            id,
+            NoteId::new(id),
             update.content.as_deref(),
             content_hash,
             embedding_opt,
             superseded_opt,
             None, // metadata not in NoteUpdate struct
-            Uuid::nil(),
+            TenantId::nil(),
         )?;
         Ok(())
     }
@@ -5980,13 +5985,13 @@ impl StorageTrait for PgStorage {
             token_count: t.token_count,
             tool_calls: t.tool_calls.as_ref(),
             tool_results: t.tool_results.as_ref(),
-            tenant_id: Uuid::nil(),
+            tenant_id: TenantId::nil(),
         })?;
         Ok(())
     }
 
-    fn turn_get_by_scope(&self, scope_id: EntityId) -> CaliberResult<Vec<Turn>> {
-        turn_heap::turn_get_by_scope_heap(scope_id, Uuid::nil())
+    fn turn_get_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Turn>> {
+        turn_heap::turn_get_by_scope_heap(ScopeId::new(scope_id), TenantId::nil())
             .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
@@ -5994,13 +5999,13 @@ impl StorageTrait for PgStorage {
         &self,
         query: &EmbeddingVector,
         limit: i32,
-    ) -> CaliberResult<Vec<(EntityId, f32)>> {
+    ) -> CaliberResult<Vec<(Uuid, f32)>> {
         // Vector search requires scanning all artifacts and notes with embeddings.
         // In production, this would use pgvector's index-based search via SPI.
         // For now, use a hybrid approach - query via SPI with vector operators.
 
         Spi::connect(|client| {
-            let mut results: Vec<(EntityId, f32)> = Vec::new();
+            let mut results: Vec<(Uuid, f32)> = Vec::new();
 
             // Use pgvector's cosine similarity operator if available
             // Query format: embedding <=> $1 returns cosine distance
@@ -6057,26 +6062,26 @@ impl StorageTrait for PgStorage {
     // === Edge Operations (Battle Intel Feature 1) ===
 
     fn edge_insert(&self, e: &Edge) -> CaliberResult<()> {
-        edge_heap::edge_create_heap(e, Uuid::nil())?;
+        edge_heap::edge_create_heap(e, TenantId::nil())?;
         Ok(())
     }
 
-    fn edge_get(&self, id: EntityId) -> CaliberResult<Option<Edge>> {
-        edge_heap::edge_get_heap(id, Uuid::nil())
+    fn edge_get(&self, id: Uuid) -> CaliberResult<Option<Edge>> {
+        edge_heap::edge_get_heap(EdgeId::new(id), TenantId::nil())
             .map(|row| row.map(Into::into))
     }
 
     fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>> {
-        edge_heap::edge_query_by_type_heap(edge_type, Uuid::nil())
+        edge_heap::edge_query_by_type_heap(edge_type, TenantId::nil())
             .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
-    fn edge_query_by_trajectory(&self, trajectory_id: EntityId) -> CaliberResult<Vec<Edge>> {
-        edge_heap::edge_query_by_trajectory_heap(trajectory_id, Uuid::nil())
+    fn edge_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Edge>> {
+        edge_heap::edge_query_by_trajectory_heap(TrajectoryId::new(trajectory_id), TenantId::nil())
             .map(|rows| rows.into_iter().map(Into::into).collect())
     }
 
-    fn edge_query_by_participant(&self, entity_id: EntityId) -> CaliberResult<Vec<Edge>> {
+    fn edge_query_by_participant(&self, entity_id: Uuid) -> CaliberResult<Vec<Edge>> {
         // Query edges and filter by participant - uses SPI since we need JSON filtering
         Spi::connect(|client| {
             let result = client.select(
@@ -6092,8 +6097,8 @@ impl StorageTrait for PgStorage {
             for row in result {
                 // Parse each row into Edge struct
                 if let Ok(Some(edge_id_pg)) = row.get::<pgrx::Uuid>(1) {
-                    let edge_id = Uuid::from_bytes(*edge_id_pg.as_bytes());
-                    if let Some(edge_row) = edge_heap::edge_get_heap(edge_id, Uuid::nil())? {
+                    let edge_id = EdgeId::new(Uuid::from_bytes(*edge_id_pg.as_bytes()));
+                    if let Some(edge_row) = edge_heap::edge_get_heap(edge_id, TenantId::nil())? {
                         edges.push(edge_row.into());
                     }
                 }
@@ -6124,8 +6129,8 @@ impl StorageTrait for PgStorage {
             let mut notes = Vec::new();
             for row in result {
                 if let Ok(Some(note_id_pg)) = row.get::<pgrx::Uuid>(1) {
-                    let note_id = Uuid::from_bytes(*note_id_pg.as_bytes());
-                    if let Some(note_row) = note_heap::note_get_heap(note_id, Uuid::nil())? {
+                    let note_id = NoteId::new(Uuid::from_bytes(*note_id_pg.as_bytes()));
+                    if let Some(note_row) = note_heap::note_get_heap(note_id, TenantId::nil())? {
                         notes.push(note_row.into());
                     }
                 }
@@ -6134,7 +6139,7 @@ impl StorageTrait for PgStorage {
         })
     }
 
-    fn note_query_by_source_note(&self, source_note_id: EntityId) -> CaliberResult<Vec<Note>> {
+    fn note_query_by_source_note(&self, source_note_id: Uuid) -> CaliberResult<Vec<Note>> {
         Spi::connect(|client| {
             let result = client.select(
                 "SELECT note_id FROM caliber_note WHERE $1 = ANY(source_note_ids)",
@@ -6145,8 +6150,8 @@ impl StorageTrait for PgStorage {
             let mut notes = Vec::new();
             for row in result {
                 if let Ok(Some(note_id_pg)) = row.get::<pgrx::Uuid>(1) {
-                    let note_id = Uuid::from_bytes(*note_id_pg.as_bytes());
-                    if let Some(note_row) = note_heap::note_get_heap(note_id, Uuid::nil())? {
+                    let note_id = NoteId::new(Uuid::from_bytes(*note_id_pg.as_bytes()));
+                    if let Some(note_row) = note_heap::note_get_heap(note_id, TenantId::nil())? {
                         notes.push(note_row.into());
                     }
                 }
@@ -6190,7 +6195,7 @@ fn caliber_tenant_create(
     domain: Option<&str>,
     workos_organization_id: Option<&str>,
 ) -> pgrx::Uuid {
-    let tenant_id = new_entity_id();
+    let tenant_id = TenantId::now_v7();
 
     Spi::connect_mut(|client| {
         let result = client.update(
@@ -6320,7 +6325,7 @@ fn caliber_tenant_member_upsert(
     last_name: Option<&str>,
 ) -> pgrx::Uuid {
     let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());
-    let member_id = new_entity_id();
+    let member_id = Uuid::now_v7();
 
     Spi::connect_mut(|client| {
         let result = client.update(

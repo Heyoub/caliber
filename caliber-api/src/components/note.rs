@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateNoteRequest, ListNotesRequest, NoteResponse, UpdateNoteRequest};
-use caliber_core::{ArtifactId, NoteId, NoteType, TenantId, TrajectoryId};
+use caliber_core::{ArtifactId, EntityIdType, NoteId, NoteType, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for NoteResponse

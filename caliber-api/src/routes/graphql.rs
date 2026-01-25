@@ -281,7 +281,7 @@ impl From<AgentResponse> for GqlAgent {
             id: ID(a.agent_id.to_string()),
             agent_type: a.agent_type,
             capabilities: a.capabilities,
-            status: a.status,
+            status: a.status.to_string(),
             current_trajectory_id: a.current_trajectory_id.map(|id| ID(id.to_string())),
             current_scope_id: a.current_scope_id.map(|id| ID(id.to_string())),
             can_delegate_to: a.can_delegate_to,

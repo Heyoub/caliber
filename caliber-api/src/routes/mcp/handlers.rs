@@ -5,7 +5,7 @@ use crate::components::TrajectoryListFilter;
 use crate::types::{ArtifactResponse, TrajectoryResponse};
 use crate::*;
 use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::{TenantId, TrajectoryId, ScopeId, AgentId};
+use caliber_core::{EntityIdType, TenantId, TrajectoryId, ScopeId, AgentId};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use uuid::Uuid;

@@ -6,7 +6,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateTurnRequest, TurnResponse};
-use caliber_core::{ScopeId, TenantId, TurnId};
+use caliber_core::{EntityIdType, ScopeId, TenantId, TurnId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for TurnResponse

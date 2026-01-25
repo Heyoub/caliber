@@ -30,6 +30,7 @@
 use crate::auth::AuthContext;
 use crate::db::DbClient;
 use crate::error::{ApiError, ErrorCode};
+use caliber_core::EntityIdType;
 use axum::{
     body::{Body, Bytes},
     extract::{Request, State},

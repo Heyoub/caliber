@@ -445,19 +445,19 @@ fn note_response_to_core(note: crate::types::NoteResponse) -> caliber_core::Note
         note_type: note.note_type,
         title: note.title,
         content: note.content,
-        content_hash: note.content_hash.unwrap_or([0u8; 32]),
+        content_hash: note.content_hash,
         embedding: None, // Embeddings are not returned in API response
         source_trajectory_ids: note.source_trajectory_ids,
-        source_artifact_ids: note.source_artifact_ids.unwrap_or_default(),
+        source_artifact_ids: note.source_artifact_ids,
         ttl: note.ttl,
         created_at: note.created_at,
         updated_at: note.updated_at,
-        accessed_at: note.accessed_at.unwrap_or(note.updated_at),
-        access_count: note.access_count.unwrap_or(0),
+        accessed_at: note.accessed_at,
+        access_count: note.access_count,
         superseded_by: note.superseded_by,
         metadata: note.metadata,
-        abstraction_level: note.abstraction_level.unwrap_or_default(),
-        source_note_ids: note.source_note_ids.unwrap_or_default(),
+        abstraction_level: caliber_core::AbstractionLevel::default(),
+        source_note_ids: vec![],
     }
 }
 
@@ -470,16 +470,12 @@ fn artifact_response_to_core(artifact: crate::types::ArtifactResponse) -> calibe
         artifact_type: artifact.artifact_type,
         name: artifact.name,
         content: artifact.content,
-        content_hash: artifact.content_hash.unwrap_or([0u8; 32]),
+        content_hash: artifact.content_hash,
         embedding: None, // Embeddings are not returned in API response
         provenance: caliber_core::Provenance {
-            source_turn: artifact.provenance.as_ref().map(|p| p.source_turn).unwrap_or(0),
-            extraction_method: artifact
-                .provenance
-                .as_ref()
-                .map(|p| p.extraction_method)
-                .unwrap_or(caliber_core::ExtractionMethod::Explicit),
-            confidence: artifact.provenance.as_ref().and_then(|p| p.confidence),
+            source_turn: artifact.provenance.source_turn,
+            extraction_method: artifact.provenance.extraction_method,
+            confidence: artifact.provenance.confidence,
         },
         ttl: artifact.ttl,
         created_at: artifact.created_at,

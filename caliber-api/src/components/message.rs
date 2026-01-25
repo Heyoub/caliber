@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{ListMessagesRequest, MessageResponse, SendMessageRequest};
-use caliber_core::{AgentId, MessageId, TenantId, TrajectoryId};
+use caliber_core::{AgentId, EntityIdType, MessageId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for MessageResponse

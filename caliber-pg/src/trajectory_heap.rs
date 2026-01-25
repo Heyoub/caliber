@@ -293,7 +293,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
     let tid = scanner.current_tid()
         .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
             entity_type: EntityType::Trajectory,
-            id,
+            id: id.as_uuid(),
             reason: "Failed to get TID of existing tuple".to_string(),
         }))?;
     
@@ -333,7 +333,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
                 .into_datum()
                 .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
                     entity_type: EntityType::Trajectory,
-                    id,
+                    id: id.as_uuid(),
                     reason: "Failed to convert timestamp to datum".to_string(),
                 }))?;
             nulls[trajectory::COMPLETED_AT as usize - 1] = false;
@@ -343,7 +343,7 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
     if let Some(new_parent) = parent_trajectory_id {
         match new_parent {
             Some(p) => {
-                values[trajectory::PARENT_TRAJECTORY_ID as usize - 1] = uuid_to_datum(p);
+                values[trajectory::PARENT_TRAJECTORY_ID as usize - 1] = uuid_to_datum(p.as_uuid());
                 nulls[trajectory::PARENT_TRAJECTORY_ID as usize - 1] = false;
             }
             None => {
@@ -351,11 +351,11 @@ pub fn trajectory_update_heap(params: TrajectoryUpdateHeapParams<'_>) -> Caliber
             }
         }
     }
-    
+
     if let Some(new_root) = root_trajectory_id {
         match new_root {
             Some(r) => {
-                values[trajectory::ROOT_TRAJECTORY_ID as usize - 1] = uuid_to_datum(r);
+                values[trajectory::ROOT_TRAJECTORY_ID as usize - 1] = uuid_to_datum(r.as_uuid());
                 nulls[trajectory::ROOT_TRAJECTORY_ID as usize - 1] = false;
             }
             None => {

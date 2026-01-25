@@ -15,7 +15,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use caliber_core::{ArtifactId, NoteId, TrajectoryId};
+use caliber_core::{ArtifactId, EntityIdType, NoteId, TrajectoryId};
 use crate::{
     auth::{validate_tenant_ownership, AuthContext},
     db::DbClient,

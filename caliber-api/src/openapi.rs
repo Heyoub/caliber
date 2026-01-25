@@ -30,7 +30,7 @@ use caliber_core::{
 };
 
 // Import ConflictResolution from caliber_core
-use caliber_core::agent::ConflictResolution;
+use caliber_core::ConflictResolution;
 
 /// OpenAPI document for CALIBER API.
 ///

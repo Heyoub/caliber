@@ -12,11 +12,13 @@ pub use caliber_storage::MockStorage;
 // Re-export core types for convenience
 pub use caliber_core::{
     AbstractionLevel, Artifact, ArtifactType, CaliberConfig, CaliberError, CaliberResult,
-    Checkpoint, ContentHash, ContextPersistence, EmbeddingVector, EntityId, EntityRef,
+    Checkpoint, ContentHash, ContextPersistence, EmbeddingVector, EntityRef,
     EntityType, ExtractionMethod, MemoryCategory, Note, NoteType, OutcomeStatus, Provenance,
     ProviderConfig, RawContent, RetryConfig, Scope, SectionPriorities, StorageError,
     TTL, Timestamp, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
-    ValidationMode, VectorError, compute_content_hash, new_entity_id,
+    ValidationMode, VectorError, compute_content_hash,
+    // Strongly-typed entity IDs
+    TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, AgentId, EntityIdType,
     // LLM types for mock providers
     EmbeddingProvider, SummarizationProvider, SummarizeConfig, SummarizeStyle, ExtractedArtifact,
 };
@@ -182,14 +184,44 @@ pub mod generators {
 
     // === Identity Type Generators ===
 
-    /// Generate a random EntityId (UUIDv7).
-    pub fn arb_entity_id() -> impl Strategy<Value = EntityId> {
+    /// Generate a random UUID (for generic ID generation).
+    pub fn arb_uuid() -> impl Strategy<Value = Uuid> {
         any::<[u8; 16]>().prop_map(Uuid::from_bytes)
     }
 
-    /// Generate a valid UUIDv7 EntityId (timestamp-sortable).
-    pub fn arb_entity_id_v7() -> impl Strategy<Value = EntityId> {
+    /// Generate a valid UUIDv7 (timestamp-sortable).
+    pub fn arb_uuid_v7() -> impl Strategy<Value = Uuid> {
         Just(()).prop_map(|_| Uuid::now_v7())
+    }
+
+    /// Generate a random TrajectoryId.
+    pub fn arb_trajectory_id() -> impl Strategy<Value = TrajectoryId> {
+        arb_uuid().prop_map(TrajectoryId::new)
+    }
+
+    /// Generate a random ScopeId.
+    pub fn arb_scope_id() -> impl Strategy<Value = ScopeId> {
+        arb_uuid().prop_map(ScopeId::new)
+    }
+
+    /// Generate a random ArtifactId.
+    pub fn arb_artifact_id() -> impl Strategy<Value = ArtifactId> {
+        arb_uuid().prop_map(ArtifactId::new)
+    }
+
+    /// Generate a random NoteId.
+    pub fn arb_note_id() -> impl Strategy<Value = NoteId> {
+        arb_uuid().prop_map(NoteId::new)
+    }
+
+    /// Generate a random TurnId.
+    pub fn arb_turn_id() -> impl Strategy<Value = TurnId> {
+        arb_uuid().prop_map(TurnId::new)
+    }
+
+    /// Generate a random AgentId.
+    pub fn arb_agent_id() -> impl Strategy<Value = AgentId> {
+        arb_uuid().prop_map(AgentId::new)
     }
 
     /// Generate a Timestamp (DateTime<Utc>).
@@ -347,7 +379,7 @@ pub mod generators {
 
     /// Generate an EntityRef.
     pub fn arb_entity_ref() -> impl Strategy<Value = EntityRef> {
-        (arb_entity_type(), arb_entity_id()).prop_map(|(entity_type, id)| EntityRef {
+        (arb_entity_type(), arb_uuid()).prop_map(|(entity_type, id)| EntityRef {
             entity_type,
             id,
         })
@@ -380,8 +412,8 @@ pub mod generators {
         (
             arb_outcome_status(),
             "[a-zA-Z0-9 ]{1,100}".prop_map(|s| s),
-            prop::collection::vec(arb_entity_id(), 0..5),
-            prop::collection::vec(arb_entity_id(), 0..5),
+            prop::collection::vec(arb_artifact_id(), 0..5),
+            prop::collection::vec(arb_note_id(), 0..5),
             prop::option::of("[a-zA-Z0-9 ]{1,50}".prop_map(|s| s)),
         )
             .prop_map(
@@ -398,13 +430,13 @@ pub mod generators {
     /// Generate a Trajectory struct.
     pub fn arb_trajectory() -> impl Strategy<Value = Trajectory> {
         (
-            arb_entity_id(),
+            arb_trajectory_id(),
             "[a-zA-Z0-9_]{1,50}".prop_map(|s| s),
             prop::option::of("[a-zA-Z0-9 ]{1,200}".prop_map(|s| s)),
             arb_trajectory_status(),
-            prop::option::of(arb_entity_id()),
-            prop::option::of(arb_entity_id()),
-            prop::option::of(arb_entity_id()),
+            prop::option::of(arb_trajectory_id()),
+            prop::option::of(arb_trajectory_id()),
+            prop::option::of(arb_agent_id()),
             arb_timestamp(),
             arb_timestamp(),
         )
@@ -439,9 +471,9 @@ pub mod generators {
     }
 
     /// Generate a Scope struct.
-    pub fn arb_scope(trajectory_id: EntityId) -> impl Strategy<Value = Scope> {
+    pub fn arb_scope(trajectory_id: TrajectoryId) -> impl Strategy<Value = Scope> {
         (
-            arb_entity_id(),
+            arb_scope_id(),
             "[a-zA-Z0-9_]{1,50}".prop_map(|s| s),
             prop::option::of("[a-zA-Z0-9 ]{1,200}".prop_map(|s| s)),
             any::<bool>(),
@@ -480,9 +512,9 @@ pub mod generators {
     }
 
     /// Generate an Artifact struct.
-    pub fn arb_artifact(trajectory_id: EntityId, scope_id: EntityId) -> impl Strategy<Value = Artifact> {
+    pub fn arb_artifact(trajectory_id: TrajectoryId, scope_id: ScopeId) -> impl Strategy<Value = Artifact> {
         (
-            arb_entity_id(),
+            arb_artifact_id(),
             arb_artifact_type(),
             "[a-zA-Z0-9_]{1,50}".prop_map(|s| s),
             "[a-zA-Z0-9 .,!?]{1,500}".prop_map(|s| s),
@@ -515,9 +547,9 @@ pub mod generators {
     }
 
     /// Generate a Note struct.
-    pub fn arb_note(trajectory_id: EntityId) -> impl Strategy<Value = Note> {
+    pub fn arb_note(trajectory_id: TrajectoryId) -> impl Strategy<Value = Note> {
         (
-            arb_entity_id(),
+            arb_note_id(),
             arb_note_type(),
             "[a-zA-Z0-9_]{1,50}".prop_map(|s| s),
             "[a-zA-Z0-9 .,!?]{1,500}".prop_map(|s| s),
@@ -554,9 +586,9 @@ pub mod generators {
     }
 
     /// Generate a Turn struct.
-    pub fn arb_turn(scope_id: EntityId) -> impl Strategy<Value = Turn> {
+    pub fn arb_turn(scope_id: ScopeId) -> impl Strategy<Value = Turn> {
         (
-            arb_entity_id(),
+            arb_turn_id(),
             0i32..1000,
             arb_turn_role(),
             "[a-zA-Z0-9 .,!?]{1,500}".prop_map(|s| s),
@@ -711,7 +743,7 @@ pub mod fixtures {
     pub fn active_trajectory() -> Trajectory {
         let now = Utc::now();
         Trajectory {
-            trajectory_id: new_entity_id(),
+            trajectory_id: TrajectoryId::now_v7(),
             name: "test-trajectory".to_string(),
             description: Some("A test trajectory".to_string()),
             status: TrajectoryStatus::Active,
@@ -730,7 +762,7 @@ pub mod fixtures {
     pub fn completed_trajectory() -> Trajectory {
         let now = Utc::now();
         Trajectory {
-            trajectory_id: new_entity_id(),
+            trajectory_id: TrajectoryId::now_v7(),
             name: "completed-trajectory".to_string(),
             description: Some("A completed test trajectory".to_string()),
             status: TrajectoryStatus::Completed,
@@ -752,10 +784,10 @@ pub mod fixtures {
     }
 
     /// Create a test Scope for a given trajectory.
-    pub fn active_scope(trajectory_id: EntityId) -> Scope {
+    pub fn active_scope(trajectory_id: TrajectoryId) -> Scope {
         let now = Utc::now();
         Scope {
-            scope_id: new_entity_id(),
+            scope_id: ScopeId::now_v7(),
             trajectory_id,
             parent_scope_id: None,
             name: "test-scope".to_string(),
@@ -771,12 +803,12 @@ pub mod fixtures {
     }
 
     /// Create a test Artifact for a given trajectory and scope.
-    pub fn test_artifact(trajectory_id: EntityId, scope_id: EntityId) -> Artifact {
+    pub fn test_artifact(trajectory_id: TrajectoryId, scope_id: ScopeId) -> Artifact {
         let now = Utc::now();
         let content = "Test artifact content".to_string();
         let content_hash = compute_content_hash(content.as_bytes());
         Artifact {
-            artifact_id: new_entity_id(),
+            artifact_id: ArtifactId::now_v7(),
             trajectory_id,
             scope_id,
             artifact_type: ArtifactType::Fact,
@@ -798,12 +830,12 @@ pub mod fixtures {
     }
 
     /// Create a test Note for a given trajectory.
-    pub fn test_note(trajectory_id: EntityId) -> Note {
+    pub fn test_note(trajectory_id: TrajectoryId) -> Note {
         let now = Utc::now();
         let content = "Test note content".to_string();
         let content_hash = compute_content_hash(content.as_bytes());
         Note {
-            note_id: new_entity_id(),
+            note_id: NoteId::now_v7(),
             note_type: NoteType::Fact,
             title: "Test Note".to_string(),
             content,
@@ -824,10 +856,10 @@ pub mod fixtures {
     }
 
     /// Create a test Turn for a given scope.
-    pub fn user_turn(scope_id: EntityId, sequence: i32) -> Turn {
+    pub fn user_turn(scope_id: ScopeId, sequence: i32) -> Turn {
         let now = Utc::now();
         Turn {
-            turn_id: new_entity_id(),
+            turn_id: TurnId::now_v7(),
             scope_id,
             sequence,
             role: TurnRole::User,
@@ -841,10 +873,10 @@ pub mod fixtures {
     }
 
     /// Create an assistant Turn for a given scope.
-    pub fn assistant_turn(scope_id: EntityId, sequence: i32) -> Turn {
+    pub fn assistant_turn(scope_id: ScopeId, sequence: i32) -> Turn {
         let now = Utc::now();
         Turn {
-            turn_id: new_entity_id(),
+            turn_id: TurnId::now_v7(),
             scope_id,
             sequence,
             role: TurnRole::Assistant,
@@ -1075,6 +1107,7 @@ pub mod assertions {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use uuid::Uuid;
 
     #[test]
     fn test_minimal_config_is_valid() {
@@ -1154,7 +1187,7 @@ mod tests {
     fn test_assertion_not_found() {
         let result: CaliberResult<()> = Err(CaliberError::Storage(StorageError::NotFound {
             entity_type: EntityType::Trajectory,
-            id: new_entity_id(),
+            id: Uuid::now_v7(),
         }));
         assertions::assert_not_found(&result, EntityType::Trajectory);
     }

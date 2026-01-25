@@ -7,7 +7,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateDelegationRequest, DelegationResponse};
-use caliber_core::{AgentId, DelegationId, ScopeId, TenantId, TrajectoryId};
+use caliber_core::{AgentId, DelegationId, EntityIdType, ScopeId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for DelegationResponse
