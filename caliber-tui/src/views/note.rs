@@ -1,6 +1,7 @@
 //! Note library view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -30,7 +31,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .note_view
             .notes
             .iter()
-            .position(|n| n.note_id == selected)
+            .position(|n| n.note_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -42,7 +43,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     f.render_stateful_widget(list, chunks[0], &mut state);
 
     if let Some(selected) = app.note_view.selected {
-        if let Some(note) = app.note_view.notes.iter().find(|n| n.note_id == selected) {
+        if let Some(note) = app.note_view.notes.iter().find(|n| n.note_id.as_uuid() == selected) {
             let right = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Length(8), Constraint::Min(0)])

@@ -1,6 +1,7 @@
 //! Message queue view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::theme::message_priority_color;
 use crate::widgets::DetailPanel;
 use ratatui::{
@@ -22,15 +23,15 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .messages
         .iter()
         .map(|message| {
-            let style = Style::default().fg(message_priority_color(&message.priority, &app.theme));
+            let style = Style::default().fg(message_priority_color(message.priority.as_db_str(), &app.theme));
             let to = message
-                .to_agent_id
+                .recipient_id
                 .map(|id| id.to_string())
                 .or_else(|| message.to_agent_type.clone())
                 .unwrap_or_else(|| "unspecified".to_string());
             let label = format!(
                 "{} -> {} [{}]",
-                message.from_agent_id, to, message.priority
+                message.sender_id, to, message.priority
             );
             ListItem::new(Line::from(Span::styled(label, style)))
         })
@@ -42,7 +43,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .message_view
             .messages
             .iter()
-            .position(|m| m.message_id == selected)
+            .position(|m| m.message_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -58,7 +59,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .message_view
             .messages
             .iter()
-            .find(|m| m.message_id == selected)
+            .find(|m| m.message_id.as_uuid() == selected)
         {
             let right = Layout::default()
                 .direction(Direction::Vertical)
@@ -67,17 +68,17 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
 
             let mut fields = vec![
                 ("Message ID", message.message_id.to_string()),
-                ("Type", message.message_type.clone()),
-                ("From", message.from_agent_id.to_string()),
+                ("Type", message.message_type.to_string()),
+                ("From", message.sender_id.to_string()),
                 (
                     "To",
                     message
-                        .to_agent_id
+                        .recipient_id
                         .map(|id| id.to_string())
                         .or_else(|| message.to_agent_type.clone())
                         .unwrap_or_else(|| "unspecified".to_string()),
                 ),
-                ("Priority", message.priority.clone()),
+                ("Priority", message.priority.to_string()),
                 ("Created", message.created_at.to_rfc3339()),
             ];
             if let Some(delivered) = message.delivered_at {

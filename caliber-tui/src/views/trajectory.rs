@@ -39,7 +39,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .trajectory_view
             .trajectories
             .iter()
-            .find(|t| t.trajectory_id == selected)
+            .find(|t| t.trajectory_id.as_uuid() == selected)
         {
             fields.push(("Trajectory ID", traj.trajectory_id.to_string()));
             fields.push(("Name", traj.name.clone()));

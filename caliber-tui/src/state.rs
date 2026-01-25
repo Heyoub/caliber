@@ -8,8 +8,9 @@ use crate::theme::SynthBruteTheme;
 use caliber_api::events::WsEvent;
 use caliber_api::types::*;
 use caliber_core::{
-    AgentId, ArtifactType, EntityIdType, LockId, MessageId, NoteType, ScopeId, TenantId,
-    Timestamp, TrajectoryId, TrajectoryStatus, TurnId, TurnRole,
+    AgentId, AgentStatus, ArtifactId, ArtifactType, EntityIdType, LockId, MessageId, MessagePriority,
+    MessageType, NoteId, NoteType, ScopeId, TenantId, Timestamp, TrajectoryId, TrajectoryStatus,
+    TurnId, TurnRole,
 };
 use uuid::Uuid;
 use std::collections::{HashSet, VecDeque};
@@ -55,7 +56,7 @@ pub struct App {
 impl App {
     pub fn new(config: TuiConfig, api: ApiClient) -> Self {
         let theme = SynthBruteTheme::synthbrute();
-        let tenant_id = config.tenant_id;
+        let tenant_id = TenantId::new(config.tenant_id);
         Self {
             config,
             theme,
@@ -501,8 +502,8 @@ impl ArtifactViewState {
         }
     }
 
-    pub fn remove(&mut self, id: Uuid) {
-        self.artifacts.retain(|a| a.artifact_id.as_uuid() != id);
+    pub fn remove(&mut self, id: ArtifactId) {
+        self.artifacts.retain(|a| a.artifact_id != id);
     }
 }
 
@@ -567,8 +568,8 @@ impl NoteViewState {
         }
     }
 
-    pub fn remove(&mut self, id: Uuid) {
-        self.notes.retain(|n| n.note_id.as_uuid() != id);
+    pub fn remove(&mut self, id: NoteId) {
+        self.notes.retain(|n| n.note_id != id);
     }
 }
 
@@ -659,7 +660,9 @@ impl AgentViewState {
 
     pub fn update_status(&mut self, id: AgentId, status: String) {
         if let Some(agent) = self.agents.iter_mut().find(|a| a.agent_id == id) {
-            agent.status = status;
+            if let Ok(parsed) = status.parse::<AgentStatus>() {
+                agent.status = parsed;
+            }
         }
     }
 
@@ -780,10 +783,10 @@ impl MessageViewState {
 
 #[derive(Debug, Clone)]
 pub struct MessageFilter {
-    pub message_type: Option<String>,
+    pub message_type: Option<MessageType>,
     pub from_agent_id: Option<AgentId>,
     pub to_agent_id: Option<AgentId>,
-    pub priority: Option<String>,
+    pub priority: Option<MessagePriority>,
 }
 
 impl MessageFilter {

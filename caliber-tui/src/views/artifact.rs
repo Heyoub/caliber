@@ -1,6 +1,7 @@
 //! Artifact browser view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -30,7 +31,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .artifact_view
             .artifacts
             .iter()
-            .position(|a| a.artifact_id == selected)
+            .position(|a| a.artifact_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -46,7 +47,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .artifact_view
             .artifacts
             .iter()
-            .find(|a| a.artifact_id == selected)
+            .find(|a| a.artifact_id.as_uuid() == selected)
         {
             let right = Layout::default()
                 .direction(Direction::Vertical)

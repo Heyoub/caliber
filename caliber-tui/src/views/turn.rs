@@ -1,6 +1,7 @@
 //! Turn history view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::theme::turn_role_color;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -36,7 +37,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .turn_view
             .turns
             .iter()
-            .position(|t| t.turn_id == selected)
+            .position(|t| t.turn_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -48,7 +49,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     f.render_stateful_widget(list, chunks[0], &mut state);
 
     if let Some(selected) = app.turn_view.selected {
-        if let Some(turn) = app.turn_view.turns.iter().find(|t| t.turn_id == selected) {
+        if let Some(turn) = app.turn_view.turns.iter().find(|t| t.turn_id.as_uuid() == selected) {
             let right = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Length(6), Constraint::Min(0)])

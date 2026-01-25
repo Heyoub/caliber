@@ -8,7 +8,11 @@ use caliber_tui::keys::{map_key, KeyAction};
 use caliber_tui::persistence::{self, PersistedState};
 use caliber_tui::state::App;
 use caliber_tui::views::render_view;
-use caliber_api::types::{ListAgentsRequest, ListArtifactsRequest, ListMessagesRequest, ListNotesRequest, ListTrajectoriesRequest};
+use caliber_api::types::{
+    ListAgentsRequest, ListArtifactsRequest, ListMessagesRequest, ListNotesRequest,
+    ListTrajectoriesRequest,
+};
+use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
 use crossterm::{
     event::{self, Event as CrosstermEvent},
     execute,
@@ -28,7 +32,7 @@ async fn main() -> Result<(), TuiError> {
     if let Ok(Some(state)) = persistence::load(&app.config.persistence_path) {
         app.active_view = state.active_view;
         if state.selected_tenant_id == Some(app.tenant.tenant_id) {
-            app.tenant_view.selected = state.selected_tenant_id;
+            app.tenant_view.selected = state.selected_tenant_id.map(|id| id.as_uuid());
         }
     }
 
@@ -74,7 +78,7 @@ async fn main() -> Result<(), TuiError> {
 
     let persisted = PersistedState {
         active_view: app.active_view,
-        selected_tenant_id: app.tenant_view.selected,
+        selected_tenant_id: app.tenant_view.selected.map(TenantId::new),
     };
     let _ = persistence::save(&app.config.persistence_path, &persisted);
 
@@ -128,7 +132,7 @@ async fn initialize_app(app: &mut App, sender: mpsc::Sender<TuiEvent>) {
                 .iter()
                 .find(|t| t.tenant_id == app.tenant.tenant_id)
             {
-                app.tenant_view.selected = Some(tenant.tenant_id);
+                app.tenant_view.selected = Some(tenant.tenant_id.as_uuid());
                 app.tenant.tenant_name = tenant.name.clone();
             }
         }
@@ -214,7 +218,11 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
         }
         caliber_tui::nav::View::ScopeExplorer => {
             if let Some(trajectory_id) = app.trajectory_view.selected {
-                let scopes = app.api.rest().list_scopes(tenant_id, trajectory_id).await?;
+                let scopes = app
+                    .api
+                    .rest()
+                    .list_scopes(tenant_id, TrajectoryId::new(trajectory_id))
+                    .await?;
                 app.scope_view.scopes = scopes;
             }
         }
@@ -243,7 +251,11 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
         }
         caliber_tui::nav::View::TurnHistory => {
             if let Some(scope_id) = app.scope_view.selected {
-                let turns = app.api.rest().list_turns(tenant_id, scope_id).await?;
+                let turns = app
+                    .api
+                    .rest()
+                    .list_turns(tenant_id, ScopeId::new(scope_id))
+                    .await?;
                 app.turn_view.turns = turns;
             }
         }

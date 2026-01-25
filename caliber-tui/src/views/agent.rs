@@ -1,6 +1,7 @@
 //! Agent dashboard view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::theme::agent_status_color;
 use crate::widgets::DetailPanel;
 use ratatui::{
@@ -22,7 +23,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .agents
         .iter()
         .map(|agent| {
-            let style = Style::default().fg(agent_status_color(&agent.status, &app.theme));
+            let style = Style::default().fg(agent_status_color(agent.status.as_db_str(), &app.theme));
             ListItem::new(Line::from(Span::styled(
                 format!("{} ({})", agent.agent_type, agent.status),
                 style,
@@ -36,7 +37,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .agent_view
             .agents
             .iter()
-            .position(|a| a.agent_id == selected)
+            .position(|a| a.agent_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -53,11 +54,11 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .agent_view
             .agents
             .iter()
-            .find(|a| a.agent_id == selected)
+            .find(|a| a.agent_id.as_uuid() == selected)
         {
             fields.push(("Agent ID", agent.agent_id.to_string()));
             fields.push(("Type", agent.agent_type.clone()));
-            fields.push(("Status", agent.status.clone()));
+            fields.push(("Status", agent.status.to_string()));
             if let Some(traj_id) = agent.current_trajectory_id {
                 fields.push(("Trajectory", traj_id.to_string()));
             }

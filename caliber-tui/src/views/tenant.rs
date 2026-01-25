@@ -1,6 +1,7 @@
 //! Tenant management view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -31,7 +32,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .tenant_view
             .tenants
             .iter()
-            .position(|t| t.tenant_id == selected)
+            .position(|t| t.tenant_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -49,7 +50,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .tenant_view
             .tenants
             .iter()
-            .find(|t| t.tenant_id == selected)
+            .find(|t| t.tenant_id.as_uuid() == selected)
         {
             fields.push(("Tenant ID", tenant.tenant_id.to_string()));
             fields.push(("Name", tenant.name.clone()));

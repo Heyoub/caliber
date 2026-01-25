@@ -1,6 +1,7 @@
 //! Scope explorer view.
 
 use crate::state::App;
+use caliber_core::EntityIdType;
 use crate::widgets::{DetailPanel, ProgressBar};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -31,7 +32,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             .scope_view
             .scopes
             .iter()
-            .position(|s| s.scope_id == selected)
+            .position(|s| s.scope_id.as_uuid() == selected)
         {
             state.select(Some(index));
         }
@@ -43,7 +44,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     f.render_stateful_widget(list, chunks[0], &mut state);
 
     if let Some(selected) = app.scope_view.selected {
-        if let Some(scope) = app.scope_view.scopes.iter().find(|s| s.scope_id == selected) {
+        if let Some(scope) = app.scope_view.scopes.iter().find(|s| s.scope_id.as_uuid() == selected) {
             let utilization = if scope.token_budget == 0 {
                 0.0
             } else {
