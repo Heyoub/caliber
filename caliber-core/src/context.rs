@@ -366,9 +366,10 @@ impl std::fmt::Display for ContextWindow {
 // TOKEN UTILITIES (Task 7.3)
 // ============================================================================
 
-/// Estimate token count for text.
-/// Rough estimate: ~0.75 tokens per character (English).
-/// More accurate than 1:4 ratio, less accurate than tiktoken.
+/// Re-export estimate_tokens from llm module.
+///
+/// This uses the `HeuristicTokenizer` with GPT-4 defaults (~0.25 tokens per char).
+/// For model-specific estimation, use `HeuristicTokenizer::for_model()` directly.
 ///
 /// # Arguments
 /// * `text` - The text to estimate tokens for
@@ -376,10 +377,8 @@ impl std::fmt::Display for ContextWindow {
 /// # Returns
 /// Estimated token count (always >= 0)
 pub fn estimate_tokens(text: &str) -> i32 {
-    if text.is_empty() {
-        return 0;
-    }
-    (text.len() as f32 * 0.75).ceil() as i32
+    // Delegate to the llm module's implementation
+    crate::llm::estimate_tokens(text)
 }
 
 
@@ -749,15 +748,15 @@ mod tests {
 
     #[test]
     fn test_estimate_tokens_short() {
-        // "hello" = 5 chars * 0.75 = 3.75, ceil = 4
-        assert_eq!(estimate_tokens("hello"), 4);
+        // "hello" = 5 chars * 0.25 (GPT-4 default) = 1.25, ceil = 2
+        assert_eq!(estimate_tokens("hello"), 2);
     }
 
     #[test]
     fn test_estimate_tokens_longer() {
-        // 100 chars * 0.75 = 75 tokens
+        // 100 chars * 0.25 (GPT-4 default) = 25 tokens
         let text = "a".repeat(100);
-        assert_eq!(estimate_tokens(&text), 75);
+        assert_eq!(estimate_tokens(&text), 25);
     }
 
     #[test]
@@ -1062,9 +1061,9 @@ mod prop_tests {
             prop_assert!(tokens >= 0, "Token count should be >= 0, got {}", tokens);
 
             // Tokens should be approximately proportional to length
-            // With 0.75 tokens per char, tokens should be roughly 0.75 * len
+            // With 0.25 tokens per char (GPT-4 default), tokens should be roughly 0.25 * len
             if !text.is_empty() {
-                let expected_approx = (text.len() as f32 * 0.75).ceil() as i32;
+                let expected_approx = (text.len() as f32 * 0.25).ceil() as i32;
                 prop_assert_eq!(
                     tokens,
                     expected_approx,

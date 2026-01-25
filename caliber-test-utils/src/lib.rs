@@ -2,12 +2,11 @@
 //!
 //! Centralized test infrastructure for the CALIBER workspace:
 //! - Proptest generators for all entity types
-//! - Re-exports of mock providers
+//! - Mock providers for testing
 //! - Test fixtures for common scenarios
 //! - Custom assertions for CALIBER-specific validation
 
-// Re-export mock providers from their source crates
-pub use caliber_llm::{MockEmbeddingProvider, MockSummarizationProvider};
+// Re-export mock storage from its source crate
 pub use caliber_storage::MockStorage;
 
 // Re-export core types for convenience
@@ -18,7 +17,154 @@ pub use caliber_core::{
     ProviderConfig, RawContent, RetryConfig, Scope, SectionPriorities, StorageError,
     TTL, Timestamp, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
     ValidationMode, VectorError, compute_content_hash, new_entity_id,
+    // LLM types for mock providers
+    EmbeddingProvider, SummarizationProvider, SummarizeConfig, SummarizeStyle, ExtractedArtifact,
 };
+
+use async_trait::async_trait;
+
+// ============================================================================
+// MOCK PROVIDERS (from former caliber-llm)
+// ============================================================================
+
+/// Mock embedding provider for testing (async).
+#[derive(Debug, Clone)]
+pub struct MockEmbeddingProvider {
+    model_id: String,
+    dimensions: i32,
+}
+
+impl MockEmbeddingProvider {
+    pub fn new(model_id: impl Into<String>, dimensions: i32) -> Self {
+        Self {
+            model_id: model_id.into(),
+            dimensions,
+        }
+    }
+
+    fn generate_embedding(&self, text: &str) -> Vec<f32> {
+        let mut data = vec![0.0f32; self.dimensions as usize];
+
+        for (i, byte) in text.bytes().enumerate() {
+            let idx = i % self.dimensions as usize;
+            data[idx] += (byte as f32) / 255.0;
+        }
+
+        let norm: f32 = data.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for x in &mut data {
+                *x /= norm;
+            }
+        }
+
+        data
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for MockEmbeddingProvider {
+    async fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector> {
+        let data = self.generate_embedding(text);
+        Ok(EmbeddingVector::new(data, self.model_id.clone()))
+    }
+
+    async fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>> {
+        let mut results = Vec::with_capacity(texts.len());
+        for text in texts {
+            results.push(self.embed(text).await?);
+        }
+        Ok(results)
+    }
+
+    fn dimensions(&self) -> i32 {
+        self.dimensions
+    }
+
+    fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
+/// Mock summarization provider for testing (async).
+#[derive(Debug, Clone)]
+pub struct MockSummarizationProvider {
+    prefix: String,
+}
+
+impl MockSummarizationProvider {
+    pub fn new() -> Self {
+        Self {
+            prefix: "Summary: ".to_string(),
+        }
+    }
+
+    pub fn with_prefix(prefix: impl Into<String>) -> Self {
+        Self {
+            prefix: prefix.into(),
+        }
+    }
+}
+
+impl Default for MockSummarizationProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl SummarizationProvider for MockSummarizationProvider {
+    async fn summarize(&self, content: &str, config: &SummarizeConfig) -> CaliberResult<String> {
+        let max_chars = (config.max_tokens * 4) as usize;
+        let truncated = if content.len() > max_chars {
+            &content[..max_chars]
+        } else {
+            content
+        };
+
+        let summary = match config.style {
+            SummarizeStyle::Brief => format!("{}{}", self.prefix, truncated),
+            SummarizeStyle::Detailed => format!("{}[Detailed] {}", self.prefix, truncated),
+            SummarizeStyle::Structured => {
+                format!("{}[Structured]\n- Content: {}", self.prefix, truncated)
+            }
+        };
+
+        Ok(summary)
+    }
+
+    async fn extract_artifacts(
+        &self,
+        content: &str,
+        types: &[ArtifactType],
+    ) -> CaliberResult<Vec<ExtractedArtifact>> {
+        let artifacts = types
+            .iter()
+            .map(|artifact_type| ExtractedArtifact {
+                artifact_type: *artifact_type,
+                content: format!("Extracted from: {}", &content[..content.len().min(50)]),
+                confidence: 0.8,
+            })
+            .collect();
+
+        Ok(artifacts)
+    }
+
+    async fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool> {
+        let words_a: std::collections::HashSet<&str> = a.split_whitespace().collect();
+        let words_b: std::collections::HashSet<&str> = b.split_whitespace().collect();
+
+        let intersection = words_a.intersection(&words_b).count();
+        let union = words_a.union(&words_b).count();
+
+        let similarity = if union > 0 {
+            intersection as f32 / union as f32
+        } else {
+            0.0
+        };
+
+        Ok(similarity < 0.1)
+    }
+}
 
 use chrono::Utc;
 use std::time::Duration;

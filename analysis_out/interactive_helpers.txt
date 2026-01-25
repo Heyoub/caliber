@@ -1,0 +1,20 @@
+# Interactive Analysis Helpers
+
+## Grep Commands
+
+# Find all todo macros
+rg "todo!\s*\(" --type rust
+
+# Find all unsafe blocks
+rg "unsafe\s*{" --type rust
+
+# Find all feature gates
+rg '#\[cfg\(feature\s*=\s*\"' --type rust
+
+# Find wildcard imports
+rg "use.*::\*;" --type rust
+
+## Next Questions to Ask
+
+- Should the 31 duplicate clusters be consolidated?
+- Features ['pg_test', 'openapi'] are spread across many files. Is this intentional?

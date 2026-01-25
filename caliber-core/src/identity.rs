@@ -168,6 +168,8 @@ define_entity_id!(HandoffId, "handoff", "Type-safe ID for handoff entities.");
 define_entity_id!(ApiKeyId, "api_key", "Type-safe ID for API key entities.");
 define_entity_id!(WebhookId, "webhook", "Type-safe ID for webhook entities.");
 define_entity_id!(SummarizationPolicyId, "summarization_policy", "Type-safe ID for summarization policy entities.");
+define_entity_id!(ConflictId, "conflict", "Type-safe ID for conflict entities.");
+define_entity_id!(DslConfigId, "dsl_config", "Type-safe ID for DSL configuration entities.");
 
 // ============================================================================
 // OTHER IDENTITY TYPES

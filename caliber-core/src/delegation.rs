@@ -10,7 +10,7 @@
 //!                      └── timeout() ─→ Failed (terminal)
 //! ```
 
-use crate::{AgentId, ArtifactId, DelegationId, ScopeId, TenantId, Timestamp, TrajectoryId};
+use crate::{AgentId, ArtifactId, DelegationId, NoteId, ScopeId, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
@@ -170,11 +170,53 @@ impl std::error::Error for DelegationResultStatusParseError {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationResult {
+    /// Status of the result
     pub status: DelegationResultStatus,
-    pub output: Option<String>,
+    /// Artifacts produced by the task
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub artifacts: Vec<ArtifactId>,
+    pub produced_artifacts: Vec<ArtifactId>,
+    /// Notes produced by the task
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
+    pub produced_notes: Vec<NoteId>,
+    /// Summary of what was accomplished
+    pub summary: String,
+    /// Error message (if failed)
     pub error: Option<String>,
+}
+
+impl DelegationResult {
+    /// Create a successful result.
+    pub fn success(summary: &str, artifacts: Vec<ArtifactId>) -> Self {
+        Self {
+            status: DelegationResultStatus::Success,
+            produced_artifacts: artifacts,
+            produced_notes: Vec::new(),
+            summary: summary.to_string(),
+            error: None,
+        }
+    }
+
+    /// Create a partial result.
+    pub fn partial(summary: &str, artifacts: Vec<ArtifactId>) -> Self {
+        Self {
+            status: DelegationResultStatus::Partial,
+            produced_artifacts: artifacts,
+            produced_notes: Vec::new(),
+            summary: summary.to_string(),
+            error: None,
+        }
+    }
+
+    /// Create a failure result.
+    pub fn failure(error: &str) -> Self {
+        Self {
+            status: DelegationResultStatus::Failure,
+            produced_artifacts: Vec::new(),
+            produced_notes: Vec::new(),
+            summary: String::new(),
+            error: Some(error.to_string()),
+        }
+    }
 }
 
 // ============================================================================
@@ -701,14 +743,20 @@ mod tests {
         let in_progress = accepted.start(now);
         assert_eq!(in_progress.started_at(), now);
 
-        let result = DelegationResult {
-            status: DelegationResultStatus::Success,
-            output: Some("Done".to_string()),
-            artifacts: vec![],
-            error: None,
-        };
+        let result = DelegationResult::success("Done", vec![]);
         let completed = in_progress.complete(now, result);
         assert_eq!(completed.result().status, DelegationResultStatus::Success);
+    }
+
+    #[test]
+    fn test_delegation_result_constructors() {
+        let success = DelegationResult::success("Done", vec![]);
+        assert_eq!(success.status, DelegationResultStatus::Success);
+        assert!(success.error.is_none());
+
+        let failure = DelegationResult::failure("Oops");
+        assert_eq!(failure.status, DelegationResultStatus::Failure);
+        assert_eq!(failure.error, Some("Oops".to_string()));
     }
 
     #[test]

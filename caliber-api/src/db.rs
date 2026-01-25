@@ -9,15 +9,18 @@
 //! for maximum performance.
 
 use crate::error::{ApiError, ApiResult};
+use crate::state::ApiEventDag;
 use crate::types::*;
 use caliber_core::{
     EntityIdType, Timestamp,
     TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId,
     TurnId, AgentId, LockId, MessageId, DelegationId, HandoffId,
     EdgeId, ApiKeyId, WebhookId, SummarizationPolicyId,
+    DagPosition, Event, EventFlags, EventHeader, EventKind,
 };
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use serde_json::Value as JsonValue;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio_postgres::NoTls;
 use uuid::Uuid;
@@ -151,6 +154,47 @@ impl DbClient {
     /// Get a connection from the pool.
     async fn get_conn(&self) -> ApiResult<deadpool_postgres::Object> {
         self.pool.get().await.map_err(ApiError::from)
+    }
+
+    /// Get a connection with tenant context set for RLS.
+    /// 
+    /// This sets the `app.tenant_id` session variable that RLS policies use
+    /// to filter rows. The setting is transaction-local and will be cleared
+    /// when the connection is returned to the pool.
+    pub async fn get_conn_with_tenant(
+        &self,
+        tenant_id: TenantId,
+    ) -> ApiResult<deadpool_postgres::Object> {
+        let conn = self.get_conn().await?;
+        
+        // Set tenant context for RLS policies
+        conn.execute(
+            "SELECT caliber_set_tenant_context($1)",
+            &[&tenant_id.as_uuid()],
+        ).await?;
+        
+        Ok(conn)
+    }
+
+    /// Execute a function with tenant context set.
+    /// 
+    /// This is useful for operations that need multiple queries within
+    /// the same tenant context. The tenant context is automatically
+    /// cleared when the closure completes.
+    pub async fn with_tenant<T, F, Fut>(
+        &self,
+        tenant_id: TenantId,
+        f: F,
+    ) -> ApiResult<T>
+    where
+        F: FnOnce(deadpool_postgres::Object) -> Fut,
+        Fut: std::future::Future<Output = ApiResult<T>>,
+    {
+        let conn = self.get_conn_with_tenant(tenant_id).await?;
+        let result = f(conn).await;
+        // Note: tenant context is transaction-local, so it's automatically
+        // cleared when the connection is returned to the pool
+        result
     }
 
     // ========================================================================
@@ -724,36 +768,57 @@ impl DbClient {
     // LOCK OPERATIONS
     // ========================================================================
 
-    /// Acquire a lock by calling caliber_lock_acquire.
+    /// Acquire a lock using PostgreSQL advisory locks.
+    ///
+    /// This uses transaction-scoped advisory locks for proper shared lock semantics:
+    /// - Exclusive locks block all other lock attempts
+    /// - Shared locks allow multiple holders but block exclusive locks
     pub async fn lock_acquire(&self, req: &AcquireLockRequest, tenant_id: TenantId) -> ApiResult<LockResponse> {
         let conn = self.get_conn().await?;
 
+        // Choose the appropriate advisory lock function based on mode
+        let query = if req.mode.to_lowercase() == "shared" {
+            "SELECT acquired, lock_id, message FROM caliber_try_lock_shared($1, $2, $3, $4, $5)"
+        } else {
+            "SELECT acquired, lock_id, message FROM caliber_try_lock_exclusive($1, $2, $3, $4, $5)"
+        };
+
         let row = conn
             .query_one(
-                "SELECT caliber_lock_acquire($1, $2, $3, $4, $5, $6)",
+                query,
                 &[
-                    &req.holder_agent_id.as_uuid(),
+                    &tenant_id.as_uuid(),
                     &req.resource_type,
                     &req.resource_id,
+                    &req.holder_agent_id.as_uuid(),
                     &req.timeout_ms,
-                    &req.mode,
-                    &tenant_id.as_uuid(),
                 ],
             )
             .await?;
 
-        let lock_id: Uuid = row.get(0);
+        let acquired: bool = row.get(0);
+        let lock_id: Option<Uuid> = row.get(1);
+        let message: String = row.get(2);
+
+        if !acquired {
+            return Err(ApiError::lock_contention(&req.resource_type, req.resource_id, &message));
+        }
+
+        let lock_id = lock_id.ok_or_else(|| ApiError::internal_error("Lock acquired but no lock_id returned"))?;
 
         self.lock_get(LockId::new(lock_id)).await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve acquired lock"))
     }
 
-    /// Release a lock by calling caliber_lock_release.
+    /// Release a lock.
+    ///
+    /// Note: Advisory locks are automatically released at transaction end.
+    /// This function removes the lock record from the audit table.
     pub async fn lock_release(&self, id: LockId) -> ApiResult<()> {
         let conn = self.get_conn().await?;
 
         let released: bool = conn
-            .query_one("SELECT caliber_lock_release($1)", &[&id.as_uuid()])
+            .query_one("SELECT caliber_release_lock($1)", &[&id.as_uuid()])
             .await?
             .get(0);
 
@@ -1688,6 +1753,104 @@ impl DbClient {
     }
 
     // ========================================================================
+    // DSL CONFIG STORAGE OPERATIONS
+    // ========================================================================
+
+    /// Get the next version number for a DSL config name.
+    pub async fn dsl_config_next_version(
+        &self,
+        tenant_id: TenantId,
+        name: &str,
+    ) -> ApiResult<i32> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM caliber_dsl_config 
+                 WHERE tenant_id = $1 AND name = $2",
+                &[&tenant_id.as_uuid(), &name],
+            )
+            .await?;
+
+        Ok(row.get::<_, i32>(0))
+    }
+
+    /// Create a new DSL config entry.
+    pub async fn dsl_config_create(
+        &self,
+        tenant_id: TenantId,
+        name: &str,
+        version: i32,
+        dsl_source: &str,
+        ast: JsonValue,
+        compiled: JsonValue,
+    ) -> ApiResult<Uuid> {
+        let conn = self.get_conn().await?;
+
+        let row = conn
+            .query_one(
+                "INSERT INTO caliber_dsl_config 
+                 (tenant_id, name, version, dsl_source, ast, compiled, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'draft')
+                 RETURNING config_id",
+                &[
+                    &tenant_id.as_uuid(),
+                    &name,
+                    &version,
+                    &dsl_source,
+                    &ast,
+                    &compiled,
+                ],
+            )
+            .await?;
+
+        Ok(row.get::<_, Uuid>(0))
+    }
+
+    /// Deploy a DSL config (mark as deployed, archive previous).
+    pub async fn dsl_config_deploy(
+        &self,
+        config_id: Uuid,
+        deployed_by: Option<AgentId>,
+        notes: Option<&str>,
+    ) -> ApiResult<bool> {
+        let conn = self.get_conn().await?;
+
+        let deployed_by_uuid = deployed_by.map(|id| id.as_uuid());
+
+        let result = conn
+            .query_one(
+                "SELECT caliber_deploy_dsl_config($1, $2, $3)",
+                &[&config_id, &deployed_by_uuid, &notes],
+            )
+            .await?;
+
+        Ok(result.get::<_, bool>(0))
+    }
+
+    /// Get the active DSL config for a tenant.
+    pub async fn dsl_config_get_active(
+        &self,
+        tenant_id: TenantId,
+        name: &str,
+    ) -> ApiResult<Option<JsonValue>> {
+        let conn = self.get_conn().await?;
+
+        let rows = conn
+            .query(
+                "SELECT row_to_json(c) FROM caliber_get_active_dsl_config($1, $2) c",
+                &[&tenant_id.as_uuid(), &name],
+            )
+            .await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(rows[0].get::<_, JsonValue>(0)))
+    }
+
+    // ========================================================================
     // CONFIG OPERATIONS
     // ========================================================================
 
@@ -2524,6 +2687,195 @@ impl DbClient {
                 C::from_json(&json).map_err(|e| ApiError::internal_error(e.to_string()))
             })
             .collect()
+    }
+}
+
+// ============================================================================
+// EVENT-EMITTING OPERATIONS
+// ============================================================================
+
+impl DbClient {
+    /// Create a helper to construct events.
+    fn make_event(
+        event_kind: EventKind,
+        payload: JsonValue,
+    ) -> Event<JsonValue> {
+        let event_id = Uuid::now_v7();
+        let now = chrono::Utc::now();
+        let header = EventHeader::new(
+            event_id,
+            event_id, // correlation_id = event_id for root events
+            now.timestamp_micros(),
+            DagPosition::root(),
+            0, // payload_size not used for in-memory
+            event_kind,
+            EventFlags::empty(),
+        );
+        Event::new(header, payload)
+    }
+
+    /// Generic create operation with event emission.
+    ///
+    /// Creates an entity and emits a creation event to the EventDag for audit trail.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `C`: The component type implementing `Component + TenantScoped`
+    ///
+    /// # Arguments
+    ///
+    /// - `req`: The create request
+    /// - `tenant_id`: The tenant ID for isolation
+    /// - `event_dag`: The EventDag to emit events to
+    ///
+    /// # Returns
+    ///
+    /// The created entity on success.
+    pub async fn create_with_event<C>(
+        &self,
+        req: &C::Create,
+        tenant_id: TenantId,
+        event_dag: &Arc<ApiEventDag>,
+    ) -> ApiResult<C>
+    where
+        C: Component + TenantScoped,
+    {
+        use caliber_core::EventDag;
+
+        // Perform the actual create
+        let entity = self.create::<C>(req, tenant_id).await?;
+
+        // Emit event to EventDag
+        let event_kind = Self::entity_to_created_event_kind::<C>();
+        let payload = serde_json::json!({
+            "entity_type": C::ENTITY_NAME,
+            "entity_id": entity.entity_id().as_uuid().to_string(),
+            "tenant_id": tenant_id.as_uuid().to_string(),
+            "action": "created",
+        });
+        let event = Self::make_event(event_kind, payload);
+
+        // Fire-and-forget: log errors but don't fail the operation
+        if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
+            tracing::warn!("Failed to emit create event for {}: {:?}", C::ENTITY_NAME, e);
+        }
+
+        Ok(entity)
+    }
+
+    /// Generic update operation with event emission.
+    ///
+    /// Updates an entity and emits an update event to the EventDag for audit trail.
+    pub async fn update_with_event<C>(
+        &self,
+        id: C::Id,
+        req: &C::Update,
+        tenant_id: TenantId,
+        event_dag: &Arc<ApiEventDag>,
+    ) -> ApiResult<C>
+    where
+        C: Component + TenantScoped,
+    {
+        use caliber_core::EventDag;
+
+        // Perform the actual update
+        let entity = self.update::<C>(id, req, tenant_id).await?;
+
+        // Emit event to EventDag
+        let event_kind = Self::entity_to_updated_event_kind::<C>();
+        let payload = serde_json::json!({
+            "entity_type": C::ENTITY_NAME,
+            "entity_id": entity.entity_id().as_uuid().to_string(),
+            "tenant_id": tenant_id.as_uuid().to_string(),
+            "action": "updated",
+        });
+        let event = Self::make_event(event_kind, payload);
+
+        if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
+            tracing::warn!("Failed to emit update event for {}: {:?}", C::ENTITY_NAME, e);
+        }
+
+        Ok(entity)
+    }
+
+    /// Generic delete operation with event emission.
+    ///
+    /// Deletes an entity and emits a delete event to the EventDag for audit trail.
+    pub async fn delete_with_event<C>(
+        &self,
+        id: C::Id,
+        tenant_id: TenantId,
+        event_dag: &Arc<ApiEventDag>,
+    ) -> ApiResult<bool>
+    where
+        C: Component + TenantScoped,
+    {
+        use caliber_core::EventDag;
+
+        // Perform the actual delete
+        let deleted = self.delete::<C>(id, tenant_id).await?;
+
+        if deleted {
+            // Emit event to EventDag
+            let event_kind = Self::entity_to_deleted_event_kind::<C>();
+            let payload = serde_json::json!({
+                "entity_type": C::ENTITY_NAME,
+                "entity_id": id.as_uuid().to_string(),
+                "tenant_id": tenant_id.as_uuid().to_string(),
+                "action": "deleted",
+            });
+            let event = Self::make_event(event_kind, payload);
+
+            if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
+                tracing::warn!("Failed to emit delete event for {}: {:?}", C::ENTITY_NAME, e);
+            }
+        }
+
+        Ok(deleted)
+    }
+
+    /// Map entity name to appropriate EventKind for created events.
+    fn entity_to_created_event_kind<C: Component>() -> EventKind {
+        match C::ENTITY_NAME {
+            "trajectory" => EventKind::TRAJECTORY_CREATED,
+            "scope" => EventKind::SCOPE_CREATED,
+            "artifact" => EventKind::ARTIFACT_CREATED,
+            "note" => EventKind::NOTE_CREATED,
+            "turn" => EventKind::TURN_CREATED,
+            "agent" => EventKind::AGENT_REGISTERED,
+            "lock" => EventKind::LOCK_ACQUIRED,
+            "message" => EventKind::MESSAGE_SENT,
+            "delegation" => EventKind::DELEGATION_CREATED,
+            "handoff" => EventKind::HANDOFF_CREATED,
+            "edge" => EventKind::EDGE_CREATED,
+            _ => EventKind::DATA,
+        }
+    }
+
+    /// Map entity name to appropriate EventKind for updated events.
+    fn entity_to_updated_event_kind<C: Component>() -> EventKind {
+        match C::ENTITY_NAME {
+            "trajectory" => EventKind::TRAJECTORY_UPDATED,
+            "scope" => EventKind::SCOPE_UPDATED,
+            "artifact" => EventKind::ARTIFACT_UPDATED,
+            "note" => EventKind::NOTE_UPDATED,
+            "agent" => EventKind::AGENT_UPDATED,
+            "edge" => EventKind::EDGE_UPDATED,
+            _ => EventKind::DATA,
+        }
+    }
+
+    /// Map entity name to appropriate EventKind for deleted events.
+    fn entity_to_deleted_event_kind<C: Component>() -> EventKind {
+        match C::ENTITY_NAME {
+            "trajectory" => EventKind::TRAJECTORY_DELETED,
+            "artifact" => EventKind::ARTIFACT_DELETED,
+            "note" => EventKind::NOTE_DELETED,
+            "agent" => EventKind::AGENT_UNREGISTERED,
+            "lock" => EventKind::LOCK_RELEASED,
+            "edge" => EventKind::EDGE_DELETED,
+            _ => EventKind::DATA,
+        }
     }
 }
 

@@ -7,9 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityIdType, EntityType, StorageError, TenantId, AgentId, TrajectoryId,
+    AgentId, CaliberError, CaliberResult, Conflict, ConflictResolutionRecord, ConflictStatus,
+    ConflictType, EntityIdType, EntityType, StorageError, TenantId, TrajectoryId,
 };
-use caliber_agents::{Conflict, ConflictStatus, ConflictType, ConflictResolutionRecord};
 
 use crate::column_maps::conflict;
 use crate::heap_ops::{
@@ -426,7 +426,7 @@ unsafe fn tuple_to_conflict(
 mod tests {
     use super::*;
     use proptest::prelude::*;
-    use caliber_agents::ResolutionStrategy;
+    use caliber_core::ResolutionStrategy;
 
     // ========================================================================
     // Test Helpers - Generators for Conflict data

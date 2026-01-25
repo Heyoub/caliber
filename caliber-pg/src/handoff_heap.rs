@@ -7,10 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AgentId, ArtifactId, CaliberError, CaliberResult, EntityIdType, EntityType,
-    HandoffId, ScopeId, StorageError, TenantId, TrajectoryId,
+    AgentHandoff, AgentId, ArtifactId, CaliberError, CaliberResult, EntityIdType, EntityType,
+    HandoffId, HandoffReason, HandoffStatus, ScopeId, StorageError, TenantId, TrajectoryId,
 };
-use caliber_agents::{AgentHandoff, HandoffStatus, HandoffReason};
 
 use crate::column_maps::handoff;
 use crate::heap_ops::{

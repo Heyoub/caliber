@@ -20,7 +20,7 @@ use crate::{
     events::WsEvent,
     extractors::PathId,
     middleware::AuthExtractor,
-    state::AppState,
+    state::{ApiEventDag, AppState},
     types::{
         CreateTrajectoryRequest, ListTrajectoriesRequest, ListTrajectoriesResponse,
         ScopeResponse, TrajectoryResponse, UpdateTrajectoryRequest,
@@ -51,6 +51,7 @@ use crate::{
 pub async fn create_trajectory(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
+    State(event_dag): State<Arc<ApiEventDag>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateTrajectoryRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -59,10 +60,10 @@ pub async fn create_trajectory(
         return Err(ApiError::missing_field("name"));
     }
 
-    // Create trajectory via database client with tenant_id for isolation
-    let trajectory = db.create::<TrajectoryResponse>(&req, auth.tenant_id).await?;
+    // Create trajectory via database client with event emission for audit trail
+    let trajectory = db.create_with_event::<TrajectoryResponse>(&req, auth.tenant_id, &event_dag).await?;
 
-    // Broadcast TrajectoryCreated event
+    // Broadcast TrajectoryCreated event via WebSocket
     ws.broadcast(WsEvent::TrajectoryCreated {
         trajectory: trajectory.clone(),
     });
@@ -174,6 +175,7 @@ pub async fn get_trajectory(
 pub async fn update_trajectory(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
+    State(event_dag): State<Arc<ApiEventDag>>,
     AuthExtractor(auth): AuthExtractor,
     PathId(id): PathId<TrajectoryId>,
     Json(req): Json<UpdateTrajectoryRequest>,
@@ -196,10 +198,10 @@ pub async fn update_trajectory(
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    // Update trajectory via database client
-    let trajectory = db.update::<TrajectoryResponse>(id, &req, auth.tenant_id).await?;
+    // Update trajectory via database client with event emission for audit trail
+    let trajectory = db.update_with_event::<TrajectoryResponse>(id, &req, auth.tenant_id, &event_dag).await?;
 
-    // Broadcast TrajectoryUpdated event
+    // Broadcast TrajectoryUpdated event via WebSocket
     ws.broadcast(WsEvent::TrajectoryUpdated {
         trajectory: trajectory.clone(),
     });
@@ -228,6 +230,7 @@ pub async fn update_trajectory(
 pub async fn delete_trajectory(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
+    State(event_dag): State<Arc<ApiEventDag>>,
     AuthExtractor(auth): AuthExtractor,
     PathId(id): PathId<TrajectoryId>,
 ) -> ApiResult<StatusCode> {
@@ -238,8 +241,8 @@ pub async fn delete_trajectory(
         .ok_or_else(|| ApiError::trajectory_not_found(id))?;
     validate_tenant_ownership(&auth, trajectory.tenant_id)?;
 
-    // Delete trajectory via database client
-    db.delete::<TrajectoryResponse>(id, auth.tenant_id).await?;
+    // Delete trajectory via database client with event emission for audit trail
+    db.delete_with_event::<TrajectoryResponse>(id, auth.tenant_id, &event_dag).await?;
 
     // Broadcast TrajectoryDeleted event with tenant_id for filtering
     ws.broadcast(WsEvent::TrajectoryDeleted {

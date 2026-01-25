@@ -467,6 +467,14 @@ impl ApiError {
             format!("{} {} is locked by another agent", resource_type, resource_id),
         )
     }
+
+    /// Create a LockConflict error with custom message.
+    pub fn lock_contention(resource_type: &str, resource_id: impl fmt::Display, message: &str) -> Self {
+        Self::new(
+            ErrorCode::LockConflict,
+            format!("{} {}: {}", resource_type, resource_id, message),
+        )
+    }
     
     /// Create a LockExpired error.
     pub fn lock_expired(lock_id: impl fmt::Display) -> Self {

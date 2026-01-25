@@ -7,10 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AgentId, CaliberError, CaliberResult, EntityIdType, EntityType,
-    ScopeId, StorageError, TenantId, TrajectoryId,
+    Agent, AgentId, AgentStatus, CaliberError, CaliberResult, EntityIdType, EntityType,
+    MemoryAccess, ScopeId, StorageError, TenantId, TrajectoryId,
 };
-use caliber_agents::{Agent, AgentStatus, MemoryAccess};
 
 use crate::column_maps::agent;
 use crate::heap_ops::{
@@ -392,7 +391,7 @@ unsafe fn tuple_to_agent(
 mod tests {
     use super::*;
     use proptest::prelude::*;
-    use caliber_agents::{MemoryPermission, PermissionScope};
+    use caliber_core::{MemoryPermission, PermissionScope};
 
     // ========================================================================
     // Test Helpers - Generators for Agent data

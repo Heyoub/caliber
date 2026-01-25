@@ -5657,3 +5657,96 @@ When a Rust crate uses traits to provide methods (extension trait pattern), you 
 **Time Spent:** n/a (not tracked)
 
 **Status:** Workspace cleanup complete.
+
+---
+
+### January 24, 2026 - EntityId Type Safety Refactor
+
+**Objective:** Replace the generic `EntityId = Uuid` type alias with distinct typed IDs for compile-time type safety.
+
+**Release:** 0.4.4
+
+**Problem Statement:**
+
+The original `pub type EntityId = Uuid` design allowed any UUID to be used where a specific entity ID was expected. This meant `tenant_id`, `trajectory_id`, and `agent_id` were interchangeable at compile time, leading to potential runtime bugs from ID mixups.
+
+**Solution:**
+
+Created 15 distinct newtype wrappers implementing a common `EntityIdType` trait:
+
+| Typed ID | Use Case |
+|----------|----------|
+| `TenantId` | Multi-tenant isolation |
+| `TrajectoryId` | Conversation/task tracking |
+| `ScopeId` | Working memory boundaries |
+| `ArtifactId` | Semantic memory items |
+| `NoteId` | Episodic memory items |
+| `TurnId` | Conversation turns |
+| `AgentId` | Agent identification |
+| `EdgeId` | Memory graph edges |
+| `LockId` | Distributed locks |
+| `MessageId` | Inter-agent messages |
+| `DelegationId` | Task delegations |
+| `HandoffId` | Agent handoffs |
+| `ApiKeyId` | API key management |
+| `WebhookId` | Webhook configuration |
+| `SummarizationPolicyId` | Summarization policies |
+
+**EntityIdType Trait:**
+
+```rust
+pub trait EntityIdType: Copy + Clone + Debug + ... {
+    fn new(id: Uuid) -> Self;
+    fn as_uuid(&self) -> Uuid;
+    fn now_v7() -> Self;  // Timestamp-sortable ID generation
+    fn nil() -> Self;
+}
+```
+
+**Completed:**
+
+- ✅ Removed `EntityId` type alias from caliber-core
+- ✅ Removed deprecated `new_entity_id()` function
+- ✅ Updated all 12 caliber-pg heap files with typed IDs
+- ✅ Updated all 10 caliber-api test files
+- ✅ Total: 22 files changed, +943 insertions, -863 deletions
+
+**Files Updated:**
+
+caliber-pg heap files:
+- `scope_heap.rs`, `trajectory_heap.rs`, `turn_heap.rs`, `note_heap.rs`
+- `edge_heap.rs`, `agent_heap.rs`, `lock_heap.rs`, `artifact_heap.rs`
+- `handoff_heap.rs`, `conflict_heap.rs`, `message_heap.rs`, `delegation_heap.rs`
+
+caliber-api test files:
+- `support/auth.rs`, `support/auth_with_tenant.rs`
+- `scope_property_tests.rs`, `artifact_property_tests.rs`, `broadcast_property_tests.rs`
+- `tenant_property_tests.rs`, `agent_property_tests.rs`, `note_property_tests.rs`
+- `trajectory_property_tests.rs`, `grpc_parity_property_tests.rs`
+
+**Pattern Changes:**
+
+| Before | After |
+|--------|-------|
+| `entity_id: EntityId` | `scope_id: ScopeId` |
+| `uuid_to_datum(id)` | `uuid_to_datum(id.as_uuid())` |
+| `new_entity_id()` | `ScopeId::now_v7()` |
+| `extract_uuid(...)?` | `extract_uuid(...)?.map(TenantId::new)` |
+
+**Multi-Agent Execution:**
+
+This refactor was executed using 5 parallel Sonnet agents, each handling a subset of files:
+1. Agent 1: note_heap.rs, edge_heap.rs, agent_heap.rs
+2. Agent 2: lock_heap.rs, artifact_heap.rs, handoff_heap.rs
+3. Agent 3: conflict_heap.rs, message_heap.rs
+4. Agent 4: delegation_heap.rs, lib.rs
+5. Agent 5: All caliber-api test files
+
+**Commits:**
+
+- `76e099c` - refactor: Update types and improve API consistency with TenantId and Uuid
+- `3042722` - refactor: Replace EntityId with Uuid and TenantId across tests
+
+**Time Spent:** ~2 hours (planning + parallel agent execution + git recovery)
+
+**Status:** EntityId removal complete. Awaiting cargo check verification.

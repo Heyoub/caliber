@@ -22,6 +22,7 @@ pub mod jobs;
 pub mod macros;
 pub mod middleware;
 pub mod openapi;
+pub mod providers;
 pub mod routes;
 pub mod state;
 pub mod telemetry;

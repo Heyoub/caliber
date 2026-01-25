@@ -3,10 +3,11 @@
 //! This module contains agent identity, memory access control, and message types
 //! that were consolidated from caliber-agents into caliber-core.
 
-use crate::{ArtifactId, LockMode, NoteId, Timestamp};
+use crate::{ArtifactId, NoteId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use uuid::Uuid;
 
 // ============================================================================
 // MESSAGE TYPES (from caliber-agents)
@@ -514,70 +515,152 @@ impl fmt::Display for ResolutionStrategyParseError {
 impl std::error::Error for ResolutionStrategyParseError {}
 
 // ============================================================================
-// DELEGATION RESULT TYPES (from caliber-agents)
+// CONFLICT RESOLUTION
 // ============================================================================
 
-/// Result status of a delegation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Strategy for resolving conflicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum DelegationResultStatus {
-    /// Task completed successfully
-    Success,
-    /// Task partially completed
-    Partial,
-    /// Task failed
-    Failure,
+pub enum ConflictResolution {
+    /// Last write wins
+    #[default]
+    LastWriteWins,
+    /// Highest confidence wins
+    HighestConfidence,
+    /// Escalate to user/admin
+    Escalate,
 }
 
-/// Result of a delegated task.
+// ============================================================================
+// MEMORY REGION CONFIG
+// ============================================================================
+
+/// Configuration for a memory region.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct DelegationResult {
-    /// Status of the result
-    pub status: DelegationResultStatus,
-    /// Artifacts produced by the task
+pub struct MemoryRegionConfig {
+    /// Unique identifier for this region
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub region_id: Uuid,
+    /// Type of region
+    pub region_type: MemoryRegion,
+    /// Agent that owns this region
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub owner_agent_id: Uuid,
+    /// Team this region belongs to (if applicable)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub team_id: Option<Uuid>,
+
+    /// Agents with read access
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub produced_artifacts: Vec<ArtifactId>,
-    /// Notes produced by the task
+    pub readers: Vec<Uuid>,
+    /// Agents with write access
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub produced_notes: Vec<NoteId>,
-    /// Summary of what was accomplished
-    pub summary: String,
-    /// Error message (if failed)
-    pub error: Option<String>,
+    pub writers: Vec<Uuid>,
+
+    /// Whether writes require a lock
+    pub require_lock: bool,
+    /// How to resolve conflicts
+    pub conflict_resolution: ConflictResolution,
+    /// Whether to track versions
+    pub version_tracking: bool,
 }
 
-impl DelegationResult {
-    /// Create a successful result.
-    pub fn success(summary: &str, artifacts: Vec<ArtifactId>) -> Self {
+impl MemoryRegionConfig {
+    /// Create a new private region.
+    pub fn private(owner_agent_id: Uuid) -> Self {
         Self {
-            status: DelegationResultStatus::Success,
-            produced_artifacts: artifacts,
-            produced_notes: Vec::new(),
-            summary: summary.to_string(),
-            error: None,
+            region_id: Uuid::now_v7(),
+            region_type: MemoryRegion::Private,
+            owner_agent_id,
+            team_id: None,
+            readers: vec![owner_agent_id],
+            writers: vec![owner_agent_id],
+            require_lock: false,
+            conflict_resolution: ConflictResolution::LastWriteWins,
+            version_tracking: false,
         }
     }
 
-    /// Create a partial result.
-    pub fn partial(summary: &str, artifacts: Vec<ArtifactId>) -> Self {
+    /// Create a new team region.
+    pub fn team(owner_agent_id: Uuid, team_id: Uuid) -> Self {
         Self {
-            status: DelegationResultStatus::Partial,
-            produced_artifacts: artifacts,
-            produced_notes: Vec::new(),
-            summary: summary.to_string(),
-            error: None,
+            region_id: Uuid::now_v7(),
+            region_type: MemoryRegion::Team,
+            owner_agent_id,
+            team_id: Some(team_id),
+            readers: Vec::new(),
+            writers: Vec::new(),
+            require_lock: false,
+            conflict_resolution: ConflictResolution::LastWriteWins,
+            version_tracking: true,
         }
     }
 
-    /// Create a failure result.
-    pub fn failure(error: &str) -> Self {
+    /// Create a new public region.
+    pub fn public(owner_agent_id: Uuid) -> Self {
         Self {
-            status: DelegationResultStatus::Failure,
-            produced_artifacts: Vec::new(),
-            produced_notes: Vec::new(),
-            summary: String::new(),
-            error: Some(error.to_string()),
+            region_id: Uuid::now_v7(),
+            region_type: MemoryRegion::Public,
+            owner_agent_id,
+            team_id: None,
+            readers: Vec::new(),
+            writers: vec![owner_agent_id],
+            require_lock: false,
+            conflict_resolution: ConflictResolution::LastWriteWins,
+            version_tracking: false,
+        }
+    }
+
+    /// Create a new collaborative region.
+    pub fn collaborative(owner_agent_id: Uuid) -> Self {
+        Self {
+            region_id: Uuid::now_v7(),
+            region_type: MemoryRegion::Collaborative,
+            owner_agent_id,
+            team_id: None,
+            readers: Vec::new(),
+            writers: Vec::new(),
+            require_lock: true,
+            conflict_resolution: ConflictResolution::Escalate,
+            version_tracking: true,
+        }
+    }
+
+    /// Add a reader to the region.
+    pub fn add_reader(&mut self, agent_id: Uuid) {
+        if !self.readers.contains(&agent_id) {
+            self.readers.push(agent_id);
+        }
+    }
+
+    /// Add a writer to the region.
+    pub fn add_writer(&mut self, agent_id: Uuid) {
+        if !self.writers.contains(&agent_id) {
+            self.writers.push(agent_id);
+        }
+    }
+
+    /// Check if an agent can read from this region.
+    pub fn can_read(&self, agent_id: Uuid) -> bool {
+        match self.region_type {
+            MemoryRegion::Private => agent_id == self.owner_agent_id,
+            MemoryRegion::Team => {
+                agent_id == self.owner_agent_id || self.readers.contains(&agent_id)
+            }
+            MemoryRegion::Public | MemoryRegion::Collaborative => true,
+        }
+    }
+
+    /// Check if an agent can write to this region.
+    pub fn can_write(&self, agent_id: Uuid) -> bool {
+        match self.region_type {
+            MemoryRegion::Private => agent_id == self.owner_agent_id,
+            MemoryRegion::Team => {
+                agent_id == self.owner_agent_id || self.writers.contains(&agent_id)
+            }
+            MemoryRegion::Public => agent_id == self.owner_agent_id,
+            MemoryRegion::Collaborative => true,
         }
     }
 }
@@ -630,14 +713,4 @@ mod tests {
         assert!(ConflictStatus::Escalated.is_terminal());
     }
 
-    #[test]
-    fn test_delegation_result_constructors() {
-        let success = DelegationResult::success("Done", vec![]);
-        assert_eq!(success.status, DelegationResultStatus::Success);
-        assert!(success.error.is_none());
-
-        let failure = DelegationResult::failure("Oops");
-        assert_eq!(failure.status, DelegationResultStatus::Failure);
-        assert_eq!(failure.error, Some("Oops".to_string()));
-    }
 }

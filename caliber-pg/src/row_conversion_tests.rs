@@ -12,14 +12,12 @@ use crate::{
     trajectory_heap::TrajectoryRow,
     turn_heap::TurnRow,
 };
-use caliber_agents::{
-    Agent, AgentHandoff, AgentMessage, Conflict, ConflictType, DelegatedTask,
-    DistributedLock, HandoffReason, LockMode, MessageType,
-};
 use caliber_core::{
-    AbstractionLevel, Artifact, ArtifactType, Edge, EdgeParticipant, EdgeType, EntityRef,
-    EntityType, ExtractionMethod, Note, NoteType, Provenance, Scope, TTL,
-    Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole, compute_content_hash,
+    AbstractionLevel, Agent, AgentHandoff, AgentId, AgentMessage, Artifact, ArtifactType,
+    Conflict, ConflictType, DelegatedTask, Edge, EdgeParticipant, EdgeType, EntityRef,
+    EntityType, ExtractionMethod, HandoffReason, LockData, LockId, LockMode, MessageType,
+    Note, NoteType, Provenance, Scope, TTL, TenantId, Trajectory, TrajectoryOutcome,
+    TrajectoryStatus, Turn, TurnRole, compute_content_hash,
 };
 use chrono::Utc;
 use uuid::Uuid;
@@ -249,18 +247,21 @@ fn agent_row_into_agent() {
 
 #[test]
 fn lock_row_into_lock() {
-    let lock = DistributedLock::new(
-        "resource",
-        sample_id(60),
-        sample_id(61),
-        1000,
-        LockMode::Exclusive,
-    );
+    let now = Utc::now();
+    let lock = LockData {
+        lock_id: LockId::new(sample_id(59)),
+        tenant_id: TenantId::new(sample_id(99)),
+        resource_type: "resource".to_string(),
+        resource_id: sample_id(60),
+        holder_agent_id: AgentId::new(sample_id(61)),
+        acquired_at: now,
+        expires_at: now + chrono::Duration::seconds(1000),
+        mode: LockMode::Exclusive,
+    };
     let row = LockRow {
         lock: lock.clone(),
-        tenant_id: Some(sample_id(99)),
     };
-    let converted: DistributedLock = row.into();
+    let converted: LockData = row.into();
     assert_eq!(converted, lock);
 }
 

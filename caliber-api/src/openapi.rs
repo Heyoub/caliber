@@ -16,21 +16,17 @@ use crate::routes::{
     tenant, trajectory, turn,
 };
 
-// Import domain types from caliber-core
+// Import domain types from caliber-core (includes absorbed caliber-agents types)
 use caliber_core::{
-    Artifact, ArtifactType, CaliberConfig, Checkpoint, ContextPersistence, EmbeddingVector,
-    EntityRef, EntityType, ExtractionMethod, MemoryCategory, Note, NoteType, OutcomeStatus,
-    ProviderConfig, Provenance, RetryConfig, Scope, SectionPriorities, Trajectory,
-    TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole, ValidationMode, TTL,
-};
-
-// Import multi-agent types from caliber-agents
-use caliber_agents::{
-    Agent, AgentHandoff, AgentMessage, AgentStatus, Conflict, ConflictResolutionRecord,
-    ConflictStatus, ConflictType, DelegatedTask, DelegationResult, DelegationResultStatus,
-    DelegationStatus, DistributedLock, HandoffReason, HandoffStatus, LockMode, MemoryAccess,
-    MemoryPermission, MemoryRegion, MemoryRegionConfig, MessagePriority, MessageType,
-    PermissionScope, ResolutionStrategy,
+    Agent, AgentHandoff, AgentMessage, AgentStatus, Artifact, ArtifactType, CaliberConfig,
+    Checkpoint, Conflict, ConflictResolutionRecord, ConflictStatus, ConflictType,
+    ContextPersistence, DelegatedTask, DelegationResult, DelegationResultStatus,
+    DelegationStatus, EmbeddingVector, EntityRef, EntityType, ExtractionMethod, HandoffReason,
+    HandoffStatus, LockData, LockMode, MemoryAccess, MemoryCategory, MemoryPermission,
+    MemoryRegion, MemoryRegionConfig, MessagePriority, MessageType, Note, NoteType,
+    OutcomeStatus, PermissionScope, ProviderConfig, Provenance, ResolutionStrategy, RetryConfig,
+    Scope, SectionPriorities, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
+    ValidationMode, TTL,
 };
 
 // Import ConflictResolution from pcp
@@ -227,12 +223,12 @@ use caliber_pcp::ConflictResolution;
             SectionPriorities, ContextPersistence, ValidationMode,
             ProviderConfig, RetryConfig, CaliberConfig,
 
-            // === Agent Domain Types (from caliber-agents) ===
+            // === Agent Domain Types (from caliber-core) ===
             AgentStatus, PermissionScope, MemoryRegion, LockMode,
             MessageType, MessagePriority, DelegationStatus, DelegationResultStatus,
             HandoffStatus, HandoffReason, ConflictType, ConflictStatus, ResolutionStrategy,
             MemoryPermission, MemoryAccess, Agent, MemoryRegionConfig,
-            DistributedLock, AgentMessage, DelegationResult, DelegatedTask,
+            LockData, AgentMessage, DelegationResult, DelegatedTask,
             AgentHandoff, ConflictResolutionRecord, Conflict,
 
             // === PCP Types ===

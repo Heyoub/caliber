@@ -13,8 +13,6 @@ documentation.workspace = true
 # Internal crates
 caliber-core = { workspace = true }
 caliber-storage = { workspace = true }
-caliber-llm = { workspace = true }
-caliber-agents = { workspace = true }
 caliber-pcp = { workspace = true }
 caliber-dsl = { workspace = true }
 
@@ -23,6 +21,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+async-trait = "0.1"
 
 # Testing
 proptest = { workspace = true }

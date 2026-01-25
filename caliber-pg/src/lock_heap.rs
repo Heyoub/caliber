@@ -7,9 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AgentId, CaliberError, CaliberResult, EntityIdType, EntityType, LockId, LockMode, StorageError, TenantId,
+    AgentId, CaliberError, CaliberResult, EntityIdType, EntityType, LockData, LockId, LockMode,
+    StorageError, TenantId,
 };
-use caliber_agents::DistributedLock;
 
 use crate::column_maps::lock;
 use crate::heap_ops::{
@@ -28,13 +28,12 @@ use crate::tuple_extract::{
 };
 use std::ptr;
 
-/// Lock row with tenant ownership metadata.
+/// Lock row wrapper for LockData (which already contains tenant_id).
 pub struct LockRow {
-    pub lock: DistributedLock,
-    pub tenant_id: Option<TenantId>,
+    pub lock: LockData,
 }
 
-impl From<LockRow> for DistributedLock {
+impl From<LockRow> for LockData {
     fn from(row: LockRow) -> Self {
         row.lock
     }
@@ -146,7 +145,7 @@ pub fn lock_get_heap(lock_id: LockId, tenant_id: TenantId) -> CaliberResult<Opti
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
-        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
+        if row.lock.tenant_id.as_uuid() == tenant_id.as_uuid() {
             Ok(Some(row))
         } else {
             Ok(None)
@@ -194,7 +193,7 @@ pub fn lock_list_by_resource_heap(
     
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
-        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
+        if row.lock.tenant_id.as_uuid() == tenant_id.as_uuid() {
             results.push(row);
         }
     }
@@ -213,7 +212,7 @@ pub fn lock_list_active_heap(tenant_id: TenantId) -> CaliberResult<Vec<LockRow>>
     let mut results = Vec::new();
     for tuple in &mut scanner {
         let row = unsafe { tuple_to_lock(tuple, tuple_desc) }?;
-        if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) && row.lock.expires_at > now {
+        if row.lock.tenant_id.as_uuid() == tenant_id.as_uuid() && row.lock.expires_at > now {
             results.push(row);
         }
     }
@@ -285,11 +284,15 @@ unsafe fn tuple_to_lock(
         }
     };
 
-    let tenant_id = extract_uuid(tuple, tuple_desc, lock::TENANT_ID)?.map(TenantId::new);
+    let tenant_id = extract_uuid(tuple, tuple_desc, lock::TENANT_ID)?
+        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+            reason: "tenant_id is NULL".to_string(),
+        }))?;
 
     Ok(LockRow {
-        lock: DistributedLock {
+        lock: LockData {
             lock_id: LockId::new(lock_id),
+            tenant_id: TenantId::new(tenant_id),
             resource_type,
             resource_id,
             holder_agent_id: AgentId::new(holder_agent_id),
@@ -297,7 +300,6 @@ unsafe fn tuple_to_lock(
             expires_at,
             mode,
         },
-        tenant_id,
     })
 }
 
@@ -471,7 +473,7 @@ mod tests {
                 prop_assert_eq!(l.resource_id, resource_id);
                 prop_assert_eq!(l.holder_agent_id.as_uuid(), holder_agent_id.as_uuid());
                 prop_assert_eq!(l.mode, mode);
-                prop_assert_eq!(row.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
+                prop_assert_eq!(row.lock.tenant_id.as_uuid(), tenant_id.as_uuid());
                 
                 // Timestamps should be set
                 prop_assert!(l.acquired_at <= chrono::Utc::now());
@@ -652,7 +654,7 @@ mod tests {
                 prop_assert_eq!(found_lock.lock.resource_id, resource_id);
                 prop_assert_eq!(found_lock.lock.holder_agent_id.as_uuid(), holder_agent_id.as_uuid());
                 prop_assert_eq!(found_lock.lock.mode, mode);
-                prop_assert_eq!(found_lock.tenant_id.map(|t| t.as_uuid()), Some(tenant_id.as_uuid()));
+                prop_assert_eq!(found_lock.lock.tenant_id.as_uuid(), tenant_id.as_uuid());
 
                 Ok(())
             }).unwrap();

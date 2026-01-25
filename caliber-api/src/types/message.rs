@@ -1,6 +1,9 @@
 //! Message-related API types
 
-use caliber_core::{AgentId, ArtifactId, MessageId, ScopeId, TenantId, Timestamp, TrajectoryId};
+use caliber_core::{
+    AgentId, ArtifactId, MessageId, MessagePriority, MessageType, ScopeId, TenantId, Timestamp,
+    TrajectoryId,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -51,7 +54,7 @@ pub struct MessageResponse {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub recipient_id: Option<AgentId>,
     pub to_agent_type: Option<String>,
-    pub message_type: String,
+    pub message_type: MessageType,
     pub payload: String,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub trajectory_id: Option<TrajectoryId>,
@@ -65,7 +68,7 @@ pub struct MessageResponse {
     pub delivered_at: Option<Timestamp>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub acknowledged_at: Option<Timestamp>,
-    pub priority: String,
+    pub priority: MessagePriority,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub expires_at: Option<Timestamp>,
 }
@@ -75,7 +78,7 @@ pub struct MessageResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ListMessagesRequest {
     /// Filter by message type
-    pub message_type: Option<String>,
+    pub message_type: Option<MessageType>,
     /// Filter by sender agent
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub from_agent_id: Option<AgentId>,
@@ -88,7 +91,7 @@ pub struct ListMessagesRequest {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub trajectory_id: Option<TrajectoryId>,
     /// Filter by priority
-    pub priority: Option<String>,
+    pub priority: Option<MessagePriority>,
     /// Only return undelivered messages
     pub undelivered_only: Option<bool>,
     /// Only return unacknowledged messages

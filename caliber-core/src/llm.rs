@@ -1,8 +1,10 @@
-//! LLM-related primitive types.
+//! LLM-related primitive types and traits.
 //!
-//! Pure data types for LLM operations. Traits and orchestration live in caliber-llm.
+//! Pure data types and interface definitions for LLM operations.
+//! Runtime orchestration (ProviderRegistry, CircuitBreaker) lives in caliber-api/src/providers/.
 
-use crate::ArtifactType;
+use crate::{ArtifactType, CaliberResult, EmbeddingVector};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -241,6 +243,162 @@ pub struct ExtractedArtifact {
 }
 
 // ============================================================================
+// PROVIDER TRAITS
+// ============================================================================
+
+/// Async trait for embedding providers.
+///
+/// Implementations must be thread-safe (Send + Sync).
+/// This is the interface definition only - implementations live in caliber-api/src/providers/.
+#[async_trait]
+pub trait EmbeddingProvider: Send + Sync {
+    /// Generate an embedding for a single text.
+    async fn embed(&self, text: &str) -> CaliberResult<EmbeddingVector>;
+
+    /// Generate embeddings for multiple texts in a batch.
+    async fn embed_batch(&self, texts: &[&str]) -> CaliberResult<Vec<EmbeddingVector>>;
+
+    /// Get the number of dimensions this provider produces.
+    fn dimensions(&self) -> i32;
+
+    /// Get the model identifier for this provider.
+    fn model_id(&self) -> &str;
+}
+
+/// Async trait for summarization providers.
+///
+/// This is the interface definition only - implementations live in caliber-api/src/providers/.
+#[async_trait]
+pub trait SummarizationProvider: Send + Sync {
+    /// Summarize content according to the provided configuration.
+    async fn summarize(&self, content: &str, config: &SummarizeConfig) -> CaliberResult<String>;
+
+    /// Extract artifacts of specified types from content.
+    async fn extract_artifacts(
+        &self,
+        content: &str,
+        types: &[ArtifactType],
+    ) -> CaliberResult<Vec<ExtractedArtifact>>;
+
+    /// Detect if two pieces of content contradict each other.
+    async fn detect_contradiction(&self, a: &str, b: &str) -> CaliberResult<bool>;
+}
+
+// ============================================================================
+// TOKENIZER TRAIT
+// ============================================================================
+
+/// Trait for counting tokens in text.
+///
+/// Used for token budget management in context assembly.
+/// Implementations can provide exact counts (using actual tokenizer)
+/// or heuristic estimates based on character ratios.
+pub trait Tokenizer: Send + Sync {
+    /// Count tokens in the given text.
+    fn count(&self, text: &str) -> i32;
+
+    /// Get the model family this tokenizer is for (e.g., "gpt-4", "claude").
+    fn model_family(&self) -> &str;
+
+    /// Encode text to token IDs (for advanced use cases).
+    /// Returns empty vec if not supported.
+    fn encode(&self, text: &str) -> Vec<u32>;
+
+    /// Decode token IDs back to text.
+    /// Returns empty string if not supported.
+    fn decode(&self, tokens: &[u32]) -> String;
+}
+
+/// Heuristic tokenizer using character-to-token ratios.
+///
+/// This provides fast, approximate token counts without requiring
+/// an actual tokenizer model. Good for quick estimates.
+#[derive(Debug, Clone)]
+pub struct HeuristicTokenizer {
+    /// Tokens per character ratio (model-specific)
+    ratio: f32,
+    /// Model family identifier
+    model_family: String,
+}
+
+impl HeuristicTokenizer {
+    /// Create a new heuristic tokenizer for a specific model.
+    ///
+    /// Uses empirically-derived ratios based on model family.
+    pub fn for_model(model: &str) -> Self {
+        let (ratio, family) = if model.contains("gpt-4") || model.contains("gpt-3.5") {
+            // GPT models: ~4 characters per token on average
+            (0.25, "gpt")
+        } else if model.contains("claude") {
+            // Claude models: slightly higher token density
+            (0.28, "claude")
+        } else if model.contains("text-embedding") {
+            // OpenAI embedding models
+            (0.25, "openai-embedding")
+        } else if model.contains("llama") || model.contains("mistral") {
+            // Open source models vary more
+            (0.27, "open-source")
+        } else {
+            // Conservative default
+            (0.30, "unknown")
+        };
+
+        Self {
+            ratio,
+            model_family: family.to_string(),
+        }
+    }
+
+    /// Create with a custom ratio.
+    pub fn with_ratio(ratio: f32, model_family: impl Into<String>) -> Self {
+        Self {
+            ratio,
+            model_family: model_family.into(),
+        }
+    }
+
+    /// Get the current ratio.
+    pub fn ratio(&self) -> f32 {
+        self.ratio
+    }
+}
+
+impl Default for HeuristicTokenizer {
+    fn default() -> Self {
+        Self::for_model("gpt-4")
+    }
+}
+
+impl Tokenizer for HeuristicTokenizer {
+    fn count(&self, text: &str) -> i32 {
+        // Multiply character count by ratio
+        (text.len() as f32 * self.ratio).ceil() as i32
+    }
+
+    fn model_family(&self) -> &str {
+        &self.model_family
+    }
+
+    fn encode(&self, _text: &str) -> Vec<u32> {
+        // Heuristic tokenizer doesn't support encoding
+        Vec::new()
+    }
+
+    fn decode(&self, _tokens: &[u32]) -> String {
+        // Heuristic tokenizer doesn't support decoding
+        String::new()
+    }
+}
+
+/// Estimate tokens using the default heuristic.
+///
+/// This is the legacy function for backward compatibility.
+/// New code should use `HeuristicTokenizer` directly for model-specific estimates.
+pub fn estimate_tokens(text: &str) -> i32 {
+    HeuristicTokenizer::default().count(text)
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -298,5 +456,59 @@ mod tests {
     #[test]
     fn test_routing_strategy_default() {
         assert_eq!(RoutingStrategy::default(), RoutingStrategy::RoundRobin);
+    }
+
+    #[test]
+    fn test_heuristic_tokenizer_gpt4() {
+        let tokenizer = HeuristicTokenizer::for_model("gpt-4");
+        assert_eq!(tokenizer.model_family(), "gpt");
+        assert_eq!(tokenizer.ratio(), 0.25);
+
+        // 100 chars * 0.25 = 25 tokens
+        let text = "a".repeat(100);
+        assert_eq!(tokenizer.count(&text), 25);
+    }
+
+    #[test]
+    fn test_heuristic_tokenizer_claude() {
+        let tokenizer = HeuristicTokenizer::for_model("claude-3-opus");
+        assert_eq!(tokenizer.model_family(), "claude");
+        assert_eq!(tokenizer.ratio(), 0.28);
+
+        // 100 chars * 0.28 = 28 tokens
+        let text = "a".repeat(100);
+        assert_eq!(tokenizer.count(&text), 28);
+    }
+
+    #[test]
+    fn test_heuristic_tokenizer_unknown() {
+        let tokenizer = HeuristicTokenizer::for_model("some-random-model");
+        assert_eq!(tokenizer.model_family(), "unknown");
+        assert_eq!(tokenizer.ratio(), 0.30);
+    }
+
+    #[test]
+    fn test_heuristic_tokenizer_custom() {
+        let tokenizer = HeuristicTokenizer::with_ratio(0.5, "custom");
+        assert_eq!(tokenizer.model_family(), "custom");
+        assert_eq!(tokenizer.ratio(), 0.5);
+
+        // 100 chars * 0.5 = 50 tokens
+        let text = "a".repeat(100);
+        assert_eq!(tokenizer.count(&text), 50);
+    }
+
+    #[test]
+    fn test_estimate_tokens_legacy() {
+        // Legacy function uses default (GPT-4) ratio
+        let text = "a".repeat(100);
+        assert_eq!(estimate_tokens(&text), 25);
+    }
+
+    #[test]
+    fn test_tokenizer_trait_object() {
+        // Verify it can be used as a trait object
+        let tokenizer: Box<dyn Tokenizer> = Box::new(HeuristicTokenizer::default());
+        assert!(!tokenizer.model_family().is_empty());
     }
 }

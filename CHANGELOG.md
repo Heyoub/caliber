@@ -14,6 +14,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mutation testing (planned)
 - Test coverage reporting (planned)
 
+## [0.4.4] - 2026-01-24
+
+### Changed
+
+- **BREAKING:** Removed `EntityId` type alias in favor of 15 distinct typed IDs
+  - `TenantId`, `TrajectoryId`, `ScopeId`, `ArtifactId`, `NoteId`, `TurnId`
+  - `AgentId`, `EdgeId`, `LockId`, `MessageId`, `DelegationId`, `HandoffId`
+  - `ApiKeyId`, `WebhookId`, `SummarizationPolicyId`
+- Added `EntityIdType` trait providing `new()`, `as_uuid()`, `now_v7()`, `nil()` methods
+- Updated all caliber-pg heap files (12 files) to use typed IDs with `.as_uuid()` for PostgreSQL operations
+- Updated all caliber-api test files (10 files) to use `Uuid` or specific typed IDs
+- Replaced `new_entity_id()` function with `TypedId::now_v7()` pattern
+
+### Removed
+
+- Deprecated `EntityId = Uuid` type alias from caliber-core
+- Deprecated `new_entity_id()` function from caliber-core
+
+### Notes
+
+- This is a compile-time breaking change that improves type safety
+- Tenant ID, trajectory ID, agent ID etc. can no longer be accidentally swapped at compile time
+- Pattern: use `.as_uuid()` when interfacing with PostgreSQL/pgrx, `TypedId::new(uuid)` when extracting
+
 ## [0.4.3] - 2026-01-24
 
 ### Added

@@ -7,10 +7,10 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    AgentId, CaliberError, CaliberResult, DelegationId, EntityIdType, EntityType,
-    StorageError, TenantId, TrajectoryId,
+    AgentId, CaliberError, CaliberResult, DelegatedTask, DelegationId, DelegationResult,
+    DelegationResultStatus, DelegationStatus, EntityIdType, EntityType, StorageError, TenantId,
+    TrajectoryId,
 };
-use caliber_agents::{DelegatedTask, DelegationStatus, DelegationResult};
 
 use crate::column_maps::delegation;
 use crate::heap_ops::{
@@ -622,7 +622,7 @@ mod tests {
     fn arb_delegation_result() -> impl Strategy<Value = DelegationResult> {
         (arb_artifact_ids(), arb_artifact_ids()).prop_map(|(artifacts, notes)| {
             DelegationResult {
-                status: caliber_agents::DelegationResultStatus::Success,
+                status: DelegationResultStatus::Success,
                 produced_artifacts: artifacts,
                 produced_notes: notes,
                 summary: "Task completed successfully".to_string(),

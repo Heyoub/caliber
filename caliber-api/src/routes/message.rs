@@ -272,10 +272,11 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::AgentId;
+    use caliber_core::{AgentId, MessagePriority, MessageType};
 
     #[test]
     fn test_send_message_request_validation() {
+        // SendMessageRequest still uses String for HTTP deserialization
         let req = SendMessageRequest {
             from_agent_id: AgentId::now_v7(),
             to_agent_id: None,
@@ -293,30 +294,23 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_message_types() {
-        let valid_types = [
-            "TaskDelegation",
-            "TaskResult",
-            "ContextRequest",
-            "ContextShare",
-            "CoordinationSignal",
-            "Handoff",
-            "Interrupt",
-            "Heartbeat",
-        ];
+    fn test_message_type_enum_variants() {
+        // Now using proper enum variants
+        let task_delegation = MessageType::TaskDelegation;
+        let heartbeat = MessageType::Heartbeat;
 
-        assert!(valid_types.contains(&"TaskDelegation"));
-        assert!(valid_types.contains(&"Heartbeat"));
-        assert!(!valid_types.contains(&"InvalidType"));
+        assert_eq!(task_delegation.as_db_str(), "TaskDelegation");
+        assert_eq!(heartbeat.as_db_str(), "Heartbeat");
     }
 
     #[test]
-    fn test_valid_priorities() {
-        let valid_priorities = ["Low", "Normal", "High", "Critical"];
+    fn test_message_priority_enum_variants() {
+        // Now using proper enum variants
+        let low = MessagePriority::Low;
+        let critical = MessagePriority::Critical;
 
-        assert!(valid_priorities.contains(&"Low"));
-        assert!(valid_priorities.contains(&"Critical"));
-        assert!(!valid_priorities.contains(&"Invalid"));
+        assert_eq!(low.as_db_str(), "Low");
+        assert_eq!(critical.as_db_str(), "Critical");
     }
 
     #[test]
@@ -331,20 +325,20 @@ mod tests {
     #[test]
     fn test_list_messages_request_filters() {
         let req = ListMessagesRequest {
-            message_type: Some("TaskDelegation".to_string()),
+            message_type: Some(MessageType::TaskDelegation),
             from_agent_id: Some(AgentId::now_v7()),
             to_agent_id: None,
             to_agent_type: Some("coder".to_string()),
             trajectory_id: None,
-            priority: Some("High".to_string()),
+            priority: Some(MessagePriority::High),
             undelivered_only: Some(true),
             unacknowledged_only: Some(false),
             limit: Some(50),
             offset: Some(0),
         };
 
-        assert_eq!(req.message_type, Some("TaskDelegation".to_string()));
-        assert_eq!(req.priority, Some("High".to_string()));
+        assert_eq!(req.message_type, Some(MessageType::TaskDelegation));
+        assert_eq!(req.priority, Some(MessagePriority::High));
         assert_eq!(req.undelivered_only, Some(true));
     }
 }

@@ -7,9 +7,9 @@ use pgrx::prelude::*;
 use pgrx::pg_sys;
 
 use caliber_core::{
-    CaliberError, CaliberResult, EntityIdType, EntityType, StorageError, TenantId, MessageId, AgentId, TrajectoryId, ScopeId, ArtifactId,
+    AgentId, AgentMessage, ArtifactId, CaliberError, CaliberResult, EntityIdType, EntityType,
+    MessageId, MessagePriority, MessageType, ScopeId, StorageError, TenantId, TrajectoryId,
 };
-use caliber_agents::{AgentMessage, MessageType, MessagePriority};
 
 use crate::column_maps::message;
 use crate::heap_ops::{

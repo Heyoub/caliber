@@ -27,23 +27,21 @@ pub mod pg_test {
 
 // Re-export core types for use in SQL functions
 use caliber_core::{
-    AbstractionLevel, AgentError, Artifact, ArtifactType, CaliberConfig, CaliberError,
-    CaliberResult, Checkpoint, Edge, EdgeParticipant, EdgeType, EmbeddingVector, EntityId,
-    EntityType, ExtractionMethod, LockMode, MemoryCategory, Note, NoteType, Provenance, RawContent,
-    Scope, StorageError, SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome,
-    TrajectoryStatus, Turn, TurnRole, ValidationError, compute_content_hash, compute_lock_key, new_entity_id,
+    AbstractionLevel, Agent, AgentError, AgentHandoff, AgentMessage, AgentStatus, Artifact,
+    ArtifactType, CaliberConfig, CaliberError, CaliberResult, Checkpoint, Conflict,
+    ConflictStatus, ConflictType, DelegatedTask, DelegationResult, DelegationResultStatus,
+    DelegationStatus, Edge, EdgeParticipant, EdgeType, EmbeddingVector, EntityId, EntityType,
+    ExtractionMethod, HandoffReason, HandoffStatus, LockData, LockMode, MemoryAccess,
+    MemoryCategory, MemoryRegion, MemoryRegionConfig, MessagePriority, MessageType, Note,
+    NoteType, Provenance, RawContent, ResolutionStrategy, Scope, StorageError,
+    SummarizationTrigger, TTL, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
+    ValidationError, compute_content_hash, compute_lock_key, new_entity_id,
 };
 
 // pgrx datum types
 use pgrx::datum::TimestampWithTimeZone;
 use caliber_storage::{
     ArtifactUpdate, NoteUpdate, ScopeUpdate, StorageTrait, TrajectoryUpdate,
-};
-use caliber_agents::{
-    Agent, AgentHandoff, AgentMessage, AgentStatus, Conflict, ConflictStatus,
-    ConflictType, DelegatedTask, DelegationStatus, DistributedLock, HandoffReason,
-    HandoffStatus, MemoryAccess, MemoryRegion, MemoryRegionConfig,
-    MessagePriority, MessageType, ResolutionStrategy,
 };
 
 use chrono::Utc;
@@ -536,9 +534,9 @@ fn create_delegation_record(task: DelegatedTask) -> serde_json::Value {
     safe_to_json(&task)
 }
 
-/// Create a distributed lock record (uses DistributedLock type).
+/// Create a lock record (uses LockData type).
 #[allow(dead_code)]
-fn create_lock_record(lock: DistributedLock) -> serde_json::Value {
+fn create_lock_record(lock: LockData) -> serde_json::Value {
     safe_to_json(&lock)
 }
 
@@ -547,7 +545,7 @@ fn create_lock_record(lock: DistributedLock) -> serde_json::Value {
 /// "read" = read-only, "write" = read+write, "admin" = full access.
 #[allow(dead_code)]
 fn create_memory_access(access: &str, memory_type: &str) -> MemoryAccess {
-    use caliber_agents::{MemoryPermission, PermissionScope};
+    use caliber_core::{MemoryPermission, PermissionScope};
 
     let read_perm = MemoryPermission {
         memory_type: memory_type.to_string(),
@@ -3538,16 +3536,16 @@ fn caliber_delegation_complete(
     
     // Build DelegationResult from parameters
     let result = if success {
-        caliber_agents::DelegationResult {
-            status: caliber_agents::DelegationResultStatus::Success,
+        DelegationResult {
+            status: DelegationResultStatus::Success,
             produced_artifacts: vec![],
             produced_notes: vec![],
             summary: summary.to_string(),
             error: None,
         }
     } else {
-        caliber_agents::DelegationResult {
-            status: caliber_agents::DelegationResultStatus::Failure,
+        DelegationResult {
+            status: DelegationResultStatus::Failure,
             produced_artifacts: vec![],
             produced_notes: vec![],
             summary: String::new(),
@@ -3845,7 +3843,7 @@ fn caliber_conflict_resolve(
     reason: &str,
     tenant_id: pgrx::Uuid,
 ) -> bool {
-    use caliber_agents::ConflictResolutionRecord;
+    use caliber_core::ConflictResolutionRecord;
 
     let id = Uuid::from_bytes(*conflict_id.as_bytes());
     let tenant_uuid = Uuid::from_bytes(*tenant_id.as_bytes());

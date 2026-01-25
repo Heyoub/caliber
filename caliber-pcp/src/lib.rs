@@ -8,6 +8,8 @@ use caliber_core::{
     AbstractionLevel, AgentId, Artifact, ArtifactId, CaliberConfig, CaliberError, CaliberResult,
     NoteId, RawContent, Scope, ScopeId, SummarizationPolicy, SummarizationPolicyId,
     SummarizationTrigger, Timestamp, TrajectoryId, ValidationError,
+    // Re-exported from caliber-core (was previously defined locally)
+    ConflictResolution,
 };
 use chrono::Utc;
 use regex::Regex;
@@ -555,17 +557,8 @@ pub enum RecoveryFrequency {
     Manual,
 }
 
-/// Strategy for resolving conflicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub enum ConflictResolution {
-    /// Last write wins
-    LastWriteWins,
-    /// Highest confidence wins
-    HighestConfidence,
-    /// Escalate to user/admin
-    Escalate,
-}
+// ConflictResolution is now re-exported from caliber-core
+pub use caliber_core::ConflictResolution;
 
 /// Configuration for context DAG management.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

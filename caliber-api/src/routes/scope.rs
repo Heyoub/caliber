@@ -12,9 +12,10 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use caliber_core::ScopeId;
+use caliber_core::{EntityIdType, ScopeId};
 use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{
     auth::validate_tenant_ownership,
@@ -24,7 +25,7 @@ use crate::{
     events::WsEvent,
     extractors::PathId,
     middleware::AuthExtractor,
-    state::AppState,
+    state::{ApiEventDag, AppState},
     types::{
         ArtifactResponse, CheckpointResponse, CreateCheckpointRequest, CreateScopeRequest,
         ScopeResponse, TurnResponse, UpdateScopeRequest,
@@ -55,6 +56,7 @@ use crate::{
 pub async fn create_scope(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
+    State(event_dag): State<Arc<ApiEventDag>>,
     AuthExtractor(auth): AuthExtractor,
     Json(req): Json<CreateScopeRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -67,10 +69,10 @@ pub async fn create_scope(
         return Err(ApiError::invalid_range("token_budget", 1, i32::MAX));
     }
 
-    // Create scope via database client with tenant_id for isolation
-    let scope = db.create::<ScopeResponse>(&req, auth.tenant_id).await?;
+    // Create scope via database client with event emission for audit trail
+    let scope = db.create_with_event::<ScopeResponse>(&req, auth.tenant_id, &event_dag).await?;
 
-    // Broadcast ScopeCreated event
+    // Broadcast ScopeCreated event via WebSocket
     ws.broadcast(WsEvent::ScopeCreated {
         scope: scope.clone(),
     });
@@ -135,6 +137,7 @@ pub async fn get_scope(
 pub async fn update_scope(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
+    State(event_dag): State<Arc<ApiEventDag>>,
     AuthExtractor(auth): AuthExtractor,
     PathId(id): PathId<ScopeId>,
     Json(req): Json<UpdateScopeRequest>,
@@ -164,10 +167,10 @@ pub async fn update_scope(
         .ok_or_else(|| ApiError::scope_not_found(id))?;
     validate_tenant_ownership(&auth, existing.tenant_id)?;
 
-    // Update scope via database client
-    let scope = db.update::<ScopeResponse>(id, &req, auth.tenant_id).await?;
+    // Update scope via database client with event emission for audit trail
+    let scope = db.update_with_event::<ScopeResponse>(id, &req, auth.tenant_id, &event_dag).await?;
 
-    // Broadcast ScopeUpdated event
+    // Broadcast ScopeUpdated event via WebSocket
     ws.broadcast(WsEvent::ScopeUpdated {
         scope: scope.clone(),
     });
@@ -247,10 +250,13 @@ pub async fn create_checkpoint(
 pub async fn close_scope(
     State(db): State<DbClient>,
     State(ws): State<Arc<WsState>>,
+    State(event_dag): State<Arc<ApiEventDag>>,
     State(pcp): State<Arc<PCPRuntime>>,
     AuthExtractor(auth): AuthExtractor,
     PathId(id): PathId<ScopeId>,
 ) -> ApiResult<impl IntoResponse> {
+    use caliber_core::{DagPosition, Event, EventFlags, EventHeader, EventKind, EventDag};
+
     // Get the scope and verify tenant ownership
     let existing = db
         .get::<ScopeResponse>(id, auth.tenant_id)
@@ -261,7 +267,30 @@ pub async fn close_scope(
     // Close via Response method (validates scope is active)
     let scope = existing.close(&db).await?;
 
-    // Broadcast ScopeClosed event
+    // Emit ScopeClosed event to EventDag for audit trail
+    let event_id = Uuid::now_v7();
+    let now = chrono::Utc::now();
+    let header = EventHeader::new(
+        event_id,
+        event_id,
+        now.timestamp_micros(),
+        DagPosition::root(),
+        0,
+        EventKind::SCOPE_CLOSED,
+        EventFlags::empty(),
+    );
+    let payload = serde_json::json!({
+        "entity_type": "scope",
+        "entity_id": id.as_uuid().to_string(),
+        "tenant_id": auth.tenant_id.as_uuid().to_string(),
+        "action": "closed",
+    });
+    let event = Event::new(header, payload);
+    if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
+        tracing::warn!("Failed to emit scope closed event: {:?}", e);
+    }
+
+    // Broadcast ScopeClosed event via WebSocket
     ws.broadcast(WsEvent::ScopeClosed {
         scope: scope.clone(),
     });

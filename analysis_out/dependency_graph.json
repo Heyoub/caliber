@@ -1,0 +1,1339 @@
+{
+  "nodes": {
+    "caliber-core": {
+      "name": "caliber-core",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-core",
+      "features_available": [
+        "default",
+        "openapi"
+      ],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-dsl": {
+      "name": "caliber-dsl",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-dsl",
+      "features_available": [],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-llm": {
+      "name": "caliber-llm",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-llm",
+      "features_available": [],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-pcp": {
+      "name": "caliber-pcp",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-pcp",
+      "features_available": [
+        "default",
+        "openapi"
+      ],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-storage": {
+      "name": "caliber-storage",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-storage",
+      "features_available": [],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-agents": {
+      "name": "caliber-agents",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-agents",
+      "features_available": [
+        "default",
+        "openapi"
+      ],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-pg": {
+      "name": "caliber-pg",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-pg",
+      "features_available": [
+        "debug",
+        "default",
+        "pg18",
+        "pg_test"
+      ],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-api": {
+      "name": "caliber-api",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-api",
+      "features_available": [
+        "db-tests",
+        "default",
+        "dev",
+        "openapi",
+        "swagger-ui",
+        "workos"
+      ],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-test-utils": {
+      "name": "caliber-test-utils",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-test-utils",
+      "features_available": [],
+      "features_enabled": [],
+      "is_workspace": true
+    },
+    "caliber-tui": {
+      "name": "caliber-tui",
+      "version": "0.4.3",
+      "source": "workspace",
+      "path": "/home/eassa/projects/caliber/caliber-tui",
+      "features_available": [],
+      "features_enabled": [],
+      "is_workspace": true
+    }
+  },
+  "edges": [
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "async-trait",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "bitflags",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "sha2",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "thiserror",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "utoipa",
+      "kind": "normal",
+      "features": [
+        "uuid",
+        "chrono"
+      ],
+      "optional": true
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-core",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-dsl",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-dsl",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-dsl",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-dsl",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "async-trait",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "reqwest",
+      "kind": "normal",
+      "features": [
+        "json",
+        "rustls-tls"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "tokio",
+      "kind": "normal",
+      "features": [
+        "sync",
+        "time"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-llm",
+      "to_crate": "tokio",
+      "kind": "dev",
+      "features": [
+        "rt",
+        "rt-multi-thread",
+        "macros"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "regex",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "utoipa",
+      "kind": "normal",
+      "features": [
+        "axum_extras",
+        "uuid",
+        "chrono"
+      ],
+      "optional": true
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pcp",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "async-trait",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "heed",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "thiserror",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "tempfile",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-storage",
+      "to_crate": "tokio",
+      "kind": "dev",
+      "features": [
+        "rt",
+        "macros"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "caliber-pcp",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "caliber-storage",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "utoipa",
+      "kind": "normal",
+      "features": [
+        "axum_extras",
+        "uuid",
+        "chrono"
+      ],
+      "optional": true
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-agents",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "caliber-agents",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "caliber-dsl",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "caliber-llm",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "caliber-pcp",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "caliber-storage",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "hex",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "once_cell",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "paste",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "pgrx",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "pgrx-tests",
+      "kind": "normal",
+      "features": [
+        "pg_test",
+        "pg18"
+      ],
+      "optional": true
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-pg",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-graphql",
+      "kind": "normal",
+      "features": [
+        "uuid",
+        "chrono"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-graphql-axum",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-graphql-derive",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-graphql-parser",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-graphql-value",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-stream",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "async-trait",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "axum",
+      "kind": "normal",
+      "features": [
+        "ws",
+        "macros"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "base64",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "caliber-agents",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "caliber-dsl",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "caliber-pcp",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "caliber-storage",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "dashmap",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "deadpool-postgres",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "futures-util",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "governor",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "hex",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "hmac",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "jsonwebtoken",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "once_cell",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "opentelemetry",
+      "kind": "normal",
+      "features": [
+        "trace",
+        "metrics"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "opentelemetry-http",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "opentelemetry-otlp",
+      "kind": "normal",
+      "features": [
+        "trace",
+        "metrics",
+        "http-proto",
+        "reqwest-client"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "opentelemetry-prometheus",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "opentelemetry_sdk",
+      "kind": "normal",
+      "features": [
+        "rt-tokio"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "prometheus",
+      "kind": "normal",
+      "features": [
+        "process"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "prost",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "rand",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "regex",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "reqwest",
+      "kind": "normal",
+      "features": [
+        "json"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "secrecy",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "serde_yaml",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "sha2",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "thiserror",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tokio",
+      "kind": "normal",
+      "features": [
+        "full"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tokio-postgres",
+      "kind": "normal",
+      "features": [
+        "with-uuid-1",
+        "with-chrono-0_4",
+        "with-serde_json-1"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tokio-stream",
+      "kind": "normal",
+      "features": [
+        "sync"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tokio-tungstenite",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tonic",
+      "kind": "normal",
+      "features": [
+        "transport",
+        "tls-ring"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tonic-prost",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tower",
+      "kind": "normal",
+      "features": [
+        "timeout",
+        "limit"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tower-http",
+      "kind": "normal",
+      "features": [
+        "cors",
+        "trace",
+        "compression-gzip"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tracing",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tracing-opentelemetry",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tracing-subscriber",
+      "kind": "normal",
+      "features": [
+        "env-filter",
+        "json"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "urlencoding",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "utoipa",
+      "kind": "normal",
+      "features": [
+        "axum_extras",
+        "uuid",
+        "chrono"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "utoipa-swagger-ui",
+      "kind": "normal",
+      "features": [
+        "axum"
+      ],
+      "optional": true
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde",
+        "v5"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "caliber-test-utils",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-api",
+      "to_crate": "tonic-prost-build",
+      "kind": "build",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "caliber-agents",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "caliber-dsl",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "caliber-llm",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "caliber-pcp",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "caliber-storage",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "proptest",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-test-utils",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "caliber-api",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "caliber-core",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "chrono",
+      "kind": "normal",
+      "features": [
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "crossterm",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "futures-util",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "ratatui",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "reqwest",
+      "kind": "normal",
+      "features": [
+        "json",
+        "rustls-tls",
+        "json",
+        "rustls-tls"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "serde",
+      "kind": "normal",
+      "features": [
+        "derive"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "serde_json",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "thiserror",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "tokio",
+      "kind": "normal",
+      "features": [
+        "full"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "tokio-tungstenite",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "toml",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "tonic",
+      "kind": "normal",
+      "features": [
+        "transport"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "tui-textarea",
+      "kind": "normal",
+      "features": [],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "uuid",
+      "kind": "normal",
+      "features": [
+        "v7",
+        "serde"
+      ],
+      "optional": false
+    },
+    {
+      "from_crate": "caliber-tui",
+      "to_crate": "proptest",
+      "kind": "dev",
+      "features": [],
+      "optional": false
+    }
+  ]
+}
