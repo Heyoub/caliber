@@ -13,7 +13,6 @@ use std::sync::Arc;
 
 use caliber_core::HandoffId;
 use crate::{
-    auth::validate_tenant_ownership,
     db::DbClient,
     error::{ApiError, ApiResult},
     events::WsEvent,
@@ -252,7 +251,7 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{AgentId, ScopeId, TrajectoryId};
+    use caliber_core::{AgentId, EntityIdType, ScopeId, TrajectoryId};
 
     #[test]
     fn test_create_handoff_request_validation() {

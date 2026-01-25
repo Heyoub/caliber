@@ -128,7 +128,6 @@ impl ListFilter for MessageListFilter {
         if let Some(priority) = &self.priority {
             conditions.push(format!("priority = ${}", param_idx));
             params.push(SqlParam::String(priority.clone()));
-            param_idx += 1;
         }
 
         if let Some(true) = self.undelivered_only {

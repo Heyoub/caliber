@@ -4,8 +4,8 @@
 //! suitable for unit tests and development scenarios.
 
 use caliber_core::{
-    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag,
-    EventDagExt, EventFlags, EventHeader, EventId, EventKind, UpstreamSignal,
+    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag, EventFlags,
+    EventId, EventKind, UpstreamSignal,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -321,6 +321,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::{EventDagExt, EventHeader};
 
     #[tokio::test]
     async fn test_append_and_read() {

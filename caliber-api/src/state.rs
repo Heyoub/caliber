@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use axum::extract::FromRef;
 use caliber_pcp::PCPRuntime;
 use caliber_storage::{InMemoryChangeJournal, InMemoryEventDag, LmdbCacheBackend, ReadThroughCache};
 

@@ -46,8 +46,10 @@ use axum::{
     middleware::from_fn_with_state,
     response::IntoResponse,
     routing::get,
-    Json, Router,
+    Router,
 };
+#[cfg(any(not(feature = "swagger-ui"), test))]
+use axum::Json;
 use caliber_pcp::PCPRuntime;
 use caliber_storage::{CacheConfig, InMemoryChangeJournal, LmdbCacheBackend, ReadThroughCache};
 use tower_http::cors::{Any, CorsLayer};
@@ -151,6 +153,7 @@ pub use sso::create_router as sso_router;
 // ============================================================================
 
 /// Handler for /openapi.json endpoint.
+#[cfg(any(not(feature = "swagger-ui"), test))]
 async fn openapi_json() -> impl IntoResponse {
     Json(ApiDoc::openapi())
 }

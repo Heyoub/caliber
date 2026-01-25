@@ -1,11 +1,12 @@
 use caliber_api::auth::{AuthContext, AuthMethod};
+use caliber_core::EntityIdType;
 use uuid::Uuid;
 
 /// Create a test AuthContext with a specific tenant_id.
 pub fn test_auth_context_with_tenant(tenant_id: Uuid) -> AuthContext {
     AuthContext {
         user_id: "test-user".to_string(),
-        tenant_id,
+        tenant_id: caliber_core::TenantId::new(tenant_id),
         roles: vec![],
         auth_method: AuthMethod::Jwt,
         email: Some("test@example.com".to_string()),

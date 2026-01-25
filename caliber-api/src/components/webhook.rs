@@ -2,10 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::{
-    CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse,
-    WebhookRetryPolicy,
-};
+use crate::types::{CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse};
 use caliber_core::{EntityIdType, TenantId, WebhookId};
 use serde_json::Value as JsonValue;
 
@@ -25,7 +22,7 @@ impl_component! {
             SqlParam::String(req.url.clone()),
             SqlParam::Json(serde_json::to_value(&req.events).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::OptString(req.secret.clone()),
-            SqlParam::Json(serde_json::to_value(&req.retry_policy.clone().unwrap_or_default()).unwrap_or(JsonValue::Object(serde_json::Map::new()))),
+            SqlParam::Json(serde_json::to_value(req.retry_policy.clone().unwrap_or_default()).unwrap_or(JsonValue::Object(serde_json::Map::new()))),
             SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 6,

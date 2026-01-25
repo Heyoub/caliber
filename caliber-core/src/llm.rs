@@ -192,10 +192,11 @@ impl std::error::Error for CircuitStateParseError {}
 // ============================================================================
 
 /// Strategy for routing requests to providers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum RoutingStrategy {
     /// Round-robin between providers
+    #[default]
     RoundRobin,
     /// Route to provider with lowest latency
     LeastLatency,
@@ -205,12 +206,6 @@ pub enum RoutingStrategy {
     Capability(ProviderCapability),
     /// Always use first available provider
     First,
-}
-
-impl Default for RoutingStrategy {
-    fn default() -> Self {
-        Self::RoundRobin
-    }
 }
 
 impl RoutingStrategy {

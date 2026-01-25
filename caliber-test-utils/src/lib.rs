@@ -1207,7 +1207,7 @@ mod tests {
         #[test]
         fn prop_generated_trajectory_has_valid_id(trajectory in generators::arb_trajectory()) {
             // EntityId should be a valid UUID
-            assert!(!trajectory.trajectory_id.is_nil());
+            assert!(!trajectory.trajectory_id.as_uuid().is_nil());
         }
 
         #[test]

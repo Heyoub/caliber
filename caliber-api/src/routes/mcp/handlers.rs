@@ -409,6 +409,10 @@ async fn execute_tool(
 
         "agent_list" => {
             let agents = state.db.agent_list_active().await?;
+            let agents: Vec<_> = agents
+                .into_iter()
+                .filter(|agent| agent.tenant_id == tenant_id)
+                .collect();
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&agents)

@@ -274,12 +274,12 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
         }
         caliber_tui::nav::View::MessageQueue => {
             let response = app.api.rest().list_messages(tenant_id, &ListMessagesRequest {
-                message_type: app.message_view.filter.message_type.clone(),
+                message_type: app.message_view.filter.message_type,
                 from_agent_id: app.message_view.filter.from_agent_id,
                 to_agent_id: app.message_view.filter.to_agent_id,
                 to_agent_type: None,
                 trajectory_id: None,
-                priority: app.message_view.filter.priority.clone(),
+                priority: app.message_view.filter.priority,
                 undelivered_only: None,
                 unacknowledged_only: None,
                 limit: None,

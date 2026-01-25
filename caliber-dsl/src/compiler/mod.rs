@@ -227,21 +227,11 @@ pub enum CompiledIndexType {
 }
 
 /// Memory modifiers (embeddable, summarizable, lockable).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct MemoryModifiers {
     pub embeddable: Option<EmbeddableConfig>,
     pub summarizable: Option<SummarizableConfig>,
     pub lockable: Option<LockableConfig>,
-}
-
-impl Default for MemoryModifiers {
-    fn default() -> Self {
-        Self {
-            embeddable: None,
-            summarizable: None,
-            lockable: None,
-        }
-    }
 }
 
 /// Summarizable modifier configuration.
@@ -464,7 +454,7 @@ pub enum CompiledAbstractionLevel {
 
 /// The complete compiled configuration from a DSL file.
 /// This is the output of the compiler and can be used to configure the runtime.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct CompiledConfig {
     /// DSL version string
     pub version: String,
@@ -498,24 +488,6 @@ pub struct CompiledConfig {
 
     /// LLM providers
     pub providers: Vec<ProviderConfig>,
-}
-
-impl Default for CompiledConfig {
-    fn default() -> Self {
-        Self {
-            version: String::new(),
-            adapters: Vec::new(),
-            memories: Vec::new(),
-            policies: Vec::new(),
-            injections: Vec::new(),
-            trajectories: Vec::new(),
-            agents: Vec::new(),
-            evolutions: Vec::new(),
-            summarization_policies: Vec::new(),
-            cache: None,
-            providers: Vec::new(),
-        }
-    }
 }
 
 // ============================================================================

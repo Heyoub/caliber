@@ -20,6 +20,7 @@ use caliber_api::{
     auth::{generate_jwt_token, AuthConfig, JwtSecret},
     middleware::{auth_middleware, AuthMiddlewareState},
 };
+use caliber_core::{EntityIdType, TenantId};
 use proptest::prelude::*;
 use tower::ServiceExt;
 use tokio::runtime::Runtime;
@@ -179,7 +180,7 @@ proptest! {
                     let token = generate_jwt_token(
                         &auth_config,
                         user_id.clone(),
-                        Some(*tenant_id),
+                        Some(TenantId::new(*tenant_id)),
                         vec![],
                     )
                     .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
@@ -287,7 +288,7 @@ proptest! {
             let token = generate_jwt_token(
                 &auth_config,
                 user_id.clone(),
-                Some(tenant_id),
+                Some(TenantId::new(tenant_id)),
                 vec![],
             )
             .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
@@ -415,7 +416,7 @@ proptest! {
             let token = generate_jwt_token(
                 &auth_config,
                 user_id.clone(),
-                Some(tenant_id),
+                Some(TenantId::new(tenant_id)),
                 vec![],
             )
             .map_err(|e| TestCaseError::fail(format!("Failed to generate JWT: {}", e.message)))?;
@@ -551,7 +552,7 @@ mod edge_cases {
         let token = generate_jwt_token(
             &auth_config,
             "user123".to_string(),
-            Some(Uuid::now_v7()),
+            Some(TenantId::new(Uuid::now_v7())),
             vec![],
         )
         .map_err(|e| e.message)?;

@@ -587,6 +587,7 @@ pub async fn rate_limit_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityIdType;
     use crate::auth::AuthConfig;
     use crate::auth::JwtSecret;
     use axum::{
@@ -623,7 +624,7 @@ mod tests {
     #[tokio::test]
     async fn test_middleware_with_valid_api_key() -> Result<(), String> {
         let app = test_app();
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
         
         let request = Request::builder()
             .uri("/protected")

@@ -227,7 +227,7 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{ScopeId, TurnRole};
+    use caliber_core::{EntityIdType, ScopeId, TurnRole};
 
     #[test]
     fn test_create_turn_request_validation() {

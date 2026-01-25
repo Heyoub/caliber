@@ -46,8 +46,8 @@ macro_rules! caliber_pg_get {
                 id: pgrx::Uuid,
                 tenant_id: pgrx::Uuid,
             ) -> Option<pgrx::JsonB> {
-                let entity_id: $id_ty = crate::id_from_pgrx(id);
-                let tenant_uuid = crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
+                let entity_id: $id_ty = $crate::id_from_pgrx(id);
+                let tenant_uuid = $crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
 
                 match $heap_mod::[<$entity _get_heap>](entity_id, tenant_uuid) {
                     Ok(Some($row)) => {
@@ -73,7 +73,7 @@ macro_rules! caliber_pg_list_active {
         paste::paste! {
             #[pg_extern]
             fn [<caliber_ $entity _list_active>](tenant_id: pgrx::Uuid) -> pgrx::JsonB {
-                let tenant_uuid = crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
+                let tenant_uuid = $crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
 
                 match $heap_mod::[<$entity _list_active_heap>](tenant_uuid) {
                     Ok(rows) => {
@@ -103,8 +103,8 @@ macro_rules! caliber_pg_delete {
                 id: pgrx::Uuid,
                 tenant_id: pgrx::Uuid,
             ) -> bool {
-                let entity_id: $id_ty = crate::id_from_pgrx(id);
-                let tenant_uuid = crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
+                let entity_id: $id_ty = $crate::id_from_pgrx(id);
+                let tenant_uuid = $crate::id_from_pgrx::<caliber_core::TenantId>(tenant_id);
 
                 match $heap_mod::[<$entity _delete_heap>](entity_id, tenant_uuid) {
                     Ok(deleted) => deleted,

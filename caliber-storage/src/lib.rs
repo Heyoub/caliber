@@ -26,7 +26,7 @@ pub use cache::{
 use caliber_core::{
     AbstractionLevel, Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, Edge,
     EdgeType, EmbeddingVector, EntityType, Note, Scope, StorageError, Trajectory,
-    TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, EdgeId,
+    ArtifactId, NoteId,
     TrajectoryStatus, Turn,
     EntityIdType,
 };
@@ -637,7 +637,8 @@ impl StorageTrait for MockStorage {
 mod tests {
     use super::*;
     use caliber_core::{
-        ArtifactType, ExtractionMethod, NoteType, Provenance, TTL, TurnRole, AgentId,
+        AgentId, ArtifactType, ExtractionMethod, NoteType, Provenance, ScopeId, TTL, TrajectoryId,
+        TurnId, TurnRole,
     };
     use chrono::Utc;
 
@@ -992,7 +993,7 @@ mod tests {
 #[cfg(test)]
 mod prop_tests {
     use super::*;
-    use caliber_core::TrajectoryStatus;
+    use caliber_core::{EntityIdType, TrajectoryId, TrajectoryStatus};
     use proptest::prelude::*;
     use uuid::Uuid;
 

@@ -4,12 +4,11 @@
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     response::IntoResponse,
     Json,
 };
 use caliber_core::TenantId;
-use uuid::Uuid;
 
 use crate::{
     db::DbClient,
@@ -88,12 +87,14 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityIdType;
+    use uuid::Uuid;
     use crate::types::TenantStatus;
 
     #[test]
     fn test_tenant_info_structure() {
         let tenant = TenantInfo {
-            tenant_id: Uuid::new_v4(),
+            tenant_id: TenantId::new(Uuid::new_v4()),
             name: "Test Tenant".to_string(),
             domain: None,
             workos_organization_id: None,
@@ -121,7 +122,7 @@ mod tests {
         let response = ListTenantsResponse {
             tenants: vec![
                 TenantInfo {
-                    tenant_id: Uuid::new_v4(),
+                    tenant_id: TenantId::new(Uuid::new_v4()),
                     name: "Tenant 1".to_string(),
                     domain: None,
                     workos_organization_id: None,
@@ -129,7 +130,7 @@ mod tests {
                     created_at: chrono::Utc::now(),
                 },
                 TenantInfo {
-                    tenant_id: Uuid::new_v4(),
+                    tenant_id: TenantId::new(Uuid::new_v4()),
                     name: "Tenant 2".to_string(),
                     domain: None,
                     workos_organization_id: None,

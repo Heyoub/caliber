@@ -7,7 +7,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateHandoffRequest, HandoffResponse};
-use caliber_core::{AgentId, EntityIdType, HandoffId, ScopeId, TenantId, TrajectoryId};
+use caliber_core::{AgentId, EntityIdType, HandoffId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for HandoffResponse

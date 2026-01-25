@@ -14,8 +14,8 @@ use crate::types::*;
 use caliber_core::{
     EntityIdType, Timestamp,
     TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId,
-    TurnId, AgentId, LockId, MessageId, DelegationId, HandoffId,
-    EdgeId, ApiKeyId, WebhookId, SummarizationPolicyId,
+    AgentId, LockId, MessageId, DelegationId, HandoffId,
+    EdgeId, SummarizationPolicyId,
     DagPosition, Event, EventFlags, EventHeader, EventKind,
 };
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
@@ -1387,18 +1387,6 @@ impl DbClient {
         }
     }
 
-    /// Parse a turn role from JSON field.
-    fn parse_turn_role(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::TurnRole> {
-        let role_str = self.parse_string(json, field)?;
-        match role_str.as_str() {
-            "user" => Ok(caliber_core::TurnRole::User),
-            "assistant" => Ok(caliber_core::TurnRole::Assistant),
-            "system" => Ok(caliber_core::TurnRole::System),
-            "tool" => Ok(caliber_core::TurnRole::Tool),
-            _ => Err(ApiError::internal_error(format!("Invalid turn role: {}", role_str))),
-        }
-    }
-
     /// Parse a content hash from JSON field.
     fn parse_content_hash(&self, json: &JsonValue, field: &str) -> ApiResult<[u8; 32]> {
         let hash_array = json
@@ -1573,21 +1561,6 @@ impl DbClient {
                 Ok(caliber_core::TTL::Duration(ms))
             }
             _ => Err(ApiError::internal_error(format!("Invalid TTL: {}", ttl_str))),
-        }
-    }
-
-    /// Convert TTL to string for database calls.
-    fn ttl_to_string(&self, ttl: &caliber_core::TTL) -> String {
-        match ttl {
-            caliber_core::TTL::Persistent => "persistent".to_string(),
-            caliber_core::TTL::Session => "session".to_string(),
-            caliber_core::TTL::Scope => "scope".to_string(),
-            caliber_core::TTL::Ephemeral => "ephemeral".to_string(),
-            caliber_core::TTL::ShortTerm => "short_term".to_string(),
-            caliber_core::TTL::MediumTerm => "medium_term".to_string(),
-            caliber_core::TTL::LongTerm => "long_term".to_string(),
-            caliber_core::TTL::Permanent => "permanent".to_string(),
-            caliber_core::TTL::Duration(ms) => format!("duration_{}", ms),
         }
     }
 
@@ -2433,7 +2406,7 @@ impl DbClient {
 // GENERIC CRUD OPERATIONS (Component Trait Based)
 // ============================================================================
 
-use crate::component::{Component, Listable, ListFilter, SqlParam, TenantScoped};
+use crate::component::{Component, Listable, ListFilter, TenantScoped};
 
 impl DbClient {
     /// Generic create operation for any Component type.

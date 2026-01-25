@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateNoteRequest, ListNotesRequest, NoteResponse, UpdateNoteRequest};
-use caliber_core::{ArtifactId, EntityIdType, NoteId, NoteType, TenantId, TrajectoryId};
+use caliber_core::{EntityIdType, NoteId, NoteType, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for NoteResponse
@@ -21,8 +21,8 @@ impl_component! {
             SqlParam::String(format!("{:?}", req.note_type)),
             SqlParam::String(req.title.clone()),
             SqlParam::String(req.content.clone()),
-            SqlParam::Json(serde_json::to_value(&req.source_trajectory_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>()).unwrap_or(JsonValue::Array(vec![]))),
-            SqlParam::Json(serde_json::to_value(&req.source_artifact_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>()).unwrap_or(JsonValue::Array(vec![]))),
+            SqlParam::Json(serde_json::to_value(req.source_trajectory_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>()).unwrap_or(JsonValue::Array(vec![]))),
+            SqlParam::Json(serde_json::to_value(req.source_artifact_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>()).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::Json(serde_json::to_value(&req.ttl).unwrap_or(JsonValue::Null)),
             SqlParam::OptJson(req.metadata.clone()),
             SqlParam::Uuid(tenant_id.as_uuid()),

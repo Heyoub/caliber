@@ -391,13 +391,14 @@ impl WsEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityIdType;
 
     #[test]
     fn test_event_type_names() {
         let event = WsEvent::TrajectoryCreated {
             trajectory: TrajectoryResponse {
                 trajectory_id: TrajectoryId::now_v7(),
-                tenant_id: Some(TenantId::now_v7()),
+                tenant_id: TenantId::now_v7(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -419,7 +420,7 @@ mod tests {
         let trajectory_event = WsEvent::TrajectoryCreated {
             trajectory: TrajectoryResponse {
                 trajectory_id: TrajectoryId::now_v7(),
-                tenant_id: Some(TenantId::now_v7()),
+                tenant_id: TenantId::now_v7(),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,

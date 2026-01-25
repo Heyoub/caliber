@@ -43,7 +43,7 @@ impl Watermark {
     pub fn zero() -> Self {
         Self {
             sequence: 0,
-            observed_at: DateTime::UNIX_EPOCH.into(),
+            observed_at: DateTime::UNIX_EPOCH,
         }
     }
 
@@ -168,6 +168,8 @@ struct ChangeEntry {
     sequence: i64,
     timestamp: DateTime<Utc>,
     entity_type: EntityType,
+    #[allow(dead_code)]
+    // Retained for future per-entity invalidation queries.
     entity_id: Uuid,
 }
 
@@ -266,6 +268,7 @@ impl ChangeJournal for InMemoryChangeJournal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityIdType;
 
     #[test]
     fn test_watermark_ordering() {

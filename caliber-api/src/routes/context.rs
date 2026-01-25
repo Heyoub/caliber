@@ -36,11 +36,10 @@ use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResp
 use axum::{extract::State, Extension, Json};
 use caliber_core::{
     AgentId, CaliberConfig, ContextAssembler, ContextPackage, ContextWindow, KernelConfig,
-    ScopeId, ScopeSummary, SessionMarkers, TrajectoryId,
+    ScopeId, SessionMarkers, TrajectoryId,
 };
 use caliber_core::{ContextPersistence, RetryConfig, SectionPriorities, ValidationMode};
 use std::time::Duration;
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]
@@ -180,47 +179,24 @@ pub struct AssembleContextResponse {
     /// Names of sections included in the context
     pub included_sections: Vec<String>,
 
+    /// Number of notes included in the context
+    pub notes_count: i32,
+
+    /// Number of artifacts included in the context
+    pub artifacts_count: i32,
+
+    /// Number of turns included in the context
+    pub turns_count: i32,
+
+    /// Number of summaries included in the context
+    pub summaries_count: i32,
+
+    /// Parent trajectory hierarchy (nearest parent first)
+    pub hierarchy: Vec<TrajectoryResponse>,
+
     /// Detailed breakdown of the context window (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_details: Option<ContextWindowDetails>,
-}
-
-/// Detailed breakdown of the assembled context window.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct ContextWindowDetails {
-    /// Window ID for tracing
-    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub window_id: Uuid,
-
-    /// Number of notes included
-    pub notes_included: i32,
-
-    /// Number of artifacts included
-    pub artifacts_included: i32,
-
-    /// Number of turns included
-    pub turns_included: i32,
-
-    /// Number of scope summaries included
-    pub summaries_included: i32,
-
-    /// Assembly trace for debugging
-    pub assembly_trace: Vec<AssemblyTraceEntry>,
-}
-
-/// Entry in the assembly trace for debugging.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct AssemblyTraceEntry {
-    /// Action taken (Include, Exclude, Truncate, Compress)
-    pub action: String,
-    /// Type of content (Notes, Artifacts, History, etc.)
-    pub content_type: String,
-    /// Reason for the action
-    pub reason: String,
-    /// Tokens affected by this action
-    pub tokens_affected: i32,
+    pub window_details: Option<ContextWindow>,
 }
 
 // ============================================================================
@@ -320,10 +296,8 @@ pub async fn assemble_context(
         notes_count = limited_notes.len() as i32;
 
         // Convert API notes to core notes
-        let core_notes: Vec<caliber_core::Note> = limited_notes
-            .into_iter()
-            .map(|n| note_response_to_core(n))
-            .collect();
+        let core_notes: Vec<caliber_core::Note> =
+            limited_notes.into_iter().map(note_response_to_core).collect();
         pkg = pkg.with_notes(core_notes);
     }
 
@@ -342,15 +316,13 @@ pub async fn assemble_context(
         artifacts_count = limited_artifacts.len() as i32;
 
         // Convert API artifacts to core artifacts
-        let core_artifacts: Vec<caliber_core::Artifact> = limited_artifacts
-            .into_iter()
-            .map(|a| artifact_response_to_core(a))
-            .collect();
+        let core_artifacts: Vec<caliber_core::Artifact> =
+            limited_artifacts.into_iter().map(artifact_response_to_core).collect();
         pkg = pkg.with_artifacts(core_artifacts);
     }
 
     // Fetch and count conversation turns
-    // Note: ContextPackage doesn't support turns yet, but we count them for reporting
+    // Note: ContextPackage doesn't support turns yet, but counts are returned in the response
     let mut turns_count = 0;
     if req.include_turns {
         let max_turns = req.max_turns.unwrap_or(20) as usize;
@@ -368,7 +340,7 @@ pub async fn assemble_context(
         // For now, turns are counted but not included in context assembly
     }
 
-    // Fetch parent trajectory hierarchy if requested
+    // Fetch parent trajectory hierarchy if requested (returned in response only)
     let mut hierarchy: Vec<TrajectoryResponse> = Vec::new();
     if req.include_hierarchy {
         let mut current_id = trajectory.parent_trajectory_id;
@@ -438,23 +410,12 @@ pub async fn assemble_context(
         max_tokens: window.max_tokens,
         truncated: window.truncated,
         included_sections: window.included_sections.clone(),
-        window_details: Some(ContextWindowDetails {
-            window_id: window.window_id,
-            notes_included: notes_count,
-            artifacts_included: artifacts_count,
-            turns_included: turns_count,
-            summaries_included: summaries_count,
-            assembly_trace: window
-                .assembly_trace
-                .iter()
-                .map(|d| AssemblyTraceEntry {
-                    action: format!("{:?}", d.action),
-                    content_type: d.target_type.clone(),
-                    reason: d.reason.clone(),
-                    tokens_affected: d.tokens_affected,
-                })
-                .collect(),
-        }),
+        notes_count,
+        artifacts_count,
+        turns_count,
+        summaries_count,
+        hierarchy,
+        window_details: Some(window),
     };
 
     Ok(Json(response))

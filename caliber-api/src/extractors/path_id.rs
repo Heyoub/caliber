@@ -11,8 +11,6 @@ use axum::{
     Json,
 };
 use caliber_core::EntityIdType;
-use serde::de::DeserializeOwned;
-use std::marker::PhantomData;
 use uuid::Uuid;
 
 /// Extractor for type-safe entity IDs from path parameters.

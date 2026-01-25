@@ -61,7 +61,7 @@ impl ListFilter for SummarizationPolicyListFilter {
     fn build_where(&self, tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
         let mut conditions = vec!["tenant_id = $1".to_string()];
         let mut params = vec![SqlParam::Uuid(tenant_id.as_uuid())];
-        let mut param_idx = 2;
+        let param_idx = 2;
 
         if let Some(trajectory_id) = self.trajectory_id {
             conditions.push(format!("trajectory_id = ${}", param_idx));

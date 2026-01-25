@@ -127,6 +127,7 @@ impl ContextPackage {
 
 /// Type of context section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum SectionType {
     /// System prompt (highest level instructions)
     SystemPrompt,
@@ -156,10 +157,12 @@ pub enum SectionType {
 
 /// Reference to a source entity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SourceRef {
     /// Type of the source entity
     pub source_type: EntityType,
     /// ID of the source entity (if applicable)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub id: Option<Uuid>,
     /// Relevance score (if computed)
     pub relevance_score: Option<f32>,
@@ -167,8 +170,10 @@ pub struct SourceRef {
 
 /// A section of the assembled context.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContextSection {
     /// Unique identifier for this section
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub section_id: Uuid,
     /// Type of this section
     pub section_type: SectionType,
@@ -186,6 +191,7 @@ pub struct ContextSection {
 
 /// Action taken during context assembly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum AssemblyAction {
     /// Section was included in full
     Include,
@@ -199,14 +205,17 @@ pub enum AssemblyAction {
 
 /// Decision made during context assembly for audit trail.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AssemblyDecision {
     /// When this decision was made
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub timestamp: Timestamp,
     /// Action taken
     pub action: AssemblyAction,
     /// Type of target (e.g., "note", "artifact")
     pub target_type: String,
     /// ID of target entity (if applicable)
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub target_id: Option<Uuid>,
     /// Reason for this decision
     pub reason: String,
@@ -216,10 +225,13 @@ pub struct AssemblyDecision {
 
 /// Assembled context window with token budget management.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContextWindow {
     /// Unique identifier for this window
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub window_id: Uuid,
     /// When this window was assembled
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "date-time"))]
     pub assembled_at: Timestamp,
     /// Maximum token budget
     pub max_tokens: i32,
@@ -655,11 +667,10 @@ impl ContextAssembler {
                 // Section fits completely - track segment usage
                 if self.segment_budget.is_some() {
                     // Use add_to_segment for proper tracking
-                    if let Err(_) = window.add_to_segment(
-                        segment,
-                        section.content.clone(),
-                        section.priority,
-                    ) {
+                    if window
+                        .add_to_segment(segment, section.content.clone(), section.priority)
+                        .is_err()
+                    {
                         // Segment budget exceeded (shouldn't happen due to check above)
                         continue;
                     }
@@ -840,6 +851,7 @@ impl ContextAssembler {
 /// Divides the total token budget into segments for different purposes,
 /// allowing fine-grained control over context assembly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TokenBudget {
     /// System prompt allocation
     pub system: i32,
@@ -1054,6 +1066,7 @@ impl std::fmt::Display for ContextSegment {
 ///
 /// Tracks how many tokens have been used in each segment.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SegmentUsage {
     /// Tokens used in system segment
     pub system_used: i32,

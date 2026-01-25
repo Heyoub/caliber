@@ -4,13 +4,12 @@
 //! Policies define when and how L0→L1→L2 abstraction transitions occur.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use caliber_core::{SummarizationPolicyId, TrajectoryId};
-use uuid::Uuid;
 
 use crate::{
     db::DbClient,

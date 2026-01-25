@@ -13,8 +13,8 @@ use std::time::Duration;
 use heed::{Database, Env, EnvOpenOptions, types::SerdeBincode};
 
 use caliber_core::{
-    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag,
-    EventFlags, EventId, EventKind, OperationalError, UpstreamSignal,
+    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag, EventId,
+    EventKind, OperationalError, UpstreamSignal,
 };
 
 // ============================================================================
@@ -189,7 +189,7 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         let event_count = self.events.len(&rtxn)
-            .map_err(|e| HybridDagError::Lmdb(e.to_string()))? as u64;
+            .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         Ok(LmdbCacheStats { event_count })
     }
@@ -278,7 +278,7 @@ impl<C: ColdEventStorage> HybridDag<C> {
     }
 
     /// Convert a HybridDagError to an Effect error.
-    fn to_effect_error(event_id: EventId, error: HybridDagError) -> ErrorEffect {
+    fn to_effect_error(_event_id: EventId, error: HybridDagError) -> ErrorEffect {
         ErrorEffect::Operational(OperationalError::DatabaseConnectionError {
             message: format!("hybrid_dag: {}", error),
         })
@@ -454,6 +454,7 @@ impl<C: ColdEventStorage + 'static> EventDag for HybridDag<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EventFlags;
     use std::collections::HashMap;
     use std::sync::RwLock;
     use tempfile::TempDir;

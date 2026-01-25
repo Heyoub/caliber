@@ -1140,10 +1140,11 @@ pub enum ActionStatus {
 }
 
 /// Backoff strategy for retries.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum BackoffStrategy {
     /// No backoff
+    #[default]
     None,
     /// Fixed delay
     Fixed {
@@ -1160,12 +1161,6 @@ pub enum BackoffStrategy {
         multiplier: f64,
         max_ms: i64,
     },
-}
-
-impl Default for BackoffStrategy {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl BackoffStrategy {

@@ -17,11 +17,7 @@
 //! create, get, update, delete, and list operations.
 
 use crate::error::{ApiError, ApiResult};
-use caliber_core::{
-    EntityIdType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId,
-    TurnId, AgentId, EdgeId, LockId, MessageId, DelegationId, HandoffId,
-    ApiKeyId, WebhookId, SummarizationPolicyId,
-};
+use caliber_core::{EntityIdType, TenantId};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value as JsonValue;
 

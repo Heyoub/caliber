@@ -71,6 +71,10 @@ async fn read_resource_content(
 
         "caliber://agents" => {
             let agents = state.db.agent_list_active().await?;
+            let agents: Vec<_> = agents
+                .into_iter()
+                .filter(|agent| agent.tenant_id == tenant_id)
+                .collect();
 
             Ok(ResourceContent {
                 uri: uri.to_string(),

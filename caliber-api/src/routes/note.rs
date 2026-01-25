@@ -333,7 +333,7 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{NoteType, TrajectoryId, TTL};
+    use caliber_core::{EntityIdType, NoteType, TrajectoryId, TTL};
 
     #[test]
     fn test_create_note_request_validation() {
@@ -377,7 +377,7 @@ mod tests {
     fn test_list_notes_pagination() {
         let params = ListNotesRequest {
             note_type: Some(NoteType::Fact),
-            source_trajectory_id: Some(uuid::Uuid::nil()),
+            source_trajectory_id: Some(TrajectoryId::nil()),
             created_after: None,
             created_before: None,
             limit: Some(10),

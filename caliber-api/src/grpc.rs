@@ -21,7 +21,7 @@ use crate::{
     db::DbClient,
     error::ApiError,
     events::WsEvent,
-    ws::WsState,
+    ws::{should_deliver_event, WsState},
 };
 use uuid::Uuid;
 use caliber_core::EntityIdType;
@@ -521,6 +521,7 @@ impl event_service_server::EventService for EventServiceImpl {
         &self,
         request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
         let event_types = req.event_types;
         
@@ -532,6 +533,9 @@ impl event_service_server::EventService for EventServiceImpl {
             let event_types = event_types.clone();
             match result {
                 Ok(ws_event) => {
+                    if !should_deliver_event(&ws_event, tenant_id) {
+                        return None;
+                    }
                     // Convert WsEvent to proto Event
                     let event_type = ws_event_type(&ws_event);
                     
@@ -1204,6 +1208,7 @@ impl agent_service_server::AgentService for AgentServiceImpl {
     }
 
     async fn list_agents(&self, request: Request<ListAgentsRequest>) -> Result<Response<ListAgentsResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
 
         let agents = if let Some(agent_type) = req.agent_type {
@@ -1222,6 +1227,11 @@ impl agent_service_server::AgentService for AgentServiceImpl {
             // List all agents
             self.db.agent_list_all().await?
         };
+
+        let agents: Vec<_> = agents
+            .into_iter()
+            .filter(|agent| agent.tenant_id == tenant_id)
+            .collect();
 
         Ok(Response::new(ListAgentsResponse {
             agents: agents.into_iter().map(|a| agent_to_proto(&a)).collect(),
@@ -1311,8 +1321,19 @@ impl lock_service_server::LockService for LockServiceImpl {
 
     async fn release_lock(&self, request: Request<ReleaseLockRequest>) -> Result<Response<Empty>, Status> {
         let tenant_id = extract_tenant_id(&request)?;
-        let id = request.into_inner().lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?;
-        self.db.lock_release(id).await?;
+        let req = request.into_inner();
+        let id = caliber_core::LockId::new(req.lock_id.parse().map_err(|_| Status::invalid_argument("Invalid lock_id"))?);
+        let releasing_agent_id = caliber_core::AgentId::new(
+            req.releasing_agent_id
+                .parse()
+                .map_err(|_| Status::invalid_argument("Invalid releasing_agent_id"))?,
+        );
+        let existing = self.db.lock_get(id).await?
+            .ok_or_else(|| Status::not_found("Lock not found"))?;
+        if existing.tenant_id != tenant_id {
+            return Err(Status::permission_denied("Access denied: lock belongs to different tenant"));
+        }
+        existing.release(&self.db, releasing_agent_id).await?;
         self.ws.broadcast(WsEvent::LockReleased { tenant_id, lock_id: id });
         Ok(Response::new(Empty {}))
     }
@@ -1327,14 +1348,18 @@ impl lock_service_server::LockService for LockServiceImpl {
         // Get lock and extend via Response method
         let existing = self.db.lock_get(id).await?
             .ok_or_else(|| Status::not_found("Lock not found"))?;
+        if existing.tenant_id != tenant_id {
+            return Err(Status::permission_denied("Access denied: lock belongs to different tenant"));
+        }
         let duration = std::time::Duration::from_millis(req.additional_ms as u64);
         let lock = existing.extend(&self.db, duration).await?;
         Ok(Response::new(lock_to_proto(&lock)))
     }
 
     async fn list_locks(&self, request: Request<ListLocksRequest>) -> Result<Response<ListLocksResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
-        let locks = self.db.lock_list_active().await?;
+        let locks = self.db.lock_list_active_by_tenant(tenant_id).await?;
         let filtered = locks.into_iter().filter(|lock| {
             if let Some(ref resource_type) = req.resource_type {
                 if &lock.resource_type != resource_type {
@@ -1389,18 +1414,23 @@ impl message_service_server::MessageService for MessageServiceImpl {
     }
 
     async fn get_message(&self, request: Request<GetMessageRequest>) -> Result<Response<MessageResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let id = request.into_inner().message_id.parse().map_err(|_| Status::invalid_argument("Invalid message_id"))?;
         let message = self.db.message_get(id).await?.ok_or_else(|| Status::not_found("Message not found"))?;
+        if message.tenant_id != tenant_id {
+            return Err(Status::permission_denied("Access denied: message belongs to different tenant"));
+        }
         Ok(Response::new(message_to_proto(&message)))
     }
 
     async fn list_messages(&self, request: Request<ListMessagesRequest>) -> Result<Response<ListMessagesResponse>, Status> {
+        let tenant_id = extract_tenant_id(&request)?;
         let req = request.into_inner();
 
         let limit = 100;
         let offset = 0;
 
-        let messages = self.db.message_list(crate::db::MessageListParams {
+        let messages = self.db.message_list_by_tenant(crate::db::MessageListParams {
             from_agent_id: req.from_agent_id.and_then(|s| s.parse().ok()),
             to_agent_id: req.to_agent_id.and_then(|s| s.parse().ok()),
             to_agent_type: None,
@@ -1411,7 +1441,7 @@ impl message_service_server::MessageService for MessageServiceImpl {
             unacknowledged_only: false,
             limit,
             offset,
-        }).await?;
+        }, tenant_id).await?;
 
         Ok(Response::new(ListMessagesResponse {
             messages: messages.into_iter().map(|m| message_to_proto(&m)).collect(),
@@ -1424,6 +1454,9 @@ impl message_service_server::MessageService for MessageServiceImpl {
         // Get message and deliver via Response method
         let existing = self.db.message_get(id).await?
             .ok_or_else(|| Status::not_found("Message not found"))?;
+        if existing.tenant_id != tenant_id {
+            return Err(Status::permission_denied("Access denied: message belongs to different tenant"));
+        }
         let message = existing.deliver(&self.db).await?;
         self.ws.broadcast(WsEvent::MessageDelivered { tenant_id, message_id: id });
         Ok(Response::new(message_to_proto(&message)))
@@ -1435,6 +1468,9 @@ impl message_service_server::MessageService for MessageServiceImpl {
         // Get message and acknowledge via Response method
         let existing = self.db.message_get(id).await?
             .ok_or_else(|| Status::not_found("Message not found"))?;
+        if existing.tenant_id != tenant_id {
+            return Err(Status::permission_denied("Access denied: message belongs to different tenant"));
+        }
         let message = existing.acknowledge(&self.db).await?;
         self.ws.broadcast(WsEvent::MessageAcknowledged { tenant_id, message_id: id });
         Ok(Response::new(message_to_proto(&message)))

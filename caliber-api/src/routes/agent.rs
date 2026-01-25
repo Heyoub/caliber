@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use caliber_core::AgentId;
 use crate::{
-    auth::validate_tenant_ownership,
     components::AgentListFilter,
     db::DbClient,
     error::{ApiError, ApiResult},
@@ -214,7 +213,7 @@ pub async fn update_agent(
     }
 
     // First verify the agent exists and belongs to this tenant
-    let existing = db
+    let _existing = db
         .get::<AgentResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::agent_not_found(id))?;

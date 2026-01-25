@@ -24,7 +24,10 @@ use caliber_api::{
     types::{CreateTrajectoryRequest, ListTrajectoriesResponse, TrajectoryResponse},
 };
 use chrono::Utc;
-use caliber_core::TrajectoryStatus;
+use caliber_core::{
+    AgentId, ArtifactId, DelegationId, EntityIdType, HandoffId, LockId, MessageId, NoteId,
+    TenantId, TrajectoryId, TrajectoryStatus,
+};
 use proptest::prelude::*;
 use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
@@ -49,7 +52,7 @@ fn test_runtime() -> Result<Runtime, TestCaseError> {
 #[derive(Debug, Clone, Default)]
 struct TestStorage {
     /// Map of trajectory_id -> (tenant_id, trajectory)
-    trajectories: Arc<Mutex<Vec<(Uuid, TrajectoryResponse)>>>,
+    trajectories: Arc<Mutex<Vec<(TenantId, TrajectoryResponse)>>>,
 }
 
 impl TestStorage {
@@ -62,15 +65,15 @@ impl TestStorage {
     /// Create a trajectory for a specific tenant
     fn create_trajectory(
         &self,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
         req: &CreateTrajectoryRequest,
     ) -> TrajectoryResponse {
-        let trajectory_id = Uuid::now_v7();
+        let trajectory_id = TrajectoryId::now_v7();
         let now = Utc::now();
 
         let trajectory = TrajectoryResponse {
             trajectory_id,
-            tenant_id: Some(tenant_id),
+            tenant_id,
             name: req.name.clone(),
             description: req.description.clone(),
             status: TrajectoryStatus::Active,
@@ -93,7 +96,7 @@ impl TestStorage {
     }
 
     /// List trajectories for a specific tenant
-    fn list_trajectories(&self, tenant_id: Uuid) -> Vec<TrajectoryResponse> {
+    fn list_trajectories(&self, tenant_id: TenantId) -> Vec<TrajectoryResponse> {
         self.trajectories
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -106,8 +109,8 @@ impl TestStorage {
     /// Get a trajectory by ID, only if it belongs to the tenant
     fn get_trajectory(
         &self,
-        tenant_id: Uuid,
-        trajectory_id: Uuid,
+        tenant_id: TenantId,
+        trajectory_id: TrajectoryId,
     ) -> Option<TrajectoryResponse> {
         self.trajectories
             .lock()
@@ -126,7 +129,7 @@ impl TestStorage {
     }
 
     /// Count trajectories for a specific tenant
-    fn count_for_tenant(&self, tenant_id: Uuid) -> usize {
+    fn count_for_tenant(&self, tenant_id: TenantId) -> usize {
         self.trajectories
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -221,7 +224,7 @@ fn test_app(storage: TestStorage) -> Router {
             None => return StatusCode::BAD_REQUEST.into_response(),
         };
         let trajectory_id = match Uuid::parse_str(trajectory_id_str) {
-            Ok(id) => id,
+            Ok(id) => TrajectoryId::new(id),
             Err(_) => return StatusCode::BAD_REQUEST.into_response(),
         };
 
@@ -248,8 +251,8 @@ fn test_app(storage: TestStorage) -> Router {
 // ============================================================================
 
 /// Strategy for generating tenant IDs
-fn tenant_id_strategy() -> impl Strategy<Value = Uuid> {
-    any::<[u8; 16]>().prop_map(Uuid::from_bytes)
+fn tenant_id_strategy() -> impl Strategy<Value = TenantId> {
+    any::<[u8; 16]>().prop_map(|bytes| TenantId::new(Uuid::from_bytes(bytes)))
 }
 
 /// Strategy for generating trajectory names
@@ -539,10 +542,10 @@ proptest! {
             let storage = TestStorage::new();
             let auth_config = test_auth_config();
 
-            // Convert to Uuids and ensure uniqueness
-            let mut tenant_ids: Vec<Uuid> = tenant_ids
+            // Convert to TenantIds and ensure uniqueness
+            let mut tenant_ids: Vec<TenantId> = tenant_ids
                 .into_iter()
-                .map(Uuid::from_bytes)
+                .map(|bytes| TenantId::new(Uuid::from_bytes(bytes)))
                 .collect();
             tenant_ids.sort();
             tenant_ids.dedup();
@@ -619,12 +622,21 @@ mod ws_tenant_isolation {
         events::WsEvent,
         should_deliver_event, tenant_id_from_event,
     };
+    use caliber_core::{
+        AgentId, ArtifactId, DelegationId, EntityIdType, HandoffId, LockId, MessageId, NoteId,
+        TenantId, TrajectoryId,
+    };
     use proptest::prelude::*;
     use uuid::Uuid;
 
     /// Strategy for generating Uuids
     fn entity_id_strategy() -> impl Strategy<Value = Uuid> {
         any::<[u8; 16]>().prop_map(Uuid::from_bytes)
+    }
+
+    /// Strategy for generating TenantIds
+    fn tenant_id_strategy() -> impl Strategy<Value = TenantId> {
+        any::<[u8; 16]>().prop_map(|bytes| TenantId::new(Uuid::from_bytes(bytes)))
     }
 
     proptest! {
@@ -638,8 +650,8 @@ mod ws_tenant_isolation {
         /// **Validates: Requirements 1.6, 2.5**
         #[test]
         fn prop_ws_tenant_filtered_events_match_tenant(
-            tenant_a in entity_id_strategy(),
-            tenant_b in entity_id_strategy(),
+            tenant_a in tenant_id_strategy(),
+            tenant_b in tenant_id_strategy(),
             event_id in entity_id_strategy(),
         ) {
             // Ensure different tenants
@@ -648,7 +660,7 @@ mod ws_tenant_isolation {
             // Test TrajectoryDeleted event (has tenant_id field)
             let event = WsEvent::TrajectoryDeleted {
                 tenant_id: tenant_a,
-                id: event_id,
+                id: TrajectoryId::new(event_id),
             };
 
             // Extract tenant_id from event
@@ -672,14 +684,14 @@ mod ws_tenant_isolation {
         /// **Validates: Requirements 1.6, 2.5**
         #[test]
         fn prop_ws_delete_events_include_tenant_id(
-            tenant_id in entity_id_strategy(),
+            tenant_id in tenant_id_strategy(),
             entity_id in entity_id_strategy(),
         ) {
             // Test all delete event types
             let delete_events = vec![
-                WsEvent::TrajectoryDeleted { tenant_id, id: entity_id },
-                WsEvent::ArtifactDeleted { tenant_id, id: entity_id },
-                WsEvent::NoteDeleted { tenant_id, id: entity_id },
+                WsEvent::TrajectoryDeleted { tenant_id, id: TrajectoryId::new(entity_id) },
+                WsEvent::ArtifactDeleted { tenant_id, id: ArtifactId::new(entity_id) },
+                WsEvent::NoteDeleted { tenant_id, id: NoteId::new(entity_id) },
             ];
 
             for event in delete_events {
@@ -711,28 +723,33 @@ mod ws_tenant_isolation {
             tenant_id_bytes in any::<[u8; 16]>(),
             entity_id_bytes in any::<[u8; 16]>(),
         ) {
-            let tenant_id = Uuid::from_bytes(tenant_id_bytes);
+            let tenant_id = TenantId::new(Uuid::from_bytes(tenant_id_bytes));
             let entity_id = Uuid::from_bytes(entity_id_bytes);
+            let agent_id = AgentId::new(entity_id);
+            let lock_id = LockId::new(entity_id);
+            let message_id = MessageId::new(entity_id);
+            let delegation_id = DelegationId::new(entity_id);
+            let handoff_id = HandoffId::new(entity_id);
 
             let status_events = vec![
                 WsEvent::AgentStatusChanged {
                     tenant_id,
-                    agent_id: entity_id,
+                    agent_id,
                     status: "active".to_string(),
                 },
                 WsEvent::AgentHeartbeat {
                     tenant_id,
-                    agent_id: entity_id,
+                    agent_id,
                     timestamp: chrono::Utc::now(),
                 },
-                WsEvent::AgentUnregistered { tenant_id, id: entity_id },
-                WsEvent::LockReleased { tenant_id, lock_id: entity_id },
-                WsEvent::LockExpired { tenant_id, lock_id: entity_id },
-                WsEvent::MessageDelivered { tenant_id, message_id: entity_id },
-                WsEvent::MessageAcknowledged { tenant_id, message_id: entity_id },
-                WsEvent::DelegationAccepted { tenant_id, delegation_id: entity_id },
-                WsEvent::DelegationRejected { tenant_id, delegation_id: entity_id },
-                WsEvent::HandoffAccepted { tenant_id, handoff_id: entity_id },
+                WsEvent::AgentUnregistered { tenant_id, id: agent_id },
+                WsEvent::LockReleased { tenant_id, lock_id },
+                WsEvent::LockExpired { tenant_id, lock_id },
+                WsEvent::MessageDelivered { tenant_id, message_id },
+                WsEvent::MessageAcknowledged { tenant_id, message_id },
+                WsEvent::DelegationAccepted { tenant_id, delegation_id },
+                WsEvent::DelegationRejected { tenant_id, delegation_id },
+                WsEvent::HandoffAccepted { tenant_id, handoff_id },
             ];
 
             for event in status_events {
@@ -763,7 +780,7 @@ mod ws_tenant_isolation {
         fn prop_ws_unknown_tenant_events_denied(
             client_tenant_id_bytes in any::<[u8; 16]>(),
         ) {
-            let client_tenant_id = Uuid::from_bytes(client_tenant_id_bytes);
+            let client_tenant_id = TenantId::new(Uuid::from_bytes(client_tenant_id_bytes));
 
             // Events that currently return None for tenant_id should be denied
             // (Note: This tests the DENY by default behavior)
@@ -800,25 +817,25 @@ mod ws_tenant_isolation {
             // Must be different tenants
             prop_assume!(tenant_a_bytes != tenant_b_bytes);
 
-            let tenant_a = Uuid::from_bytes(tenant_a_bytes);
-            let tenant_b = Uuid::from_bytes(tenant_b_bytes);
+            let tenant_a = TenantId::new(Uuid::from_bytes(tenant_a_bytes));
+            let tenant_b = TenantId::new(Uuid::from_bytes(tenant_b_bytes));
             let entity_id = Uuid::from_bytes(entity_id_bytes);
 
             // All tenant-specific events with tenant_a should not be delivered to tenant_b
             let tenant_a_events = vec![
-                WsEvent::TrajectoryDeleted { tenant_id: tenant_a, id: entity_id },
-                WsEvent::ArtifactDeleted { tenant_id: tenant_a, id: entity_id },
-                WsEvent::NoteDeleted { tenant_id: tenant_a, id: entity_id },
-                WsEvent::AgentUnregistered { tenant_id: tenant_a, id: entity_id },
+                WsEvent::TrajectoryDeleted { tenant_id: tenant_a, id: TrajectoryId::new(entity_id) },
+                WsEvent::ArtifactDeleted { tenant_id: tenant_a, id: ArtifactId::new(entity_id) },
+                WsEvent::NoteDeleted { tenant_id: tenant_a, id: NoteId::new(entity_id) },
+                WsEvent::AgentUnregistered { tenant_id: tenant_a, id: AgentId::new(entity_id) },
                 WsEvent::AgentStatusChanged {
                     tenant_id: tenant_a,
-                    agent_id: entity_id,
+                    agent_id: AgentId::new(entity_id),
                     status: "idle".to_string(),
                 },
-                WsEvent::LockReleased { tenant_id: tenant_a, lock_id: entity_id },
-                WsEvent::MessageAcknowledged { tenant_id: tenant_a, message_id: entity_id },
-                WsEvent::DelegationAccepted { tenant_id: tenant_a, delegation_id: entity_id },
-                WsEvent::HandoffAccepted { tenant_id: tenant_a, handoff_id: entity_id },
+                WsEvent::LockReleased { tenant_id: tenant_a, lock_id: LockId::new(entity_id) },
+                WsEvent::MessageAcknowledged { tenant_id: tenant_a, message_id: MessageId::new(entity_id) },
+                WsEvent::DelegationAccepted { tenant_id: tenant_a, delegation_id: DelegationId::new(entity_id) },
+                WsEvent::HandoffAccepted { tenant_id: tenant_a, handoff_id: HandoffId::new(entity_id) },
             ];
 
             for event in tenant_a_events {
@@ -846,9 +863,10 @@ mod edge_cases {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
-        let tenant_id = Uuid::now_v7();
+        let tenant_uuid = Uuid::now_v7();
+        let tenant_id = TenantId::new(tenant_uuid);
 
-        let auth_context = test_auth_context_with_tenant(tenant_id);
+        let auth_context = test_auth_context_with_tenant(tenant_uuid);
         let token = generate_jwt_token(
             &auth_config,
             auth_context.user_id.clone(),
@@ -887,8 +905,8 @@ mod edge_cases {
         let storage = TestStorage::new();
         let _auth_config = test_auth_config();
 
-        let tenant_a = Uuid::now_v7();
-        let tenant_b = Uuid::now_v7();
+        let tenant_a = TenantId::new(Uuid::now_v7());
+        let tenant_b = TenantId::new(Uuid::now_v7());
 
         // Create trajectories with the same name for different tenants
         let req = CreateTrajectoryRequest {
@@ -913,7 +931,7 @@ mod edge_cases {
         let storage = TestStorage::new();
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
         let nonexistent_id = Uuid::now_v7();
 
         let token = generate_jwt_token(

@@ -251,7 +251,7 @@ async fn send_event(
         axum::Error::new(e)
     })?;
 
-    sender.send(Message::Text(json.into())).await
+    sender.send(Message::Text(json)).await
 }
 
 /// Determine if an event should be sent to a client based on tenant filtering.
@@ -392,6 +392,7 @@ fn tenant_id_from_metadata(metadata: &Option<JsonValue>) -> Option<TenantId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::EntityIdType;
     use serde_json::json;
 
     #[test]
@@ -449,7 +450,7 @@ mod tests {
         let trajectory_created = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: TrajectoryId::now_v7(),
-                tenant_id: Some(tenant_id),
+                tenant_id,
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -469,7 +470,7 @@ mod tests {
         let other_tenant_event = WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: TrajectoryId::now_v7(),
-                tenant_id: Some(other_tenant),
+                tenant_id: other_tenant,
                 name: "other".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,

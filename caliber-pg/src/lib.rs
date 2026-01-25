@@ -86,15 +86,7 @@ fn pgrx_uuid_datum(id: pgrx::Uuid) -> DatumWithOid<'static> {
     unsafe { DatumWithOid::new(id, pgrx::pg_sys::UUIDOID) }
 }
 
-/// Convert an optional uuid::Uuid to DatumWithOid for SPI calls.
-#[inline]
-fn opt_uuid_datum(id: Option<uuid::Uuid>) -> DatumWithOid<'static> {
-    match id {
-        Some(id) => uuid_datum(id),
-        None => DatumWithOid::null_oid(pgrx::pg_sys::UUIDOID),
-    }
-}
-
+//
 /// Convert an optional entity ID to DatumWithOid for SPI calls.
 #[inline]
 fn opt_id_datum<T: EntityIdType>(id: Option<T>) -> DatumWithOid<'static> {
@@ -756,7 +748,7 @@ fn caliber_trajectory_create(
     pgrx_uuid_from_id(trajectory_id)
 }
 
-/// Get a trajectory by ID.
+// Get a trajectory by ID.
 caliber_pg_get!(trajectory, trajectory_heap, TrajectoryId, |row| {
     let t = row.trajectory;
     serde_json::json!({
@@ -1014,7 +1006,7 @@ fn caliber_scope_create(
     pgrx_uuid_from_id(scope_id)
 }
 
-/// Get a scope by ID.
+// Get a scope by ID.
 caliber_pg_get!(scope, scope_heap, ScopeId, |row| {
     let s = row.scope;
     serde_json::json!({
@@ -1425,7 +1417,7 @@ fn caliber_artifact_create(
     }
 }
 
-/// Get an artifact by ID.
+// Get an artifact by ID.
 caliber_pg_get!(artifact, artifact_heap, ArtifactId, |row| {
     let a = row.artifact;
     serde_json::json!({
@@ -1958,8 +1950,8 @@ fn caliber_note_create(
     }
 }
 
-/// Get a note by ID.
-/// Updates access_count and accessed_at timestamp on each read.
+// Get a note by ID.
+// Updates access_count and accessed_at timestamp on each read.
 caliber_pg_get!(note, note_heap, NoteId, |row| {
     let n = row.note;
     serde_json::json!({
@@ -2576,7 +2568,7 @@ fn caliber_lock_check(
     }
 }
 
-/// Get lock by ID.
+// Get lock by ID.
 caliber_pg_get!(lock, lock_heap, LockId, |row| {
     let l = row.lock;
     serde_json::json!({
@@ -2618,7 +2610,7 @@ fn caliber_lock_extend(lock_id: pgrx::Uuid, additional_ms: i64, tenant_id: pgrx:
     }
 }
 
-/// List all active (non-expired) locks.
+// List all active (non-expired) locks.
 caliber_pg_list_active!(lock, lock_heap, |row| {
     let lock = row.lock;
     serde_json::json!({
@@ -2786,7 +2778,7 @@ fn caliber_message_send(
     }
 }
 
-/// Get a message by ID using direct heap operations.
+// Get a message by ID using direct heap operations.
 caliber_pg_get!(message, message_heap, MessageId, |row| {
     let m = row.message;
     serde_json::json!({
@@ -3176,7 +3168,7 @@ fn caliber_agent_register(
     pgrx_uuid_from_id(agent_id)
 }
 
-/// Get an agent by ID.
+// Get an agent by ID.
 caliber_pg_get!(agent, agent_heap, AgentId, |row| {
     let a = row.agent;
     serde_json::json!({
@@ -3500,7 +3492,7 @@ fn caliber_delegation_create(
     pgrx_uuid_from_id(delegation_id)
 }
 
-/// Get a delegation by ID.
+// Get a delegation by ID.
 caliber_pg_get!(delegation, delegation_heap, DelegationId, |row| {
     let d = row.delegation;
     serde_json::json!({
@@ -3703,7 +3695,7 @@ fn caliber_handoff_create(
     }
 }
 
-/// Get a handoff by ID.
+// Get a handoff by ID.
 caliber_pg_get!(handoff, handoff_heap, HandoffId, |row| {
     let h = row.handoff;
     serde_json::json!({
@@ -3836,7 +3828,7 @@ fn caliber_conflict_create(
     pgrx_uuid_from_id(conflict_id)
 }
 
-/// Get a conflict by ID.
+// Get a conflict by ID.
 caliber_pg_get!(conflict, conflict_heap, ConflictId, |row| {
     let c = row.conflict;
     serde_json::json!({
@@ -5117,7 +5109,7 @@ fn caliber_edge_create(
     }
 }
 
-/// Get an edge by ID.
+// Get an edge by ID.
 caliber_pg_get!(edge, edge_heap, EdgeId, |row| {
     let edge = row.edge;
     serde_json::json!({

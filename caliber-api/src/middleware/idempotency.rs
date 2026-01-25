@@ -34,7 +34,7 @@ use caliber_core::{EntityIdType, TenantId};
 use axum::{
     body::{Body, Bytes},
     extract::{Request, State},
-    http::{header::HeaderValue, Method, StatusCode},
+    http::{Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -282,7 +282,7 @@ fn extract_operation_name(path: &str, method: &Method) -> String {
     let resource = path
         .trim_end_matches('/')
         .rsplit('/')
-        .find(|s| !s.is_empty() && !uuid::Uuid::parse_str(s).is_ok())
+        .find(|s| !s.is_empty() && uuid::Uuid::parse_str(s).is_err())
         .unwrap_or("unknown");
 
     format!("{}_{}", method.as_str().to_lowercase(), resource)

@@ -659,13 +659,13 @@ mod tests {
 
     #[test]
     fn test_webhook_event_type_matching() {
-        use caliber_core::{TenantId, TrajectoryId};
+        use caliber_core::{EntityIdType, TenantId, TrajectoryId};
 
         // Test wildcard matches all
         assert!(WebhookEventType::All.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: TrajectoryId::new(Uuid::new_v4()),
-                tenant_id: Some(TenantId::new(Uuid::new_v4())),
+                tenant_id: TenantId::new(Uuid::new_v4()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -684,7 +684,7 @@ mod tests {
         assert!(WebhookEventType::TrajectoryCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: TrajectoryId::new(Uuid::new_v4()),
-                tenant_id: Some(TenantId::new(Uuid::new_v4())),
+                tenant_id: TenantId::new(Uuid::new_v4()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,
@@ -703,7 +703,7 @@ mod tests {
         assert!(!WebhookEventType::NoteCreated.matches(&WsEvent::TrajectoryCreated {
             trajectory: crate::types::TrajectoryResponse {
                 trajectory_id: TrajectoryId::new(Uuid::new_v4()),
-                tenant_id: Some(TenantId::new(Uuid::new_v4())),
+                tenant_id: TenantId::new(Uuid::new_v4()),
                 name: "test".to_string(),
                 description: None,
                 status: caliber_core::TrajectoryStatus::Active,

@@ -347,9 +347,10 @@ impl QueryRoot {
         let auth = ctx.data::<AuthContext>()?;
         let uuid = Uuid::parse_str(&id.0)
             .map_err(|_| async_graphql::Error::new("Invalid UUID"))?;
-        let trajectory_id = TrajectoryId::new(uuid);
-
-        match db.get::<crate::types::TrajectoryResponse>(TrajectoryId::new(uuid), auth.tenant_id).await {
+        match db
+            .get::<crate::types::TrajectoryResponse>(TrajectoryId::new(uuid), auth.tenant_id)
+            .await
+        {
             Ok(Some(t)) => Ok(Some(t.into())),
             Ok(None) => Ok(None),
             Err(e) => Err(async_graphql::Error::new(e.message)),
@@ -485,9 +486,14 @@ impl QueryRoot {
     /// List active agents.
     async fn agents(&self, ctx: &Context<'_>) -> GqlResult<Vec<GqlAgent>> {
         let db = ctx.data::<DbClient>()?;
+        let auth = ctx.data::<AuthContext>()?;
 
         match db.agent_list_active().await {
-            Ok(agents) => Ok(agents.into_iter().map(|a| a.into()).collect()),
+            Ok(agents) => Ok(agents
+                .into_iter()
+                .filter(|agent| agent.tenant_id == auth.tenant_id)
+                .map(|a| a.into())
+                .collect()),
             Err(e) => Err(async_graphql::Error::new(e.message)),
         }
     }
@@ -646,7 +652,7 @@ impl MutationRoot {
             .ok_or_else(|| async_graphql::Error::new("Scope not found"))?;
 
         // Close via Response method
-        match existing.close(&db).await {
+        match existing.close(db).await {
             Ok(scope) => {
                 ws.broadcast(WsEvent::ScopeClosed { scope: scope.clone() });
                 Ok(scope.into())
@@ -749,6 +755,7 @@ pub fn create_router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::{EntityIdType, TenantId};
 
     #[test]
     fn test_gql_trajectory_status_conversion() {
@@ -786,8 +793,8 @@ mod tests {
     #[test]
     fn test_gql_trajectory_from_response() {
         let response = TrajectoryResponse {
-            trajectory_id: Uuid::new_v4(),
-            tenant_id: Some(Uuid::new_v4()),
+            trajectory_id: TrajectoryId::new(Uuid::new_v4()),
+            tenant_id: TenantId::new(Uuid::new_v4()),
             name: "Test".to_string(),
             description: None,
             status: caliber_core::TrajectoryStatus::Active,

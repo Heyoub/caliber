@@ -3,7 +3,6 @@
 //! This module implements the core caching logic, routing reads based on
 //! freshness requirements and using the change journal for invalidation.
 
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -364,29 +363,21 @@ mod tests {
     use super::*;
     use crate::cache::watermark::InMemoryChangeJournal;
     use caliber_core::{Artifact, ArtifactType, ExtractionMethod, Provenance, TTL};
-    use std::collections::HashMap;
     use std::sync::RwLock;
     use uuid::Uuid;
 
     // Mock cache backend for testing
     #[derive(Default)]
     struct MockCacheBackend {
-        storage: RwLock<HashMap<String, (Vec<u8>, chrono::DateTime<Utc>)>>,
         stats: RwLock<super::super::traits::CacheStats>,
-    }
-
-    impl MockCacheBackend {
-        fn key(entity_type: EntityType, entity_id: Uuid, tenant_id: Uuid) -> String {
-            format!("{:?}:{}:{}", entity_type, tenant_id, entity_id)
-        }
     }
 
     #[async_trait]
     impl CacheBackend for MockCacheBackend {
         async fn get<T: CacheableEntity>(
             &self,
-            entity_id: Uuid,
-            tenant_id: Uuid,
+            _entity_id: Uuid,
+            _tenant_id: Uuid,
         ) -> CaliberResult<Option<(T, chrono::DateTime<Utc>)>> {
             // For testing, always return None (cache miss)
             let mut stats = self.stats.write().unwrap();

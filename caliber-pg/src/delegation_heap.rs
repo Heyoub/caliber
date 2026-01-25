@@ -8,7 +8,7 @@ use pgrx::pg_sys;
 
 use caliber_core::{
     AgentId, ArtifactId, CaliberError, CaliberResult, DelegatedTask, DelegationId, DelegationResult,
-    DelegationResultStatus, DelegationStatus, EntityIdType, EntityType, NoteId, StorageError,
+    DelegationStatus, EntityIdType, EntityType, NoteId, StorageError,
     TenantId, TrajectoryId,
 };
 
@@ -467,7 +467,7 @@ unsafe fn tuple_to_delegation(
         }))?;
     let constraints = serde_json::from_str::<serde_json::Value>(&constraints)
         .ok()
-        .or_else(|| Some(serde_json::Value::String(constraints)));
+        .or(Some(serde_json::Value::String(constraints)));
     
     let deadline = extract_timestamp(tuple, tuple_desc, delegation::DEADLINE)?
         .map(timestamp_to_chrono);
@@ -537,6 +537,7 @@ unsafe fn tuple_to_delegation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliber_core::DelegationResultStatus;
     use proptest::prelude::*;
     use chrono::Duration;
 

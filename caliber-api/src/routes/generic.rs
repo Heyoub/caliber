@@ -27,12 +27,11 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, patch, post},
+    routing::{get, post},
     Json, Router,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
 
-use caliber_core::EntityIdType;
 use crate::{
     component::{Component, Listable, TenantScoped},
     db::DbClient,

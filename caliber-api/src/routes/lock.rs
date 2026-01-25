@@ -247,7 +247,7 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::AgentId;
+    use caliber_core::{AgentId, EntityIdType};
     use uuid::Uuid;
 
     #[test]

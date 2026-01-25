@@ -452,17 +452,24 @@ impl ProviderRegistry {
             }
             RoutingStrategy::LeastLatency => {
                 let cache = self.health_cache.read().await;
+                let now = Instant::now();
                 available
                     .iter()
                     .min_by_key(|(id, _)| {
-                        cache.get(*id).map(|(r, _)| r.latency_ms).unwrap_or(u64::MAX)
+                        cache
+                            .get(*id)
+                            .filter(|(_, cached_at)| {
+                                now.saturating_duration_since(*cached_at) <= self.health_cache_ttl
+                            })
+                            .map(|(r, _)| r.latency_ms)
+                            .unwrap_or(u64::MAX)
                     })
                     .map(|(_, a)| Arc::clone(a))
             }
             RoutingStrategy::Capability(_) => available.first().map(|(_, a)| Arc::clone(a)),
         };
 
-        selected.ok_or_else(|| CaliberError::Llm(LlmError::ProviderNotConfigured))
+        selected.ok_or(CaliberError::Llm(LlmError::ProviderNotConfigured))
     }
 
     /// Perform an embedding operation using the registry's routing.
@@ -669,6 +676,52 @@ impl std::fmt::Debug for CostTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    struct TestAdapter {
+        id: String,
+        capabilities: Vec<ProviderCapability>,
+    }
+
+    impl TestAdapter {
+        fn new(id: &str, capabilities: Vec<ProviderCapability>) -> Self {
+            Self {
+                id: id.to_string(),
+                capabilities,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ProviderAdapter for TestAdapter {
+        fn provider_id(&self) -> &str {
+            &self.id
+        }
+
+        fn capabilities(&self) -> &[ProviderCapability] {
+            &self.capabilities
+        }
+
+        async fn ping(&self) -> CaliberResult<PingResponse> {
+            Ok(PingResponse {
+                provider_id: self.id.clone(),
+                capabilities: self.capabilities.clone(),
+                latency_ms: 1,
+                health: HealthStatus::Healthy,
+                metadata: HashMap::new(),
+            })
+        }
+
+        async fn embed(&self, _request: EmbedRequest) -> CaliberResult<EmbedResponse> {
+            Err(CaliberError::Llm(LlmError::ProviderNotConfigured))
+        }
+
+        async fn summarize(&self, _request: SummarizeRequest) -> CaliberResult<SummarizeResponse> {
+            Err(CaliberError::Llm(LlmError::ProviderNotConfigured))
+        }
+    }
 
     #[test]
     fn test_circuit_breaker_closed() {
@@ -710,5 +763,63 @@ mod tests {
 
         tracker.reset();
         assert_eq!(tracker.embedding_tokens(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_least_latency_ignores_stale_cache() {
+        let mut registry = ProviderRegistry::new(RoutingStrategy::LeastLatency);
+        registry.health_cache_ttl = Duration::from_secs(1);
+
+        let fast: Arc<dyn ProviderAdapter> = Arc::new(TestAdapter::new(
+            "fast",
+            vec![ProviderCapability::Embedding],
+        ));
+        let slow: Arc<dyn ProviderAdapter> = Arc::new(TestAdapter::new(
+            "slow",
+            vec![ProviderCapability::Embedding],
+        ));
+
+        registry.register(Arc::clone(&fast)).await;
+        registry.register(Arc::clone(&slow)).await;
+
+        let now = Instant::now();
+        let stale_ts = now.checked_sub(Duration::from_secs(3600)).unwrap_or(now);
+
+        {
+            let mut cache = registry.health_cache.write().await;
+            cache.insert(
+                "fast".to_string(),
+                (
+                    PingResponse {
+                        provider_id: "fast".to_string(),
+                        capabilities: vec![ProviderCapability::Embedding],
+                        latency_ms: 5,
+                        health: HealthStatus::Healthy,
+                        metadata: HashMap::new(),
+                    },
+                    stale_ts,
+                ),
+            );
+            cache.insert(
+                "slow".to_string(),
+                (
+                    PingResponse {
+                        provider_id: "slow".to_string(),
+                        capabilities: vec![ProviderCapability::Embedding],
+                        latency_ms: 50,
+                        health: HealthStatus::Healthy,
+                        metadata: HashMap::new(),
+                    },
+                    now,
+                ),
+            );
+        }
+
+        let selected = registry
+            .select_provider(ProviderCapability::Embedding)
+            .await
+            .expect("provider should be selected");
+
+        assert_eq!(selected.provider_id(), "slow");
     }
 }

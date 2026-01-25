@@ -13,7 +13,7 @@ use super::watermark::Watermark;
 /// Callers must "sign the waiver" by specifying their staleness tolerance.
 /// This makes cache semantics explicit rather than hiding them behind
 /// a "best effort" abstraction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Freshness {
     /// Accept potentially stale data up to the specified age.
     ///
@@ -40,6 +40,7 @@ pub enum Freshness {
     /// - Correctness is critical (e.g., locking, conflict detection)
     /// - You need read-after-write consistency
     /// - The data is used for decision-making that must be current
+    #[default]
     Consistent,
 }
 
@@ -70,13 +71,6 @@ impl Freshness {
             Self::BestEffort { max_staleness } => *max_staleness,
             Self::Consistent => Duration::ZERO,
         }
-    }
-}
-
-impl Default for Freshness {
-    fn default() -> Self {
-        // Default to consistent to avoid accidental stale reads
-        Self::Consistent
     }
 }
 
@@ -207,7 +201,6 @@ impl<T> AsMut<T> for CacheRead<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
 
     #[test]
     fn test_freshness_best_effort() {

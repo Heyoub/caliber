@@ -272,7 +272,7 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{AgentId, MessagePriority, MessageType};
+    use caliber_core::{AgentId, EntityIdType, MessagePriority, MessageType};
 
     #[test]
     fn test_send_message_request_validation() {

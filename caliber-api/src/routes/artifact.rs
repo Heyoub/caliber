@@ -344,7 +344,7 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{ArtifactType, ExtractionMethod, ScopeId, TrajectoryId, TTL};
+    use caliber_core::{ArtifactType, EntityIdType, ExtractionMethod, ScopeId, TrajectoryId, TTL};
 
     #[test]
     fn test_create_artifact_request_validation() {
@@ -391,7 +391,7 @@ mod tests {
         let params = ListArtifactsRequest {
             artifact_type: Some(ArtifactType::Fact),
             trajectory_id: None,
-            scope_id: Some(uuid::Uuid::nil()),
+            scope_id: Some(ScopeId::nil()),
             created_after: None,
             created_before: None,
             limit: Some(10),

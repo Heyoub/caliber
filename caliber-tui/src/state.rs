@@ -10,7 +10,7 @@ use caliber_api::types::*;
 use caliber_core::{
     AgentId, AgentStatus, ArtifactId, ArtifactType, EntityIdType, LockId, MessageId, MessagePriority,
     MessageType, NoteId, NoteType, ScopeId, TenantId, Timestamp, TrajectoryId, TrajectoryStatus,
-    TurnId, TurnRole,
+    TurnRole,
 };
 use uuid::Uuid;
 use std::collections::{HashSet, VecDeque};
