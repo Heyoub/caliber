@@ -262,7 +262,7 @@ pub async fn close_scope(
         .get::<ScopeResponse>(id, auth.tenant_id)
         .await?
         .ok_or_else(|| ApiError::scope_not_found(id))?;
-    validate_tenant_ownership(&auth, existing.tenant_id)?;
+    validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Close via Response method (validates scope is active)
     let scope = existing.close(&db).await?;

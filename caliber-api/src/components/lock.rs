@@ -3,7 +3,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{AcquireLockRequest, ExtendLockRequest, LockResponse};
-use caliber_core::{AgentId, LockId, TenantId};
+use caliber_core::{AgentId, EntityIdType, LockId, TenantId};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 

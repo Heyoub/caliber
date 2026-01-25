@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::{
     CreateTrajectoryRequest, ListTrajectoriesRequest, TrajectoryResponse, UpdateTrajectoryRequest,
 };
-use caliber_core::{AgentId, TenantId, TrajectoryId, TrajectoryStatus};
+use caliber_core::{AgentId, EntityIdType, TenantId, TrajectoryId, TrajectoryStatus};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for TrajectoryResponse

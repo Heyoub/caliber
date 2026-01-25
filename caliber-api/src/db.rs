@@ -339,14 +339,14 @@ impl DbClient {
     /// Parse trajectory JSON into TrajectoryResponse.
     fn parse_trajectory_json(&self, json: &JsonValue) -> ApiResult<TrajectoryResponse> {
         Ok(TrajectoryResponse {
-            trajectory_id: self.parse_uuid(json, "trajectory_id")?,
-            tenant_id: self.parse_optional_uuid(json, "tenant_id"),
+            trajectory_id: self.parse_entity_id(json, "trajectory_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
             name: self.parse_string(json, "name")?,
             description: self.parse_optional_string(json, "description"),
             status: self.parse_trajectory_status(json, "status")?,
-            parent_trajectory_id: self.parse_optional_uuid(json, "parent_trajectory_id"),
-            root_trajectory_id: self.parse_optional_uuid(json, "root_trajectory_id"),
-            agent_id: self.parse_optional_uuid(json, "agent_id"),
+            parent_trajectory_id: self.parse_optional_entity_id(json, "parent_trajectory_id"),
+            root_trajectory_id: self.parse_optional_entity_id(json, "root_trajectory_id"),
+            agent_id: self.parse_optional_entity_id(json, "agent_id"),
             created_at: self.parse_timestamp(json, "created_at")?,
             updated_at: self.parse_timestamp(json, "updated_at")?,
             completed_at: self.parse_optional_timestamp(json, "completed_at"),
@@ -385,10 +385,10 @@ impl DbClient {
     /// Parse scope JSON into ScopeResponse.
     fn parse_scope_json(&self, json: &JsonValue) -> ApiResult<ScopeResponse> {
         Ok(ScopeResponse {
-            scope_id: self.parse_uuid(json, "scope_id")?,
-            tenant_id: self.parse_optional_uuid(json, "tenant_id"),
-            trajectory_id: self.parse_uuid(json, "trajectory_id")?,
-            parent_scope_id: self.parse_optional_uuid(json, "parent_scope_id"),
+            scope_id: self.parse_entity_id(json, "scope_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            trajectory_id: self.parse_entity_id(json, "trajectory_id")?,
+            parent_scope_id: self.parse_optional_entity_id(json, "parent_scope_id"),
             name: self.parse_string(json, "name")?,
             purpose: self.parse_optional_string(json, "purpose"),
             is_active: self.parse_bool(json, "is_active")?,
@@ -487,10 +487,10 @@ impl DbClient {
     /// Parse artifact JSON into ArtifactResponse.
     fn parse_artifact_json(&self, json: &JsonValue) -> ApiResult<ArtifactResponse> {
         Ok(ArtifactResponse {
-            artifact_id: self.parse_uuid(json, "artifact_id")?,
-            tenant_id: self.parse_optional_uuid(json, "tenant_id"),
-            trajectory_id: self.parse_uuid(json, "trajectory_id")?,
-            scope_id: self.parse_uuid(json, "scope_id")?,
+            artifact_id: self.parse_entity_id(json, "artifact_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            trajectory_id: self.parse_entity_id(json, "trajectory_id")?,
+            scope_id: self.parse_entity_id(json, "scope_id")?,
             artifact_type: self.parse_artifact_type(json, "artifact_type")?,
             name: self.parse_string(json, "name")?,
             content: self.parse_string(json, "content")?,
@@ -500,7 +500,7 @@ impl DbClient {
             ttl: self.parse_ttl(json, "ttl")?,
             created_at: self.parse_timestamp(json, "created_at")?,
             updated_at: self.parse_timestamp(json, "updated_at")?,
-            superseded_by: self.parse_optional_uuid(json, "superseded_by"),
+            superseded_by: self.parse_optional_entity_id(json, "superseded_by"),
             metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
         })
     }
@@ -558,21 +558,21 @@ impl DbClient {
     /// Parse note JSON into NoteResponse.
     fn parse_note_json(&self, json: &JsonValue) -> ApiResult<NoteResponse> {
         Ok(NoteResponse {
-            note_id: self.parse_uuid(json, "note_id")?,
-            tenant_id: self.parse_optional_uuid(json, "tenant_id"),
+            note_id: self.parse_entity_id(json, "note_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
             note_type: self.parse_note_type(json, "note_type")?,
             title: self.parse_string(json, "title")?,
             content: self.parse_string(json, "content")?,
             content_hash: self.parse_content_hash(json, "content_hash")?,
             embedding: self.parse_optional_embedding(json, "embedding"),
-            source_trajectory_ids: self.parse_uuid_array(json, "source_trajectory_ids")?,
-            source_artifact_ids: self.parse_uuid_array(json, "source_artifact_ids")?,
+            source_trajectory_ids: self.parse_entity_id_array(json, "source_trajectory_ids")?,
+            source_artifact_ids: self.parse_entity_id_array(json, "source_artifact_ids")?,
             ttl: self.parse_ttl(json, "ttl")?,
             created_at: self.parse_timestamp(json, "created_at")?,
             updated_at: self.parse_timestamp(json, "updated_at")?,
             accessed_at: self.parse_timestamp(json, "accessed_at")?,
             access_count: self.parse_i32(json, "access_count")?,
-            superseded_by: self.parse_optional_uuid(json, "superseded_by"),
+            superseded_by: self.parse_optional_entity_id(json, "superseded_by"),
             metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
         })
     }
@@ -745,8 +745,8 @@ impl DbClient {
     /// Parse agent JSON into AgentResponse.
     fn parse_agent_json(&self, json: &JsonValue) -> ApiResult<AgentResponse> {
         Ok(AgentResponse {
-            tenant_id: self.parse_uuid(json, "tenant_id")?,
-            agent_id: self.parse_uuid(json, "agent_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            agent_id: self.parse_entity_id(json, "agent_id")?,
             agent_type: self.parse_string(json, "agent_type")?,
             capabilities: self.parse_string_array(json, "capabilities")?,
             memory_access: serde_json::from_value(
@@ -754,11 +754,11 @@ impl DbClient {
                     .ok_or_else(|| ApiError::internal_error("Missing memory_access"))?
                     .clone()
             )?,
-            status: self.parse_string(json, "status")?,
-            current_trajectory_id: self.parse_optional_uuid(json, "current_trajectory_id"),
-            current_scope_id: self.parse_optional_uuid(json, "current_scope_id"),
+            status: self.parse_agent_status(json, "status")?,
+            current_trajectory_id: self.parse_optional_entity_id(json, "current_trajectory_id"),
+            current_scope_id: self.parse_optional_entity_id(json, "current_scope_id"),
             can_delegate_to: self.parse_string_array(json, "can_delegate_to")?,
-            reports_to: self.parse_optional_uuid(json, "reports_to"),
+            reports_to: self.parse_optional_entity_id(json, "reports_to"),
             created_at: self.parse_timestamp(json, "created_at")?,
             last_heartbeat: self.parse_timestamp(json, "last_heartbeat")?,
         })
@@ -887,11 +887,11 @@ impl DbClient {
     /// Parse lock JSON into LockResponse.
     fn parse_lock_json(&self, json: &JsonValue) -> ApiResult<LockResponse> {
         Ok(LockResponse {
-            tenant_id: self.parse_uuid(json, "tenant_id")?,
-            lock_id: self.parse_uuid(json, "lock_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            lock_id: self.parse_entity_id(json, "lock_id")?,
             resource_type: self.parse_string(json, "resource_type")?,
             resource_id: self.parse_uuid(json, "resource_id")?,
-            holder_agent_id: self.parse_uuid(json, "holder_agent_id")?,
+            holder_agent_id: self.parse_entity_id(json, "holder_agent_id")?,
             acquired_at: self.parse_timestamp(json, "acquired_at")?,
             expires_at: self.parse_timestamp(json, "expires_at")?,
             mode: self.parse_string(json, "mode")?,
@@ -1028,20 +1028,20 @@ impl DbClient {
     /// Parse message JSON into MessageResponse.
     fn parse_message_json(&self, json: &JsonValue) -> ApiResult<MessageResponse> {
         Ok(MessageResponse {
-            tenant_id: self.parse_uuid(json, "tenant_id")?,
-            message_id: self.parse_uuid(json, "message_id")?,
-            from_agent_id: self.parse_uuid(json, "from_agent_id")?,
-            to_agent_id: self.parse_optional_uuid(json, "to_agent_id"),
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            message_id: self.parse_entity_id(json, "message_id")?,
+            sender_id: self.parse_entity_id(json, "from_agent_id")?,
+            recipient_id: self.parse_optional_entity_id(json, "to_agent_id"),
             to_agent_type: self.parse_optional_string(json, "to_agent_type"),
-            message_type: self.parse_string(json, "message_type")?,
+            message_type: self.parse_message_type(json, "message_type")?,
             payload: self.parse_string(json, "payload")?,
-            trajectory_id: self.parse_optional_uuid(json, "trajectory_id"),
-            scope_id: self.parse_optional_uuid(json, "scope_id"),
-            artifact_ids: self.parse_uuid_array(json, "artifact_ids")?,
+            trajectory_id: self.parse_optional_entity_id(json, "trajectory_id"),
+            scope_id: self.parse_optional_entity_id(json, "scope_id"),
+            artifact_ids: self.parse_entity_id_array(json, "artifact_ids")?,
             created_at: self.parse_timestamp(json, "created_at")?,
             delivered_at: self.parse_optional_timestamp(json, "delivered_at"),
             acknowledged_at: self.parse_optional_timestamp(json, "acknowledged_at"),
-            priority: self.parse_string(json, "priority")?,
+            priority: self.parse_message_priority(json, "priority")?,
             expires_at: self.parse_optional_timestamp(json, "expires_at"),
         })
     }
@@ -1122,14 +1122,14 @@ impl DbClient {
     /// Parse delegation JSON into DelegationResponse.
     fn parse_delegation_json(&self, json: &JsonValue) -> ApiResult<DelegationResponse> {
         Ok(DelegationResponse {
-            delegation_id: self.parse_uuid(json, "delegation_id")?,
-            tenant_id: self.parse_optional_uuid(json, "tenant_id"),
-            from_agent_id: self.parse_uuid(json, "from_agent_id")?,
-            to_agent_id: self.parse_uuid(json, "to_agent_id")?,
-            trajectory_id: self.parse_uuid(json, "trajectory_id")?,
-            scope_id: self.parse_uuid(json, "scope_id")?,
+            delegation_id: self.parse_entity_id(json, "delegation_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            delegator_id: self.parse_entity_id(json, "from_agent_id")?,
+            delegatee_id: self.parse_entity_id(json, "to_agent_id")?,
+            trajectory_id: self.parse_entity_id(json, "trajectory_id")?,
+            scope_id: self.parse_optional_entity_id(json, "scope_id"),
             task_description: self.parse_string(json, "task_description")?,
-            status: self.parse_string(json, "status")?,
+            status: self.parse_delegation_status(json, "status")?,
             created_at: self.parse_timestamp(json, "created_at")?,
             accepted_at: self.parse_optional_timestamp(json, "accepted_at"),
             completed_at: self.parse_optional_timestamp(json, "completed_at"),
@@ -1196,14 +1196,14 @@ impl DbClient {
     /// Parse handoff JSON into HandoffResponse.
     fn parse_handoff_json(&self, json: &JsonValue) -> ApiResult<HandoffResponse> {
         Ok(HandoffResponse {
-            tenant_id: self.parse_uuid(json, "tenant_id")?,
-            handoff_id: self.parse_uuid(json, "handoff_id")?,
-            from_agent_id: self.parse_uuid(json, "from_agent_id")?,
-            to_agent_id: self.parse_uuid(json, "to_agent_id")?,
-            trajectory_id: self.parse_uuid(json, "trajectory_id")?,
-            scope_id: self.parse_uuid(json, "scope_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
+            handoff_id: self.parse_entity_id(json, "handoff_id")?,
+            from_agent_id: self.parse_entity_id(json, "from_agent_id")?,
+            to_agent_id: self.parse_entity_id(json, "to_agent_id")?,
+            trajectory_id: self.parse_entity_id(json, "trajectory_id")?,
+            scope_id: self.parse_optional_entity_id(json, "scope_id"),
             reason: self.parse_string(json, "reason")?,
-            status: self.parse_string(json, "status")?,
+            status: self.parse_handoff_status(json, "status")?,
             created_at: self.parse_timestamp(json, "created_at")?,
             accepted_at: self.parse_optional_timestamp(json, "accepted_at"),
             completed_at: self.parse_optional_timestamp(json, "completed_at"),
@@ -1233,6 +1233,19 @@ impl DbClient {
         json.get(field)
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
+    }
+
+    fn parse_entity_id<T: EntityIdType>(&self, json: &JsonValue, field: &str) -> ApiResult<T> {
+        Ok(T::new(self.parse_uuid(json, field)?))
+    }
+
+    fn parse_optional_entity_id<T: EntityIdType>(&self, json: &JsonValue, field: &str) -> Option<T> {
+        self.parse_optional_uuid(json, field).map(T::new)
+    }
+
+    fn parse_entity_id_array<T: EntityIdType>(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<T>> {
+        self.parse_uuid_array(json, field)
+            .map(|values| values.into_iter().map(T::new).collect())
     }
 
     /// Parse a string from JSON field.
@@ -1295,6 +1308,41 @@ impl DbClient {
             "suspended" => Ok(caliber_core::TrajectoryStatus::Suspended),
             _ => Err(ApiError::internal_error(format!("Invalid trajectory status: {}", status_str))),
         }
+    }
+
+    fn parse_agent_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::AgentStatus> {
+        let status_str = self.parse_string(json, field)?;
+        status_str
+            .parse()
+            .map_err(|_| ApiError::internal_error(format!("Invalid agent status: {}", status_str)))
+    }
+
+    fn parse_delegation_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::DelegationStatus> {
+        let status_str = self.parse_string(json, field)?;
+        status_str
+            .parse()
+            .map_err(|_| ApiError::internal_error(format!("Invalid delegation status: {}", status_str)))
+    }
+
+    fn parse_handoff_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::HandoffStatus> {
+        let status_str = self.parse_string(json, field)?;
+        status_str
+            .parse()
+            .map_err(|_| ApiError::internal_error(format!("Invalid handoff status: {}", status_str)))
+    }
+
+    fn parse_message_type(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::MessageType> {
+        let value = self.parse_string(json, field)?;
+        value
+            .parse()
+            .map_err(|_| ApiError::internal_error(format!("Invalid message type: {}", value)))
+    }
+
+    fn parse_message_priority(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::MessagePriority> {
+        let value = self.parse_string(json, field)?;
+        value
+            .parse()
+            .map_err(|_| ApiError::internal_error(format!("Invalid message priority: {}", value)))
     }
 
     /// Parse an artifact type from JSON field.
@@ -1431,6 +1479,7 @@ impl DbClient {
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|id| id.as_str().and_then(|s| Uuid::parse_str(s).ok()))
+                                .map(ArtifactId::new)
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -1439,6 +1488,7 @@ impl DbClient {
                         .map(|arr| {
                             arr.iter()
                                 .filter_map(|id| id.as_str().and_then(|s| Uuid::parse_str(s).ok()))
+                                .map(NoteId::new)
                                 .collect()
                         })
                         .unwrap_or_default(),
@@ -2226,7 +2276,7 @@ impl DbClient {
             .unwrap_or_else(chrono::Utc::now);
 
         Ok(crate::types::TenantInfo {
-            tenant_id: self.parse_uuid(json, "tenant_id")?,
+            tenant_id: self.parse_entity_id(json, "tenant_id")?,
             name: self.parse_string(json, "name")?,
             domain: self.parse_optional_string(json, "domain"),
             workos_organization_id: self.parse_optional_string(json, "workos_organization_id"),

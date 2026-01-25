@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::{
     ApiKeyResponse, CreateApiKeyRequest, ListApiKeysRequest, UpdateApiKeyRequest,
 };
-use caliber_core::{ApiKeyId, TenantId};
+use caliber_core::{ApiKeyId, EntityIdType, TenantId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for ApiKeyResponse

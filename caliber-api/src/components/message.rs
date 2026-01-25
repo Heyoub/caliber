@@ -25,7 +25,7 @@ impl_component! {
             SqlParam::String(req.message_type.clone()),
             SqlParam::String(req.payload.clone()),
             SqlParam::OptUuid(req.trajectory_id.map(|id| id.as_uuid())),
-            SqlParam::OptUuid(req.scope_id),
+            SqlParam::OptUuid(req.scope_id.map(|id| id.as_uuid())),
             SqlParam::Json(serde_json::to_value(&req.artifact_ids).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::String(req.priority.clone()),
             SqlParam::OptTimestamp(req.expires_at),
@@ -75,12 +75,12 @@ pub struct MessageListFilter {
 impl From<ListMessagesRequest> for MessageListFilter {
     fn from(req: ListMessagesRequest) -> Self {
         Self {
-            message_type: req.message_type,
+            message_type: req.message_type.map(|t| t.to_string()),
             from_agent_id: req.from_agent_id,
             to_agent_id: req.to_agent_id,
             to_agent_type: req.to_agent_type,
             trajectory_id: req.trajectory_id,
-            priority: req.priority,
+            priority: req.priority.map(|p| p.to_string()),
             undelivered_only: req.undelivered_only,
             unacknowledged_only: req.unacknowledged_only,
             limit: req.limit,

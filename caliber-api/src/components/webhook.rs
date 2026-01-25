@@ -6,7 +6,7 @@ use crate::types::{
     CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse,
     WebhookRetryPolicy,
 };
-use caliber_core::{TenantId, WebhookId};
+use caliber_core::{EntityIdType, TenantId, WebhookId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for WebhookResponse

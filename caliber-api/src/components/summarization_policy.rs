@@ -5,7 +5,7 @@
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
 use crate::types::{CreateSummarizationPolicyRequest, SummarizationPolicyResponse};
-use caliber_core::{SummarizationPolicyId, TenantId, TrajectoryId};
+use caliber_core::{EntityIdType, SummarizationPolicyId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for SummarizationPolicyResponse
@@ -41,7 +41,7 @@ impl_component! {
 
 impl TenantScoped for SummarizationPolicyResponse {
     fn tenant_id(&self) -> TenantId {
-        self.tenant_id
+        self.tenant_id.unwrap_or_else(TenantId::nil)
     }
 }
 impl Listable for SummarizationPolicyResponse {}

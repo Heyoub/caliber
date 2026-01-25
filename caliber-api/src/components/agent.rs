@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::types::{
     AgentResponse, ListAgentsRequest, RegisterAgentRequest, UpdateAgentRequest,
 };
-use caliber_core::{AgentId, TenantId, TrajectoryId, ScopeId};
+use caliber_core::{AgentId, EntityIdType, ScopeId, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 
 // Implement Component trait for AgentResponse
@@ -24,14 +24,14 @@ impl_component! {
             SqlParam::Json(serde_json::to_value(&req.capabilities).unwrap_or(JsonValue::Array(vec![]))),
             SqlParam::Json(serde_json::to_value(&req.memory_access).unwrap_or(JsonValue::Null)),
             SqlParam::Json(serde_json::to_value(&req.can_delegate_to).unwrap_or(JsonValue::Array(vec![]))),
-            SqlParam::OptUuid(req.reports_to),
+            SqlParam::OptUuid(req.reports_to.map(|id| id.as_uuid())),
             SqlParam::Uuid(tenant_id.as_uuid()),
         ],
         create_param_count: 6,
         build_updates: |req| {
             let mut updates = serde_json::Map::new();
             if let Some(status) = &req.status {
-                updates.insert("status".to_string(), JsonValue::String(status.clone()));
+                updates.insert("status".to_string(), JsonValue::String(status.to_string()));
             }
             if let Some(current_trajectory_id) = req.current_trajectory_id {
                 updates.insert("current_trajectory_id".to_string(), JsonValue::String(current_trajectory_id.to_string()));

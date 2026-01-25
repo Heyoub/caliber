@@ -10,7 +10,10 @@
 //! - Dragon 3: Change journal for cache invalidation
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityIdType, EntityType, TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId, AgentId};
+use caliber_core::{
+    CaliberResult, EntityIdType, EntityType, StorageError, TenantId, TrajectoryId, ScopeId,
+    ArtifactId, NoteId, AgentId,
+};
 use uuid::Uuid;
 use caliber_storage::{
     CacheableEntity, ChangeJournal, Freshness, InMemoryChangeJournal, LmdbCacheBackend,
@@ -384,9 +387,9 @@ impl StorageFetcher<TrajectoryResponse> for TrajectoryFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<TrajectoryResponse>> {
         self.db
-            .trajectory_get(TrajectoryId::from(entity_id), TenantId::from(tenant_id))
+            .trajectory_get(TrajectoryId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
+            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
     }
 }
 
@@ -403,9 +406,9 @@ impl StorageFetcher<ScopeResponse> for ScopeFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<ScopeResponse>> {
         self.db
-            .scope_get(ScopeId::from(entity_id), TenantId::from(tenant_id))
+            .scope_get(ScopeId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
+            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
     }
 }
 
@@ -422,9 +425,9 @@ impl StorageFetcher<ArtifactResponse> for ArtifactFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<ArtifactResponse>> {
         self.db
-            .artifact_get(ArtifactId::from(entity_id), TenantId::from(tenant_id))
+            .artifact_get(ArtifactId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
+            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
     }
 }
 
@@ -441,9 +444,9 @@ impl StorageFetcher<NoteResponse> for NoteFetcher<'_> {
         tenant_id: Uuid,
     ) -> CaliberResult<Option<NoteResponse>> {
         self.db
-            .note_get(NoteId::from(entity_id), TenantId::from(tenant_id))
+            .note_get(NoteId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Internal(e.to_string()))
+            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
     }
 }
 
@@ -453,8 +456,8 @@ mod tests {
 
     #[test]
     fn test_trajectory_response_cacheable_entity() {
-        let trajectory_id = TrajectoryId::from(Uuid::now_v7());
-        let tenant_id = TenantId::from(Uuid::now_v7());
+        let trajectory_id = TrajectoryId::new(Uuid::now_v7());
+        let tenant_id = TenantId::new(Uuid::now_v7());
 
         let trajectory = TrajectoryResponse {
             trajectory_id,
@@ -479,10 +482,10 @@ mod tests {
 
     #[test]
     fn test_artifact_response_cacheable_entity() {
-        let artifact_id = ArtifactId::from(Uuid::now_v7());
-        let tenant_id = TenantId::from(Uuid::now_v7());
-        let trajectory_id = TrajectoryId::from(Uuid::now_v7());
-        let scope_id = ScopeId::from(Uuid::now_v7());
+        let artifact_id = ArtifactId::new(Uuid::now_v7());
+        let tenant_id = TenantId::new(Uuid::now_v7());
+        let trajectory_id = TrajectoryId::new(Uuid::now_v7());
+        let scope_id = ScopeId::new(Uuid::now_v7());
 
         let artifact = ArtifactResponse {
             artifact_id,

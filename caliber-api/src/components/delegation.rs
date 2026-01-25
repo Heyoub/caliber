@@ -25,7 +25,7 @@ impl_component! {
             SqlParam::Uuid(req.from_agent_id.as_uuid()),
             SqlParam::Uuid(req.to_agent_id.as_uuid()),
             SqlParam::Uuid(req.trajectory_id.as_uuid()),
-            SqlParam::OptUuid(req.scope_id.map(|id| id.as_uuid())),
+            SqlParam::Uuid(req.scope_id.as_uuid()),
             SqlParam::String(req.task_description.clone()),
             SqlParam::OptTimestamp(req.expected_completion),
             SqlParam::OptJson(req.context.clone()),
