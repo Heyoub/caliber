@@ -26,9 +26,14 @@ is_local_db() {
       ;;
   esac
 }
-sudo_psql_local() {
-  sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${CALIBER_DB_NAME}" "$@"
-}
+  sudo_psql_local() {
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${CALIBER_DB_NAME}" "$@"
+  }
+  reset_schema_local() {
+    sudo_psql_local -c "DROP SCHEMA public CASCADE;"
+    sudo_psql_local -c "CREATE SCHEMA public;"
+    sudo_psql_local -c "GRANT ALL ON SCHEMA public TO ${CALIBER_DB_USER};"
+  }
 
 if [[ "${DB_TESTS:-}" == "1" ]]; then
   echo "==> DB-backed API tests (requires CALIBER_DB_* env)"
@@ -77,6 +82,11 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
       if ! psql_as "${BOOTSTRAP_USER}" "${BOOTSTRAP_PASSWORD}" -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null; then
         if is_local_db && sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null; then
           echo "Initialized caliber_pg via sudo for local Postgres."
+        elif is_local_db && [[ "${CALIBER_DB_RESET:-}" == "1" ]]; then
+          echo "Resetting local schema to allow extension install (CALIBER_DB_RESET=1)."
+          reset_schema_local
+          sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null
+          echo "Initialized caliber_pg after schema reset."
         elif is_local_db && sudo_psql_local -f "caliber-pg/sql/caliber_pg--0.4.4.sql" >/dev/null; then
           echo "Initialized caliber_pg schema via SQL bootstrap for local Postgres."
         else
@@ -110,6 +120,11 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
     if is_local_db; then
       if sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null; then
         echo "Initialized caliber_pg via sudo for local Postgres."
+      elif [[ "${CALIBER_DB_RESET:-}" == "1" ]]; then
+        echo "Resetting local schema to allow extension install (CALIBER_DB_RESET=1)."
+        reset_schema_local
+        sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null
+        echo "Initialized caliber_pg after schema reset."
       elif sudo_psql_local -f "caliber-pg/sql/caliber_pg--0.4.4.sql" >/dev/null; then
         echo "Initialized caliber_pg schema via SQL bootstrap for local Postgres."
       fi
