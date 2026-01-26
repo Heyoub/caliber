@@ -148,7 +148,11 @@ cargo build -p caliber-pg --release
 # Package for Postgres
 cargo pgrx package -p caliber-pg
 
-# Install
+# Install into Postgres (requires permissions to write extension files)
+cargo pgrx install --package caliber-pg --pg-config "/usr/lib/postgresql/18/bin/pg_config"
+
+# Enable extensions
+psql -c "CREATE EXTENSION vector;"
 psql -c "CREATE EXTENSION caliber_pg;"
 
 # Run tests (non-pgrx)

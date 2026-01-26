@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4a211844f8875c52e335a5027e4a7c7058ee71a120092b0206b21c85fe169097 # shrinks to ast = CaliberAst { version: "1.0", definitions: [Memory(MemoryDef { name: "A", memory_type: Ephemeral, schema: [FieldDef { name: "_", field_type: Uuid, nullable: false, default: None, security: None }], retention: Persistent, lifecycle: Explicit, parent: None, indexes: [IndexDef { field: "On", index_type: Btree, options: [] }], inject_on: [], artifacts: [], modifiers: [] })] }
+cc 46cb2f60ae7fbc1f8dcbad1c8f1408e0286d6ed94c414c71a65d0081404bd809 # shrinks to ast = CaliberAst { version: "1.0", definitions: [Adapter(AdapterDef { name: "on", adapter_type: Postgres, connection: "postgresql://a", options: [] })] }

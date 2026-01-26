@@ -5858,3 +5858,12 @@ Key abstractions:
 4. **Token Budget**: Segment-based budgets give fine-grained control over context assembly
 
 **Status:** Primitive enhancement complete. Awaiting cargo check/clippy/test verification.
+
+---
+
+## 2026-01-24
+
+**Test Harness Updates**
+- Extended `scripts/test.sh` to handle DB bootstrap with optional superuser credentials.
+- Added guardrails for pgvector and `caliber_pg` extension availability.
+- Documented extension install requirements for DB-backed API tests.

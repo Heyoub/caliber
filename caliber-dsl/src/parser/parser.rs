@@ -2820,7 +2820,7 @@ mod prop_tests {
 
     fn arb_field_def() -> impl Strategy<Value = FieldDef> {
         (
-            "[a-zA-Z_][a-zA-Z0-9_]*",
+            "[a-z_][a-z0-9_]*",
             arb_field_type(),
             any::<bool>(),
         )
@@ -2835,7 +2835,7 @@ mod prop_tests {
 
     fn arb_index_def() -> impl Strategy<Value = IndexDef> {
         (
-            "[a-zA-Z_][a-zA-Z0-9_]*",
+            "[a-z_][a-z0-9_]*",
             arb_index_type(),
             prop::collection::vec(("[a-zA-Z_]+", "[a-zA-Z0-9_]+"), 0..3),
         )

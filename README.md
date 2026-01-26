@@ -68,16 +68,14 @@ cargo pgrx test pg18 --package caliber-pg
 
 Note: `openapi.json` is CI-generated and not committed.
 
-```bash
-# Run pgrx tests
-cargo pgrx test pg18 --package caliber-pg
-```
-
 Use `./scripts/test.sh` to run clippy, workspace tests, and pg18 pgrx tests in one pass.
 
 ### Hello World (Postgres, low-level API)
 
+Requires pgvector and the `caliber_pg` extension to be installed in the target Postgres instance.
+
 ```bash
+psql -c "CREATE EXTENSION vector;"
 psql -c "CREATE EXTENSION caliber_pg;"
 psql -c "SELECT caliber_init();"
 psql -c "SELECT caliber_trajectory_get(caliber_trajectory_create('hello-world', NULL, NULL));"
@@ -164,6 +162,7 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 ## 📊 Test Coverage
 
 Run `./scripts/test.sh` for the full local test matrix (clippy + workspace tests + pg18 pgrx tests).
+Set `DB_TESTS=1` with `CALIBER_DB_*` to include DB-backed API tests; the script bootstraps schema via `caliber_init` or the SQL bootstrap. Agent DB tests require the `caliber_pg` extension to be installed in that Postgres instance.
 
 ---
 

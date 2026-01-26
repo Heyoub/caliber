@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 #### Test Tooling
 - `scripts/test.sh` to run clippy, workspace tests (excluding `caliber-pg`), and `cargo pgrx test`
+- DB test harness now bootstraps schema via `caliber_init` or SQL bootstrap when `DB_TESTS=1`
+- DB test harness supports `CALIBER_DB_BOOTSTRAP_USER/PASSWORD` for superuser bootstrap tasks
+- DB agent tests require the `caliber_pg` extension to be installed in the target Postgres
 - pg_test coverage for artifact embeddings with vector search (insert/get + SPI query)
 
 
