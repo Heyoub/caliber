@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+#### Test Tooling
+- `scripts/test.sh` to run clippy, workspace tests (excluding `caliber-pg`), and `cargo pgrx test`
+- pg_test coverage for artifact embeddings with vector search (insert/get + SPI query)
+
 
 #### Event System Enhancements
 - `EventHeader` struct with hash chaining for audit integrity
@@ -56,6 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.4] - 2026-01-24
 
 ### Changed
+- Typed-ID refactor completion across API/PG tests and handlers
+- `AgentStatus` now includes `Offline` with full pg status mapping
+- Test guidance updated for pgrx (use `cargo pgrx test`) and TMPDIR workaround
 
 - **BREAKING:** Removed `EntityId` type alias in favor of 15 distinct typed IDs
   - `TenantId`, `TrajectoryId`, `ScopeId`, `ArtifactId`, `NoteId`, `TurnId`

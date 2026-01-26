@@ -7,8 +7,9 @@ and a predictable rollout path.
 ## 1) Build and Release Readiness
 
 - Verify `cargo build --workspace --exclude caliber-pg` passes.
-- Verify `cargo test --workspace --exclude caliber-pg` passes.
-- Verify `cargo clippy --workspace --exclude caliber-pg -- -D warnings` passes.
+- Verify `TMPDIR=$PWD/target/tmp cargo test --workspace --exclude caliber-pg` passes.
+- Verify `TMPDIR=$PWD/target/tmp cargo clippy --workspace --exclude caliber-pg -- -D warnings` passes.
+- If running DB-backed API property tests, set `CALIBER_DB_*` env vars and run with `--features db-tests`.
 - Verify formatting (add `rustfmt.toml` if you want repo-wide enforcement).
 - Verify dependency policy (add `deny.toml` if you want supply-chain gates).
 - Record the build matrix (Rust version, PostgreSQL version, pgrx version).
@@ -17,10 +18,8 @@ and a predictable rollout path.
 
 - PostgreSQL 18+ is required.
 - `cargo pgrx init` must run on the deployment host.
-- `cargo pgrx test` is currently blocked by upstream pgrx-tests/PG18 incompatibility.
-  - Fallback test lane: run full workspace tests excluding `caliber-pg`.
+- Run `cargo pgrx test pg18 --package caliber-pg` for extension tests.
 - Extension smoke test: `CREATE EXTENSION caliber_pg; SELECT caliber_init();`
-  - Track upstream fix and re-enable pgrx tests when available.
 
 ## 3) Migrations and Schema
 
@@ -70,4 +69,3 @@ and a predictable rollout path.
 - Keep secrets out of source control.
 - Rotate API keys on schedule.
 - Review auth logs for tenant boundary violations.
-

@@ -5,7 +5,7 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.4.3  
+**Version:** 0.4.4  
 **Architecture:** Multi-crate ECS (Entity-Component-System)  
 **Language:** Rust (pgrx)
 
@@ -35,14 +35,14 @@ cd caliber
 # Build all crates (excluding pgrx extension)
 cargo build --workspace --exclude caliber-pg
 
-# Run all tests (165 tests)
-cargo test --workspace --exclude caliber-pg
+# Run all tests (non-pgrx)
+TMPDIR=$PWD/target/tmp cargo test --workspace --exclude caliber-pg
 
 # Run with verbose output
-cargo test --workspace --exclude caliber-pg -- --nocapture
+TMPDIR=$PWD/target/tmp cargo test --workspace --exclude caliber-pg -- --nocapture
 
 # Run clippy lints
-cargo clippy --workspace --exclude caliber-pg -- -D warnings
+TMPDIR=$PWD/target/tmp cargo clippy --workspace --exclude caliber-pg -- -D warnings
 
 # (Optional) Install JS deps for SDK/landing work
 bun install
@@ -63,12 +63,17 @@ cargo build -p caliber-pg --release
 # Package for deployment
 cargo pgrx package -p caliber-pg
 
-# Run pgrx tests
-cargo pgrx test -p caliber-pg
+cargo pgrx test pg18 --package caliber-pg
 ```
 
-Note: `pgrx-tests` is currently blocked by upstream PG18 incompatibility.
-Use the ops checklist for the fallback test lane.
+Note: `openapi.json` is CI-generated and not committed.
+
+```bash
+# Run pgrx tests
+cargo pgrx test pg18 --package caliber-pg
+```
+
+Use `./scripts/test.sh` to run clippy, workspace tests, and pg18 pgrx tests in one pass.
 
 ### Hello World (Postgres, low-level API)
 
@@ -91,8 +96,6 @@ caliber/
 ├── caliber-core/        # Entity types (data only, no behavior)
 ├── caliber-storage/     # Storage trait + mock implementation
 ├── caliber-pcp/         # Validation, checkpoints, recovery
-├── caliber-llm/         # VAL (Vector Abstraction Layer)
-├── caliber-agents/      # Multi-agent coordination
 ├── caliber-dsl/         # DSL parser → CaliberConfig
 ├── caliber-pg/          # pgrx extension (requires PostgreSQL)
 ├── caliber-api/         # REST/gRPC/WebSocket API server
@@ -122,7 +125,7 @@ caliber/
 CALIBER uses ECS (Entity-Component-System) architecture:
 
 - **Entities** (caliber-core): Pure data structures — Trajectory, Scope, Artifact, Note, Turn
-- **Components** (caliber-*): Behavior via traits — storage, context, validation, LLM
+- **Components** (caliber-*): Behavior via traits — storage, validation, DSL compilation, API orchestration
 - **System** (caliber-pg): Wires everything together in PostgreSQL
 
 ```
@@ -134,8 +137,7 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 │  PCP Protocol Layer (validation, checkpoints, harm reduction)   │
 │                              │                                  │
 │  CALIBER Components (ECS)                                       │
-│  caliber-core │ caliber-storage │ caliber-pcp                   │
-│  caliber-llm  │ caliber-agents  │ caliber-dsl                   │
+│  caliber-core │ caliber-storage │ caliber-pcp │ caliber-dsl      │
 │                              │                                  │
 │  pgrx Direct Storage (heap ops, no SQL in hot path)             │
 │                              │                                  │
@@ -161,17 +163,7 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 
 ## 📊 Test Coverage
 
-| Crate | Unit Tests | Property Tests | Total |
-|-------|------------|----------------|-------|
-| caliber-core | 7 | 10 | 17 |
-| caliber-dsl | 21 | 10 | 31 |
-| caliber-llm | 16 | 7 | 23 |
-| context module (in caliber-core) | 10 | 9 | 19 |
-| caliber-pcp | 16 | 5 | 21 |
-| caliber-agents | 16 | 6 | 22 |
-| caliber-storage | 12 | 5 | 17 |
-| caliber-test-utils | 10 | 5 | 15 |
-| **Total** | **108** | **57** | **165** |
+Run `./scripts/test.sh` for the full local test matrix (clippy + workspace tests + pg18 pgrx tests).
 
 ---
 

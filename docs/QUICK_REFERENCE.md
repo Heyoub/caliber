@@ -22,8 +22,6 @@ Keep presets explicit and tracked alongside config changes.
 caliber-core/        # Entities (data only)
 caliber-storage/     # Storage trait + pgrx
 caliber-pcp/         # Validation, checkpoints
-caliber-llm/         # VAL (Vector Abstraction Layer)
-caliber-agents/      # Multi-agent coordination
 caliber-dsl/         # DSL → config (separate)
 caliber-pg/          # pgrx extension (runtime)
 ```
@@ -152,6 +150,12 @@ cargo pgrx package -p caliber-pg
 
 # Install
 psql -c "CREATE EXTENSION caliber_pg;"
+
+# Run tests (non-pgrx)
+TMPDIR=$PWD/target/tmp cargo test --workspace --exclude caliber-pg
+
+# Run extension tests
+cargo pgrx test pg18 --package caliber-pg
 ```
 
 ---

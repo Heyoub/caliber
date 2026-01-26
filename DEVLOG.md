@@ -19,6 +19,20 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### February 5, 2026 — Typed ID Test Migration + PG Test Harness
+
+**Completed:**
+
+- ✅ Updated API/PG tests to typed IDs and new Axum handler signatures
+- ✅ Added embedding roundtrip + vector search pg_test for artifacts
+- ✅ Added `scripts/test.sh` for clippy + workspace tests + pgrx tests (pg18)
+- ✅ Documented TMPDIR workaround for cross-device link errors
+- ✅ Extended agent status handling with `Offline` in pgrx mappings
+
+**Notes:**
+
+- `cargo test --all-targets --all-features` fails for pgrx crates; use `cargo pgrx test`.
+
 ### January 12, 2026 — Project Initialization
 
 **Completed:**

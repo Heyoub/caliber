@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-api"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-graphql",
  "async-graphql-axum",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-core"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-trait",
  "bitflags",
@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-dsl"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "caliber-core",
  "proptest",
@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-pcp"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "caliber-core",
  "chrono",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-pg"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "caliber-core",
  "caliber-dsl",
@@ -602,7 +602,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-storage"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-trait",
  "caliber-core",
@@ -619,7 +619,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-test-utils"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-trait",
  "caliber-core",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "caliber-tui"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "caliber-api",
  "caliber-core",

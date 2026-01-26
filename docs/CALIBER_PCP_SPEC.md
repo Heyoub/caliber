@@ -19,6 +19,8 @@ philosophy: "NOTHING HARD-CODED. This is a FRAMEWORK, not a product."
 
 **Critical Philosophy**: CALIBER is a **toolkit/framework**, not a SaaS product. **Nothing is hard-coded.** Every value, threshold, timeout, and behavior is configurable. Users configure everything explicitly. Missing required configuration = error, not silent default.
 
+**Terminology update (typed IDs)**: This spec uses `EntityId` as a conceptual placeholder. In code, IDs are distinct newtypes (`TenantId`, `TrajectoryId`, `ScopeId`, etc.) with the `EntityIdType` trait providing `new/as_uuid/now_v7/nil`.
+
 ---
 
 ## 0. CRITICAL ARCHITECTURE PRINCIPLES
