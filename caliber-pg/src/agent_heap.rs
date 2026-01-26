@@ -233,6 +233,7 @@ pub fn agent_set_status_heap(
             AgentStatus::Active => "active",
             AgentStatus::Blocked => "blocked",
             AgentStatus::Failed => "failed",
+            AgentStatus::Offline => "offline",
         };
         values[agent::STATUS as usize - 1] = string_to_datum(status_str);
         
@@ -338,6 +339,7 @@ unsafe fn tuple_to_agent(
         "active" => AgentStatus::Active,
         "blocked" => AgentStatus::Blocked,
         "failed" => AgentStatus::Failed,
+        "offline" => AgentStatus::Offline,
         _ => {
             pgrx::warning!("CALIBER: Unknown agent status '{}', defaulting to Idle", status_str);
             AgentStatus::Idle

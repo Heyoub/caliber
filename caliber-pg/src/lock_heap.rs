@@ -387,7 +387,7 @@ mod tests {
 
     /// Generate a random UUID
     fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+        any::<[u8; 16]>().prop_map(uuid::Uuid::from_bytes)
     }
 
     /// Generate a lock mode
@@ -473,7 +473,7 @@ mod tests {
                 prop_assert_eq!(l.resource_id, resource_id);
                 prop_assert_eq!(l.holder_agent_id.as_uuid(), holder_agent_id.as_uuid());
                 prop_assert_eq!(l.mode, mode);
-                prop_assert_eq!(row.lock.tenant_id.as_uuid(), tenant_id.as_uuid());
+                prop_assert_eq!(l.tenant_id.as_uuid(), tenant_id.as_uuid());
                 
                 // Timestamps should be set
                 prop_assert!(l.acquired_at <= chrono::Utc::now());

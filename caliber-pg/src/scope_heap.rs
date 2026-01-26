@@ -626,7 +626,7 @@ mod tests {
     fn arb_purpose() -> impl Strategy<Value = Option<String>> {
         prop_oneof![
             Just(None),
-            "[a-zA-Z0-9 .,!?-]{0,255}".prop_map(|s| Some(s)),
+            "[a-zA-Z0-9 .,!?-]{0,255}".prop_map(Some),
         ]
     }
 
@@ -649,6 +649,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
+        use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
         use crate::pg_test;
         use crate::scope_heap::{scope_create_heap, scope_get_heap};
 
@@ -762,6 +763,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod update_tests {
         use super::*;
+        use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
         use crate::pg_test;
         use crate::scope_heap::{
             scope_close_heap, scope_create_heap, scope_get_heap, scope_update_tokens_heap,
@@ -937,6 +939,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod list_tests {
         use super::*;
+        use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
         use crate::pg_test;
         use crate::scope_heap::{scope_create_heap, scope_list_by_trajectory_heap};
 

@@ -9,23 +9,28 @@
 //!
 //! **Validates: Requirements 1.4**
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::Json;
 use caliber_api::{
     db::DbClient,
     events::WsEvent,
     middleware::AuthExtractor,
+    PathId,
     routes::{
         agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn,
     },
     types::{
         AcquireLockRequest, CreateArtifactRequest, CreateDelegationRequest, CreateHandoffRequest,
         CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest, CreateTurnRequest,
-        MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, SendMessageRequest,
-        UpdateAgentRequest, UpdateScopeRequest, UpdateTrajectoryRequest,
+        MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, ReleaseLockRequest,
+        SendMessageRequest, UpdateAgentRequest, UpdateScopeRequest, UpdateTrajectoryRequest,
     },
 };
-use caliber_core::{ArtifactType, ExtractionMethod, NoteType, TTL, TrajectoryStatus, TurnRole};
+use caliber_core::{
+    AgentId, AgentStatus, ArtifactId, ArtifactType, DelegationId, DelegationResultStatus,
+    EntityIdType, ExtractionMethod, HandoffId, LockId, MessageId, NoteId, NoteType, ScopeId,
+    TenantId, TrajectoryId, TrajectoryStatus, TurnId, TurnRole, TTL,
+};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::sync::Arc;
@@ -39,7 +44,10 @@ mod test_db_support;
 mod test_ws_support;
 #[path = "support/pcp.rs"]
 mod test_pcp_support;
+#[path = "support/event_dag.rs"]
+mod test_event_dag_support;
 use test_auth_support::test_auth_context;
+use test_event_dag_support::test_event_dag;
 
 // ============================================================================
 // TEST CONFIGURATION
@@ -128,7 +136,7 @@ fn default_memory_access() -> MemoryAccessRequest {
 async fn seed_trajectory(
     db: &DbClient,
     name: &str,
-    tenant_id: Uuid,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::TrajectoryResponse, TestCaseError> {
     let req = CreateTrajectoryRequest {
         name: name.to_string(),
@@ -144,8 +152,8 @@ async fn seed_trajectory(
 
 async fn seed_scope(
     db: &DbClient,
-    trajectory_id: Uuid,
-    tenant_id: Uuid,
+    trajectory_id: TrajectoryId,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::ScopeResponse, TestCaseError> {
     let req = CreateScopeRequest {
         trajectory_id,
@@ -155,7 +163,7 @@ async fn seed_scope(
         token_budget: 1000,
         metadata: None,
     };
-    db.scope_create(&req, tenant_id)
+    db.create::<caliber_api::types::ScopeResponse>(&req, tenant_id)
         .await
         .map_err(|e| TestCaseError::fail(format!("Failed to seed scope: {}", e.message)))
 }
@@ -163,7 +171,7 @@ async fn seed_scope(
 async fn seed_agent(
     db: &DbClient,
     agent_type: &str,
-    tenant_id: Uuid,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::AgentResponse, TestCaseError> {
     let req = RegisterAgentRequest {
         agent_type: agent_type.to_string(),
@@ -179,9 +187,9 @@ async fn seed_agent(
 
 async fn seed_lock(
     db: &DbClient,
-    holder_agent_id: Uuid,
+    holder_agent_id: AgentId,
     resource_id: Uuid,
-    tenant_id: Uuid,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::LockResponse, TestCaseError> {
     let req = AcquireLockRequest {
         resource_type: "trajectory".to_string(),
@@ -197,11 +205,11 @@ async fn seed_lock(
 
 async fn seed_message(
     db: &DbClient,
-    from_agent_id: Uuid,
-    to_agent_id: Uuid,
-    trajectory_id: Option<Uuid>,
-    scope_id: Option<Uuid>,
-    tenant_id: Uuid,
+    from_agent_id: AgentId,
+    to_agent_id: AgentId,
+    trajectory_id: Option<TrajectoryId>,
+    scope_id: Option<ScopeId>,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::MessageResponse, TestCaseError> {
     let req = SendMessageRequest {
         from_agent_id,
@@ -222,11 +230,11 @@ async fn seed_message(
 
 async fn seed_delegation(
     db: &DbClient,
-    from_agent_id: Uuid,
-    to_agent_id: Uuid,
-    trajectory_id: Uuid,
-    scope_id: Uuid,
-    tenant_id: Uuid,
+    from_agent_id: AgentId,
+    to_agent_id: AgentId,
+    trajectory_id: TrajectoryId,
+    scope_id: ScopeId,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::DelegationResponse, TestCaseError> {
     let req = CreateDelegationRequest {
         from_agent_id,
@@ -244,11 +252,11 @@ async fn seed_delegation(
 
 async fn seed_handoff(
     db: &DbClient,
-    from_agent_id: Uuid,
-    to_agent_id: Uuid,
-    trajectory_id: Uuid,
-    scope_id: Uuid,
-    tenant_id: Uuid,
+    from_agent_id: AgentId,
+    to_agent_id: AgentId,
+    trajectory_id: TrajectoryId,
+    scope_id: ScopeId,
+    tenant_id: TenantId,
 ) -> Result<caliber_api::types::HandoffResponse, TestCaseError> {
     let req = CreateHandoffRequest {
         from_agent_id,
@@ -270,35 +278,33 @@ async fn seed_handoff(
 #[derive(Debug)]
 enum ExpectedEvent {
     TrajectoryCreated,
-    TrajectoryUpdated(Uuid),
-    TrajectoryDeleted(Uuid),
+    TrajectoryUpdated(TrajectoryId),
+    TrajectoryDeleted(TrajectoryId),
     ScopeCreated,
-    ScopeUpdated(Uuid),
-    ScopeClosed(Uuid),
+    ScopeUpdated(ScopeId),
+    ScopeClosed(ScopeId),
     ArtifactCreated,
     NoteCreated,
     TurnCreated,
     AgentRegistered,
-    AgentStatusChanged(Uuid, String),
-    AgentUnregistered(Uuid),
+    AgentStatusChanged(AgentId, String),
+    AgentUnregistered(AgentId),
     LockAcquired,
-    LockReleased(Uuid),
+    LockReleased(LockId),
     MessageSent,
-    MessageAcknowledged(Uuid),
+    MessageAcknowledged(MessageId),
     DelegationCreated,
-    DelegationAccepted(Uuid),
-    DelegationCompleted(Uuid),
+    DelegationAccepted(DelegationId),
+    DelegationCompleted(DelegationId),
     HandoffCreated,
-    HandoffAccepted(Uuid),
-    HandoffCompleted(Uuid),
+    HandoffAccepted(HandoffId),
+    HandoffCompleted(HandoffId),
 }
 
 fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCaseError> {
-    let nil_id = Uuid::nil();
-
     match (expected, actual) {
         (ExpectedEvent::TrajectoryCreated, WsEvent::TrajectoryCreated { trajectory }) => {
-            prop_assert_ne!(trajectory.trajectory_id, nil_id);
+            prop_assert_ne!(trajectory.trajectory_id, TrajectoryId::nil());
             Ok(())
         }
         (ExpectedEvent::TrajectoryUpdated(id), WsEvent::TrajectoryUpdated { trajectory }) => {
@@ -310,7 +316,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             Ok(())
         }
         (ExpectedEvent::ScopeCreated, WsEvent::ScopeCreated { scope }) => {
-            prop_assert_ne!(scope.scope_id, nil_id);
+            prop_assert_ne!(scope.scope_id, ScopeId::nil());
             Ok(())
         }
         (ExpectedEvent::ScopeUpdated(id), WsEvent::ScopeUpdated { scope }) => {
@@ -322,19 +328,19 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             Ok(())
         }
         (ExpectedEvent::ArtifactCreated, WsEvent::ArtifactCreated { artifact }) => {
-            prop_assert_ne!(artifact.artifact_id, nil_id);
+            prop_assert_ne!(artifact.artifact_id, ArtifactId::nil());
             Ok(())
         }
         (ExpectedEvent::NoteCreated, WsEvent::NoteCreated { note }) => {
-            prop_assert_ne!(note.note_id, nil_id);
+            prop_assert_ne!(note.note_id, NoteId::nil());
             Ok(())
         }
         (ExpectedEvent::TurnCreated, WsEvent::TurnCreated { turn }) => {
-            prop_assert_ne!(turn.turn_id, nil_id);
+            prop_assert_ne!(turn.turn_id, TurnId::nil());
             Ok(())
         }
         (ExpectedEvent::AgentRegistered, WsEvent::AgentRegistered { agent }) => {
-            prop_assert_ne!(agent.agent_id, nil_id);
+            prop_assert_ne!(agent.agent_id, AgentId::nil());
             Ok(())
         }
         (ExpectedEvent::AgentStatusChanged(id, status), WsEvent::AgentStatusChanged { tenant_id: _, agent_id, status: actual_status }) => {
@@ -347,7 +353,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             Ok(())
         }
         (ExpectedEvent::LockAcquired, WsEvent::LockAcquired { lock }) => {
-            prop_assert_ne!(lock.lock_id, nil_id);
+            prop_assert_ne!(lock.lock_id, LockId::nil());
             Ok(())
         }
         (ExpectedEvent::LockReleased(id), WsEvent::LockReleased { tenant_id: _, lock_id }) => {
@@ -355,7 +361,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             Ok(())
         }
         (ExpectedEvent::MessageSent, WsEvent::MessageSent { message }) => {
-            prop_assert_ne!(message.message_id, nil_id);
+            prop_assert_ne!(message.message_id, MessageId::nil());
             Ok(())
         }
         (ExpectedEvent::MessageAcknowledged(id), WsEvent::MessageAcknowledged { tenant_id: _, message_id }) => {
@@ -363,7 +369,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             Ok(())
         }
         (ExpectedEvent::DelegationCreated, WsEvent::DelegationCreated { delegation }) => {
-            prop_assert_ne!(delegation.delegation_id, nil_id);
+            prop_assert_ne!(delegation.delegation_id, DelegationId::nil());
             Ok(())
         }
         (ExpectedEvent::DelegationAccepted(id), WsEvent::DelegationAccepted { tenant_id: _, delegation_id }) => {
@@ -375,7 +381,7 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             Ok(())
         }
         (ExpectedEvent::HandoffCreated, WsEvent::HandoffCreated { handoff }) => {
-            prop_assert_ne!(handoff.handoff_id, nil_id);
+            prop_assert_ne!(handoff.handoff_id, HandoffId::nil());
             Ok(())
         }
         (ExpectedEvent::HandoffAccepted(id), WsEvent::HandoffAccepted { tenant_id: _, handoff_id }) => {
@@ -413,6 +419,7 @@ proptest! {
             let auth = test_auth_context();
             let ws = test_ws_state();
             let pcp = test_pcp_support::test_pcp_runtime();
+            let event_dag = test_event_dag();
             let mut rx = ws.subscribe();
 
             let expected = match case {
@@ -427,6 +434,7 @@ proptest! {
                     trajectory::create_trajectory(
                         State(db.clone()),
                         State(ws.clone()),
+                        State(event_dag.clone()),
                         AuthExtractor(auth.clone()),
                         Json(req),
                     )
@@ -444,8 +452,9 @@ proptest! {
                     trajectory::update_trajectory(
                         State(db.clone()),
                         State(ws.clone()),
+                        State(event_dag.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(trajectory.trajectory_id),
+                        PathId(trajectory.trajectory_id),
                         Json(req),
                     )
                     .await?;
@@ -456,8 +465,9 @@ proptest! {
                     trajectory::delete_trajectory(
                         State(db.clone()),
                         State(ws.clone()),
+                        State(event_dag.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(trajectory.trajectory_id),
+                        PathId(trajectory.trajectory_id),
                     )
                     .await?;
                     ExpectedEvent::TrajectoryDeleted(trajectory.trajectory_id)
@@ -475,6 +485,7 @@ proptest! {
                     scope::create_scope(
                         State(db.clone()),
                         State(ws.clone()),
+                        State(event_dag.clone()),
                         AuthExtractor(auth.clone()),
                         Json(req),
                     )
@@ -493,8 +504,9 @@ proptest! {
                     scope::update_scope(
                         State(db.clone()),
                         State(ws.clone()),
+                        State(event_dag.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(scope.scope_id),
+                        PathId(scope.scope_id),
                         Json(req),
                     )
                     .await?;
@@ -506,9 +518,10 @@ proptest! {
                     scope::close_scope(
                         State(db.clone()),
                         State(ws.clone()),
+                        State(event_dag.clone()),
                         State(pcp.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(scope.scope_id),
+                        PathId(scope.scope_id),
                     )
                     .await?;
                     ExpectedEvent::ScopeClosed(scope.scope_id)
@@ -600,7 +613,7 @@ proptest! {
                 MutationCase::AgentUpdate => {
                     let agent = seed_agent(&db, "seed-updater", auth.tenant_id).await?;
                     let req = UpdateAgentRequest {
-                        status: Some("active".to_string()),
+                        status: Some(AgentStatus::Active),
                         current_trajectory_id: None,
                         current_scope_id: None,
                         capabilities: None,
@@ -610,7 +623,7 @@ proptest! {
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(agent.agent_id),
+                        PathId(agent.agent_id),
                         Json(req),
                     )
                     .await?;
@@ -622,7 +635,7 @@ proptest! {
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(agent.agent_id),
+                        PathId(agent.agent_id),
                     )
                     .await?;
                     ExpectedEvent::AgentUnregistered(agent.agent_id)
@@ -650,11 +663,15 @@ proptest! {
                     let agent = seed_agent(&db, "lock-releaser", auth.tenant_id).await?;
                     let resource_id = Uuid::now_v7();
                     let lock = seed_lock(&db, agent.agent_id, resource_id, auth.tenant_id).await?;
+                    let req = ReleaseLockRequest {
+                        releasing_agent_id: agent.agent_id,
+                    };
                     lock::release_lock(
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(lock.lock_id),
+                        PathId(lock.lock_id),
+                        Json(req),
                     )
                     .await?;
                     ExpectedEvent::LockReleased(lock.lock_id)
@@ -691,7 +708,7 @@ proptest! {
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(message.message_id),
+                        PathId(message.message_id),
                     )
                     .await?;
                     ExpectedEvent::MessageAcknowledged(message.message_id)
@@ -732,7 +749,7 @@ proptest! {
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(delegation.delegation_id),
+                        PathId(delegation.delegation_id),
                         Json(req),
                     )
                     .await?;
@@ -744,10 +761,10 @@ proptest! {
                     let trajectory = seed_trajectory(&db, "Delegation Complete Trajectory", auth.tenant_id).await?;
                     let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let delegation = seed_delegation(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
-                    db.delegation_accept(delegation.delegation_id, to_agent.agent_id).await?;
+                    delegation.accept(&db, to_agent.agent_id).await?;
                     let req = delegation::CompleteDelegationRequest {
                         result: caliber_api::types::DelegationResultResponse {
-                            status: "Success".to_string(),
+                            status: DelegationResultStatus::Success,
                             output: Some("Done".to_string()),
                             artifacts: vec![],
                             error: None,
@@ -757,7 +774,7 @@ proptest! {
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(delegation.delegation_id),
+                        PathId(delegation.delegation_id),
                         Json(req),
                     )
                     .await?;
@@ -798,7 +815,7 @@ proptest! {
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(handoff.handoff_id),
+                        PathId(handoff.handoff_id),
                         Json(req),
                     )
                     .await?;
@@ -810,12 +827,12 @@ proptest! {
                     let trajectory = seed_trajectory(&db, "Handoff Complete Trajectory", auth.tenant_id).await?;
                     let scope = seed_scope(&db, trajectory.trajectory_id, auth.tenant_id).await?;
                     let handoff = seed_handoff(&db, from_agent.agent_id, to_agent.agent_id, trajectory.trajectory_id, scope.scope_id, auth.tenant_id).await?;
-                    db.handoff_accept(handoff.handoff_id, to_agent.agent_id).await?;
+                    handoff.accept(&db, to_agent.agent_id).await?;
                     handoff::complete_handoff(
                         State(db.clone()),
                         State(ws.clone()),
                         AuthExtractor(auth.clone()),
-                        Path(handoff.handoff_id),
+                        PathId(handoff.handoff_id),
                     )
                     .await?;
                     ExpectedEvent::HandoffCompleted(handoff.handoff_id)

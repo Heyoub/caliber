@@ -12,7 +12,6 @@ use axum::{extract::State, Json};
 use caliber_api::events::WsEvent;
 use caliber_api::middleware::AuthExtractor;
 use caliber_api::routes::{artifact, note, scope, trajectory, turn};
-use caliber_api::state::ApiEventDag;
 use caliber_api::types::{
     CreateArtifactRequest, CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest,
     CreateTurnRequest,

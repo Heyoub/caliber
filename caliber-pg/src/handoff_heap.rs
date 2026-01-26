@@ -458,7 +458,7 @@ mod tests {
 
     /// Generate a random UUID
     fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+        any::<[u8; 16]>().prop_map(uuid::Uuid::from_bytes)
     }
 
     /// Generate an optional AgentId

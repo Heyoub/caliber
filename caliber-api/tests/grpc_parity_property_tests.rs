@@ -16,7 +16,6 @@ use caliber_api::{
     extractors::PathId,
     middleware::AuthExtractor,
     routes::{scope, trajectory},
-    state::ApiEventDag,
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse},
 };
 use caliber_api::proto::scope_service_server::ScopeService;

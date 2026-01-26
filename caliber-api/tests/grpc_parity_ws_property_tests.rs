@@ -13,7 +13,6 @@ use axum::Json;
 use caliber_api::grpc::{proto, TrajectoryServiceImpl};
 use caliber_api::middleware::AuthExtractor;
 use caliber_api::routes::trajectory;
-use caliber_api::state::ApiEventDag;
 use caliber_api::types::CreateTrajectoryRequest;
 use caliber_api::ws::WsState;
 use caliber_api::proto::trajectory_service_server::TrajectoryService;

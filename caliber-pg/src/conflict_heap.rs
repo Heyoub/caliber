@@ -435,7 +435,7 @@ mod tests {
 
     /// Generate a random Uuid
     fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+        any::<[u8; 16]>().prop_map(uuid::Uuid::from_bytes)
     }
 
     /// Generate an optional AgentId
@@ -473,6 +473,10 @@ mod tests {
             Just("decision".to_string()),
             Just("resource".to_string()),
         ]
+    }
+
+    fn arb_entity_id() -> impl Strategy<Value = uuid::Uuid> {
+        arb_uuid()
     }
 
     /// Generate a conflict resolution record
@@ -554,7 +558,7 @@ mod tests {
                 trajectory_id,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = uuid::Uuid::now_v7();
+                let conflict_id = ConflictId::now_v7();
                 let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
@@ -617,7 +621,7 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
+                let random_id = ConflictId::new(uuid::Uuid::from_bytes(bytes));
 
                 let tenant_id = TenantId::now_v7();
                 let result = conflict_get_heap(random_id, tenant_id);
@@ -647,9 +651,9 @@ mod tests {
                 arb_entity_id(),
                 arb_item_type(),
                 arb_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_optional_agent_id(),
+                arb_optional_agent_id(),
+                arb_optional_trajectory_id(),
                 arb_resolution(),
             );
 
@@ -665,7 +669,7 @@ mod tests {
                 resolution,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = uuid::Uuid::now_v7();
+                let conflict_id = ConflictId::now_v7();
                 let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
@@ -732,7 +736,7 @@ mod tests {
             let strategy = (any::<[u8; 16]>(), arb_resolution());
 
             runner.run(&strategy, |(bytes, resolution)| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
+                let random_id = ConflictId::new(uuid::Uuid::from_bytes(bytes));
 
                 let tenant_id = TenantId::now_v7();
                 let result = conflict_resolve_heap(random_id, &resolution, tenant_id);
@@ -778,7 +782,7 @@ mod tests {
                 trajectory_id,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = uuid::Uuid::now_v7();
+                let conflict_id = ConflictId::now_v7();
                 let tenant_id = TenantId::now_v7();
 
                 // Insert via heap
@@ -843,9 +847,9 @@ mod tests {
                 arb_entity_id(),
                 arb_item_type(),
                 arb_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
-                arb_optional_entity_id(),
+                arb_optional_agent_id(),
+                arb_optional_agent_id(),
+                arb_optional_trajectory_id(),
                 arb_resolution(),
             );
 
@@ -861,7 +865,7 @@ mod tests {
                 resolution,
             )| {
                 // Generate a new conflict ID
-                let conflict_id = uuid::Uuid::now_v7();
+                let conflict_id = ConflictId::now_v7();
                 let tenant_id = TenantId::now_v7();
 
                 // Insert via heap

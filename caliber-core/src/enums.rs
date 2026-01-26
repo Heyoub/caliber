@@ -97,6 +97,8 @@ pub enum AgentStatus {
     Blocked,
     /// Agent has failed and requires attention
     Failed,
+    /// Agent has been unregistered
+    Offline,
 }
 
 impl AgentStatus {
@@ -107,6 +109,7 @@ impl AgentStatus {
             AgentStatus::Active => "Active",
             AgentStatus::Blocked => "Blocked",
             AgentStatus::Failed => "Failed",
+            AgentStatus::Offline => "Offline",
         }
     }
 
@@ -117,6 +120,7 @@ impl AgentStatus {
             "active" => Ok(AgentStatus::Active),
             "blocked" => Ok(AgentStatus::Blocked),
             "failed" => Ok(AgentStatus::Failed),
+            "offline" => Ok(AgentStatus::Offline),
             _ => Err(AgentStatusParseError(s.to_string())),
         }
     }

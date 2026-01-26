@@ -573,7 +573,7 @@ mod tests {
 
     /// Generate a random uuid for artifact/note IDs
     fn arb_uuid() -> impl Strategy<Value = uuid::Uuid> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+        any::<[u8; 16]>().prop_map(uuid::Uuid::from_bytes)
     }
 
     /// Generate an optional agent type string
@@ -598,12 +598,12 @@ mod tests {
         ]
     }
 
-    /// Generate a constraints string (JSON)
-    fn arb_constraints() -> impl Strategy<Value = String> {
+    /// Generate constraints JSON
+    fn arb_constraints() -> impl Strategy<Value = serde_json::Value> {
         prop_oneof![
-            Just("{}".to_string()),
-            Just(r#"{"timeout":3600}"#.to_string()),
-            Just(r#"{"max_tokens":1000}"#.to_string()),
+            Just(serde_json::json!({})),
+            Just(serde_json::json!({"timeout": 3600})),
+            Just(serde_json::json!({"max_tokens": 1000})),
         ]
     }
 
@@ -720,7 +720,7 @@ mod tests {
                     shared_artifacts: &shared_artifacts,
                     shared_notes: &shared_notes,
                     additional_context: additional_context.as_deref(),
-                    constraints: &constraints,
+                    constraints: Some(&constraints),
                     deadline,
                     tenant_id,
                 });
@@ -748,7 +748,7 @@ mod tests {
                 prop_assert_eq!(d.shared_artifacts, shared_artifacts);
                 prop_assert_eq!(d.shared_notes, shared_notes);
                 prop_assert_eq!(d.additional_context, additional_context);
-                prop_assert_eq!(d.constraints, constraints);
+                prop_assert_eq!(d.constraints, Some(constraints));
                 prop_assert_eq!(d.status, DelegationStatus::Pending);
                 
                 // Timestamps should be set
@@ -843,7 +843,7 @@ mod tests {
                     shared_artifacts: &shared_artifacts,
                     shared_notes: &shared_notes,
                     additional_context: additional_context.as_deref(),
-                    constraints: &constraints,
+                    constraints: Some(&constraints),
                     deadline,
                     tenant_id,
                 });
@@ -900,12 +900,12 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             let strategy = (
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_agent_id(),
+                arb_optional_agent_id(),
                 arb_optional_agent_type(),
                 arb_task_description(),
-                arb_entity_id(),
-                arb_optional_entity_id(),
+                arb_trajectory_id(),
+                arb_optional_trajectory_id(),
                 arb_artifact_ids(),
                 arb_note_ids(),
                 arb_optional_context(),
@@ -944,7 +944,7 @@ mod tests {
                     shared_artifacts: &shared_artifacts,
                     shared_notes: &shared_notes,
                     additional_context: additional_context.as_deref(),
-                    constraints: &constraints,
+                    constraints: Some(&constraints),
                     deadline,
                     tenant_id,
                 });
@@ -1075,7 +1075,7 @@ mod tests {
                     shared_artifacts: &shared_artifacts,
                     shared_notes: &shared_notes,
                     additional_context: additional_context.as_deref(),
-                    constraints: &constraints,
+                    constraints: Some(&constraints),
                     deadline,
                     tenant_id,
                 });

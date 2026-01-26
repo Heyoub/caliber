@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use caliber_core::agent::ConflictResolution;
+use caliber_core::ConflictResolution;
 use caliber_pcp::{
     AntiSprawlConfig, ContextDagConfig, DosageConfig, GroundingConfig, LintingConfig, PCPConfig,
     PCPRuntime, PruneStrategy, RecoveryConfig, RecoveryFrequency, StalenessConfig,

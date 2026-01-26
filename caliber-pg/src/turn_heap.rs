@@ -518,7 +518,7 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
+                let random_id = ScopeId::new(uuid::Uuid::from_bytes(bytes));
                 
                 let tenant_id = TenantId::now_v7();
                 let result = turn_get_by_scope_heap(random_id, tenant_id);

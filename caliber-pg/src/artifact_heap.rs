@@ -943,11 +943,11 @@ mod tests {
     }
 
     /// Generate optional embedding
-    fn arb_embedding() -> impl Strategy<Value = Option<Vec<f32>>> {
+    fn arb_embedding() -> impl Strategy<Value = Option<EmbeddingVector>> {
         prop_oneof![
             Just(None),
-            proptest::collection::vec(any::<f32>().prop_map(|f| f % 1.0), 128..129)
-                .prop_map(Some),
+            proptest::collection::vec(any::<f32>().prop_map(|f| f % 1.0), 8..33)
+                .prop_map(|data| Some(EmbeddingVector::new(data, "test".to_string()))),
         ]
     }
 
@@ -968,9 +968,9 @@ mod tests {
         /// via direct heap SHALL return an equivalent artifact.
         ///
         /// **Validates: Requirements 3.1, 3.2**
-        #[pg_test]
-        fn prop_artifact_insert_get_roundtrip() {
-            use proptest::test_runner::{TestRunner, Config};
+    #[pg_test]
+    fn prop_artifact_insert_get_roundtrip() {
+        use proptest::test_runner::{TestRunner, Config};
 
             let config = Config::with_cases(50);
             let mut runner = TestRunner::new(config);
@@ -1073,6 +1073,98 @@ mod tests {
                 Ok(())
             }).unwrap();
         }
+
+        /// Property: Insert-Get Round Trip with Embedding + Vector Search
+        #[pg_test]
+        fn prop_artifact_insert_get_roundtrip_with_embedding_and_search() {
+            use proptest::test_runner::{TestRunner, Config};
+
+            let config = Config::with_cases(20);
+            let mut runner = TestRunner::new(config);
+
+            let strategy = (
+                arb_artifact_name(),
+                arb_content(),
+                arb_artifact_type(),
+                arb_ttl(),
+                arb_provenance(),
+                arb_embedding().prop_filter_map("embedding required", |e| e),
+            );
+
+            runner.run(&strategy, |(name, content, artifact_type, ttl, provenance, embedding)| {
+                crate::caliber_debug_clear();
+
+                // Create trajectory and scope first
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
+                let _ = crate::trajectory_heap::trajectory_create_heap(
+                    trajectory_id,
+                    "test_trajectory",
+                    None,
+                    None,
+                    tenant_id,
+                );
+
+                let scope_id = ScopeId::now_v7();
+                let _ = crate::scope_heap::scope_create_heap(
+                    scope_id,
+                    trajectory_id,
+                    "test_scope",
+                    None,
+                    10000,
+                    tenant_id,
+                );
+
+                // Generate artifact ID and content hash
+                let artifact_id = ArtifactId::now_v7();
+                let content_hash = caliber_core::compute_content_hash(content.as_bytes());
+
+                // Insert via heap with embedding
+                let result = artifact_create_heap(ArtifactCreateParams {
+                    artifact_id,
+                    trajectory_id,
+                    scope_id,
+                    artifact_type,
+                    name: &name,
+                    content: &content,
+                    content_hash,
+                    embedding: Some(&embedding),
+                    provenance: &provenance,
+                    ttl: ttl.clone(),
+                    tenant_id,
+                });
+                prop_assert!(result.is_ok(), "Insert should succeed");
+                prop_assert_eq!(result.unwrap(), artifact_id);
+
+                // Get via heap
+                let get_result = artifact_get_heap(artifact_id, tenant_id);
+                prop_assert!(get_result.is_ok(), "Get should succeed");
+
+                let artifact = get_result.unwrap();
+                prop_assert!(artifact.is_some(), "Artifact should be found");
+
+                let row = artifact.unwrap();
+                let a = row.artifact;
+
+                prop_assert!(a.embedding.is_some());
+                let stored_embedding = a.embedding.unwrap();
+                prop_assert_eq!(stored_embedding.data.len(), embedding.data.len());
+                prop_assert!(stored_embedding.is_valid());
+
+                // Vector search should return the artifact
+                let query = serde_json::json!(embedding.data);
+                let search = crate::caliber_vector_search(pgrx::JsonB(query), 10);
+                let results: Vec<serde_json::Value> = serde_json::from_value(search.0)
+                    .unwrap_or_default();
+                let contains_artifact = results.iter().any(|row| {
+                    row.get("entity_type") == Some(&serde_json::Value::String("artifact".to_string()))
+                        && row.get("entity_id") == Some(&serde_json::Value::String(artifact_id.as_uuid().to_string()))
+                });
+                prop_assert!(contains_artifact);
+
+                Ok(())
+            }).unwrap();
+        }
     }
 
 
@@ -1085,6 +1177,7 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod query_tests {
         use super::*;
+        use caliber_core::{ArtifactId, EntityIdType, ScopeId, TenantId, TrajectoryId};
         use crate::pg_test;
 
         /// Property 3: Query by type returns all artifacts of that type
@@ -1101,8 +1194,8 @@ mod tests {
 
             runner.run(&strategy, |(num_artifacts, artifact_type)| {
                 // Create trajectory and scope
-                let trajectory_id = caliber_core::new_entity_id();
-                let tenant_id = caliber_core::new_entity_id();
+                let trajectory_id = TrajectoryId::now_v7();
+                let tenant_id = TenantId::now_v7();
                 let _ = crate::trajectory_heap::trajectory_create_heap(
                     trajectory_id,
                     "test_trajectory",
@@ -1111,7 +1204,7 @@ mod tests {
                     tenant_id,
                 );
 
-                let scope_id = caliber_core::new_entity_id();
+                let scope_id = ScopeId::now_v7();
                 let _ = crate::scope_heap::scope_create_heap(
                     scope_id,
                     trajectory_id,
@@ -1124,7 +1217,7 @@ mod tests {
                 // Create multiple artifacts of the same type
                 let mut artifact_ids = Vec::new();
                 for i in 0..num_artifacts {
-                    let artifact_id = caliber_core::new_entity_id();
+                    let artifact_id = ArtifactId::now_v7();
                     let content = format!("content_{}", i);
                     let content_hash = caliber_core::compute_content_hash(content.as_bytes());
                     let provenance = Provenance {
@@ -1150,7 +1243,7 @@ mod tests {
                 }
 
                 // Query by type
-                let query_result = artifact_query_by_type_heap(artifact_type.clone(), tenant_id);
+                let query_result = artifact_query_by_type_heap(artifact_type, tenant_id);
                 prop_assert!(query_result.is_ok(), "Query should succeed");
                 
                 let artifacts = query_result.unwrap();

@@ -694,7 +694,7 @@ mod tests {
     fn arb_description() -> impl Strategy<Value = Option<String>> {
         prop_oneof![
             Just(None),
-            "[a-zA-Z0-9 .,!?-]{0,255}".prop_map(|s| Some(s)),
+            "[a-zA-Z0-9 .,!?-]{0,255}".prop_map(Some),
         ]
     }
 
@@ -812,7 +812,7 @@ mod tests {
             let mut runner = TestRunner::new(config);
 
             runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
+                let random_id = TrajectoryId::new(uuid::Uuid::from_bytes(bytes));
                 
                 let tenant_id = TenantId::now_v7();
                 let result = trajectory_get_heap(random_id, tenant_id);
@@ -909,7 +909,7 @@ mod tests {
             let strategy = (any::<[u8; 16]>(), arb_status());
 
             runner.run(&strategy, |(bytes, status)| {
-                let random_id = uuid::Uuid::from_bytes(bytes);
+                let random_id = TrajectoryId::new(uuid::Uuid::from_bytes(bytes));
                 
                 let tenant_id = TenantId::now_v7();
                 let result = trajectory_set_status_heap(random_id, status, tenant_id);

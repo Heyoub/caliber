@@ -19,6 +19,7 @@ use caliber_api::{
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, UpdateAgentRequest,
     },
 };
+use caliber_core::{AgentId, AgentStatus, EntityIdType, ScopeId, TrajectoryId};
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -27,6 +28,8 @@ use uuid::Uuid;
 mod test_auth_support;
 #[path = "support/db.rs"]
 mod test_db_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
 use test_auth_support::test_auth_context;
 
 // ============================================================================
@@ -126,12 +129,12 @@ fn delegation_targets_strategy() -> impl Strategy<Value = Vec<String>> {
 }
 
 /// Strategy for generating optional supervisor agent ID.
-fn optional_supervisor_strategy() -> impl Strategy<Value = Option<Uuid>> {
+fn optional_supervisor_strategy() -> impl Strategy<Value = Option<AgentId>> {
     prop_oneof![
         // No supervisor
         3 => Just(None),
         // Has supervisor
-        1 => any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes))),
+        1 => any::<[u8; 16]>().prop_map(|bytes| Some(AgentId::new(Uuid::from_bytes(bytes)))),
     ]
 }
 
@@ -158,12 +161,12 @@ fn register_agent_request_strategy() -> impl Strategy<Value = RegisterAgentReque
 }
 
 /// Strategy for generating agent status values.
-fn agent_status_strategy() -> impl Strategy<Value = String> {
+fn agent_status_strategy() -> impl Strategy<Value = AgentStatus> {
     prop_oneof![
-        Just("idle".to_string()),
-        Just("active".to_string()),
-        Just("blocked".to_string()),
-        Just("failed".to_string()),
+        Just(AgentStatus::Idle),
+        Just(AgentStatus::Active),
+        Just(AgentStatus::Blocked),
+        Just(AgentStatus::Failed),
     ]
 }
 
@@ -171,8 +174,8 @@ fn agent_status_strategy() -> impl Strategy<Value = String> {
 fn update_agent_request_strategy() -> impl Strategy<Value = UpdateAgentRequest> {
     (
         prop::option::of(agent_status_strategy()),
-        prop::option::of(any::<[u8; 16]>().prop_map(Uuid::from_bytes)),
-        prop::option::of(any::<[u8; 16]>().prop_map(Uuid::from_bytes)),
+        prop::option::of(any::<[u8; 16]>().prop_map(|bytes| TrajectoryId::new(Uuid::from_bytes(bytes)))),
+        prop::option::of(any::<[u8; 16]>().prop_map(|bytes| ScopeId::new(Uuid::from_bytes(bytes)))),
         prop::option::of(capabilities_strategy()),
         prop::option::of(memory_access_strategy()),
     )
@@ -233,8 +236,7 @@ proptest! {
             let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Verify the registered agent has an ID
-            let nil_id = Uuid::nil();
-            prop_assert_ne!(registered.agent_id, nil_id);
+            prop_assert_ne!(registered.agent_id, AgentId::nil());
 
             // Verify the registered agent matches the request
             prop_assert_eq!(&registered.agent_type, &register_req.agent_type);
@@ -243,7 +245,7 @@ proptest! {
             prop_assert_eq!(&registered.reports_to, &register_req.reports_to);
 
             // Status should be "idle" by default
-            prop_assert_eq!(registered.status.to_lowercase(), "idle");
+            prop_assert_eq!(registered.status, AgentStatus::Idle);
 
             // Current trajectory and scope should be None initially
             prop_assert!(registered.current_trajectory_id.is_none());
@@ -271,7 +273,7 @@ proptest! {
             prop_assert_eq!(retrieved.agent_id, registered.agent_id);
             prop_assert_eq!(&retrieved.agent_type, &registered.agent_type);
             prop_assert_eq!(&retrieved.capabilities, &registered.capabilities);
-            prop_assert_eq!(retrieved.status.as_str(), registered.status.as_str());
+            prop_assert_eq!(retrieved.status, registered.status);
             prop_assert_eq!(&retrieved.can_delegate_to, &registered.can_delegate_to);
             prop_assert_eq!(&retrieved.reports_to, &registered.reports_to);
             prop_assert_eq!(retrieved.created_at, registered.created_at);
@@ -287,9 +289,9 @@ proptest! {
 
             // Verify updated fields changed
             if let Some(ref new_status) = update_req.status {
-                prop_assert_eq!(&updated.status, new_status);
+                prop_assert_eq!(updated.status, *new_status);
             } else {
-                prop_assert_eq!(updated.status.as_str(), registered.status.as_str());
+                prop_assert_eq!(updated.status, registered.status);
             }
 
             if let Some(new_trajectory_id) = update_req.current_trajectory_id {
@@ -328,7 +330,7 @@ proptest! {
             prop_assert_eq!(retrieved_after_update.agent_id, updated.agent_id);
             prop_assert_eq!(&retrieved_after_update.agent_type, &updated.agent_type);
             prop_assert_eq!(&retrieved_after_update.capabilities, &updated.capabilities);
-            prop_assert_eq!(retrieved_after_update.status.as_str(), updated.status.as_str());
+            prop_assert_eq!(retrieved_after_update.status, updated.status);
             prop_assert_eq!(retrieved_after_update.current_trajectory_id, updated.current_trajectory_id);
             prop_assert_eq!(retrieved_after_update.current_scope_id, updated.current_scope_id);
 
@@ -336,9 +338,9 @@ proptest! {
             // STEP 5: UNREGISTER - Unregister the agent
             // ================================================================
             // First, set agent to idle status if it's active (required for unregister)
-            if updated.status.eq_ignore_ascii_case("active") {
+            if updated.status == AgentStatus::Active {
                 let idle_update = UpdateAgentRequest {
-                    status: Some("idle".to_string()),
+                    status: Some(AgentStatus::Idle),
                     current_trajectory_id: None,
                     current_scope_id: None,
                     capabilities: None,
@@ -347,16 +349,22 @@ proptest! {
                 db.agent_update(registered.agent_id, &idle_update).await?;
             }
 
-            let unregister_result = db.agent_unregister(registered.agent_id).await;
-            prop_assert!(unregister_result.is_ok(), "Unregister should succeed");
+            let agent = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
+            let unregistered = agent.unregister(&db).await?;
+            prop_assert_eq!(unregistered.status, AgentStatus::Offline);
 
             // ================================================================
             // STEP 6: READ - Verify agent no longer exists
             // ================================================================
             let retrieved_after_unregister = db.agent_get(registered.agent_id).await?;
-            prop_assert!(
-                retrieved_after_unregister.is_none(),
-                "Agent should not exist after unregistration"
+            prop_assert!(retrieved_after_unregister.is_some(), "Agent should exist after unregistration");
+            prop_assert_eq!(
+                retrieved_after_unregister.unwrap().status,
+                AgentStatus::Offline,
+                "Agent should be Offline after unregistration"
             );
 
             Ok(())
@@ -411,7 +419,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let _auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = AgentId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to get an agent with a random ID
             let result = db.agent_get(random_id).await?;
@@ -437,7 +445,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let _auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = AgentId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to update an agent with a random ID
             let result = db.agent_update(random_id, &update_req).await;
@@ -466,11 +474,11 @@ proptest! {
 
             // Register an agent
             let registered = db.agent_register(&register_req, auth.tenant_id).await?;
-            prop_assert_eq!(registered.status.to_lowercase(), "idle");
+            prop_assert_eq!(registered.status, AgentStatus::Idle);
 
             // Update to new status
             let update_req = UpdateAgentRequest {
-                status: Some(new_status.clone()),
+                status: Some(new_status),
                 current_trajectory_id: None,
                 current_scope_id: None,
                 capabilities: None,
@@ -480,14 +488,14 @@ proptest! {
             let updated = db.agent_update(registered.agent_id, &update_req).await?;
 
             // Property: Status should change to the requested status
-            prop_assert_eq!(updated.status.as_str(), new_status.as_str());
+            prop_assert_eq!(updated.status, new_status);
 
             // Verify persistence by retrieving again
             let retrieved = db
                 .agent_get(registered.agent_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
-            prop_assert_eq!(retrieved.status.as_str(), new_status.as_str());
+            prop_assert_eq!(retrieved.status, new_status);
 
             Ok(())
         })?;
@@ -606,7 +614,11 @@ proptest! {
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
             // Send heartbeat
-            db.agent_heartbeat(registered.agent_id).await?;
+            let agent = db
+                .agent_get(registered.agent_id)
+                .await?
+                .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
+            agent.heartbeat(&db).await?;
 
             // Retrieve agent and check heartbeat was updated
             let retrieved = db
@@ -729,7 +741,7 @@ proptest! {
             let registered = db.agent_register(&register_req, auth.tenant_id).await?;
 
             // Property: Initial state should be correct
-            prop_assert_eq!(registered.status.to_lowercase(), "idle");
+            prop_assert_eq!(registered.status, AgentStatus::Idle);
             prop_assert!(registered.current_trajectory_id.is_none());
             prop_assert!(registered.current_scope_id.is_none());
 
@@ -738,7 +750,7 @@ proptest! {
                 .agent_get(registered.agent_id)
                 .await?
                 .ok_or_else(|| TestCaseError::fail("Agent should exist".to_string()))?;
-            prop_assert_eq!(retrieved.status.to_lowercase(), "idle");
+            prop_assert_eq!(retrieved.status, AgentStatus::Idle);
             prop_assert!(retrieved.current_trajectory_id.is_none());
             prop_assert!(retrieved.current_scope_id.is_none());
 
@@ -905,7 +917,7 @@ mod edge_cases {
 
         // Update with the same values
         let update_req = UpdateAgentRequest {
-            status: Some(registered.status.clone()),
+            status: Some(registered.status),
             current_trajectory_id: registered.current_trajectory_id,
             current_scope_id: registered.current_scope_id,
             capabilities: Some(registered.capabilities.clone()),
@@ -920,7 +932,7 @@ mod edge_cases {
         // Values should remain the same
         assert_eq!(updated.agent_type, registered.agent_type);
         assert_eq!(updated.capabilities, registered.capabilities);
-        assert_eq!(updated.status.as_str(), registered.status.as_str());
+        assert_eq!(updated.status, registered.status);
         Ok(())
     }
 
@@ -991,7 +1003,7 @@ mod edge_cases {
 
         // Update to active status
         let update_req = UpdateAgentRequest {
-            status: Some("active".to_string()),
+            status: Some(AgentStatus::Active),
             current_trajectory_id: None,
             current_scope_id: None,
             capabilities: None,
@@ -1016,6 +1028,7 @@ mod edge_cases {
     async fn test_agent_unregister_active_fails() -> Result<(), String> {
         let db = test_db_client();
         let auth = test_auth_context();
+        let ws = test_ws_support::test_ws_state(16);
 
         // Register an agent
         let register_req = RegisterAgentRequest {
@@ -1040,7 +1053,7 @@ mod edge_cases {
 
         // Update to active status
         let update_req = UpdateAgentRequest {
-            status: Some("active".to_string()),
+            status: Some(AgentStatus::Active),
             current_trajectory_id: None,
             current_scope_id: None,
             capabilities: None,
@@ -1051,8 +1064,14 @@ mod edge_cases {
             .await
             .map_err(|e| e.to_string())?;
 
-        // Try to unregister active agent
-        let result = db.agent_unregister(registered.agent_id).await;
+        // Try to unregister active agent via route (should fail)
+        let result = caliber_api::routes::agent::unregister_agent(
+            axum::extract::State(db.clone()),
+            axum::extract::State(ws.clone()),
+            caliber_api::middleware::AuthExtractor(auth.clone()),
+            caliber_api::PathId(registered.agent_id),
+        )
+        .await;
 
         // Should fail (cannot unregister active agent)
         assert!(result.is_err());
@@ -1086,17 +1105,16 @@ mod edge_cases {
             .map_err(|e| e.to_string())?;
 
         // Send multiple heartbeats
-        db.agent_heartbeat(registered.agent_id)
+        let agent = db
+            .agent_get(registered.agent_id)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Agent should exist".to_string())?;
+        agent.heartbeat(&db).await.map_err(|e| e.to_string())?;
 
-        db.agent_heartbeat(registered.agent_id)
-            .await
-            .map_err(|e| e.to_string())?;
+        agent.heartbeat(&db).await.map_err(|e| e.to_string())?;
 
-        db.agent_heartbeat(registered.agent_id)
-            .await
-            .map_err(|e| e.to_string())?;
+        agent.heartbeat(&db).await.map_err(|e| e.to_string())?;
 
         // Agent should still exist
         let retrieved = db

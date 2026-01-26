@@ -3181,6 +3181,7 @@ caliber_pg_get!(agent, agent_heap, AgentId, |row| {
             AgentStatus::Active => "active",
             AgentStatus::Blocked => "blocked",
             AgentStatus::Failed => "failed",
+            AgentStatus::Offline => "offline",
         },
         "current_trajectory_id": a.current_trajectory_id.map(|id| id.to_string()),
         "current_scope_id": a.current_scope_id.map(|id| id.to_string()),
@@ -3257,6 +3258,7 @@ fn caliber_agent_list_by_type(agent_type: &str, tenant_id: pgrx::Uuid) -> pgrx::
                             AgentStatus::Active => "active",
                             AgentStatus::Blocked => "blocked",
                             AgentStatus::Failed => "failed",
+                            AgentStatus::Offline => "offline",
                         },
                         "current_trajectory_id": agent.current_trajectory_id.map(|id| id.to_string()),
                         "current_scope_id": agent.current_scope_id.map(|id| id.to_string()),
@@ -6864,4 +6866,3 @@ mod tests {
         assert_eq!(obj["entity_counts"]["agents"], 1);
     }
 }
-
