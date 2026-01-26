@@ -157,7 +157,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{TrajectoryId, ScopeId};
 
     #[test]
     fn test_path_id_error_display() {

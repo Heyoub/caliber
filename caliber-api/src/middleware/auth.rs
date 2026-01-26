@@ -587,7 +587,7 @@ pub async fn rate_limit_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::EntityIdType;
+    use caliber_core::TenantId;
     use crate::auth::AuthConfig;
     use crate::auth::JwtSecret;
     use axum::{
@@ -645,7 +645,7 @@ mod tests {
     #[tokio::test]
     async fn test_middleware_with_invalid_api_key() -> Result<(), String> {
         let app = test_app();
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
         
         let request = Request::builder()
             .uri("/protected")
@@ -705,7 +705,7 @@ mod tests {
     async fn test_middleware_with_valid_jwt() -> Result<(), String> {
         let auth_config = test_auth_config();
         let user_id = "user123".to_string();
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
         
         // Generate a valid JWT token
         let token = crate::auth::generate_jwt_token(
@@ -778,7 +778,7 @@ mod tests {
     async fn test_auth_context_injection() -> Result<(), String> {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
 
         // Handler that extracts and verifies AuthContext
         async fn handler(request: Request<Body>) -> ApiResult<String> {
@@ -824,7 +824,7 @@ mod tests {
     async fn test_auth_extractor_with_valid_auth() -> Result<(), String> {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
 
         // Handler using the typed AuthExtractor
         async fn handler(AuthExtractor(auth): AuthExtractor) -> String {
@@ -893,7 +893,7 @@ mod tests {
     async fn test_auth_extractor_deref() -> Result<(), String> {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
-        let tenant_id = Uuid::now_v7();
+        let tenant_id = TenantId::new(Uuid::now_v7());
 
         // Handler that uses Deref to access AuthContext methods
         async fn handler(auth: AuthExtractor) -> String {

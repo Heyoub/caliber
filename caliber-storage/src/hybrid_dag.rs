@@ -325,7 +325,7 @@ impl<C: ColdEventStorage + 'static> EventDag for HybridDag<C> {
                 let _ = self.hot.put(&event);
                 Effect::Ok(event)
             }
-            Ok(None) => Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+            Ok(None) => Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                 error: DomainError::EntityNotFound {
                     entity_type: "Event".to_string(),
                     id: event_id,
@@ -333,7 +333,7 @@ impl<C: ColdEventStorage + 'static> EventDag for HybridDag<C> {
                 source_event: event_id,
                 position: DagPosition::root(),
                 correlation_id: event_id,
-            })),
+            }))),
             Err(e) => Effect::Err(Self::to_effect_error(event_id, e.into())),
         }
     }

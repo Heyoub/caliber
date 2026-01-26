@@ -363,6 +363,7 @@ mod tests {
     use super::*;
     use crate::cache::watermark::InMemoryChangeJournal;
     use caliber_core::{Artifact, ArtifactType, ExtractionMethod, Provenance, TTL};
+    use std::collections::HashMap;
     use std::sync::RwLock;
     use uuid::Uuid;
 

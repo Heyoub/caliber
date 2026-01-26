@@ -102,7 +102,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         let events = self.events.read().unwrap();
         match events.get(&event_id) {
             Some(event) => Effect::Ok(event.clone()),
-            None => Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+            None => Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                 error: DomainError::EntityNotFound {
                     entity_type: "Event".to_string(),
                     id: event_id,
@@ -110,7 +110,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                 source_event: event_id,
                 position: DagPosition::root(),
                 correlation_id: event_id,
-            })),
+            }))),
         }
     }
 
@@ -123,7 +123,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
 
         // First verify the starting event exists
         if !events.contains_key(&from) {
-            return Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+            return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                 error: DomainError::EntityNotFound {
                     entity_type: "Event".to_string(),
                     id: from,
@@ -131,7 +131,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                 source_event: from,
                 position: DagPosition::root(),
                 correlation_id: from,
-            }));
+            })));
         }
 
         let mut result = Vec::new();
@@ -164,7 +164,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
 
         // First verify the starting event exists
         if !events.contains_key(&from) {
-            return Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+            return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                 error: DomainError::EntityNotFound {
                     entity_type: "Event".to_string(),
                     id: from,
@@ -172,7 +172,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                 source_event: from,
                 position: DagPosition::root(),
                 correlation_id: from,
-            }));
+            })));
         }
 
         // In this simple implementation, we return events with higher depth
@@ -194,7 +194,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         let events = self.events.read().unwrap();
 
         if !events.contains_key(&from) {
-            return Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+            return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                 error: DomainError::EntityNotFound {
                     entity_type: "Event".to_string(),
                     id: from,
@@ -202,7 +202,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                 source_event: from,
                 position: DagPosition::root(),
                 correlation_id: from,
-            }));
+            })));
         }
 
         // In-memory implementation: signals are no-ops (no persistence)
@@ -234,7 +234,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                 match events.get(&parent_id) {
                     Some(parent_event) => parent_event.header.position.depth + 1,
                     None => {
-                        return Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+                        return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                             error: DomainError::EntityNotFound {
                                 entity_type: "Event".to_string(),
                                 id: parent_id,
@@ -242,7 +242,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                             source_event: parent_id,
                             position: DagPosition::root(),
                             correlation_id: parent_id,
-                        }));
+                        })));
                     }
                 }
             }
@@ -284,7 +284,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         let events = self.events.read().unwrap();
 
         if !events.contains_key(&event_id) {
-            return Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+            return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
                 error: DomainError::EntityNotFound {
                     entity_type: "Event".to_string(),
                     id: event_id,
@@ -292,7 +292,7 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
                 source_event: event_id,
                 position: DagPosition::root(),
                 correlation_id: event_id,
-            }));
+            })));
         }
 
         self.acknowledged.write().unwrap().insert(event_id);

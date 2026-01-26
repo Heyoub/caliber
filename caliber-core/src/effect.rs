@@ -113,12 +113,12 @@ impl<T> Effect<T> {
 
     /// Create a domain error effect.
     pub fn domain_error(error: DomainError, source_event: EventId, position: DagPosition) -> Self {
-        Effect::Err(ErrorEffect::Domain(DomainErrorContext {
+        Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
             error,
             source_event,
             position,
             correlation_id: source_event, // Default to same as source
-        }))
+        })))
     }
 
     /// Create a retry effect.
@@ -302,7 +302,7 @@ impl<T, E: Into<ErrorEffect>> From<Result<T, E>> for Effect<T> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ErrorEffect {
     /// Domain-level error (must persist, replay, affect downstream)
-    Domain(DomainErrorContext),
+    Domain(Box<DomainErrorContext>),
     /// Operational error (telemetry only, can sample/discard)
     Operational(OperationalError),
 }
@@ -799,7 +799,7 @@ mod tests {
 
     #[test]
     fn test_domain_vs_operational() {
-        let domain = ErrorEffect::Domain(DomainErrorContext {
+        let domain = ErrorEffect::Domain(Box::new(DomainErrorContext {
             error: DomainError::EntityNotFound {
                 entity_type: "Test".to_string(),
                 id: Uuid::now_v7(),
@@ -807,7 +807,7 @@ mod tests {
             source_event: Uuid::now_v7(),
             position: DagPosition::root(),
             correlation_id: Uuid::now_v7(),
-        });
+        }));
         assert!(domain.is_domain());
 
         let operational = ErrorEffect::Operational(OperationalError::Timeout {

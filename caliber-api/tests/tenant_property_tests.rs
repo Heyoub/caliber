@@ -25,10 +25,10 @@ use caliber_api::{
 };
 use chrono::Utc;
 use caliber_core::{
-    AgentId, ArtifactId, DelegationId, EntityIdType, HandoffId, LockId, MessageId, NoteId,
     TenantId, TrajectoryId, TrajectoryStatus,
 };
 use proptest::prelude::*;
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
 use tokio::runtime::Runtime;
@@ -543,12 +543,11 @@ proptest! {
             let auth_config = test_auth_config();
 
             // Convert to TenantIds and ensure uniqueness
-            let mut tenant_ids: Vec<TenantId> = tenant_ids
+            let tenant_ids: HashSet<TenantId> = tenant_ids
                 .into_iter()
                 .map(|bytes| TenantId::new(Uuid::from_bytes(bytes)))
                 .collect();
-            tenant_ids.sort();
-            tenant_ids.dedup();
+            let tenant_ids: Vec<TenantId> = tenant_ids.into_iter().collect();
 
             // Need at least 2 unique tenants
             prop_assume!(tenant_ids.len() >= 2);
@@ -623,8 +622,8 @@ mod ws_tenant_isolation {
         should_deliver_event, tenant_id_from_event,
     };
     use caliber_core::{
-        AgentId, ArtifactId, DelegationId, EntityIdType, HandoffId, LockId, MessageId, NoteId,
-        TenantId, TrajectoryId,
+        AgentId, ArtifactId, DelegationId, HandoffId, LockId, MessageId, NoteId, TenantId,
+        TrajectoryId,
     };
     use proptest::prelude::*;
     use uuid::Uuid;
@@ -864,7 +863,6 @@ mod edge_cases {
         let app = test_app(storage.clone());
         let auth_config = test_auth_config();
         let tenant_uuid = Uuid::now_v7();
-        let tenant_id = TenantId::new(tenant_uuid);
 
         let auth_context = test_auth_context_with_tenant(tenant_uuid);
         let token = generate_jwt_token(
