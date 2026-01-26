@@ -24,6 +24,8 @@ use crate::workos_auth::{
     create_session_token, exchange_code_for_profile, generate_authorization_url,
     SsoAuthorizationParams, SsoCallbackParams, WorkOsClaims,
 };
+#[cfg(feature = "workos")]
+use caliber_core::TenantId;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -284,7 +286,7 @@ async fn callback(
 async fn resolve_or_create_tenant(
     db: &crate::db::DbClient,
     claims: &WorkOsClaims,
-) -> ApiResult<uuid::Uuid> {
+) -> ApiResult<TenantId> {
     // 1. Check WorkOS organization ID first
     if let Some(org_id) = &claims.organization_id {
         if let Some(tenant) = db.tenant_get_by_workos_org(org_id).await? {
@@ -350,7 +352,7 @@ async fn resolve_or_create_tenant(
 #[cfg(feature = "workos")]
 async fn determine_member_role(
     db: &crate::db::DbClient,
-    tenant_id: uuid::Uuid,
+    tenant_id: TenantId,
     _claims: &WorkOsClaims,
 ) -> ApiResult<String> {
     let count = db.tenant_member_count(tenant_id).await?;

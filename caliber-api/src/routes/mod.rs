@@ -574,7 +574,6 @@ pub fn create_api_router_unauthenticated(
 
     #[cfg(feature = "workos")]
     {
-        use crate::workos_auth::WorkOsConfig;
         if app_state.workos_config.is_some() {
             router = router.nest("/auth/sso", sso::create_router());
         }

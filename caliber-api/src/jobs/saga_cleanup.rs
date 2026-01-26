@@ -28,6 +28,7 @@
 //!     handoff_timeout: Duration::from_secs(1800),    // 30 minutes default
 //!     batch_size: 100,                               // Process up to 100 at a time
 //!     idempotency_cleanup_interval: Duration::from_secs(3600), // Hourly
+//!     log_timeouts: true,                            // Log timeouts
 //! };
 //! ```
 

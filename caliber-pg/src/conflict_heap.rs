@@ -503,7 +503,7 @@ mod tests {
                 winner,
                 merged_result_id: None,
                 reason,
-                resolved_by: "automatic".to_string(),
+                resolved_by: None,
             }
         })
     }

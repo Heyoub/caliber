@@ -587,7 +587,7 @@ pub async fn rate_limit_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::TenantId;
+    use caliber_core::{EntityIdType, TenantId};
     use crate::auth::AuthConfig;
     use crate::auth::JwtSecret;
     use axum::{

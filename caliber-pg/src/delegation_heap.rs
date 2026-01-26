@@ -618,8 +618,15 @@ mod tests {
     }
 
     /// Generate a vector of artifact IDs (0-5 items)
-    fn arb_artifact_ids() -> impl Strategy<Value = Vec<uuid::Uuid>> {
+    fn arb_artifact_ids() -> impl Strategy<Value = Vec<ArtifactId>> {
         prop::collection::vec(arb_uuid(), 0..=5)
+            .prop_map(|ids| ids.into_iter().map(ArtifactId::new).collect())
+    }
+
+    /// Generate a vector of note IDs (0-5 items)
+    fn arb_note_ids() -> impl Strategy<Value = Vec<NoteId>> {
+        prop::collection::vec(arb_uuid(), 0..=5)
+            .prop_map(|ids| ids.into_iter().map(NoteId::new).collect())
     }
 
     /// Generate an optional additional context string
@@ -635,7 +642,7 @@ mod tests {
 
     /// Generate a delegation result
     fn arb_delegation_result() -> impl Strategy<Value = DelegationResult> {
-        (arb_artifact_ids(), arb_artifact_ids()).prop_map(|(artifacts, notes)| {
+        (arb_artifact_ids(), arb_note_ids()).prop_map(|(artifacts, notes)| {
             DelegationResult {
                 status: DelegationResultStatus::Success,
                 produced_artifacts: artifacts,
@@ -678,7 +685,7 @@ mod tests {
                 arb_trajectory_id(),
                 arb_optional_trajectory_id(),
                 arb_artifact_ids(),
-                arb_artifact_ids(),
+                arb_note_ids(),
                 arb_optional_context(),
                 arb_constraints(),
                 arb_optional_deadline(),
@@ -801,7 +808,7 @@ mod tests {
                 arb_trajectory_id(),
                 arb_optional_trajectory_id(),
                 arb_artifact_ids(),
-                arb_artifact_ids(),
+                arb_note_ids(),
                 arb_optional_context(),
                 arb_constraints(),
                 arb_optional_deadline(),
@@ -900,7 +907,7 @@ mod tests {
                 arb_entity_id(),
                 arb_optional_entity_id(),
                 arb_artifact_ids(),
-                arb_artifact_ids(),
+                arb_note_ids(),
                 arb_optional_context(),
                 arb_constraints(),
                 arb_optional_deadline(),
@@ -1033,7 +1040,7 @@ mod tests {
                 arb_trajectory_id(),
                 arb_optional_trajectory_id(),
                 arb_artifact_ids(),
-                arb_artifact_ids(),
+                arb_note_ids(),
                 arb_optional_context(),
                 arb_constraints(),
                 arb_optional_deadline(),

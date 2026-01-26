@@ -359,7 +359,7 @@ mod prop_tests {
 
     /// Strategy to generate random UUIDs for property testing.
     fn uuid_strategy() -> impl Strategy<Value = uuid::Uuid> {
-        any::<[u8; 16]>().prop_map(|bytes| uuid::Uuid::from_bytes(bytes))
+        any::<[u8; 16]>().prop_map(uuid::Uuid::from_bytes)
     }
 
     /// Strategy to generate random EntityTypes.

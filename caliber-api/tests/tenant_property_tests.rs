@@ -25,7 +25,7 @@ use caliber_api::{
 };
 use chrono::Utc;
 use caliber_core::{
-    TenantId, TrajectoryId, TrajectoryStatus,
+    EntityIdType, TenantId, TrajectoryId, TrajectoryStatus,
 };
 use proptest::prelude::*;
 use std::collections::HashSet;
@@ -239,7 +239,7 @@ fn test_app(storage: TestStorage) -> Router {
         .route("/api/v1/trajectories", post(create_trajectory_handler))
         .route("/api/v1/trajectories", get(list_trajectories_handler))
         .route(
-            "/api/v1/trajectories/{id}",
+            "/api/v1/trajectories/:id",
             get(get_trajectory_handler),
         )
         .with_state(storage)
@@ -622,8 +622,8 @@ mod ws_tenant_isolation {
         should_deliver_event, tenant_id_from_event,
     };
     use caliber_core::{
-        AgentId, ArtifactId, DelegationId, HandoffId, LockId, MessageId, NoteId, TenantId,
-        TrajectoryId,
+        AgentId, ArtifactId, DelegationId, EntityIdType, HandoffId, LockId, MessageId, NoteId,
+        TenantId, TrajectoryId,
     };
     use proptest::prelude::*;
     use uuid::Uuid;

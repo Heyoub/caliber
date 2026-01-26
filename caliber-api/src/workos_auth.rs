@@ -23,7 +23,7 @@
 
 use crate::auth::{AuthContext, AuthMethod};
 use crate::error::{ApiError, ApiResult};
-use caliber_core::TenantId;
+use caliber_core::{EntityIdType, TenantId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -315,8 +315,9 @@ pub async fn validate_workos_token(
 
     // Determine tenant ID
     let tenant_id = if let Some(header) = tenant_id_header {
-        Uuid::parse_str(header)
-            .map_err(|_| ApiError::invalid_format("X-Tenant-ID", "valid UUID"))?
+        let uuid = Uuid::parse_str(header)
+            .map_err(|_| ApiError::invalid_format("X-Tenant-ID", "valid UUID"))?;
+        TenantId::new(uuid)
     } else if let Some(tid) = claims.tenant_id() {
         tid
     } else {
@@ -500,7 +501,7 @@ mod tests {
 
         let tenant_id = claims.tenant_id().ok_or("tenant_id should exist")?;
         // Should be a deterministic UUID v5
-        assert!(!tenant_id.is_nil());
+        assert!(tenant_id != TenantId::nil());
         Ok(())
     }
 
@@ -572,7 +573,7 @@ mod tests {
             raw_attributes: None,
         };
 
-        let tenant_id = Uuid::new_v4();
+        let tenant_id = TenantId::new(Uuid::new_v4());
         let auth_context = claims.to_auth_context(tenant_id);
 
         assert_eq!(auth_context.user_id, "user_123");

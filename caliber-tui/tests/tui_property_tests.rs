@@ -8,8 +8,8 @@ use caliber_api::types::{
     ArtifactResponse, NoteResponse, ProvenanceResponse, TrajectoryResponse,
 };
 use caliber_core::{
-    AgentId, ArtifactId, ArtifactType, EntityIdType, NoteId, NoteType, ScopeId, TrajectoryId,
-    TrajectoryStatus, TurnRole,
+    AgentId, ArtifactId, ArtifactType, EntityIdType, NoteId, NoteType, ScopeId, TenantId,
+    TrajectoryId, TrajectoryStatus, TurnRole,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use proptest::prelude::*;
@@ -542,25 +542,25 @@ proptest! {
 fn test_helper_builders_smoke() {
     let id = TrajectoryId::now_v7();
     let traj = create_test_trajectory(id, None);
-    assert_eq!(traj.tenant_id, None);
+    assert_eq!(traj.tenant_id, TenantId::nil());
 
     let traj_with_status = create_test_trajectory_with_status(id, TrajectoryStatus::Active);
-    assert_eq!(traj_with_status.tenant_id, None);
+    assert_eq!(traj_with_status.tenant_id, TenantId::nil());
 
     let traj_full = create_test_trajectory_full(id, TrajectoryStatus::Completed, None);
-    assert_eq!(traj_full.tenant_id, None);
+    assert_eq!(traj_full.tenant_id, TenantId::nil());
 
     let artifact = create_test_artifact(ArtifactType::Fact);
-    assert_eq!(artifact.tenant_id, None);
+    assert_eq!(artifact.tenant_id, TenantId::nil());
 
     let note = create_test_note(NoteType::Fact);
-    assert_eq!(note.tenant_id, None);
+    assert_eq!(note.tenant_id, TenantId::nil());
 }
 
 fn create_test_trajectory(id: TrajectoryId, parent_id: Option<TrajectoryId>) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
-        tenant_id: None,
+        tenant_id: TenantId::nil(),
         name: format!("Test Trajectory {}", id.as_uuid()),
         description: Some("Test description".to_string()),
         status: TrajectoryStatus::Active,
@@ -578,7 +578,7 @@ fn create_test_trajectory(id: TrajectoryId, parent_id: Option<TrajectoryId>) -> 
 fn create_test_trajectory_with_status(id: TrajectoryId, status: TrajectoryStatus) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
-        tenant_id: None,
+        tenant_id: TenantId::nil(),
         name: format!("Test Trajectory {}", id.as_uuid()),
         description: None,
         status,
@@ -600,7 +600,7 @@ fn create_test_trajectory_full(
 ) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
-        tenant_id: None,
+        tenant_id: TenantId::nil(),
         name: format!("Test Trajectory {}", id.as_uuid()),
         description: Some("Test description".to_string()),
         status,
@@ -618,7 +618,7 @@ fn create_test_trajectory_full(
 fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
     ArtifactResponse {
         artifact_id: ArtifactId::now_v7(),
-        tenant_id: None,
+        tenant_id: TenantId::nil(),
         trajectory_id: TrajectoryId::now_v7(),
         scope_id: ScopeId::now_v7(),
         artifact_type,
@@ -642,7 +642,7 @@ fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
 fn create_test_note(note_type: NoteType) -> NoteResponse {
     NoteResponse {
         note_id: NoteId::now_v7(),
-        tenant_id: None,
+        tenant_id: TenantId::nil(),
         note_type,
         title: "Test Note".to_string(),
         content: "Test content".to_string(),
