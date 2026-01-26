@@ -51,7 +51,7 @@ RUN cd caliber-pg && cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/p
 
 # WORKAROUND: pgrx 0.16 doesn't generate SQL file properly
 # Manually copy the bootstrap SQL as the extension installation script
-RUN cp /build/caliber-pg/sql/caliber_init.sql /usr/share/postgresql/18/extension/caliber_pg--0.4.3.sql
+RUN cp /build/caliber-pg/sql/caliber_init.sql /usr/share/postgresql/18/extension/caliber_pg--0.4.4.sql
 
 # Debug: Show installed extension files
 RUN echo "=== Installed extension files ===" && ls -la /usr/share/postgresql/18/extension/caliber*

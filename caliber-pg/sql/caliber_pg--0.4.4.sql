@@ -509,21 +509,65 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trajectory_updated_at
-    BEFORE UPDATE ON caliber_trajectory
-    FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'trajectory_updated_at'
+          AND tgrelid = 'caliber_trajectory'::regclass
+    ) THEN
+        CREATE TRIGGER trajectory_updated_at
+            BEFORE UPDATE ON caliber_trajectory
+            FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+    END IF;
+END
+$$;
 
-CREATE TRIGGER artifact_updated_at
-    BEFORE UPDATE ON caliber_artifact
-    FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'artifact_updated_at'
+          AND tgrelid = 'caliber_artifact'::regclass
+    ) THEN
+        CREATE TRIGGER artifact_updated_at
+            BEFORE UPDATE ON caliber_artifact
+            FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+    END IF;
+END
+$$;
 
-CREATE TRIGGER note_updated_at
-    BEFORE UPDATE ON caliber_note
-    FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'note_updated_at'
+          AND tgrelid = 'caliber_note'::regclass
+    ) THEN
+        CREATE TRIGGER note_updated_at
+            BEFORE UPDATE ON caliber_note
+            FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+    END IF;
+END
+$$;
 
-CREATE TRIGGER tenant_updated_at
-    BEFORE UPDATE ON caliber_tenant
-    FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'tenant_updated_at'
+          AND tgrelid = 'caliber_tenant'::regclass
+    ) THEN
+        CREATE TRIGGER tenant_updated_at
+            BEFORE UPDATE ON caliber_tenant
+            FOR EACH ROW EXECUTE FUNCTION caliber_update_timestamp();
+    END IF;
+END
+$$;
 
 
 -- ============================================================================
@@ -561,9 +605,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER message_notify
-    AFTER INSERT ON caliber_message
-    FOR EACH ROW EXECUTE FUNCTION caliber_notify_message();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'message_notify'
+          AND tgrelid = 'caliber_message'::regclass
+    ) THEN
+        CREATE TRIGGER message_notify
+            AFTER INSERT ON caliber_message
+            FOR EACH ROW EXECUTE FUNCTION caliber_notify_message();
+    END IF;
+END
+$$;
 
 
 -- ============================================================================

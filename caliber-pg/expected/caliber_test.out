@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS caliber_pg CASCADE;
 SELECT extname, extversion FROM pg_extension WHERE extname = 'caliber_pg';
   extname   | extversion
 ------------+------------
- caliber_pg | 0.4.3
+ caliber_pg | 0.4.4
 (1 row)
 
 -- ============================================================================
@@ -717,4 +717,3 @@ SELECT
 --------------+--------+-----------+-------+--------
             0 |      0 |         0 |     0 |      0
 (1 row)
-

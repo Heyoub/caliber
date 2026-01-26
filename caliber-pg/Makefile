@@ -14,7 +14,7 @@
 #   make clean       - Clean build artifacts
 
 EXTENSION = caliber_pg
-EXTVERSION = 0.4.3
+EXTVERSION = 0.4.4
 
 # Use pg_config from PATH or allow override
 PG_CONFIG ?= pg_config

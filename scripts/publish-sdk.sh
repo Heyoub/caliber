@@ -84,7 +84,7 @@ fi
 
 if [[ -z "$SDK_VERSION" ]]; then
     echo "ERROR: No version provided and workspace version not found."
-    echo "Provide a version like: scripts/publish-sdk.sh 0.4.3"
+    echo "Provide a version like: scripts/publish-sdk.sh 0.4.4"
     exit 1
 fi
 

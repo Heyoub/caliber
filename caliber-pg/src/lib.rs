@@ -336,7 +336,7 @@ fn run_pending_migrations() -> Result<(), String> {
             // Migration SQL based on version
             let (description, migration_sql): (&str, Option<&str>) = match version {
                 1 => (
-                    "Initial schema - CALIBER 0.4.3",
+                    "Initial schema - CALIBER 0.4.4",
                     // Version 1 is the base schema, no migration needed
                     // (it's created by caliber_init())
                     None,

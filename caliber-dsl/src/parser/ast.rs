@@ -714,6 +714,18 @@ impl Parser {
 
     /// Parse the tokens into a CaliberAst.
     pub fn parse(&mut self) -> Result<CaliberAst, ParseError> {
+        if let Some(token) = self.tokens.iter().find(|t| matches!(t.kind, TokenKind::Error(_))) {
+            let message = match &token.kind {
+                TokenKind::Error(msg) => format!("Lexer error: {}", msg),
+                _ => "Lexer error".to_string(),
+            };
+            return Err(ParseError {
+                message,
+                line: token.span.line,
+                column: token.span.column,
+            });
+        }
+
         // Expect: caliber: "version" { definitions... }
         self.expect(TokenKind::Caliber)?;
         self.expect(TokenKind::Colon)?;
@@ -769,7 +781,7 @@ impl Parser {
     fn parse_adapter(&mut self) -> Result<AdapterDef, ParseError> {
         self.expect(TokenKind::Adapter)?;
 
-        let name = self.expect_identifier()?;
+        let name = self.expect_name()?;
 
         self.expect(TokenKind::LBrace)?;
 
@@ -834,7 +846,7 @@ impl Parser {
     fn parse_memory(&mut self) -> Result<MemoryDef, ParseError> {
         self.expect(TokenKind::Memory)?;
 
-        let name = self.expect_identifier()?;
+        let name = self.expect_name()?;
 
         self.expect(TokenKind::LBrace)?;
 
@@ -871,7 +883,7 @@ impl Parser {
                     lifecycle = self.parse_lifecycle()?;
                 }
                 "parent" => {
-                    parent = Some(self.expect_identifier()?);
+                    parent = Some(self.expect_name()?);
                 }
                 "index" => {
                     self.expect(TokenKind::LBrace)?;

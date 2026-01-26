@@ -114,7 +114,7 @@ impl Parser {
     /// Parse a policy definition (Task 4.5).
     pub(crate) fn parse_policy(&mut self) -> Result<PolicyDef, ParseError> {
         self.expect(TokenKind::Policy)?;
-        let name = self.expect_identifier()?;
+        let name = self.expect_name()?;
         self.expect(TokenKind::LBrace)?;
 
         let mut rules = Vec::new();
@@ -669,29 +669,17 @@ impl Parser {
                 self.advance();
                 Ok(FilterValue::String(d))
             }
-            TokenKind::Identifier(s) if s == "true" => {
-                self.advance();
-                Ok(FilterValue::Bool(true))
-            }
-            TokenKind::Identifier(s) if s == "false" => {
-                self.advance();
-                Ok(FilterValue::Bool(false))
-            }
-            TokenKind::Identifier(s) if s == "null" => {
-                self.advance();
-                Ok(FilterValue::Null)
-            }
-            TokenKind::Identifier(s) if s == "current_trajectory" => {
-                self.advance();
-                Ok(FilterValue::CurrentTrajectory)
-            }
-            TokenKind::Identifier(s) if s == "current_scope" => {
-                self.advance();
-                Ok(FilterValue::CurrentScope)
-            }
-            TokenKind::Identifier(s) if s == "now" => {
-                self.advance();
-                Ok(FilterValue::Now)
+            TokenKind::Identifier(_) => {
+                let ident = self.expect_identifier()?;
+                match ident.as_str() {
+                    "true" => Ok(FilterValue::Bool(true)),
+                    "false" => Ok(FilterValue::Bool(false)),
+                    "null" => Ok(FilterValue::Null),
+                    "current_trajectory" => Ok(FilterValue::CurrentTrajectory),
+                    "current_scope" => Ok(FilterValue::CurrentScope),
+                    "now" => Ok(FilterValue::Now),
+                    _ => Err(self.error("Expected filter value")),
+                }
             }
             TokenKind::LBracket => {
                 self.advance();
@@ -1325,6 +1313,11 @@ impl Parser {
         }
     }
 
+    /// Expect an identifier or keyword when a permissive name is allowed.
+    pub(crate) fn expect_name(&mut self) -> Result<String, ParseError> {
+        self.expect_field_name()
+    }
+
     /// Expect an identifier or a keyword that can be used as a field name.
     /// Many keywords in the DSL can also be used as field names (type, mode, filter, etc.)
     pub(crate) fn expect_field_name(&mut self) -> Result<String, ParseError> {
@@ -1465,6 +1458,12 @@ impl Parser {
             TokenKind::AgentType => "agent_type".to_string(),
             TokenKind::TokenBudget => "token_budget".to_string(),
             TokenKind::MemoryRefs => "memory_refs".to_string(),
+            // Logical operators that can be valid names
+            TokenKind::And => "and".to_string(),
+            TokenKind::Or => "or".to_string(),
+            TokenKind::Not => "not".to_string(),
+            TokenKind::In => "in".to_string(),
+            TokenKind::Contains => "contains".to_string(),
             _ => return Err(self.error("Expected identifier")),
         };
         self.advance();

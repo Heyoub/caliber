@@ -1,6 +1,6 @@
 {
   "name": "@caliber-run/sdk",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "TypeScript SDK for CALIBER - Cognitive Agent Long-term Intelligence, Behavioral Episodic Recall",
   "type": "module",
   "main": "dist/index.js",
