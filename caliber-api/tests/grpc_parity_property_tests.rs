@@ -8,13 +8,15 @@
 //!
 //! **Validates: Requirements 1.1, 1.2**
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
 use caliber_api::{
     grpc::{self, proto},
+    extractors::PathId,
     middleware::AuthExtractor,
     routes::{scope, trajectory},
+    state::ApiEventDag,
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse},
 };
 use caliber_api::proto::scope_service_server::ScopeService;
@@ -25,6 +27,7 @@ use serde::de::DeserializeOwned;
 use tokio::runtime::Runtime;
 use tonic::metadata::MetadataValue;
 use tonic::Request;
+use caliber_core::{EntityIdType, TenantId, TrajectoryId, ScopeId};
 use uuid::Uuid;
 #[path = "support/auth.rs"]
 mod test_auth_support;
@@ -32,6 +35,8 @@ mod test_auth_support;
 mod test_db_support;
 #[path = "support/ws.rs"]
 mod test_ws_support;
+#[path = "support/event_dag.rs"]
+mod test_event_dag_support;
 use test_auth_support::test_auth_context;
 
 // ============================================================================
@@ -51,7 +56,7 @@ async fn extract_json<T: DeserializeOwned>(
 
 fn request_with_tenant<T>(
     payload: T,
-    tenant_id: uuid::Uuid,
+    tenant_id: TenantId,
 ) -> Result<Request<T>, TestCaseError> {
     let mut request = Request::new(payload);
     let tenant_header = MetadataValue::try_from(tenant_id.to_string())
@@ -143,6 +148,7 @@ proptest! {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
             let ws = test_ws_support::test_ws_state(64);
+            let event_dag = test_event_dag_support::test_event_dag();
             let grpc_service = grpc::TrajectoryServiceImpl::new(db.clone(), ws.clone());
 
             // REST create → gRPC get
@@ -157,6 +163,7 @@ proptest! {
                 trajectory::create_trajectory(
                     State(db.clone()),
                     State(ws.clone()),
+                    State(event_dag.clone()),
                     AuthExtractor(auth.clone()),
                     Json(rest_req),
                 )
@@ -195,11 +202,12 @@ proptest! {
 
             let trajectory_id = Uuid::parse_str(&grpc_created.trajectory_id)
                 .map_err(|e| TestCaseError::fail(format!("invalid uuid: {}", e)))?;
+            let trajectory_id = TrajectoryId::new(trajectory_id);
             let rest_get: TrajectoryResponse = extract_json(
                 trajectory::get_trajectory(
                     State(db.clone()),
                     AuthExtractor(auth.clone()),
-                    Path(trajectory_id),
+                    PathId(trajectory_id),
                 )
                 .await?,
             )
@@ -223,6 +231,7 @@ proptest! {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
             let ws = test_ws_support::test_ws_state(64);
+            let event_dag = test_event_dag_support::test_event_dag();
             let grpc_service = grpc::ScopeServiceImpl::new(db.clone(), ws.clone());
 
             // Create a trajectory to attach scopes to
@@ -237,6 +246,7 @@ proptest! {
                 trajectory::create_trajectory(
                     State(db.clone()),
                     State(ws.clone()),
+                    State(event_dag.clone()),
                     AuthExtractor(auth.clone()),
                     Json(trajectory_req),
                 )
@@ -257,6 +267,7 @@ proptest! {
                 scope::create_scope(
                     State(db.clone()),
                     State(ws.clone()),
+                    State(event_dag.clone()),
                     AuthExtractor(auth.clone()),
                     Json(rest_scope_req),
                 )
@@ -296,11 +307,12 @@ proptest! {
 
             let scope_id = Uuid::parse_str(&grpc_created.scope_id)
                 .map_err(|e| TestCaseError::fail(format!("invalid uuid: {}", e)))?;
+            let scope_id = ScopeId::new(scope_id);
             let rest_get: ScopeResponse = extract_json(
                 scope::get_scope(
                     State(db.clone()),
                     AuthExtractor(auth.clone()),
-                    Path(scope_id),
+                    PathId(scope_id),
                 )
                 .await?,
             )
@@ -312,4 +324,3 @@ proptest! {
         })?;
     }
 }
-

@@ -17,6 +17,7 @@ use caliber_api::{
     db::DbClient,
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, UpdateScopeRequest},
 };
+use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
 use proptest::prelude::*;
 use uuid::Uuid;
 
@@ -36,7 +37,7 @@ fn test_db_client() -> DbClient {
 }
 
 /// Helper to create a test trajectory for scope tests.
-async fn create_test_trajectory(db: &DbClient, tenant_id: Uuid) -> Uuid {
+async fn create_test_trajectory(db: &DbClient, tenant_id: TenantId) -> TrajectoryId {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // Generate a unique name using timestamp
@@ -126,7 +127,7 @@ fn create_scope_request_strategy() -> impl Strategy<Value = CreateScopeRequest> 
     )
         .prop_map(move |(name, purpose, token_budget, metadata)| {
             CreateScopeRequest {
-                trajectory_id: Uuid::nil(),
+                trajectory_id: TrajectoryId::nil(),
                 parent_scope_id: None,
                 name,
                 purpose,
@@ -198,7 +199,7 @@ proptest! {
             let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created scope has an ID
-            let nil_id = Uuid::nil();
+            let nil_id = ScopeId::nil();
             prop_assert_ne!(created.scope_id, nil_id);
 
             // Verify the created scope matches the request
@@ -281,7 +282,7 @@ proptest! {
             // ================================================================
             // STEP 5: CLOSE - Close the scope
             // ================================================================
-            let closed = db.scope_close(created.scope_id, auth.tenant_id).await?;
+            let closed = created.close(&db).await?;
 
             // Verify the scope is now inactive
             prop_assert!(!closed.is_active, "Scope should be inactive after closing");
@@ -355,7 +356,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = ScopeId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to get a scope with a random ID
             let result = db.scope_get(random_id, auth.tenant_id).await?;
@@ -381,7 +382,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = ScopeId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to update a scope with a random ID
             let result = db.update::<ScopeResponse>(random_id, &update_req, auth.tenant_id).await;
@@ -537,16 +538,14 @@ proptest! {
             let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await?;
 
             // Close the scope once
-            let closed1 = db.scope_close(created.scope_id, auth.tenant_id).await?;
+            let closed1 = created.close(&db).await?;
             prop_assert!(!closed1.is_active);
             let first_closed_at = closed1.closed_at;
 
-            // Close the scope again
-            let closed2 = db.scope_close(created.scope_id, auth.tenant_id).await?;
-            prop_assert!(!closed2.is_active);
-
-            // Property: closed_at timestamp should remain the same
-            prop_assert_eq!(closed2.closed_at, first_closed_at);
+            // Close the scope again should fail (already closed)
+            let second_close = closed1.close(&db).await;
+            prop_assert!(second_close.is_err());
+            prop_assert_eq!(closed1.closed_at, first_closed_at);
 
             Ok(())
         })?;
@@ -830,7 +829,7 @@ mod edge_cases {
         assert!(created.closed_at.is_none());
 
         // Close the scope
-        let closed = db.scope_close(created.scope_id, auth.tenant_id).await
+        let closed = created.close(&db).await
             .expect("Should close scope");
 
         // Property: closed_at should be set

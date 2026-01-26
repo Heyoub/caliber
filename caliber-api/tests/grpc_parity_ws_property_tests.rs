@@ -13,6 +13,7 @@ use axum::Json;
 use caliber_api::grpc::{proto, TrajectoryServiceImpl};
 use caliber_api::middleware::AuthExtractor;
 use caliber_api::routes::trajectory;
+use caliber_api::state::ApiEventDag;
 use caliber_api::types::CreateTrajectoryRequest;
 use caliber_api::ws::WsState;
 use caliber_api::proto::trajectory_service_server::TrajectoryService;
@@ -29,6 +30,8 @@ mod test_db_support;
 mod test_ws_support;
 #[path = "support/auth.rs"]
 mod test_auth_support;
+#[path = "support/event_dag.rs"]
+mod test_event_dag_support;
 use test_auth_support::test_auth_context;
 
 async fn recv_trajectory_event(
@@ -67,6 +70,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_support::test_db_client();
             let auth = test_auth_context();
+            let event_dag = test_event_dag_support::test_event_dag();
 
             // REST handler setup
             let ws_rest = test_ws_support::test_ws_state(50);
@@ -87,6 +91,7 @@ proptest! {
             let _ = trajectory::create_trajectory(
                 State(db.clone()),
                 State(ws_rest.clone()),
+                State(event_dag.clone()),
                 AuthExtractor(auth.clone()),
                 Json(rest_req),
             )

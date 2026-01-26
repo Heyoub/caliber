@@ -18,7 +18,7 @@ use caliber_api::{
     db::DbClient,
     types::{CreateNoteRequest, CreateTrajectoryRequest, NoteResponse},
 };
-use caliber_core::{NoteType, TTL};
+use caliber_core::{ArtifactId, EntityIdType, NoteId, NoteType, TenantId, TrajectoryId, TTL};
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -45,8 +45,8 @@ fn test_runtime() -> Result<Runtime, TestCaseError> {
 /// Helper to create a test trajectory for note tests.
 async fn create_test_trajectory(
     db: &DbClient,
-    tenant_id: Uuid,
-) -> Result<Uuid, TestCaseError> {
+    tenant_id: TenantId,
+) -> Result<TrajectoryId, TestCaseError> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let timestamp = SystemTime::now()
@@ -153,7 +153,7 @@ fn optional_metadata_strategy() -> impl Strategy<Value = Option<serde_json::Valu
 /// construct CreateNoteRequest manually for more explicit control.
 #[allow(dead_code)]
 fn create_note_request_strategy(
-    trajectory_id: Uuid,
+    trajectory_id: TrajectoryId,
 ) -> impl Strategy<Value = CreateNoteRequest> {
     (
         note_type_strategy(),
@@ -227,7 +227,7 @@ proptest! {
             let created = db.create::<NoteResponse>(&create_req, auth.tenant_id).await?;
 
             // Verify the created note has an ID
-            let nil_id = Uuid::nil();
+            let nil_id = NoteId::nil();
             prop_assert_ne!(created.note_id, nil_id);
 
             // Verify the created note matches the request
@@ -236,7 +236,7 @@ proptest! {
             prop_assert_eq!(created.note_type, note_type);
             prop_assert_eq!(&created.ttl, &ttl);
             prop_assert_eq!(&created.source_trajectory_ids, &vec![trajectory_id]);
-            prop_assert_eq!(&created.source_artifact_ids, &Vec::<Uuid>::new());
+            prop_assert_eq!(&created.source_artifact_ids, &Vec::<ArtifactId>::new());
 
             // Timestamps should be set
             prop_assert!(created.created_at.timestamp() > 0);
@@ -369,7 +369,7 @@ proptest! {
             let db = test_db_client();
             let auth = test_auth_context();
             let _ = auth; // Used for consistency with other tests
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = NoteId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to get a note with a random ID
             let result = db.note_get(random_id, auth.tenant_id).await?;

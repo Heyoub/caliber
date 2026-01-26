@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use caliber_core::agent::ConflictResolution;
 use caliber_pcp::{
-    AntiSprawlConfig, ConflictResolution, ContextDagConfig, DosageConfig, GroundingConfig,
-    LintingConfig, PCPConfig, PCPRuntime, PruneStrategy, RecoveryConfig, RecoveryFrequency,
-    StalenessConfig,
+    AntiSprawlConfig, ContextDagConfig, DosageConfig, GroundingConfig, LintingConfig, PCPConfig,
+    PCPRuntime, PruneStrategy, RecoveryConfig, RecoveryFrequency, StalenessConfig,
 };
 
 pub fn test_pcp_runtime() -> Arc<PCPRuntime> {

@@ -17,7 +17,7 @@ use caliber_api::{
     db::DbClient,
     types::{CreateTrajectoryRequest, UpdateTrajectoryRequest},
 };
-use caliber_core::TrajectoryStatus;
+use caliber_core::{AgentId, EntityIdType, TrajectoryId, TrajectoryStatus};
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -92,22 +92,22 @@ fn trajectory_status_strategy() -> impl Strategy<Value = TrajectoryStatus> {
 }
 
 /// Strategy for generating optional agent IDs.
-fn optional_agent_id_strategy() -> impl Strategy<Value = Option<Uuid>> {
+fn optional_agent_id_strategy() -> impl Strategy<Value = Option<AgentId>> {
     prop_oneof![
         // No agent
         Just(None),
         // Random agent ID
-        any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes))),
+        any::<[u8; 16]>().prop_map(|bytes| Some(AgentId::new(Uuid::from_bytes(bytes)))),
     ]
 }
 
 /// Strategy for generating optional parent trajectory IDs.
-fn optional_parent_id_strategy() -> impl Strategy<Value = Option<Uuid>> {
+fn optional_parent_id_strategy() -> impl Strategy<Value = Option<TrajectoryId>> {
     prop_oneof![
         // No parent (root trajectory)
         3 => Just(None),
         // Has parent
-        1 => any::<[u8; 16]>().prop_map(|bytes| Some(Uuid::from_bytes(bytes))),
+        1 => any::<[u8; 16]>().prop_map(|bytes| Some(TrajectoryId::new(Uuid::from_bytes(bytes)))),
     ]
 }
 
@@ -204,7 +204,7 @@ proptest! {
             let created = db.trajectory_create(&create_req, auth.tenant_id).await?;
 
             // Verify the created trajectory has an ID
-            let nil_id = Uuid::nil();
+            let nil_id = TrajectoryId::nil();
             prop_assert_ne!(created.trajectory_id, nil_id);
 
             // Verify the created trajectory matches the request
@@ -353,7 +353,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = TrajectoryId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to get a trajectory with a random ID
             let result = db.trajectory_get(random_id, auth.tenant_id).await?;
@@ -381,7 +381,7 @@ proptest! {
         rt.block_on(async {
             let db = test_db_client();
             let auth = test_auth_context();
-            let random_id = Uuid::from_bytes(random_id_bytes);
+            let random_id = TrajectoryId::new(Uuid::from_bytes(random_id_bytes));
 
             // Try to update a trajectory with a random ID
             let result = db

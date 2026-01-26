@@ -12,6 +12,7 @@ use axum::{extract::State, Json};
 use caliber_api::events::WsEvent;
 use caliber_api::middleware::AuthExtractor;
 use caliber_api::routes::{artifact, note, scope, trajectory, turn};
+use caliber_api::state::ApiEventDag;
 use caliber_api::types::{
     CreateArtifactRequest, CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest,
     CreateTurnRequest,
@@ -30,6 +31,8 @@ mod test_db_support;
 mod test_ws_support;
 #[path = "support/pcp.rs"]
 mod test_pcp_support;
+#[path = "support/event_dag.rs"]
+mod test_event_dag_support;
 use test_auth_support::test_auth_context;
 
 async fn recv_event(rx: &mut broadcast::Receiver<WsEvent>, label: &str) -> WsEvent {
@@ -76,6 +79,7 @@ proptest! {
             let ws = test_ws_support::test_ws_state(100);
             let mut rx = ws.subscribe();
             let pcp = test_pcp_support::test_pcp_runtime();
+            let event_dag = test_event_dag_support::test_event_dag();
 
             // ------------------------------------------------------------
             // Trajectory Created
@@ -90,6 +94,7 @@ proptest! {
             let _ = trajectory::create_trajectory(
                 State(db.clone()),
                 State(ws.clone()),
+                State(event_dag.clone()),
                 AuthExtractor(auth.clone()),
                 Json(create_traj),
             )
@@ -117,6 +122,7 @@ proptest! {
             let _ = scope::create_scope(
                 State(db.clone()),
                 State(ws.clone()),
+                State(event_dag.clone()),
                 AuthExtractor(auth.clone()),
                 Json(create_scope),
             )
