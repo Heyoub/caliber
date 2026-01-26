@@ -33,10 +33,15 @@ is_local_db() {
     sudo_psql_local -c "DROP SCHEMA public CASCADE;"
     sudo_psql_local -c "CREATE SCHEMA public;"
     sudo_psql_local -c "GRANT ALL ON SCHEMA public TO ${CALIBER_DB_USER};"
+    sudo_psql_local -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null
   }
 
 if [[ "${DB_TESTS:-}" == "1" ]]; then
   echo "==> DB-backed API tests (requires CALIBER_DB_* env)"
+  if [[ -x "scripts/caliber_doctor.py" ]]; then
+    echo "==> Caliber Doctor (pre-flight)"
+    python3 scripts/caliber_doctor.py || true
+  fi
   if [[ "${CALIBER_PG_INSTALL:-}" == "1" ]]; then
     CARGO_BIN="$(command -v cargo || true)"
     if [[ -z "${CARGO_BIN}" ]]; then
@@ -51,11 +56,6 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
       RUSTUP_TOOLCHAIN="stable"
     fi
     sudo -E env "PATH=$PATH" "RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN}" "${CARGO_BIN}" pgrx install --package caliber-pg --pg-config "/usr/lib/postgresql/18/bin/pg_config"
-    if is_local_db; then
-      if [[ -f "caliber-pg/sql/caliber_pg--0.4.4.sql" ]]; then
-        sudo cp "caliber-pg/sql/caliber_pg--0.4.4.sql" "/usr/share/postgresql/18/extension/caliber_pg--0.4.4.sql"
-      fi
-    fi
   fi
 
   BOOTSTRAP_USER="${CALIBER_DB_BOOTSTRAP_USER:-${CALIBER_DB_USER}}"
@@ -79,19 +79,18 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
   schema_ready="$(psql_as "${CALIBER_DB_USER}" "${CALIBER_DB_PASSWORD:-}" -tAc "select to_regclass('public.caliber_agent') is not null;")"
   if ! rg -q "t" <<<"${schema_ready}"; then
     if psql_as "${CALIBER_DB_USER}" "${CALIBER_DB_PASSWORD:-}" -tAc "select 1 from pg_available_extensions where name = 'caliber_pg';" | rg -q "1"; then
-      if ! psql_as "${BOOTSTRAP_USER}" "${BOOTSTRAP_PASSWORD}" -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null; then
-        if is_local_db && sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null; then
+      if ! psql_as "${BOOTSTRAP_USER}" "${BOOTSTRAP_PASSWORD}" -c "create extension if not exists caliber_pg;" >/dev/null; then
+        if is_local_db && sudo_psql_local -c "create extension if not exists caliber_pg;" >/dev/null; then
           echo "Initialized caliber_pg via sudo for local Postgres."
         elif is_local_db && [[ "${CALIBER_DB_RESET:-}" == "1" ]]; then
           echo "Resetting local schema to allow extension install (CALIBER_DB_RESET=1)."
+          sudo_psql_local -c "drop extension if exists caliber_pg cascade;" >/dev/null
           reset_schema_local
-          sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null
+          sudo_psql_local -c "create extension if not exists caliber_pg;" >/dev/null
           echo "Initialized caliber_pg after schema reset."
-        elif is_local_db && sudo_psql_local -f "caliber-pg/sql/caliber_pg--0.4.4.sql" >/dev/null; then
-          echo "Initialized caliber_pg schema via SQL bootstrap for local Postgres."
         else
           echo "Failed to initialize via extension. Run as a superuser:"
-          echo "  sudo -u postgres psql -d ${CALIBER_DB_NAME} -c \"CREATE EXTENSION IF NOT EXISTS caliber_pg; SELECT caliber_init();\""
+          echo "  sudo -u postgres psql -d ${CALIBER_DB_NAME} -c \"CREATE EXTENSION IF NOT EXISTS caliber_pg;\""
           exit 1
         fi
       fi
@@ -118,22 +117,21 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
   fi
   if ! psql_as "${CALIBER_DB_USER}" "${CALIBER_DB_PASSWORD:-}" -tAc "select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'caliber_agent_register';" | rg -q "1"; then
     if is_local_db; then
-      if sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null; then
+      if sudo_psql_local -c "create extension if not exists caliber_pg;" >/dev/null; then
         echo "Initialized caliber_pg via sudo for local Postgres."
       elif [[ "${CALIBER_DB_RESET:-}" == "1" ]]; then
         echo "Resetting local schema to allow extension install (CALIBER_DB_RESET=1)."
+        sudo_psql_local -c "drop extension if exists caliber_pg cascade;" >/dev/null
         reset_schema_local
-        sudo_psql_local -c "create extension if not exists caliber_pg; select caliber_init();" >/dev/null
+        sudo_psql_local -c "create extension if not exists caliber_pg;" >/dev/null
         echo "Initialized caliber_pg after schema reset."
-      elif sudo_psql_local -f "caliber-pg/sql/caliber_pg--0.4.4.sql" >/dev/null; then
-        echo "Initialized caliber_pg schema via SQL bootstrap for local Postgres."
       fi
     fi
   fi
   if ! psql_as "${CALIBER_DB_USER}" "${CALIBER_DB_PASSWORD:-}" -tAc "select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'caliber_agent_register';" | rg -q "1"; then
     echo "Missing caliber_pg SQL functions (caliber_agent_register not found)."
     echo "Install the extension into this Postgres, then run:"
-    echo "  sudo -u postgres psql -d ${CALIBER_DB_NAME} -c \"CREATE EXTENSION IF NOT EXISTS caliber_pg; SELECT caliber_init();\""
+    echo "  sudo -u postgres psql -d ${CALIBER_DB_NAME} -c \"CREATE EXTENSION IF NOT EXISTS caliber_pg;\""
     echo "If the extension is not available, build/install it with pgrx:"
     echo "  cargo pgrx install --package caliber-pg --pg-config \"/usr/lib/postgresql/18/bin/pg_config\""
     exit 1

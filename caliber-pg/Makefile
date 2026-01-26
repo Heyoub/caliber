@@ -90,11 +90,19 @@ package:
 	@mkdir -p dist
 	@VERSION=$(EXTVERSION); \
 	PKGNAME=$(EXTENSION)-$$VERSION; \
+	cargo pgrx package --pg-config $(PG_CONFIG) --features $(PGFEATURE); \
+	PKGDIR=$$(find target -name "$(EXTENSION)-$(PGFEATURE)" -type d | head -1); \
+	if [ -z "$$PKGDIR" ]; then \
+		echo "Error: Could not find package directory"; \
+		exit 1; \
+	fi; \
 	rm -rf dist/$$PKGNAME dist/$$PKGNAME.zip; \
 	mkdir -p dist/$$PKGNAME; \
 	cp META.json dist/$$PKGNAME/; \
 	cp Makefile dist/$$PKGNAME/; \
-	cp -r sql dist/$$PKGNAME/; \
+	mkdir -p dist/$$PKGNAME/sql; \
+	cp $$PKGDIR/usr/share/postgresql/$(PGVER)/extension/$(EXTENSION).control dist/$$PKGNAME/sql/; \
+	cp $$PKGDIR/usr/share/postgresql/$(PGVER)/extension/*.sql dist/$$PKGNAME/sql/; \
 	cp -r src dist/$$PKGNAME/; \
 	cp Cargo.toml dist/$$PKGNAME/; \
 	cd dist && zip -r $$PKGNAME.zip $$PKGNAME
