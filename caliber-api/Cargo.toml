@@ -112,7 +112,7 @@ regex = "1.10"
 once_cell = "1.19"
 
 # Rate limiting
-governor = "0.8"
+governor = "0.10"
 
 # Concurrent data structures
 dashmap = "6.1"
