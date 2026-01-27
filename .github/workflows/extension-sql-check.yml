@@ -130,6 +130,24 @@ jobs:
           echo
           echo "PASS: generated SQL includes caliber_agent_register."
 
+      - name: Verify extension version matches Cargo
+        run: |
+          set -euo pipefail
+          CARGO_VERSION="$(awk -F'\"' '
+            /^\[workspace\.package\]/ { in_wp = 1; next }
+            /^\[/ { in_wp = 0 }
+            in_wp && /^version = / { print $2; exit }
+          ' Cargo.toml)"
+          SQL_FILE="caliber-pg/sql/caliber_pg--${CARGO_VERSION}.sql"
+          if [[ ! -f "${SQL_FILE}" ]]; then
+            echo "FAIL: No SQL file for version ${CARGO_VERSION}"
+            echo "Expected: ${SQL_FILE}"
+            echo "Available:"
+            ls -la caliber-pg/sql/caliber_pg--*.sql || true
+            exit 1
+          fi
+          echo "PASS: SQL file exists for version ${CARGO_VERSION}"
+
       - name: Upload SQL artifacts
         if: always()
         uses: actions/upload-artifact@v4
