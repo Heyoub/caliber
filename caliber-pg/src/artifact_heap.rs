@@ -706,6 +706,7 @@ fn ttl_to_str(ttl: TTL) -> &'static str {
         TTL::MediumTerm => "medium_term",
         TTL::LongTerm => "long_term",
         TTL::Permanent => "permanent",
+        TTL::Max(n) => Box::leak(format!("max:{}", n).into_boxed_str()),
     }
 }
 
@@ -779,6 +780,9 @@ pub fn is_artifact_expired(ttl: &TTL, created_at: chrono::DateTime<chrono::Utc>)
             let expires_at = created_at + chrono::Duration::milliseconds(604_800_000); // 7 days
             now > expires_at
         }
+
+        // Count-based - doesn't expire by time
+        TTL::Max(_) => false,
     }
 }
 

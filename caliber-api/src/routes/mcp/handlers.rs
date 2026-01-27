@@ -9,9 +9,10 @@ use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
 use caliber_core::{AgentId, EntityIdType, ScopeId, TenantId, TrajectoryId};
 use caliber_dsl::compiler::{CompiledConfig as DslCompiledConfig, CompiledToolKind};
 use serde_json::Value as JsonValue;
-use std::process::Stdio;
 use std::collections::HashSet;
+use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use uuid::Uuid;
@@ -65,17 +66,19 @@ pub async fn list_tools(
 
     let agent_name = resolve_agent_name_from_headers(&state.db, auth.tenant_id, &headers).await;
 
-    let tools = match state.db.dsl_compiled_get_active(auth.tenant_id, "default").await {
+    // Start with core tools (always available)
+    let mut tools = get_available_tools();
+
+    // Add pack tools if a compiled config is active
+    match state.db.dsl_compiled_get_active(auth.tenant_id, "default").await {
         Ok(Some(compiled)) if !compiled.tools.is_empty() => {
-            tools_from_compiled(&compiled, agent_name.as_deref())
+            tools.extend(tools_from_compiled(&compiled, agent_name.as_deref()));
         }
         Ok(_) => {
-            tracing::warn!("No deployed pack tools found; MCP tools list is empty in strict mode");
-            Vec::new()
+            tracing::debug!("No deployed pack tools found; returning core tools only");
         }
         Err(err) => {
-            tracing::warn!(error = %err, "Failed to load active compiled config; MCP tools list is empty in strict mode");
-            Vec::new()
+            tracing::warn!(error = %err, "Failed to load active compiled config; returning core tools only");
         }
     };
 
@@ -574,38 +577,72 @@ async fn execute_pack_tool(
         return Ok(None);
     };
 
+    // Validate input against compiled JSON Schema if present
+    if let Some(schema) = &tool.compiled_schema {
+        if let Err(e) = validate_tool_input(args, schema) {
+            return Err(ApiError::bad_request(format!(
+                "Tool '{}' input validation failed: {}",
+                name, e
+            )));
+        }
+    }
+
     match tool.kind {
         CompiledToolKind::Exec => {
+            // Check subprocess permission - Exec tools spawn subprocesses
+            if !tool.allow_subprocess.unwrap_or(false) {
+                return Err(ApiError::forbidden(format!(
+                    "Tool '{}' is not allowed to spawn subprocesses (allow_subprocess=false)",
+                    name
+                )));
+            }
+
             let cmd = tool
                 .cmd
                 .as_ref()
                 .ok_or_else(|| ApiError::internal_error("Exec tool missing cmd"))?;
             let input = args.get("input").and_then(|v| v.as_str()).map(str::to_string);
 
-            let mut command = Command::new("bash");
-            command.arg("-lc").arg(cmd);
+            // Execute directly - cmd is validated during pack compilation to be an executable path
+            let mut command = Command::new(cmd);
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
             if input.is_some() {
                 command.stdin(Stdio::piped());
             }
 
-            let mut child = command
-                .spawn()
-                .map_err(|e| ApiError::internal_error(format!("Failed to spawn tool: {}", e)))?;
+            // Get timeout from config (default 30s, max 5min)
+            let timeout_ms = tool.timeout_ms.unwrap_or(30_000).clamp(100, 300_000) as u64;
+            let timeout = Duration::from_millis(timeout_ms);
 
-            if let Some(input_text) = input {
-                if let Some(stdin) = child.stdin.as_mut() {
-                    stdin
-                        .write_all(input_text.as_bytes())
-                        .await
-                        .map_err(|e| ApiError::internal_error(format!("Failed to write tool stdin: {}", e)))?;
+            let execution = async {
+                let mut child = command
+                    .spawn()
+                    .map_err(|e| ApiError::internal_error(format!("Failed to spawn tool: {}", e)))?;
+
+                if let Some(input_text) = input {
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        stdin
+                            .write_all(input_text.as_bytes())
+                            .await
+                            .map_err(|e| ApiError::internal_error(format!("Failed to write tool stdin: {}", e)))?;
+                    }
                 }
-            }
 
-            let output = child
-                .wait_with_output()
-                .await
-                .map_err(|e| ApiError::internal_error(format!("Failed to run tool: {}", e)))?;
+                child
+                    .wait_with_output()
+                    .await
+                    .map_err(|e| ApiError::internal_error(format!("Failed to run tool: {}", e)))
+            };
+
+            let output = match tokio::time::timeout(timeout, execution).await {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(ApiError::internal_error(format!(
+                        "Tool '{}' execution timed out after {}ms",
+                        name, timeout_ms
+                    )));
+                }
+            };
 
             let status = output.status.code().unwrap_or_default();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -620,6 +657,13 @@ async fn execute_pack_tool(
                 text.push_str("\n\nstderr:\n");
                 text.push_str(&stderr);
             }
+
+            tracing::info!(
+                tool_name = %name,
+                exit_status = status,
+                timeout_ms = timeout_ms,
+                "Tool execution completed"
+            );
 
             Ok(Some(vec![ContentBlock::Text { text }]))
         }
@@ -655,6 +699,21 @@ fn find_prompt_content(pack: &PackSource, prompt_md: &str) -> Option<String> {
         .iter()
         .find(|m| m.path == prompt_md || m.path.ends_with(prompt_md))
         .map(|m| m.content.clone())
+}
+
+/// Validate tool input against a JSON Schema.
+fn validate_tool_input(input: &JsonValue, schema: &JsonValue) -> Result<(), String> {
+    let compiled = jsonschema::draft202012::new(schema)
+        .map_err(|e| format!("Invalid schema: {}", e))?;
+
+    compiled
+        .validate(input)
+        .map_err(|errors| {
+            errors
+                .map(|e| format!("{}: {}", e.instance_path, e))
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
 }
 
 async fn resolve_agent_name_from_args(

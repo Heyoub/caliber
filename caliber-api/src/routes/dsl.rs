@@ -268,6 +268,7 @@ pub async fn compose_pack(
         root: PathBuf::from("."),
         manifest,
         markdowns,
+        contracts: std::collections::HashMap::new(),
     };
 
     match compose_pack_internal(input) {
@@ -390,6 +391,7 @@ pub async fn deploy_dsl(
             root: PathBuf::from("."),
             manifest: pack.manifest.clone(),
             markdowns,
+            contracts: std::collections::HashMap::new(),
         };
 
         let output = compose_pack_internal(input).map_err(|err| {

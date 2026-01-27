@@ -42,6 +42,7 @@ fn bench_pack_compose(c: &mut Criterion) {
                     path: PathBuf::from("agents/support.md"),
                     content: markdown.to_string(),
                 }],
+                contracts: std::collections::HashMap::new(),
             };
             let output = compose_pack(input).expect("compose pack");
             black_box(output.compiled.adapters.len());

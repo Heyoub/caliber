@@ -1690,6 +1690,7 @@ impl dsl_service_server::DslService for DslServiceImpl {
             root: std::path::PathBuf::from("."),
             manifest: req.manifest,
             markdowns,
+            contracts: std::collections::HashMap::new(),
         };
 
         match caliber_dsl::pack::compose_pack(input) {

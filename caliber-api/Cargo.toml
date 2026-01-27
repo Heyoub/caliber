@@ -61,6 +61,9 @@ thiserror = { workspace = true }
 # Async trait for storage fetchers
 async-trait = "0.1"
 
+# JSON Schema validation for MCP tool input
+jsonschema = "0.29"
+
 # Utilities
 uuid = { workspace = true, features = ["v5"] }
 chrono = { workspace = true }

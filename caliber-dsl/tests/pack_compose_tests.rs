@@ -15,6 +15,7 @@ fn compose_min_pack_to_ast_and_compile() {
             path: root.join("agents/support.md"),
             content: md,
         }],
+        contracts: std::collections::HashMap::new(),
     };
 
     let output = compose_pack(input).expect("compose pack");

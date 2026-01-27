@@ -456,6 +456,13 @@ pub enum DomainError {
         handoff_id: Uuid,
         reason: String,
     },
+
+    // Tool security errors
+    ToolPolicyViolation {
+        tool_name: String,
+        policy: String,
+        reason: String,
+    },
 }
 
 impl DomainError {
@@ -477,6 +484,7 @@ impl DomainError {
             DomainError::LockExpired { .. } => ErrorKind::LockFailed,
             DomainError::DelegationFailed { .. } => ErrorKind::CoordinationFailed,
             DomainError::HandoffFailed { .. } => ErrorKind::CoordinationFailed,
+            DomainError::ToolPolicyViolation { .. } => ErrorKind::PermissionDenied,
         }
     }
 }
@@ -528,6 +536,9 @@ impl fmt::Display for DomainError {
             }
             DomainError::HandoffFailed { handoff_id, reason } => {
                 write!(f, "Handoff {} failed: {}", handoff_id, reason)
+            }
+            DomainError::ToolPolicyViolation { tool_name, policy, reason } => {
+                write!(f, "Tool policy violation for '{}' ({}): {}", tool_name, policy, reason)
             }
         }
     }

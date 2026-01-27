@@ -251,12 +251,42 @@ fn collect_tool_ids(tools: &ToolsSection) -> HashSet<String> {
 /// Contract files loaded from the pack for schema compilation.
 pub type ContractFiles = std::collections::HashMap<String, String>;
 
+/// Validate that a tool command is a safe executable path.
+///
+/// Commands must be:
+/// - A relative path starting with `./` or an absolute path starting with `/`
+/// - Free of shell metacharacters that could enable injection
+///
+/// This prevents shell injection attacks like `cmd = "rm -rf / && echo hacked"`.
+fn is_valid_executable_path(cmd: &str) -> bool {
+    // Forbidden shell metacharacters
+    const FORBIDDEN: &[char] = &[';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n', '\r'];
+
+    // Must not contain forbidden characters
+    if cmd.chars().any(|c| FORBIDDEN.contains(&c)) {
+        return false;
+    }
+
+    // Must be a path (relative with ./ or absolute with /)
+    // This prevents bare commands like "bash" or "rm"
+    cmd.starts_with("./") || cmd.starts_with("/")
+}
+
 /// Compile pack tool registry into runtime tool configs.
 /// `contracts` maps contract paths to their JSON content.
 pub fn compile_tools(manifest: &PackManifest, contracts: &ContractFiles) -> Result<Vec<CompiledToolConfig>, PackError> {
     let mut tools = Vec::new();
 
     for (name, def) in &manifest.tools.bin {
+        // Validate command is a safe executable path, not arbitrary shell
+        if !is_valid_executable_path(&def.cmd) {
+            return Err(PackError::Validation(format!(
+                "tools.bin.{}: cmd must be a path to executable (starting with ./ or /), \
+                and must not contain shell metacharacters. Got: '{}'",
+                name, def.cmd
+            )));
+        }
+
         tools.push(CompiledToolConfig {
             id: format!("tools.bin.{}", name),
             kind: CompiledToolKind::Exec,
