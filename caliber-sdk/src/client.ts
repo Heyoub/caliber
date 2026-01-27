@@ -23,6 +23,8 @@ import {
 } from './managers';
 import { ContextHelper } from './context';
 import type { AssembleContextOptions, ContextPackage, FormatContextOptions } from './context';
+import type { Link, Linkable, HttpMethod } from './types/common';
+import { CaliberError } from './errors';
 
 /**
  * Configuration for the CALIBER client
@@ -159,6 +161,106 @@ export class CalibrClient {
    */
   getTenantId(): string {
     return this.http.getTenantId();
+  }
+
+  // ===========================================================================
+  // HATEOAS Link Navigation
+  // ===========================================================================
+
+  /**
+   * Follow a HATEOAS link to retrieve a related resource.
+   *
+   * This method enables hypermedia-driven navigation of API responses.
+   * When a response includes `_links`, you can follow them without
+   * constructing URLs manually.
+   *
+   * @typeParam T - The expected response type
+   * @param link - The link object to follow
+   * @returns Promise resolving to the linked resource
+   *
+   * @example
+   * ```typescript
+   * const trajectory = await client.trajectories.get('123');
+   *
+   * // Follow a link to get related scopes
+   * if (trajectory._links?.scopes) {
+   *   const scopes = await client.follow<Scope[]>(trajectory._links.scopes);
+   * }
+   *
+   * // Follow a POST link to create a resource
+   * const createLink = trajectory._links?.['create-scope'];
+   * if (createLink) {
+   *   // Note: follow() doesn't support request bodies - use managers for POST/PATCH
+   *   const newScope = await client.follow<Scope>(createLink);
+   * }
+   * ```
+   */
+  async follow<T>(link: Link): Promise<T> {
+    const method = (link.method || 'GET').toUpperCase() as HttpMethod;
+
+    switch (method) {
+      case 'GET':
+        return this.http.get<T>(link.href);
+      case 'POST':
+        return this.http.post<T>(link.href);
+      case 'PUT':
+        return this.http.put<T>(link.href);
+      case 'PATCH':
+        return this.http.patch<T>(link.href);
+      case 'DELETE':
+        return this.http.delete<T>(link.href);
+      default:
+        throw new CaliberError(
+          `Unsupported HTTP method: ${method}`,
+          'INVALID_LINK_METHOD'
+        );
+    }
+  }
+
+  /**
+   * Discover and follow a named link from a response.
+   *
+   * This is a convenience method that combines link lookup and following.
+   * It extracts a link by relation name from a response and follows it.
+   *
+   * @typeParam T - The expected response type
+   * @typeParam R - The response type containing links (must extend Linkable)
+   * @param response - A response object that may contain `_links`
+   * @param rel - The relation name of the link to follow (e.g., 'self', 'parent', 'scopes')
+   * @returns Promise resolving to the linked resource
+   * @throws CaliberError if the link is not found in the response
+   *
+   * @example
+   * ```typescript
+   * const trajectory = await client.trajectories.get('123');
+   *
+   * // Discover and follow the 'parent' link
+   * try {
+   *   const parent = await client.discover<Trajectory, typeof trajectory>(
+   *     trajectory,
+   *     'parent'
+   *   );
+   *   console.log('Parent trajectory:', parent.name);
+   * } catch (e) {
+   *   console.log('No parent trajectory');
+   * }
+   *
+   * // Discover and follow the 'scopes' link
+   * const scopes = await client.discover<Scope[], typeof trajectory>(
+   *   trajectory,
+   *   'scopes'
+   * );
+   * ```
+   */
+  async discover<T, R extends Linkable>(response: R, rel: string): Promise<T> {
+    const link = response._links?.[rel];
+    if (!link) {
+      throw new CaliberError(
+        `Link '${rel}' not found in response`,
+        'LINK_NOT_FOUND'
+      );
+    }
+    return this.follow<T>(link);
   }
 
   /**

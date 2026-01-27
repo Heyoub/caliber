@@ -1,11 +1,11 @@
 //! Agent dashboard view.
 
 use crate::state::App;
+use crate::views::two_column_with_links;
 use caliber_core::EntityIdType;
 use crate::theme::agent_status_color;
 use crate::widgets::DetailPanel;
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
     style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState},
@@ -13,10 +13,7 @@ use ratatui::{
 };
 
 pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(area);
+    let (list_area, detail_area) = two_column_with_links(f, app, area, 60);
 
     let items: Vec<ListItem> = app
         .agent_view
@@ -46,8 +43,12 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     let list = List::new(items)
         .block(Block::default().title("Agents").borders(Borders::ALL))
         .highlight_style(Style::default().fg(app.theme.primary));
-    f.render_stateful_widget(list, chunks[0], &mut state);
+    f.render_stateful_widget(list, list_area, &mut state);
 
+    render_detail_panel(f, app, detail_area);
+}
+
+fn render_detail_panel(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     let mut fields = Vec::new();
     if let Some(selected) = app.agent_view.selected {
         if let Some(agent) = app
@@ -77,5 +78,6 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         fields,
         style: Style::default().fg(app.theme.secondary),
     };
-    detail.render(f, chunks[1]);
+    detail.render(f, area);
 }
+

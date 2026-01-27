@@ -5,67 +5,29 @@
 
 import { getToken, logout } from '../stores/auth';
 
+// Re-export types from the types module
+export type {
+  Link,
+  Links,
+  LinkWithRel,
+  Trajectory,
+  Scope,
+  Agent,
+  Artifact,
+  Note,
+  Message,
+  Lock,
+  ApiResponse,
+  ApiError,
+  UserProfile,
+  BillingStatus,
+} from './types';
+
+// Import types for use in this module
+import type { ApiResponse, ApiError, Trajectory, Scope, UserProfile, BillingStatus } from './types';
+
 // API base URL from environment or default
 const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.caliber.run';
-
-// Types
-export interface ApiError {
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-}
-
-export interface ApiResponse<T> {
-  data: T;
-  meta?: {
-    total?: number;
-    page?: number;
-    limit?: number;
-  };
-}
-
-export interface Trajectory {
-  id: string;
-  tenant_id: string;
-  name: string;
-  description?: string;
-  created_at: string;
-  updated_at: string;
-  scope_count?: number;
-  turn_count?: number;
-  status?: 'active' | 'completed' | 'archived';
-}
-
-export interface Scope {
-  id: string;
-  trajectory_id: string;
-  parent_id?: string;
-  name: string;
-  kind: string;
-  status: 'open' | 'closed' | 'suspended';
-  created_at: string;
-  updated_at: string;
-}
-
-export interface BillingStatus {
-  tenant_id: string;
-  plan: 'trial' | 'pro' | 'enterprise';
-  trial_ends_at?: string;
-  storage_used_bytes: number;
-  storage_limit_bytes: number;
-  hot_cache_used_bytes: number;
-  hot_cache_limit_bytes: number;
-}
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  tenant_id?: string;
-  api_key?: string;
-  created_at: string;
-}
 
 // HTTP client class
 class CaliberApi {

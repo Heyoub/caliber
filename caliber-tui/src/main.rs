@@ -228,6 +228,18 @@ async fn handle_action(app: &mut App, action: KeyAction) -> Result<bool, TuiErro
                 validate_dsl_action(app).await?;
             }
         }
+        KeyAction::ToggleLinks => app.toggle_links_panel(),
+        KeyAction::NextLink => app.next_link(),
+        KeyAction::PrevLink => app.prev_link(),
+        KeyAction::ExecuteLink => {
+            if let Some(action) = app.selected_link_action() {
+                app.notify(
+                    caliber_tui::notifications::NotificationLevel::Info,
+                    format!("Execute: {} {}", action.method(), action.link.href),
+                );
+                // TODO: Actually execute the link via HTTP client
+            }
+        }
         KeyAction::Cancel | KeyAction::Select | KeyAction::MoveLeft | KeyAction::MoveRight => {}
     }
     Ok(false)

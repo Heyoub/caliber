@@ -4,6 +4,7 @@ pub mod agent;
 pub mod artifact;
 pub mod config;
 pub mod dsl;
+pub mod helpers;
 pub mod lock;
 pub mod message;
 pub mod note;
@@ -11,6 +12,8 @@ pub mod scope;
 pub mod tenant;
 pub mod trajectory;
 pub mod turn;
+
+pub use helpers::{render_links_panel, split_with_links, two_column_with_links};
 
 use crate::nav::View;
 use crate::notifications::NotificationLevel;
@@ -66,7 +69,11 @@ fn render_header(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_footer(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
-    let help = "h/j/k/l move • Tab switch view • n new • e edit • d delete • / search • : command • q quit";
+    let help = if app.links_panel_visible {
+        "[ / ] nav links • g execute • a close links • q quit"
+    } else {
+        "h/j/k/l move • Tab switch view • a actions • n new • e edit • / search • q quit"
+    };
     let (text, style) = if let Some(note) = app.notifications.last() {
         let label = match note.level {
             NotificationLevel::Info => "INFO",

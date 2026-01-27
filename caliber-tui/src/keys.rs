@@ -24,6 +24,14 @@ pub enum KeyAction {
     PauseUpdates,
     Confirm,
     Cancel,
+    /// Toggle links panel visibility.
+    ToggleLinks,
+    /// Navigate to next link in the links panel.
+    NextLink,
+    /// Navigate to previous link in the links panel.
+    PrevLink,
+    /// Execute the selected link action.
+    ExecuteLink,
 }
 
 pub fn map_key(event: KeyEvent) -> Option<KeyAction> {
@@ -46,6 +54,10 @@ pub fn map_key(event: KeyEvent) -> Option<KeyAction> {
         KeyCode::Char('n') => Some(KeyAction::NewItem),
         KeyCode::Char('e') => Some(KeyAction::EditItem),
         KeyCode::Char('d') => Some(KeyAction::DeleteItem),
+        KeyCode::Char('a') => Some(KeyAction::ToggleLinks),
+        KeyCode::Char('[') => Some(KeyAction::PrevLink),
+        KeyCode::Char(']') => Some(KeyAction::NextLink),
+        KeyCode::Char('g') => Some(KeyAction::ExecuteLink),
         KeyCode::Enter => Some(KeyAction::Confirm),
         KeyCode::Esc => Some(KeyAction::Cancel),
         KeyCode::Tab => Some(KeyAction::NextView),

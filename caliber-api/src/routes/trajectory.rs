@@ -68,7 +68,7 @@ pub async fn create_trajectory(
         trajectory: trajectory.clone(),
     });
 
-    Ok((StatusCode::CREATED, Json(trajectory)))
+    Ok((StatusCode::CREATED, Json(trajectory.linked())))
 }
 
 /// GET /api/v1/trajectories - List trajectories with filters
@@ -111,7 +111,7 @@ pub async fn list_trajectories(
     let total = trajectories.len() as i32;
 
     let response = ListTrajectoriesResponse {
-        trajectories,
+        trajectories: trajectories.into_iter().map(|t| t.linked()).collect(),
         total,
     };
 
@@ -149,7 +149,7 @@ pub async fn get_trajectory(
     // Validate tenant ownership before returning
     validate_tenant_ownership(&auth, Some(trajectory.tenant_id))?;
 
-    Ok(Json(trajectory))
+    Ok(Json(trajectory.linked()))
 }
 
 /// PATCH /api/v1/trajectories/{id} - Update trajectory
@@ -206,7 +206,7 @@ pub async fn update_trajectory(
         trajectory: trajectory.clone(),
     });
 
-    Ok(Json(trajectory))
+    Ok(Json(trajectory.linked()))
 }
 
 /// DELETE /api/v1/trajectories/{id} - Delete trajectory
@@ -290,7 +290,7 @@ pub async fn list_trajectory_scopes(
     };
     let scopes = db.list::<ScopeResponse>(&filter, auth.tenant_id).await?;
 
-    Ok(Json(scopes))
+    Ok(Json(scopes.into_iter().map(|s| s.linked()).collect::<Vec<_>>()))
 }
 
 /// GET /api/v1/trajectories/{id}/children - List child trajectories
@@ -330,7 +330,7 @@ pub async fn list_trajectory_children(
     };
     let children = db.list::<TrajectoryResponse>(&filter, auth.tenant_id).await?;
 
-    Ok(Json(children))
+    Ok(Json(children.into_iter().map(|c| c.linked()).collect::<Vec<_>>()))
 }
 
 // ============================================================================

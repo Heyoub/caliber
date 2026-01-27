@@ -1,21 +1,18 @@
 //! Trajectory tree view.
 
 use crate::state::App;
+use crate::views::two_column_with_links;
 use crate::widgets::{DetailPanel, TreeItem, TreeStyle, TreeWidget};
 use caliber_api::types::TrajectoryResponse;
 use caliber_core::{EntityIdType, TrajectoryId};
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
     style::Style,
     Frame,
 };
 use std::collections::HashMap;
 
 pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(area);
+    let (tree_area, detail_area) = two_column_with_links(f, app, area, 60);
 
     let items = build_tree(app);
     let selected_index = app.trajectory_view.selected.and_then(|id| {
@@ -31,8 +28,12 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             Style::default().fg(app.theme.primary),
         ),
     };
-    tree.render(f, chunks[0]);
+    tree.render(f, tree_area);
 
+    render_detail_panel(f, app, detail_area);
+}
+
+fn render_detail_panel(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     let mut fields = Vec::new();
     if let Some(selected) = app.trajectory_view.selected {
         if let Some(traj) = app
@@ -57,8 +58,9 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         fields,
         style: Style::default().fg(app.theme.secondary),
     };
-    detail.render(f, chunks[1]);
+    detail.render(f, area);
 }
+
 
 fn build_tree(app: &App) -> Vec<TreeItem> {
     let mut grouped: HashMap<Option<_>, Vec<_>> = HashMap::new();

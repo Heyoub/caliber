@@ -14,6 +14,12 @@
  */
 
 // =============================================================================
+// Common Types (SDK-defined, not generated)
+// =============================================================================
+
+export type { Link, Links, Linkable, HttpMethod } from './common';
+
+// =============================================================================
 // Generated Type Imports
 //
 // These are imported from the OpenAPI-generated code in ../generated/models

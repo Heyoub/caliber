@@ -5,6 +5,7 @@ use crate::config::TuiConfig;
 use crate::nav::View;
 use crate::notifications::{Notification, NotificationLevel};
 use crate::theme::SynthBruteTheme;
+use crate::widgets::LinksState;
 use caliber_api::events::WsEvent;
 use caliber_api::types::*;
 use caliber_core::{
@@ -48,6 +49,11 @@ pub struct App {
     pub search: Option<GlobalSearch>,
     pub modal: Option<Modal>,
 
+    /// Whether the links panel is visible.
+    pub links_panel_visible: bool,
+    /// State for the links panel (actions for selected entity).
+    pub links_state: LinksState,
+
     pub ws_connected: bool,
     pub updates_paused: bool,
     pub event_queue: VecDeque<WsEvent>,
@@ -82,9 +88,78 @@ impl App {
             command_palette: None,
             search: None,
             modal: None,
+            links_panel_visible: false,
+            links_state: LinksState::default(),
             ws_connected: false,
             updates_paused: false,
             event_queue: VecDeque::new(),
+        }
+    }
+
+    /// Toggle the links panel visibility.
+    pub fn toggle_links_panel(&mut self) {
+        self.links_panel_visible = !self.links_panel_visible;
+        if self.links_panel_visible {
+            self.update_links_for_selected();
+        }
+    }
+
+    /// Update the links state based on currently selected entity.
+    pub fn update_links_for_selected(&mut self) {
+        let links = match self.active_view {
+            View::TrajectoryTree => {
+                self.trajectory_view.selected.and_then(|id| {
+                    self.trajectory_view.trajectories.iter()
+                        .find(|t| t.trajectory_id.as_uuid() == id)
+                        .and_then(|t| t.links.as_ref())
+                })
+            }
+            View::ScopeExplorer => {
+                self.scope_view.selected.and_then(|id| {
+                    self.scope_view.scopes.iter()
+                        .find(|s| s.scope_id.as_uuid() == id)
+                        .and_then(|s| s.links.as_ref())
+                })
+            }
+            View::ArtifactBrowser => {
+                self.artifact_view.selected.and_then(|id| {
+                    self.artifact_view.artifacts.iter()
+                        .find(|a| a.artifact_id.as_uuid() == id)
+                        .and_then(|a| a.links.as_ref())
+                })
+            }
+            View::NoteLibrary => {
+                self.note_view.selected.and_then(|id| {
+                    self.note_view.notes.iter()
+                        .find(|n| n.note_id.as_uuid() == id)
+                        .and_then(|n| n.links.as_ref())
+                })
+            }
+            _ => None,
+        };
+        self.links_state.update(links);
+    }
+
+    /// Navigate to next link in the links panel.
+    pub fn next_link(&mut self) {
+        if self.links_panel_visible {
+            self.links_state.select_next();
+        }
+    }
+
+    /// Navigate to previous link in the links panel.
+    pub fn prev_link(&mut self) {
+        if self.links_panel_visible {
+            self.links_state.select_previous();
+        }
+    }
+
+    /// Get the currently selected link action, if any.
+    pub fn selected_link_action(&self) -> Option<&crate::widgets::LinkAction> {
+        if self.links_panel_visible {
+            self.links_state.selected_action()
+        } else {
+            None
         }
     }
 

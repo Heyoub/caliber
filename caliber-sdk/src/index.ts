@@ -190,3 +190,6 @@ export type {
 
 // Common types
 export type { PaginationParams, PaginatedResponse } from './managers';
+
+// HATEOAS link types
+export type { Link, Links, Linkable, HttpMethod } from './types/common';

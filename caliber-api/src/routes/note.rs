@@ -71,7 +71,7 @@ pub async fn create_note(
         note: note.clone(),
     });
 
-    Ok((StatusCode::CREATED, Json(note)))
+    Ok((StatusCode::CREATED, Json(note.linked())))
 }
 
 /// GET /api/v1/notes - List notes with filters
@@ -122,7 +122,7 @@ pub async fn list_notes(
 
     let total = notes.len() as i32;
     let response = ListNotesResponse {
-        notes,
+        notes: notes.into_iter().map(|n| n.linked()).collect(),
         total,
     };
 
@@ -166,7 +166,7 @@ pub async fn get_note(
         .increment_access_count::<NoteResponse>(id, auth.tenant_id)
         .await;
 
-    Ok(Json(note))
+    Ok(Json(note.linked()))
 }
 
 /// PATCH /api/v1/notes/{id} - Update note
@@ -231,7 +231,7 @@ pub async fn update_note(
 
     let note = db.update::<NoteResponse>(id, &req, auth.tenant_id).await?;
     ws.broadcast(WsEvent::NoteUpdated { note: note.clone() });
-    Ok(Json(note))
+    Ok(Json(note.linked()))
 }
 
 /// DELETE /api/v1/notes/{id} - Delete note

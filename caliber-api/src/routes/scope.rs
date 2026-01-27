@@ -77,7 +77,7 @@ pub async fn create_scope(
         scope: scope.clone(),
     });
 
-    Ok((StatusCode::CREATED, Json(scope)))
+    Ok((StatusCode::CREATED, Json(scope.linked())))
 }
 
 /// GET /api/v1/scopes/{id} - Get scope by ID
@@ -111,7 +111,7 @@ pub async fn get_scope(
     // Validate tenant ownership before returning
     validate_tenant_ownership(&auth, Some(scope.tenant_id))?;
 
-    Ok(Json(scope))
+    Ok(Json(scope.linked()))
 }
 
 /// PATCH /api/v1/scopes/{id} - Update scope
@@ -175,7 +175,7 @@ pub async fn update_scope(
         scope: scope.clone(),
     });
 
-    Ok(Json(scope))
+    Ok(Json(scope.linked()))
 }
 
 /// POST /api/v1/scopes/{id}/checkpoint - Create checkpoint
@@ -386,7 +386,7 @@ pub async fn close_scope(
         }
     }
 
-    Ok(Json(scope))
+    Ok(Json(scope.linked()))
 }
 
 /// GET /api/v1/scopes/{id}/turns - List turns for scope
@@ -466,7 +466,7 @@ pub async fn list_scope_artifacts(
     };
     let artifacts = db.list::<ArtifactResponse>(&filter, auth.tenant_id).await?;
 
-    Ok(Json(artifacts))
+    Ok(Json(artifacts.into_iter().map(|a| a.linked()).collect::<Vec<_>>()))
 }
 
 // ============================================================================

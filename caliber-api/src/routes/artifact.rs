@@ -82,7 +82,7 @@ pub async fn create_artifact(
         artifact: artifact.clone(),
     });
 
-    Ok((StatusCode::CREATED, Json(artifact)))
+    Ok((StatusCode::CREATED, Json(artifact.linked())))
 }
 
 /// GET /api/v1/artifacts - List artifacts with filters
@@ -142,7 +142,7 @@ pub async fn list_artifacts(
 
     let total = artifacts.len() as i32;
     let response = ListArtifactsResponse {
-        artifacts,
+        artifacts: artifacts.into_iter().map(|a| a.linked()).collect(),
         total,
     };
 
@@ -180,7 +180,7 @@ pub async fn get_artifact(
     // Validate tenant ownership before returning
     validate_tenant_ownership(&auth, Some(artifact.tenant_id))?;
 
-    Ok(Json(artifact))
+    Ok(Json(artifact.linked()))
 }
 
 /// PATCH /api/v1/artifacts/{id} - Update artifact
@@ -245,7 +245,7 @@ pub async fn update_artifact(
 
     let artifact = db.update::<ArtifactResponse>(id, &req, auth.tenant_id).await?;
     ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
-    Ok(Json(artifact))
+    Ok(Json(artifact.linked()))
 }
 
 /// DELETE /api/v1/artifacts/{id} - Delete artifact
