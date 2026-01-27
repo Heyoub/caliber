@@ -1,0 +1,31 @@
+[meta]
+version = "1.0"
+project = "fixture"
+
+[defaults]
+strict_markdown = true
+strict_refs = true
+
+[adapters.main]
+type = "postgres"
+connection = "postgresql://localhost"
+
+[toolsets.core]
+tools = ["tools.prompts.search"]
+
+[agents.support]
+enabled = true
+profile = "default"
+adapter = "main"
+prompt_md = "agents/support.md"
+toolsets = ["core"]
+
+[policies.summarize_on_scope_close]
+trigger = "scope_close"
+actions = [
+  { type = "summarize", target = "episodic" }
+]
+
+[tools.prompts.search]
+kind = "prompt"
+prompt_md = "tools/prompts/search.md"

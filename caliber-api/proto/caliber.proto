@@ -689,6 +689,7 @@ message HandoffResponse {
 service DslService {
   rpc ValidateDsl(ValidateDslRequest) returns (ValidateDslResponse);
   rpc ParseDsl(ParseDslRequest) returns (ParseDslResponse);
+  rpc ComposeDsl(ComposeDslRequest) returns (ComposeDslResponse);
 }
 
 message ValidateDslRequest {
@@ -707,6 +708,30 @@ message ParseDslRequest {
 
 message ParseDslResponse {
   string ast = 1; // JSON string
+}
+
+message ComposeDslRequest {
+  string manifest = 1;
+  repeated PackFile markdowns = 2;
+}
+
+message PackFile {
+  string path = 1;
+  string content = 2;
+}
+
+message ComposeDslResponse {
+  bool success = 1;
+  string ast = 2;      // JSON string
+  string compiled = 3; // JSON string
+  repeated PackDiagnostic errors = 4;
+}
+
+message PackDiagnostic {
+  string file = 1;
+  uint32 line = 2;
+  uint32 column = 3;
+  string message = 4;
 }
 
 message ParseError {

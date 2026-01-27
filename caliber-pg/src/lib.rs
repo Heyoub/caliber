@@ -184,6 +184,33 @@ pgrx::pg_module_magic!();
 // Include the bootstrap SQL schema for extension installation
 // This SQL runs ONCE at CREATE EXTENSION time, not in the hot path
 pgrx::extension_sql_file!("../sql/caliber_init.sql", name = "bootstrap_schema");
+// Ensure DSL tables and pack source storage are present at extension install time.
+// These are SQL-only artifacts and do not affect hot-path heap operations.
+pgrx::extension_sql_file!(
+    "../sql/migrations/V4__dsl_config.sql",
+    name = "dsl_config_v4",
+    requires = ["bootstrap_schema"],
+);
+pgrx::extension_sql_file!(
+    "../sql/migrations/V5__rls_policies.sql",
+    name = "rls_policies_v5",
+    requires = ["dsl_config_v4"],
+);
+pgrx::extension_sql_file!(
+    "../sql/migrations/V6__tenant_not_null.sql",
+    name = "tenant_not_null_v6",
+    requires = ["rls_policies_v5"],
+);
+pgrx::extension_sql_file!(
+    "../sql/migrations/V7__fix_shared_locks.sql",
+    name = "fix_shared_locks_v7",
+    requires = ["tenant_not_null_v6"],
+);
+pgrx::extension_sql_file!(
+    "../sql/migrations/V8__dsl_pack_source.sql",
+    name = "dsl_pack_source_v8",
+    requires = ["fix_shared_locks_v7"],
+);
 
 // ============================================================================
 // DIRECT HEAP OPERATION MODULES (Hot Path - NO SQL)

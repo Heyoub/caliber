@@ -1674,6 +1674,44 @@ impl dsl_service_server::DslService for DslServiceImpl {
             ast: serde_json::to_string(&result.ast).unwrap_or_default(),
         }))
     }
+
+    async fn compose_dsl(&self, request: Request<ComposeDslRequest>) -> Result<Response<ComposeDslResponse>, Status> {
+        let req = request.into_inner();
+        let markdowns = req
+            .markdowns
+            .into_iter()
+            .map(|m| caliber_dsl::pack::PackMarkdownFile {
+                path: std::path::PathBuf::from(m.path),
+                content: m.content,
+            })
+            .collect();
+
+        let input = caliber_dsl::pack::PackInput {
+            root: std::path::PathBuf::from("."),
+            manifest: req.manifest,
+            markdowns,
+        };
+
+        match caliber_dsl::pack::compose_pack(input) {
+            Ok(result) => Ok(Response::new(ComposeDslResponse {
+                success: true,
+                ast: serde_json::to_string(&result.ast).unwrap_or_default(),
+                compiled: serde_json::to_string(&result.compiled).unwrap_or_default(),
+                errors: Vec::new(),
+            })),
+            Err(err) => Ok(Response::new(ComposeDslResponse {
+                success: false,
+                ast: String::new(),
+                compiled: String::new(),
+                errors: vec![PackDiagnostic {
+                    file: "manifest".to_string(),
+                    line: 0,
+                    column: 0,
+                    message: err.to_string(),
+                }],
+            })),
+        }
+    }
 }
 
 // Config Service - mirrors routes/config.rs

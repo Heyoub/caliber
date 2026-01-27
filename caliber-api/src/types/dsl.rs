@@ -97,6 +97,8 @@ pub struct DeployDslRequest {
     pub activate: bool,
     /// Optional deployment notes
     pub notes: Option<String>,
+    /// Optional pack source (TOML + markdown) for audit
+    pub pack: Option<PackSource>,
 }
 
 fn default_config_name() -> String {
@@ -117,6 +119,58 @@ pub struct DeployDslResponse {
     /// Deployment status
     pub status: DslConfigStatus,
     /// Message
+    pub message: String,
+}
+
+// ============================================================================
+// PACK COMPOSE TYPES
+// ============================================================================
+
+/// Multipart request shape for pack composition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ComposePackMultipart {
+    /// cal.toml contents
+    pub cal_toml: String,
+    /// Markdown prompt files (each part content)
+    pub markdown: Vec<String>,
+}
+
+/// Pack source for audit/storage (TOML + markdown).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackSource {
+    /// cal.toml contents
+    pub manifest: String,
+    /// Markdown prompt files
+    pub markdowns: Vec<PackSourceFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackSourceFile {
+    pub path: String,
+    pub content: String,
+}
+
+/// Response from pack composition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ComposePackResponse {
+    pub success: bool,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub ast: Option<serde_json::Value>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub compiled: Option<serde_json::Value>,
+    pub errors: Vec<PackDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackDiagnostic {
+    pub file: String,
+    pub line: usize,
+    pub column: usize,
     pub message: String,
 }
 

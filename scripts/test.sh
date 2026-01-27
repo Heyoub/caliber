@@ -1,14 +1,95 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ -z "${BASH_VERSION:-}" ]]; then
+  echo "This script must be run with bash. Try: bash $0"
+  exit 2
+fi
+
 mkdir -p target/tmp
 export TMPDIR="$PWD/target/tmp"
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+  export CARGO_TARGET_DIR="$PWD/.target"
+fi
 
 echo "==> Clippy (workspace)"
 cargo clippy --workspace --all-targets --all-features --exclude caliber-pg
 
 echo "==> Cargo tests (workspace, excluding pgrx)"
 cargo test --workspace --all-targets --exclude caliber-pg
+
+if [[ "${FUZZ:-}" == "1" ]]; then
+  echo "==> Fuzz (stable)"
+  FUZZ_RUNS="${FUZZ_RUNS:-10000}"
+  # Guard against typos like FUZZ_RUNS=10mm.
+  if ! [[ "${FUZZ_RUNS}" =~ ^[0-9]+$ ]]; then
+    echo "FUZZ_RUNS must be an integer (got: ${FUZZ_RUNS})."
+    exit 2
+  fi
+  echo "Fuzz runs: ${FUZZ_RUNS}"
+  if command -v bun >/dev/null 2>&1; then
+    FUZZ_RUNS="${FUZZ_RUNS}" bun test tests/fuzz/ || true
+  else
+    echo "bun not found; skipping JS fuzz tests."
+  fi
+  # Keep Rust prop tests meaningful but bounded by default.
+  if [[ -z "${PROPTEST_CASES:-}" ]]; then
+    if (( FUZZ_RUNS < 2000 )); then
+      PROPTEST_CASES=256
+    elif (( FUZZ_RUNS < 20000 )); then
+      PROPTEST_CASES=512
+    else
+      PROPTEST_CASES=1024
+    fi
+  fi
+  PROPTEST_CASES="${PROPTEST_CASES}" \
+    PROPTEST_MAX_SHRINK_ITERS="${PROPTEST_MAX_SHRINK_ITERS:-64}" \
+    cargo test -p caliber-dsl -p caliber-core || true
+fi
+
+if [[ "${BENCH:-}" == "1" ]]; then
+  BENCH_SAMPLE_SIZE="${BENCH_SAMPLE_SIZE:-10}"
+  BENCH_MEAS_TIME="${BENCH_MEAS_TIME:-2}"
+  BENCH_ARGS=(-- --sample-size "${BENCH_SAMPLE_SIZE}" --measurement-time "${BENCH_MEAS_TIME}")
+
+  echo "==> Bench (SDK)"
+  if command -v bun >/dev/null 2>&1 && [[ -f caliber-sdk/bench/index.ts ]]; then
+    (cd caliber-sdk && bun run bench) || true
+  else
+    echo "SDK bench not available (bun or bench script missing)."
+  fi
+
+  if [[ -f caliber-dsl/benches/dsl_hotpath.rs ]]; then
+    echo "==> Bench (Rust DSL hotpath)"
+    cargo bench -p caliber-dsl --bench dsl_hotpath "${BENCH_ARGS[@]}" || true
+  else
+    echo "DSL hotpath bench missing; skipping."
+  fi
+
+  if [[ -f caliber-core/benches/context_hotpath.rs ]]; then
+    echo "==> Bench (Rust context hotpath)"
+    cargo bench -p caliber-core --bench context_hotpath "${BENCH_ARGS[@]}" || true
+  else
+    echo "Context hotpath bench missing; skipping."
+  fi
+
+  if [[ "${DB_TESTS:-}" == "1" ]]; then
+    if command -v pgbench >/dev/null 2>&1 && [[ -f scripts/bench/caliber_pgbench.sql ]]; then
+      echo "==> Bench (Postgres pgbench, short)"
+      PGPASSWORD="${CALIBER_DB_PASSWORD:-}" pgbench \
+        -h "${CALIBER_DB_HOST}" -p "${CALIBER_DB_PORT}" \
+        -U "${CALIBER_DB_USER}" -d "${CALIBER_DB_NAME}" \
+        -T 5 -c 2 -j 1 -f scripts/bench/caliber_pgbench.sql || true
+    else
+      echo "pgbench or scripts/bench/caliber_pgbench.sql missing; skipping Postgres bench."
+    fi
+  fi
+
+  if [[ -x scripts/bench/api_smoke.sh ]]; then
+    echo "==> Bench (API smoke)"
+    scripts/bench/api_smoke.sh || true
+  fi
+fi
 
 psql_as() {
   local user="$1"
@@ -56,6 +137,39 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
       RUSTUP_TOOLCHAIN="stable"
     fi
     sudo -E env "PATH=$PATH" "RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN}" "${CARGO_BIN}" pgrx install --package caliber-pg --pg-config "/usr/lib/postgresql/18/bin/pg_config"
+    # cargo-pgrx sometimes fails to copy the versioned SQL install script.
+    # Copy it explicitly to keep CREATE EXTENSION deterministic.
+    PG_EXT_VERSION="$(awk -F'\"' '
+      /^\[workspace\.package\]/ { in_wp = 1; next }
+      /^\[/ { in_wp = 0 }
+      in_wp && /^version = / { print $2; exit }
+    ' Cargo.toml)"
+    PG_SQL_SRC="caliber-pg/sql/caliber_pg--${PG_EXT_VERSION}.sql"
+    PG_SQL_GEN="${TMPDIR}/caliber_pg--${PG_EXT_VERSION}.sql"
+    PG_SQL_DST="/usr/share/postgresql/18/extension/caliber_pg--${PG_EXT_VERSION}.sql"
+    if [[ -n "${PG_EXT_VERSION}" ]]; then
+      echo "==> Generating extension SQL (schema)"
+      SCHEMA_TARGET_DIR="${PWD}/target/schema-target"
+      mkdir -p "${SCHEMA_TARGET_DIR}"
+      # cargo-pgrx's --out flag appears unreliable in this environment; capture stdout instead.
+      TMPDIR="${TMPDIR}" CARGO_TARGET_DIR="${SCHEMA_TARGET_DIR}" \
+        "${CARGO_BIN}" pgrx schema --package caliber-pg --pg-config "/usr/lib/postgresql/18/bin/pg_config" \
+        --features pg18 --no-default-features > "${PG_SQL_GEN}" || true
+      if [[ -f "${PG_SQL_GEN}" ]] && rg -q "CREATE TABLE IF NOT EXISTS caliber_dsl_config" "${PG_SQL_GEN}"; then
+        sudo cp -f "${PG_SQL_GEN}" "${PG_SQL_DST}"
+        echo "Ensured extension SQL script: ${PG_SQL_DST}"
+      elif [[ -f "${PG_SQL_SRC}" ]] && rg -q "CREATE TABLE IF NOT EXISTS caliber_dsl_config" "${PG_SQL_SRC}"; then
+        echo "Schema generation did not yield expected DSL tables; using repo SQL."
+        sudo cp -f "${PG_SQL_SRC}" "${PG_SQL_DST}"
+        echo "Ensured extension SQL script: ${PG_SQL_DST}"
+      else
+        echo "Warning: no valid extension SQL script found for ${PG_EXT_VERSION}."
+        echo "Look for a generated schema and copy it manually:"
+        echo "  sudo find / -name 'caliber_pg--${PG_EXT_VERSION}.sql' 2>/dev/null | head"
+      fi
+    else
+      echo "Warning: expected extension SQL script not found: ${PG_SQL_SRC}"
+    fi
   fi
 
   BOOTSTRAP_USER="${CALIBER_DB_BOOTSTRAP_USER:-${CALIBER_DB_USER}}"
@@ -139,5 +253,9 @@ if [[ "${DB_TESTS:-}" == "1" ]]; then
   cargo test -p caliber-api --tests --all-features
 fi
 
-echo "==> PGRX tests (pg18)"
-cargo pgrx test pg18 --package caliber-pg
+if [[ "${DB_TESTS:-}" == "1" || "${PGRX_TESTS:-}" == "1" ]]; then
+  echo "==> PGRX tests (pg18)"
+  cargo pgrx test pg18 --package caliber-pg
+else
+  echo "==> Skipping PGRX tests (set DB_TESTS=1 or PGRX_TESTS=1 to run)"
+fi

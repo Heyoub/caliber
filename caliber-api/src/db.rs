@@ -1830,6 +1830,25 @@ impl DbClient {
         Ok(row.get::<_, Uuid>(0))
     }
 
+    /// Store pack source for a DSL config.
+    pub async fn dsl_pack_create(
+        &self,
+        config_id: Uuid,
+        tenant_id: TenantId,
+        pack_source: JsonValue,
+    ) -> ApiResult<()> {
+        let conn = self.get_conn().await?;
+        conn.execute(
+            "INSERT INTO caliber_dsl_pack (config_id, tenant_id, pack_source)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (config_id) DO UPDATE
+             SET pack_source = EXCLUDED.pack_source",
+            &[&config_id, &tenant_id.as_uuid(), &pack_source],
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Deploy a DSL config (mark as deployed, archive previous).
     pub async fn dsl_config_deploy(
         &self,
@@ -2901,4 +2920,3 @@ impl DbClient {
         }
     }
 }
-

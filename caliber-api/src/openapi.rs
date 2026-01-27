@@ -144,6 +144,7 @@ use caliber_core::ConflictResolution;
         // === DSL Routes ===
         dsl::validate_dsl,
         dsl::parse_dsl,
+        dsl::compose_pack,
 
         // === Config Routes ===
         config::get_config,
@@ -200,6 +201,7 @@ use caliber_core::ConflictResolution;
 
             // === DSL Types ===
             ValidateDslRequest, ValidateDslResponse, ParseErrorResponse,
+            ComposePackMultipart, ComposePackResponse, PackDiagnostic, PackSource, PackSourceFile,
 
             // === Config Types ===
             UpdateConfigRequest, ConfigResponse,

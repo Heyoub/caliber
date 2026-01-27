@@ -26,7 +26,7 @@ caliber-dsl = { workspace = true }
 
 # Web framework - Axum for REST API
 # Keep axum aligned with async-graphql-axum 7.0.0 to avoid mixed axum versions.
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { version = "0.7", features = ["ws", "macros", "multipart"] }
 tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 

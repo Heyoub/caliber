@@ -1,0 +1,142 @@
+name: Extension SQL Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "caliber-pg/**"
+      - "scripts/**"
+      - "Cargo.toml"
+      - ".github/workflows/extension-sql-check.yml"
+
+jobs:
+  extension-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TMPDIR: ${{ github.workspace }}/target/tmp
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.target
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> .target
+
+      - name: Prepare dirs
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
+
+      - name: Install cargo-pgrx
+        run: |
+          set -euo pipefail
+          cargo install cargo-pgrx --version 0.16.1
+
+      - name: Init pgrx (pg18 download)
+        run: |
+          set -euo pipefail
+          cargo pgrx init --pg18 download
+
+      - name: Locate pg_config
+        id: pgconfig
+        run: |
+          set -euo pipefail
+          PG_CONFIG="$(find "$HOME/.pgrx" -path "*/pgrx-install/bin/pg_config" -print | head -n 1 || true)"
+          if [[ -z "${PG_CONFIG}" ]]; then
+            echo "pg_config not found under ~/.pgrx after init."
+            echo "Try: cargo pgrx init --pg18 download"
+            exit 1
+          fi
+          echo "pg_config=${PG_CONFIG}" >> "$GITHUB_OUTPUT"
+          echo "Using pg_config: ${PG_CONFIG}"
+          "${PG_CONFIG}" --version || true
+
+      - name: Generate extension SQL (and rubber-duck diagnostics)
+        run: |
+          set -euo pipefail
+          PG_CONFIG="${{ steps.pgconfig.outputs.pg_config }}"
+          OUT_STDOUT="$TMPDIR/caliber_pg--schema-stdout.sql"
+          LOG="$TMPDIR/pgrx-schema.log"
+
+          echo "==> Running cargo pgrx schema"
+          cargo pgrx schema \
+            --package caliber-pg \
+            --pg-config "${PG_CONFIG}" \
+            --features pg18 \
+            --no-default-features \
+            > "${OUT_STDOUT}" 2> "${LOG}" || true
+
+          echo
+          echo "==> Candidate SQL files (size + path)"
+          find "$HOME/.pgrx" "$CARGO_TARGET_DIR" target -name "caliber_pg--*.sql" -print0 2>/dev/null \
+            | xargs -0 -I{} sh -c 'printf "%10s  %s\n" "$(wc -c < "{}" 2>/dev/null || echo 0)" "{}"' \
+            | sort -nr \
+            | head -n 10 || true
+
+          echo
+          echo "==> Stdout SQL size"
+          wc -c "${OUT_STDOUT}" || true
+
+          echo
+          echo "==> pgrx schema log (tail)"
+          tail -n 80 "${LOG}" || true
+
+          # Prefer the largest non-empty candidate; fall back to stdout capture.
+          CANDIDATE="$(find "$HOME/.pgrx" "$CARGO_TARGET_DIR" target -name "caliber_pg--*.sql" -print0 2>/dev/null \
+            | xargs -0 -I{} sh -c 'printf "%s\t%s\n" "$(wc -c < "{}" 2>/dev/null || echo 0)" "{}"' \
+            | sort -nr \
+            | awk '($1+0)>0 {print $2; exit}')"
+
+          if [[ -z "${CANDIDATE:-}" ]] && [[ -s "${OUT_STDOUT}" ]]; then
+            CANDIDATE="${OUT_STDOUT}"
+          fi
+
+          if [[ -z "${CANDIDATE:-}" ]]; then
+            echo
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
+            echo
+            echo "Deterministic next steps:"
+            echo "1) Ensure pgrx can download PG: cargo pgrx init --pg18 download"
+            echo "2) Re-run schema with explicit dirs:"
+            echo "   TMPDIR=target/tmp CARGO_TARGET_DIR=.target cargo pgrx schema --package caliber-pg --pg-config \"${PG_CONFIG}\" --features pg18 --no-default-features > target/tmp/schema.sql"
+            echo "3) If schema remains empty, inspect pgrx log tail above."
+            exit 1
+          fi
+
+          echo
+          echo "==> Selected candidate: ${CANDIDATE}"
+          wc -c "${CANDIDATE}" || true
+
+          if ! rg -n "caliber_agent_register|CREATE FUNCTION caliber_agent_register" "${CANDIDATE}" >/dev/null; then
+            echo
+            echo "FAIL: generated SQL does not include caliber_agent_register."
+            echo
+            echo "Deterministic next steps:"
+            echo "1) Confirm Rust function exists and is exported:"
+            echo "   rg -n \"fn caliber_agent_register|\\[pg_extern\\]\" caliber-pg/src/lib.rs"
+            echo "2) Confirm pgrx sees entities (from log tail): look for 'Discovered ... functions'."
+            echo "3) If entities are discovered but SQL is empty/missing functions, capture the selected candidate as an artifact."
+            exit 1
+          fi
+
+          echo
+          echo "PASS: generated SQL includes caliber_agent_register."
+
+      - name: Upload SQL artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliber-pg-sql-artifacts
+          path: |
+            target/tmp/*.sql
+            target/tmp/*.log
+            .target/**/*.sql
+          if-no-files-found: warn

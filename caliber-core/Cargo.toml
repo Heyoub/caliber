@@ -29,3 +29,9 @@ utoipa = { version = "5.3", features = ["uuid", "chrono"], optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+criterion = "0.5"
+
+[[bench]]
+name = "context_hotpath"
+harness = false
+path = "benches/context_hotpath.rs"

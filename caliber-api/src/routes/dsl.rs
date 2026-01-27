@@ -4,7 +4,7 @@
 //! compilation, and deployment operations.
 
 use axum::{
-    extract::State,
+    extract::{Multipart, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -19,8 +19,11 @@ use crate::{
         CompileDslRequest, CompileDslResponse, CompileErrorResponse,
         DeployDslRequest, DeployDslResponse, DslConfigStatus,
         ParseErrorResponse, ValidateDslRequest, ValidateDslResponse,
+        ComposePackMultipart, ComposePackResponse, PackDiagnostic,
     },
 };
+use caliber_dsl::pack::{compose_pack as compose_pack_internal, PackInput, PackMarkdownFile};
+use std::path::PathBuf;
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -210,6 +213,100 @@ pub async fn compile_dsl(
     }
 }
 
+/// POST /api/v1/dsl/compose - Compose pack (TOML + Markdown) to AST + compiled config
+#[utoipa::path(
+    post,
+    path = "/api/v1/dsl/compose",
+    tag = "DSL",
+    request_body(content = ComposePackMultipart, content_type = "multipart/form-data"),
+    responses(
+        (status = 200, description = "Composition result", body = ComposePackResponse),
+        (status = 400, description = "Invalid request", body = ApiError),
+        (status = 401, description = "Unauthorized", body = ApiError),
+    ),
+    security(
+        ("api_key" = []),
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn compose_pack(
+    State(_db): State<DbClient>,
+    mut multipart: Multipart,
+) -> ApiResult<impl IntoResponse> {
+    let mut manifest: Option<String> = None;
+    let mut markdowns: Vec<PackMarkdownFile> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::invalid_input(format!("Invalid multipart field: {}", e)))?
+    {
+        let name = field.name().map(|s| s.to_string()).unwrap_or_default();
+        let file_name = field.file_name().map(|s| s.to_string());
+        let text = field
+            .text()
+            .await
+            .map_err(|e| ApiError::invalid_input(format!("Invalid multipart field text: {}", e)))?;
+
+        match name.as_str() {
+            "cal_toml" | "manifest" => manifest = Some(text),
+            "markdown" => {
+                let path = file_name.unwrap_or_else(|| "unknown.md".to_string());
+                markdowns.push(PackMarkdownFile {
+                    path: PathBuf::from(path),
+                    content: text,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let manifest = manifest.ok_or_else(|| ApiError::missing_field("cal_toml"))?;
+
+    let input = PackInput {
+        root: PathBuf::from("."),
+        manifest,
+        markdowns,
+    };
+
+    match compose_pack_internal(input) {
+        Ok(result) => {
+            let ast_json = serde_json::to_value(&result.ast)
+                .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
+            let compiled_json = serde_json::to_value(&result.compiled)
+                .map_err(|e| ApiError::internal_error(format!("Failed to serialize compiled config: {}", e)))?;
+            Ok(Json(ComposePackResponse {
+                success: true,
+                ast: Some(ast_json),
+                compiled: Some(compiled_json),
+                errors: Vec::new(),
+            }))
+        }
+        Err(err) => {
+            let diag = match err {
+                caliber_dsl::pack::PackError::Markdown(m) => PackDiagnostic {
+                    file: m.file,
+                    line: m.line,
+                    column: m.column,
+                    message: m.message,
+                },
+                other => PackDiagnostic {
+                    file: "manifest".to_string(),
+                    line: 0,
+                    column: 0,
+                    message: other.to_string(),
+                },
+            };
+            Ok(Json(ComposePackResponse {
+                success: false,
+                ast: None,
+                compiled: None,
+                errors: vec![diag],
+            }))
+        }
+    }
+}
+
 /// Extract the error type name from a CompileError
 fn compile_error_type(err: &caliber_dsl::CompileError) -> String {
     match err {
@@ -289,6 +386,13 @@ pub async fn deploy_dsl(
         compiled_json,
     ).await?;
 
+    // Step 5b: Store pack source if provided
+    if let Some(pack) = &req.pack {
+        let pack_json = serde_json::to_value(pack)
+            .map_err(|e| ApiError::internal_error(format!("Failed to serialize pack: {}", e)))?;
+        db.dsl_pack_create(config_id, auth.tenant_id, pack_json).await?;
+    }
+
     // Step 6: If activate is true, deploy it
     // Note: We pass None for agent_id since deployment is user-initiated
     let status = if req.activate {
@@ -325,6 +429,7 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/validate", axum::routing::post(validate_dsl))
         .route("/parse", axum::routing::post(parse_dsl))
         .route("/compile", axum::routing::post(compile_dsl))
+        .route("/compose", axum::routing::post(compose_pack))
         .route("/deploy", axum::routing::post(deploy_dsl))
 }
 

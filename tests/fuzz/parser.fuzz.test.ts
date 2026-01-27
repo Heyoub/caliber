@@ -9,6 +9,11 @@
 import { describe, expect, it } from 'bun:test';
 import fc from 'fast-check';
 
+const FUZZ_RUNS = Math.max(1, Number.parseInt(process.env.FUZZ_RUNS ?? '10000', 10) || 10000);
+const RUNS_SMALL = Math.max(100, Math.floor(FUZZ_RUNS / 10));
+const RUNS_MED = Math.max(250, Math.floor(FUZZ_RUNS / 4));
+const RUNS_LARGE = FUZZ_RUNS;
+
 // Simulated DSL parser (matches caliber-dsl patterns)
 function parseDSL(input: string): { valid: boolean; error?: string } {
   try {
@@ -66,7 +71,7 @@ describe('fuzz: DSL parser', () => {
         expect(typeof result.valid).toBe('boolean');
         return true;
       }),
-      { numRuns: 1000 }
+      { numRuns: RUNS_LARGE }
     );
   });
 
@@ -77,7 +82,7 @@ describe('fuzz: DSL parser', () => {
         expect(result).toBeDefined();
         return true;
       }),
-      { numRuns: 500 }
+      { numRuns: RUNS_MED }
     );
   });
 
@@ -89,7 +94,7 @@ describe('fuzz: DSL parser', () => {
         expect(result.valid).toBe(true);
         return true;
       }),
-      { numRuns: 100 }
+      { numRuns: RUNS_SMALL }
     );
   });
 
@@ -126,7 +131,7 @@ describe('fuzz: Config parser', () => {
         }
         return true;
       }),
-      { numRuns: 1000 }
+      { numRuns: RUNS_LARGE }
     );
   });
 
@@ -163,7 +168,7 @@ describe('fuzz: Config parser', () => {
         // May fail to parse if too deep, but shouldn't crash
         return true;
       }),
-      { numRuns: 50 }
+      { numRuns: RUNS_SMALL }
     );
   });
 });
@@ -194,7 +199,7 @@ describe('fuzz: URL parsing', () => {
         }
         return true;
       }),
-      { numRuns: 500 }
+      { numRuns: RUNS_MED }
     );
   });
 
