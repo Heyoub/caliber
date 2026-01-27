@@ -806,6 +806,7 @@ mod tests {
             completed_at: None,
             outcome: None,
             metadata: None,
+            links: None,
         };
 
         let gql: GqlTrajectory = response.into();

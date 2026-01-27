@@ -431,6 +431,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: None,
+                links: None,
             },
         };
         assert_eq!(event.event_type(), "TrajectoryCreated");
@@ -453,6 +454,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: None,
+                links: None,
             },
         };
         assert!(trajectory_event.is_tenant_specific());

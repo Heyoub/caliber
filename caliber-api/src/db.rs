@@ -353,6 +353,7 @@ impl DbClient {
             completed_at: self.parse_optional_timestamp(json, "completed_at"),
             outcome: self.parse_optional_outcome(json, "outcome"),
             metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            links: None,
         })
     }
 
@@ -399,6 +400,7 @@ impl DbClient {
             token_budget: self.parse_i32(json, "token_budget")?,
             tokens_used: self.parse_i32(json, "tokens_used")?,
             metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            links: None,
         })
     }
 
@@ -503,6 +505,7 @@ impl DbClient {
             updated_at: self.parse_timestamp(json, "updated_at")?,
             superseded_by: self.parse_optional_entity_id(json, "superseded_by"),
             metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            links: None,
         })
     }
 
@@ -575,6 +578,7 @@ impl DbClient {
             access_count: self.parse_i32(json, "access_count")?,
             superseded_by: self.parse_optional_entity_id(json, "superseded_by"),
             metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            links: None,
         })
     }
 

@@ -85,6 +85,7 @@ impl TestStorage {
             completed_at: None,
             outcome: None,
             metadata: req.metadata.clone(),
+            links: None,
         };
 
         self.trajectories

@@ -90,7 +90,7 @@ pub struct ScopeResponse {
 impl Linkable for ScopeResponse {
     const ENTITY_TYPE: &'static str = "scope";
 
-    fn entity_id(&self) -> String {
+    fn link_id(&self) -> String {
         self.scope_id.to_string()
     }
 

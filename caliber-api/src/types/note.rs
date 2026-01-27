@@ -117,7 +117,7 @@ pub struct NoteResponse {
 impl Linkable for NoteResponse {
     const ENTITY_TYPE: &'static str = "note";
 
-    fn entity_id(&self) -> String {
+    fn link_id(&self) -> String {
         self.note_id.to_string()
     }
 

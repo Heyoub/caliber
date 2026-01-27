@@ -124,7 +124,7 @@ pub struct ArtifactResponse {
 impl Linkable for ArtifactResponse {
     const ENTITY_TYPE: &'static str = "artifact";
 
-    fn entity_id(&self) -> String {
+    fn link_id(&self) -> String {
         self.artifact_id.to_string()
     }
 

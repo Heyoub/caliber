@@ -473,6 +473,7 @@ mod tests {
             completed_at: None,
             outcome: None,
             metadata: None,
+            links: None,
         };
 
         assert_eq!(TrajectoryResponse::entity_type(), EntityType::Trajectory);
@@ -507,6 +508,7 @@ mod tests {
             updated_at: chrono::Utc::now(),
             superseded_by: None,
             metadata: None,
+            links: None,
         };
 
         assert_eq!(ArtifactResponse::entity_type(), EntityType::Artifact);

@@ -677,6 +677,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: None,
+                links: None,
             },
         }));
 
@@ -696,6 +697,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: None,
+                links: None,
             },
         }));
 
@@ -715,6 +717,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: None,
+                links: None,
             },
         }));
     }

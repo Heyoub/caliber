@@ -73,8 +73,9 @@ pub trait Linkable {
     /// Entity type name (must match registry key)
     const ENTITY_TYPE: &'static str;
 
-    /// Get the entity's ID as a string
-    fn entity_id(&self) -> String;
+    /// Get the entity's ID as a string for link generation.
+    /// Named `link_id` to avoid conflict with CacheableEntity::entity_id.
+    fn link_id(&self) -> String;
 
     /// Check if a condition is satisfied for conditional links.
     /// Return true if the condition name is satisfied.
@@ -182,7 +183,7 @@ impl LinkRegistry {
             return Links::new();
         };
 
-        let id = entity.entity_id();
+        let id = entity.link_id();
         let mut links = Links::new();
 
         for link_def in def.links {
@@ -267,7 +268,7 @@ mod tests {
     impl Linkable for TestEntity {
         const ENTITY_TYPE: &'static str = "test";
 
-        fn entity_id(&self) -> String {
+        fn link_id(&self) -> String {
             self.id.clone()
         }
 
@@ -287,16 +288,18 @@ mod tests {
         }
     }
 
+    const TEST_LINKS: &[LinkDef] = &[
+        LinkDef::get("self", "{base}/{id}"),
+        LinkDef::patch("update", "{base}/{id}").when("active"),
+        LinkDef::get("parent", "{base}/{parent_id}").when("has_parent"),
+    ];
+
     #[test]
     fn test_registry_generation() {
         let mut registry = LinkRegistry::new();
         registry.register("test", EntityDef {
             base: "/api/v1/tests",
-            links: &[
-                LinkDef::get("self", "{base}/{id}"),
-                LinkDef::patch("update", "{base}/{id}").when("active"),
-                LinkDef::get("parent", "{base}/{parent_id}").when("has_parent"),
-            ],
+            links: TEST_LINKS,
         });
 
         // Active entity with parent

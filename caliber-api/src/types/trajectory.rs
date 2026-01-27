@@ -104,13 +104,13 @@ pub struct TrajectoryResponse {
 impl Linkable for TrajectoryResponse {
     const ENTITY_TYPE: &'static str = "trajectory";
 
-    fn entity_id(&self) -> String {
+    fn link_id(&self) -> String {
         self.trajectory_id.to_string()
     }
 
     fn check_condition(&self, condition: &str) -> bool {
         match condition {
-            "mutable" => matches!(self.status, TrajectoryStatus::Active | TrajectoryStatus::Paused),
+            "mutable" => matches!(self.status, TrajectoryStatus::Active | TrajectoryStatus::Suspended),
             "has_parent" => self.parent_trajectory_id.is_some(),
             _ => true,
         }

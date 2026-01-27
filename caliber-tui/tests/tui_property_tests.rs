@@ -572,6 +572,7 @@ fn create_test_trajectory(id: TrajectoryId, parent_id: Option<TrajectoryId>) -> 
         completed_at: None,
         outcome: None,
         metadata: None,
+        links: None,
     }
 }
 
@@ -590,6 +591,7 @@ fn create_test_trajectory_with_status(id: TrajectoryId, status: TrajectoryStatus
         completed_at: None,
         outcome: None,
         metadata: None,
+        links: None,
     }
 }
 
@@ -612,6 +614,7 @@ fn create_test_trajectory_full(
         completed_at: None,
         outcome: None,
         metadata: None,
+        links: None,
     }
 }
 
@@ -636,6 +639,7 @@ fn create_test_artifact(artifact_type: ArtifactType) -> ArtifactResponse {
         updated_at: chrono::Utc::now(),
         superseded_by: None,
         metadata: None,
+        links: None,
     }
 }
 
@@ -657,5 +661,6 @@ fn create_test_note(note_type: NoteType) -> NoteResponse {
         access_count: 0,
         superseded_by: None,
         metadata: None,
+        links: None,
     }
 }

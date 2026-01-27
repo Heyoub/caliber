@@ -467,6 +467,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: Some(json!({ "tenant_id": tenant_id.to_string() })),
+                links: None,
             },
         };
         assert!(should_deliver_event(&trajectory_created, tenant_id));
@@ -487,6 +488,7 @@ mod tests {
                 completed_at: None,
                 outcome: None,
                 metadata: Some(json!({ "tenant_id": other_tenant.to_string() })),
+                links: None,
             },
         };
         assert!(!should_deliver_event(&other_tenant_event, tenant_id));
