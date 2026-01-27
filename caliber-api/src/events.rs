@@ -329,6 +329,25 @@ pub enum WsEvent {
         /// Number of edges created
         count: usize,
     },
+
+    // ========================================================================
+    // TOOL EVENTS (MCP Security Audit)
+    // ========================================================================
+    /// A tool was executed via MCP.
+    ToolExecuted {
+        /// Tenant ID for filtering
+        tenant_id: TenantId,
+        /// Agent that executed the tool (if known)
+        agent_id: Option<AgentId>,
+        /// Name of the tool that was executed
+        tool_name: String,
+        /// Whether execution succeeded
+        success: bool,
+        /// Execution duration in milliseconds
+        duration_ms: u64,
+        /// Error message if failed
+        error: Option<String>,
+    },
 }
 
 impl WsEvent {
@@ -373,6 +392,8 @@ impl WsEvent {
             WsEvent::SummarizationTriggered { .. } => "SummarizationTriggered",
             WsEvent::EdgeCreated { .. } => "EdgeCreated",
             WsEvent::EdgesBatchCreated { .. } => "EdgesBatchCreated",
+            // Tool events
+            WsEvent::ToolExecuted { .. } => "ToolExecuted",
         }
     }
 

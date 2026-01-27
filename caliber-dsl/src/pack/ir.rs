@@ -256,14 +256,21 @@ pub type ContractFiles = std::collections::HashMap<String, String>;
 /// Commands must be:
 /// - A relative path starting with `./` or an absolute path starting with `/`
 /// - Free of shell metacharacters that could enable injection
+/// - Free of path traversal sequences (`..`)
 ///
-/// This prevents shell injection attacks like `cmd = "rm -rf / && echo hacked"`.
+/// This prevents shell injection attacks like `cmd = "rm -rf / && echo hacked"`
+/// and path traversal attacks like `cmd = "./tools/../../../bin/sh"`.
 fn is_valid_executable_path(cmd: &str) -> bool {
     // Forbidden shell metacharacters
     const FORBIDDEN: &[char] = &[';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n', '\r'];
 
     // Must not contain forbidden characters
     if cmd.chars().any(|c| FORBIDDEN.contains(&c)) {
+        return false;
+    }
+
+    // Block path traversal attempts (e.g., "../../../etc/passwd")
+    if cmd.contains("..") {
         return false;
     }
 

@@ -12,7 +12,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashSet;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use uuid::Uuid;
@@ -573,6 +573,21 @@ async fn execute_pack_tool(
         }
     }
 
+    // Check scope token budget if scope_id is provided
+    if let Some(scope_id_str) = args.get("scope_id").and_then(|v| v.as_str()) {
+        if let Ok(uuid) = uuid::Uuid::parse_str(scope_id_str) {
+            let scope_id = ScopeId::new(uuid);
+            if let Ok(Some(scope)) = state.db.get::<crate::types::ScopeResponse>(scope_id, tenant_id).await {
+                if scope.tokens_used >= scope.token_budget {
+                    return Err(ApiError::forbidden(format!(
+                        "Scope '{}' has exceeded its token budget ({}/{} tokens used)",
+                        scope_id, scope.tokens_used, scope.token_budget
+                    )));
+                }
+            }
+        }
+    }
+
     let Some(tool) = compiled.tools.iter().find(|t| t.id == name) else {
         return Ok(None);
     };
@@ -586,6 +601,13 @@ async fn execute_pack_tool(
             )));
         }
     }
+
+    // Resolve agent_id for audit trail (from args if provided)
+    let agent_id = args
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(caliber_core::AgentId::new);
 
     match tool.kind {
         CompiledToolKind::Exec => {
@@ -614,6 +636,9 @@ async fn execute_pack_tool(
             let timeout_ms = tool.timeout_ms.unwrap_or(30_000).clamp(100, 300_000) as u64;
             let timeout = Duration::from_millis(timeout_ms);
 
+            // Start timing for audit event
+            let start = Instant::now();
+
             let execution = async {
                 let mut child = command
                     .spawn()
@@ -634,9 +659,33 @@ async fn execute_pack_tool(
                     .map_err(|e| ApiError::internal_error(format!("Failed to run tool: {}", e)))
             };
 
-            let output = match tokio::time::timeout(timeout, execution).await {
-                Ok(result) => result?,
+            let result = tokio::time::timeout(timeout, execution).await;
+            let duration_ms = start.elapsed().as_millis() as u64;
+
+            let output = match result {
+                Ok(Ok(output)) => output,
+                Ok(Err(e)) => {
+                    // Emit failure event
+                    state.ws.broadcast(crate::events::WsEvent::ToolExecuted {
+                        tenant_id,
+                        agent_id,
+                        tool_name: name.to_string(),
+                        success: false,
+                        duration_ms,
+                        error: Some(e.to_string()),
+                    });
+                    return Err(e);
+                }
                 Err(_) => {
+                    // Emit timeout event
+                    state.ws.broadcast(crate::events::WsEvent::ToolExecuted {
+                        tenant_id,
+                        agent_id,
+                        tool_name: name.to_string(),
+                        success: false,
+                        duration_ms,
+                        error: Some(format!("Timed out after {}ms", timeout_ms)),
+                    });
                     return Err(ApiError::internal_error(format!(
                         "Tool '{}' execution timed out after {}ms",
                         name, timeout_ms
@@ -647,6 +696,17 @@ async fn execute_pack_tool(
             let status = output.status.code().unwrap_or_default();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let success = output.status.success();
+
+            // Emit success/failure event
+            state.ws.broadcast(crate::events::WsEvent::ToolExecuted {
+                tenant_id,
+                agent_id,
+                tool_name: name.to_string(),
+                success,
+                duration_ms,
+                error: if success { None } else { Some(format!("Exit code: {}", status)) },
+            });
 
             let mut text = format!("Tool '{}' exited with status {}", name, status);
             if !stdout.is_empty() {
@@ -661,7 +721,7 @@ async fn execute_pack_tool(
             tracing::info!(
                 tool_name = %name,
                 exit_status = status,
-                timeout_ms = timeout_ms,
+                duration_ms = duration_ms,
                 "Tool execution completed"
             );
 
