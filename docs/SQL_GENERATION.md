@@ -212,3 +212,27 @@ Verify PostgreSQL version (must be 18+):
 ```bash
 /usr/lib/postgresql/18/bin/pg_config --version
 ```
+
+---
+
+## OpenAPI Specification
+
+### Regeneration
+OpenAPI is generated from utoipa annotations in `caliber-api/src/routes/*.rs`.
+
+```bash
+cargo run -p caliber-api --bin generate-openapi --features openapi > openapi.json
+```
+
+### Policy
+- Regenerate after adding/modifying route handlers with `#[utoipa::path]`
+- Commit updated `openapi.json` with the route changes
+- SDK is downstream of OpenAPI; SDK regeneration is separate (see SDK section below)
+
+### SDK Regeneration
+SDK is a derived artifact from OpenAPI:
+```bash
+./scripts/generate-sdk.sh typescript
+```
+
+SDK is NOT regenerated automatically. Wait until API contracts stabilize.
