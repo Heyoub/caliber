@@ -357,6 +357,32 @@ CALIBER supports linking entities with typed relationships:
 
 ---
 
+## Extension Installation (Bootstrap)
+
+CALIBER runs as a PostgreSQL extension. Installation:
+
+```sql
+-- Requires PostgreSQL 18+
+CREATE EXTENSION IF NOT EXISTS vector;  -- pgvector for embeddings
+CREATE EXTENSION IF NOT EXISTS caliber_pg;  -- creates all tables + functions
+```
+
+The extension:
+1. Creates schema tables (`caliber_agent`, `caliber_trajectory`, etc.)
+2. Creates SQL functions (`caliber_agent_register`, etc.)
+3. Runs pending migrations automatically via `_PG_init()`
+
+### Manual Schema Init (without extension)
+If extension not available, use raw SQL bootstrap:
+```bash
+psql -d caliber -f caliber-pg/sql/caliber_init.sql
+```
+
+### caliber_init() Function
+The `caliber_init()` SQL function is available for re-running bootstrap, but is NOT required for normal usage. The extension handles initialization automatically.
+
+---
+
 ## Quick Reference
 
 ### When to Create What
