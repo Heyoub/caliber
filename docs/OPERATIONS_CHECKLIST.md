@@ -21,7 +21,7 @@ and a predictable rollout path.
 - `cargo pgrx init` must run on the deployment host.
 - Install the extension into the target Postgres (`cargo pgrx install --package caliber-pg --pg-config "/usr/lib/postgresql/18/bin/pg_config"`).
 - Run `cargo pgrx test pg18 --package caliber-pg` for extension tests.
-- Extension smoke test: `CREATE EXTENSION caliber_pg; SELECT caliber_init();`
+- Extension smoke test: `CREATE EXTENSION caliber_pg;`
 
 ## 3) Migrations and Schema
 

@@ -164,15 +164,12 @@ cargo pgrx test pg18 --package caliber-pg
 
 ---
 
-## Initialize (Config Required)
+## Initialize / Configure
+
+Initialization happens at extension install:
 
 ```sql
-SELECT caliber_init('{
-    "token_budget": 8000,
-    "checkpoint_retention": 5,
-    "stale_threshold_days": 30,
-    -- ... all config required
-}');
+CREATE EXTENSION caliber_pg;
 ```
 
-Missing config → error, not silent default.
+Configuration is applied via the DSL pipeline (REST/gRPC), not `caliber_init()`.

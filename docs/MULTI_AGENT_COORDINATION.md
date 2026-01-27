@@ -1048,7 +1048,7 @@ pub fn caliber_accept_handoff(
 
 ## 8. Bootstrap Schema (One-Time SQL)
 
-This SQL runs ONCE at extension install (via `caliber_init()`), NOT in hot path:
+This SQL runs ONCE at extension install (via the extension SQL script), NOT in hot path:
 
 ```sql
 -- bootstrap.sql (loaded by caliber_init())
@@ -1178,7 +1178,7 @@ CREATE INDEX IF NOT EXISTS idx_handoff_status ON caliber_handoff(status);
 
 **SQL only for:**
 
-- One-time bootstrap (`caliber_init()`)
+- One-time bootstrap (extension install SQL)
 - Human debugging (ad-hoc queries)
 
 **Multi-agent coordination via:**

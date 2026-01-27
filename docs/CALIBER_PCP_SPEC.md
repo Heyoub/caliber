@@ -2724,16 +2724,9 @@ caliber_message       - Agent messaging (optional)
 ### 6.4 Extension Bootstrap
 
 ```rust
-// Extension initialization creates relations if not exist
-#[pg_extern]
-pub fn caliber_init() {
-    // Create relations using SPI (one-time setup, SQL is fine here)
-    Spi::run(include_str!("../sql/bootstrap.sql"))
-        .expect("Failed to bootstrap CALIBER relations");
-}
-
-// bootstrap.sql contains CREATE TABLE statements
-// These run ONCE at extension install, not in hot path
+// Bootstrap occurs at extension install time via the extension SQL script.
+// Runtime initialization is handled by `_PG_init()` (migration checks), not a
+// `caliber_init()` entrypoint.
 ```
 
 ### 6.5 Cache Strategy
@@ -3042,7 +3035,7 @@ For an AI agent implementing this system, execute in order:
 ```
 [x] CREATE TABLE statements for all relations
 [x] CREATE INDEX statements (B-tree, hash, HNSW)
-[x] Wrap in caliber_init() function
+[x] Bootstrap via extension install SQL script
 ```
 
 ### Phase 4: Core Runtime
@@ -4957,7 +4950,7 @@ impl DistanceMetric {
 }
 
 /// Create vector indexes after dimension is known
-/// Called from caliber_init() after embedding provider configured
+/// Called after bootstrap and embedding provider are configured
 #[pg_extern]
 pub fn caliber_create_vector_indexes(
     dimensions: i32,

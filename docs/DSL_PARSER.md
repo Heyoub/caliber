@@ -1443,13 +1443,9 @@ pub const INJECTION_{}: InjectionRule = InjectionRule {{
     
     fn emit_footer(&mut self) {
         self.output.push_str(r#"
-// Bootstrap function (one-time setup)
-#[pg_extern]
-pub fn caliber_init() {
-    // Create tables using SPI (SQL is OK for one-time setup)
-    Spi::run(include_str!("../sql/bootstrap.sql"))
-        .expect("Failed to bootstrap");
-}
+// Bootstrap happens at extension install time via the extension SQL script.
+// Runtime initialization is handled by `_PG_init()` (migration checks) rather than
+// a `caliber_init()` entrypoint.
 "#);
     }
     

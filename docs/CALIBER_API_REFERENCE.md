@@ -531,7 +531,16 @@ Content-Type: application/json
 
 ## DSL
 
-Validate and parse CALIBER DSL configurations.
+Validate, compose, and deploy CALIBER configurations.
+
+### Compose Pack (TOML + Markdown)
+```http
+POST /api/v1/dsl/compose
+Content-Type: multipart/form-data
+
+manifest: (cal.toml)
+markdown: (agents/support.md)
+```
 
 ### Validate DSL
 ```http
@@ -559,6 +568,24 @@ Content-Type: application/json
 
 {
   "source": "agent Coder { capabilities: [write_code] }"
+}
+```
+
+---
+
+## Context
+
+Server-side context assembly.
+
+### Assemble Context
+```http
+POST /api/v1/context/assemble
+Content-Type: application/json
+
+{
+  "trajectory_id": "uuid",
+  "scope_id": "uuid",
+  "token_budget": 8000
 }
 ```
 
