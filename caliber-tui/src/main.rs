@@ -232,12 +232,41 @@ async fn handle_action(app: &mut App, action: KeyAction) -> Result<bool, TuiErro
         KeyAction::NextLink => app.next_link(),
         KeyAction::PrevLink => app.prev_link(),
         KeyAction::ExecuteLink => {
-            if let Some(action) = app.selected_link_action() {
+            if let Some(action) = app.selected_link_action().cloned() {
+                let tenant_id = app.tenant.tenant_id;
+                let is_destructive = action.is_destructive();
+
+                // Confirm destructive actions
+                if is_destructive {
+                    app.modal = Some(caliber_tui::state::Modal {
+                        title: "Confirm Delete".to_string(),
+                        message: format!("Execute {} {}?", action.method(), action.link.href),
+                    });
+                    // TODO: Add confirmation flow - for now, skip destructive actions
+                    return Ok(false);
+                }
+
                 app.notify(
                     caliber_tui::notifications::NotificationLevel::Info,
-                    format!("Execute: {} {}", action.method(), action.link.href),
+                    format!("Executing {} {}...", action.method(), action.link.href),
                 );
-                // TODO: Actually execute the link via HTTP client
+
+                match app.api.rest().follow_link(tenant_id, &action.link).await {
+                    Ok(_response) => {
+                        app.notify(
+                            caliber_tui::notifications::NotificationLevel::Info,
+                            format!("{} completed", action.title()),
+                        );
+                        // Refresh current view to show updated data
+                        refresh_view(app).await?;
+                    }
+                    Err(e) => {
+                        app.notify(
+                            caliber_tui::notifications::NotificationLevel::Error,
+                            format!("Failed: {}", e),
+                        );
+                    }
+                }
             }
         }
         KeyAction::Cancel | KeyAction::Select | KeyAction::MoveLeft | KeyAction::MoveRight => {}

@@ -6,7 +6,7 @@ use caliber_api::error::ApiError as ApiServerError;
 use caliber_api::events::WsEvent;
 use caliber_api::types::{
     AgentResponse, CompileDslRequest, CompileDslResponse, ComposePackResponse, DeployDslRequest,
-    DeployDslResponse, ListAgentsRequest, ListAgentsResponse, ListArtifactsRequest,
+    DeployDslResponse, Link, ListAgentsRequest, ListAgentsResponse, ListArtifactsRequest,
     ListArtifactsResponse, ListLocksResponse, ListMessagesRequest, ListMessagesResponse,
     ListNotesRequest, ListNotesResponse, ListTenantsResponse, ListTrajectoriesRequest,
     ListTrajectoriesResponse, LockResponse, MessageResponse, ScopeResponse, TurnResponse,
@@ -310,6 +310,58 @@ impl RestClient {
             .send()
             .await?;
         self.parse_response(response).await
+    }
+
+    /// Follow a HATEOAS link, executing the appropriate HTTP method.
+    /// Returns the JSON response as a generic Value.
+    pub async fn follow_link(
+        &self,
+        tenant_id: TenantId,
+        link: &Link,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let method = link.method.as_deref().unwrap_or("GET").to_uppercase();
+        let url = if link.href.starts_with("http") {
+            link.href.clone()
+        } else {
+            format!("{}{}", self.base_url, link.href)
+        };
+
+        let request = match method.as_str() {
+            "GET" => self.client.get(&url),
+            "POST" => self.client.post(&url),
+            "PUT" => self.client.put(&url),
+            "PATCH" => self.client.patch(&url),
+            "DELETE" => self.client.delete(&url),
+            _ => return Err(ApiClientError::InvalidResponse(format!("Unsupported method: {}", method))),
+        };
+
+        let response = request
+            .headers(self.auth_header.clone())
+            .header("x-tenant-id", tenant_id.as_uuid().to_string())
+            .send()
+            .await?;
+
+        let status = response.status();
+        if status.is_success() {
+            // Handle 204 No Content
+            if status.as_u16() == 204 {
+                return Ok(serde_json::Value::Null);
+            }
+            Ok(response.json::<serde_json::Value>().await?)
+        } else {
+            let text = response.text().await?;
+            if let Ok(api_error) = serde_json::from_str::<ApiServerError>(&text) {
+                return Err(ApiClientError::InvalidResponse(format!(
+                    "{}: {}",
+                    api_error.code, api_error.message
+                )));
+            }
+            Err(ApiClientError::InvalidResponse(format!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                text
+            )))
+        }
     }
 
     async fn parse_response<T: serde::de::DeserializeOwned>(

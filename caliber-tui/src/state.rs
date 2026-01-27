@@ -199,6 +199,10 @@ impl App {
             View::TenantManagement => select_next_id(&self.tenant_view.tenants, &mut self.tenant_view.selected),
             View::DslEditor | View::ConfigViewer => {}
         }
+        // Update links panel when selection changes
+        if self.links_panel_visible {
+            self.update_links_for_selected();
+        }
     }
 
     pub fn select_previous(&mut self) {
@@ -213,6 +217,10 @@ impl App {
             View::MessageQueue => select_prev_id(&self.message_view.messages, &mut self.message_view.selected),
             View::TenantManagement => select_prev_id(&self.tenant_view.tenants, &mut self.tenant_view.selected),
             View::DslEditor | View::ConfigViewer => {}
+        }
+        // Update links panel when selection changes
+        if self.links_panel_visible {
+            self.update_links_for_selected();
         }
     }
 
