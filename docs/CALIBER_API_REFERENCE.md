@@ -538,9 +538,26 @@ Validate, compose, and deploy CALIBER configurations.
 POST /api/v1/dsl/compose
 Content-Type: multipart/form-data
 
-manifest: (cal.toml)
+cal_toml: (cal.toml contents)
 markdown: (agents/support.md)
+markdown: (tools/prompts/search.md)
 ```
+
+**Response (success, abridged):**
+```json
+{
+  "success": true,
+  "ast": { "...": "..." },
+  "compiled": { "...": "..." },
+  "dsl_source": "caliber \"1.0\" { ... }",
+  "errors": []
+}
+```
+
+Notes:
+- `dsl_source` is the canonical DSL derived from the AST.
+- Pack compose validates `injections.*.entity_type` when provided.
+- Pack routing hints can be declared under `[routing]` in `cal.toml`.
 
 ### Validate DSL
 ```http
@@ -570,6 +587,20 @@ Content-Type: application/json
   "source": "agent Coder { capabilities: [write_code] }"
 }
 ```
+
+### Inspect Active Pack / Runtime Config
+```http
+GET /api/v1/pack/inspect
+```
+
+Key response fields include:
+- `tools`, `toolsets`, `agents`
+- `injections` (pack-injection view preferred when present)
+- `effective_injections` (effective injection per entity: note/artifact)
+- `routing`
+- `routing_effective` (strategy + provider selection reasons)
+- `effective_embedding_provider`
+- `effective_summarization_provider`
 
 ---
 
@@ -639,6 +670,13 @@ are required.
 
 The MCP server is exposed under `/mcp/*` and is not versioned with REST.
 Use this endpoint only if you are integrating MCP tools.
+
+Behavior notes:
+- MCP tools are pack-driven from the active deployed pack.
+- MCP is strict pack-only by default (no deployed pack => empty tools / failing calls).
+- Toolset scoping is supported using runtime agent identity:
+  - `POST /mcp/tools/list` accepts `x-agent-name` or `x-agent-id`
+  - `POST /mcp/tools/call` accepts `arguments.agent_name` or `arguments.agent_id`
 
 ---
 

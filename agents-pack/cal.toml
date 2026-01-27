@@ -1,0 +1,48 @@
+[meta]
+version = "1.0"
+project = "agents-pack-routing-example"
+
+[defaults]
+strict_markdown = true
+strict_refs = true
+
+[providers.openai]
+type = "openai"
+api_key = "env:OPENAI_API_KEY"
+model = "text-embedding-3-small"
+[providers.openai.options]
+endpoint = "https://api.openai.com/v1"
+dimensions = "1536"
+
+[routing]
+strategy = "least_latency"
+embedding_provider = "openai"
+summarization_provider = "openai"
+
+[tools.prompts.example]
+kind = "prompt"
+prompt_md = "tools/example.tool.md"
+timeout_ms = 30000
+
+[toolsets.core]
+tools = ["tools.prompts.example"]
+
+[agents.support]
+enabled = true
+profile = "default"
+adapter = "main"
+prompt_md = "agents/example.agent.md"
+toolsets = ["core"]
+
+[adapters.main]
+type = "postgres"
+connection = "postgresql://localhost/caliber"
+
+[injections.notes_relevant]
+entity_type = "note"
+source = "notes"
+target = "context"
+mode = "relevant"
+threshold = 0.72
+priority = 80
+max_tokens = 2000

@@ -162,6 +162,8 @@ pub struct ComposePackResponse {
     pub ast: Option<serde_json::Value>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub compiled: Option<serde_json::Value>,
+    /// Canonical DSL source derived from the AST (for audit/debug).
+    pub dsl_source: Option<String>,
     pub errors: Vec<PackDiagnostic>,
 }
 

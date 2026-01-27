@@ -117,6 +117,9 @@ High-level sections:
 Pack injection targeting:
 - `injections.*.entity_type` can explicitly target `note` or `artifact`.
 - Pack compose validates `entity_type` values at compose time.
+- Pack compose validates `[routing]` hints:
+  - `strategy` must be one of: first|round_robin|random|least_latency
+  - provider hints must reference declared providers.
 
 Example (abbreviated):
 ```toml
@@ -282,7 +285,7 @@ Transport (pick one and document):
 
 Response should include:
 - AST (JSON) + compiled config (JSON)
-- Optional: pretty-printed DSL string (derived from AST)
+- Canonical DSL source string (derived from AST) as `dsl_source`
 - compiled config (structured)
 - diagnostics with file + line/column ranges
 

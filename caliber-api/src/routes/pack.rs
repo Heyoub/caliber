@@ -28,6 +28,23 @@ pub struct PackInspectInjection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackInspectEffectiveInjection {
+    pub entity_type: String,
+    pub injection: Option<PackInspectInjection>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackInspectRoutingEffective {
+    pub strategy: String,
+    pub strategy_reason: String,
+    pub embedding_provider: Option<String>,
+    pub embedding_reason: String,
+    pub summarization_provider: Option<String>,
+    pub summarization_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackInspectResponse {
     pub has_active: bool,
     pub compiled: Option<DslCompiledConfig>,
@@ -40,6 +57,8 @@ pub struct PackInspectResponse {
     pub routing: Option<caliber_dsl::compiler::CompiledPackRoutingConfig>,
     pub effective_embedding_provider: Option<String>,
     pub effective_summarization_provider: Option<String>,
+    pub effective_injections: Vec<PackInspectEffectiveInjection>,
+    pub routing_effective: Option<PackInspectRoutingEffective>,
 }
 
 /// GET /api/v1/pack/inspect - Inspect the active pack/runtime config.
@@ -64,11 +83,17 @@ pub async fn inspect_pack(
         routing,
         effective_embedding_provider,
         effective_summarization_provider,
+        effective_injections,
+        routing_effective,
     ) = if let Some(compiled) = compiled.as_ref() {
-        let effective_embedding_provider =
-            select_provider_name_effective(compiled, ProviderCapability::Embedding).await;
-        let effective_summarization_provider =
-            select_provider_name_effective(compiled, ProviderCapability::Summarization).await;
+        let routing_effective = routing_effective(compiled).await;
+        let effective_embedding_provider = routing_effective
+            .as_ref()
+            .and_then(|r| r.embedding_provider.clone());
+        let effective_summarization_provider = routing_effective
+            .as_ref()
+            .and_then(|r| r.summarization_provider.clone());
+        let effective_injections = effective_injections(compiled);
 
         (
             compiled.tools.iter().map(|t| t.id.clone()).collect(),
@@ -87,6 +112,8 @@ pub async fn inspect_pack(
             compiled.pack_routing.clone(),
             effective_embedding_provider,
             effective_summarization_provider,
+            effective_injections,
+            routing_effective,
         )
     } else {
         (
@@ -97,6 +124,8 @@ pub async fn inspect_pack(
             Vec::new(),
             None,
             None,
+            None,
+            Vec::new(),
             None,
         )
     };
@@ -113,6 +142,8 @@ pub async fn inspect_pack(
         routing,
         effective_embedding_provider,
         effective_summarization_provider,
+        effective_injections,
+        routing_effective,
     }))
 }
 
@@ -162,6 +193,70 @@ async fn select_provider_name_effective(
         .map(|p| p.provider_id().to_string())
 }
 
+async fn routing_effective(compiled: &DslCompiledConfig) -> Option<PackInspectRoutingEffective> {
+    if compiled.providers.is_empty() {
+        return None;
+    }
+
+    let strategy = compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|r| r.strategy.as_deref())
+        .and_then(routing_strategy_from_hint)
+        .unwrap_or(RoutingStrategy::First);
+    let strategy_label = routing_strategy_label(strategy);
+    let strategy_reason = if compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|r| r.strategy.as_deref())
+        .is_some()
+    {
+        "from pack routing hint".to_string()
+    } else {
+        "defaulted to 'first'".to_string()
+    };
+
+    let embedding_preferred = compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|r| r.embedding_provider.clone());
+    let summarization_preferred = compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|r| r.summarization_provider.clone());
+
+    let embedding_provider = if embedding_preferred.is_some() {
+        embedding_preferred.clone()
+    } else {
+        select_provider_name_effective(compiled, ProviderCapability::Embedding).await
+    };
+    let embedding_reason = if embedding_preferred.is_some() {
+        "from pack routing hint".to_string()
+    } else {
+        format!("selected via strategy '{}'", strategy_label)
+    };
+
+    let summarization_provider = if summarization_preferred.is_some() {
+        summarization_preferred.clone()
+    } else {
+        select_provider_name_effective(compiled, ProviderCapability::Summarization).await
+    };
+    let summarization_reason = if summarization_preferred.is_some() {
+        "from pack routing hint".to_string()
+    } else {
+        format!("selected via strategy '{}'", strategy_label)
+    };
+
+    Some(PackInspectRoutingEffective {
+        strategy: strategy_label.to_string(),
+        strategy_reason,
+        embedding_provider,
+        embedding_reason,
+        summarization_provider,
+        summarization_reason,
+    })
+}
+
 fn routing_strategy_from_hint(hint: &str) -> Option<RoutingStrategy> {
     match hint.to_lowercase().as_str() {
         "first" => Some(RoutingStrategy::First),
@@ -169,6 +264,16 @@ fn routing_strategy_from_hint(hint: &str) -> Option<RoutingStrategy> {
         "random" => Some(RoutingStrategy::Random),
         "least_latency" | "leastlatency" => Some(RoutingStrategy::LeastLatency),
         _ => None,
+    }
+}
+
+fn routing_strategy_label(strategy: RoutingStrategy) -> &'static str {
+    match strategy {
+        RoutingStrategy::First => "first",
+        RoutingStrategy::RoundRobin => "round_robin",
+        RoutingStrategy::Random => "random",
+        RoutingStrategy::LeastLatency => "least_latency",
+        RoutingStrategy::Capability(_) => "capability",
     }
 }
 
@@ -246,6 +351,90 @@ fn inspect_injections(compiled: &DslCompiledConfig) -> Vec<PackInspectInjection>
             max_tokens: i.max_tokens,
         })
         .collect()
+}
+
+fn effective_injections(compiled: &DslCompiledConfig) -> Vec<PackInspectEffectiveInjection> {
+    vec![
+        effective_injection_for_entity(compiled, "note"),
+        effective_injection_for_entity(compiled, "artifact"),
+    ]
+}
+
+fn effective_injection_for_entity(compiled: &DslCompiledConfig, entity: &str) -> PackInspectEffectiveInjection {
+    if !compiled.pack_injections.is_empty() {
+        let mut best: Option<&caliber_dsl::compiler::CompiledPackInjectionConfig> = None;
+        for injection in &compiled.pack_injections {
+            let entity_match = injection.entity_type.as_deref() == Some(entity)
+                || injection.entity_type.as_deref() == Some(&format!("{}s", entity));
+            if !entity_match {
+                continue;
+            }
+            match best {
+                Some(current) if current.priority >= injection.priority => {}
+                _ => best = Some(injection),
+            }
+        }
+
+        let injection = best.map(|i| PackInspectInjection {
+            source: i.source.clone(),
+            target: i.target.clone(),
+            entity_type: i.entity_type.clone(),
+            mode: mode_label(&i.mode),
+            priority: i.priority,
+            max_tokens: i.max_tokens,
+        });
+
+        let reason = if injection.is_some() {
+            "selected highest-priority pack injection".to_string()
+        } else {
+            "no pack injection targets this entity".to_string()
+        };
+
+        return PackInspectEffectiveInjection {
+            entity_type: entity.to_string(),
+            injection,
+            reason,
+        };
+    }
+
+    // Fallback to legacy DSL injection heuristics.
+    let mut best: Option<&caliber_dsl::compiler::InjectionConfig> = None;
+    for injection in &compiled.injections {
+        let source = injection.source.to_lowercase();
+        let matches_entity = match entity {
+            "note" => source.contains("note"),
+            "artifact" => source.contains("artifact"),
+            _ => false,
+        };
+        if !matches_entity {
+            continue;
+        }
+        match best {
+            Some(current) if current.priority >= injection.priority => {}
+            _ => best = Some(injection),
+        }
+    }
+
+    let injection = best.map(|i| PackInspectInjection {
+        source: i.source.clone(),
+        target: i.target.clone(),
+        entity_type: None,
+        mode: mode_label(&i.mode),
+        priority: i.priority,
+        max_tokens: i.max_tokens,
+    });
+
+    let reason = if injection.is_some() {
+        "selected highest-priority legacy injection (heuristic match)".to_string()
+    } else {
+        "no legacy injection heuristically matches this entity".to_string()
+    };
+
+    PackInspectEffectiveInjection {
+        entity_type: entity.to_string(),
+        injection,
+        reason,
+    }
 }
 
 fn mode_label(mode: &CompiledInjectionMode) -> String {

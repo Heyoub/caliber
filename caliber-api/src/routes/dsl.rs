@@ -276,10 +276,12 @@ pub async fn compose_pack(
                 .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
             let compiled_json = serde_json::to_value(&result.compiled)
                 .map_err(|e| ApiError::internal_error(format!("Failed to serialize compiled config: {}", e)))?;
+            let dsl_source = pretty_print(&result.ast);
             Ok(Json(ComposePackResponse {
                 success: true,
                 ast: Some(ast_json),
                 compiled: Some(compiled_json),
+                dsl_source: Some(dsl_source),
                 errors: Vec::new(),
             }))
         }
@@ -292,7 +294,7 @@ pub async fn compose_pack(
                     message: m.message,
                 },
                 caliber_dsl::pack::PackError::Validation(msg)
-                    if msg.starts_with("injections.") =>
+                    if msg.starts_with("injections.") || msg.starts_with("routing.") =>
                 {
                     let (file, message) = msg
                         .split_once(':')
@@ -317,6 +319,7 @@ pub async fn compose_pack(
                 success: false,
                 ast: None,
                 compiled: None,
+                dsl_source: None,
                 errors: vec![diag],
             }))
         }

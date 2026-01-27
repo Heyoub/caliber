@@ -17,6 +17,37 @@ If not configured and an LLM operation is attempted → `CaliberError::Config(Co
 
 ---
 
+## Pack Routing + Inspect (VAL-Aligned)
+
+Pack routing hints are the VAL-aligned way to express provider selection without
+hardcoding defaults in the API layer.
+
+In `cal.toml`:
+
+```toml
+[providers.openai]
+type = "openai"
+api_key = "env:OPENAI_API_KEY"
+model = "text-embedding-3-small"
+
+[routing]
+strategy = "least_latency"           # first|round_robin|random|least_latency
+embedding_provider = "openai"
+summarization_provider = "openai"
+```
+
+To see what is *actually effective* at runtime:
+
+- `GET /api/v1/pack/inspect`
+
+Key fields:
+
+- `routing` and `routing_effective`
+- `effective_embedding_provider`
+- `effective_summarization_provider`
+
+---
+
 ## 1. VAL: Vector Abstraction Layer
 
 ### 1.1 Core Concept

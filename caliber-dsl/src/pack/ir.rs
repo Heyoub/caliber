@@ -30,6 +30,7 @@ impl PackIr {
         validate_toolsets(&manifest)?;
         validate_agents(&manifest, &markdown)?;
         validate_injections(&manifest)?;
+        validate_routing(&manifest)?;
         let adapters = build_adapters(&manifest)?;
         let policies = build_policies(&manifest)?;
         let injections = build_injections(&manifest)?;
@@ -167,6 +168,46 @@ fn validate_injections(manifest: &PackManifest) -> Result<(), PackError> {
             }
         }
     }
+    Ok(())
+}
+
+fn validate_routing(manifest: &PackManifest) -> Result<(), PackError> {
+    let Some(routing) = manifest.routing.as_ref() else {
+        return Ok(());
+    };
+
+    if let Some(strategy) = routing.strategy.as_deref() {
+        let strategy = strategy.to_lowercase();
+        let valid = matches!(
+            strategy.as_str(),
+            "first" | "round_robin" | "roundrobin" | "random" | "least_latency" | "leastlatency"
+        );
+        if !valid {
+            return Err(PackError::Validation(format!(
+                "routing.strategy: invalid value '{}' (expected first|round_robin|random|least_latency)",
+                strategy
+            )));
+        }
+    }
+
+    if let Some(provider) = routing.embedding_provider.as_deref() {
+        if !manifest.providers.contains_key(provider) {
+            return Err(PackError::Validation(format!(
+                "routing.embedding_provider: unknown provider '{}'",
+                provider
+            )));
+        }
+    }
+
+    if let Some(provider) = routing.summarization_provider.as_deref() {
+        if !manifest.providers.contains_key(provider) {
+            return Err(PackError::Validation(format!(
+                "routing.summarization_provider: unknown provider '{}'",
+                provider
+            )));
+        }
+    }
+
     Ok(())
 }
 

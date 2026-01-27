@@ -31,8 +31,10 @@ It surfaces both:
 - `toolsets`: map of toolset -> tool IDs
 - `agents`: map of agent -> toolsets
 - `injections`: normalized injection view
+- `effective_injections`: effective injection per entity (note/artifact)
 - `providers`: list of provider names
 - `routing`: routing hints from `[routing]`
+- `routing_effective`: effective strategy + provider selection reasons
 - `effective_embedding_provider`: provider chosen for embedding capability
 - `effective_summarization_provider`: provider chosen for summarization capability
 
@@ -82,6 +84,26 @@ curl -s \
     "embedding_provider": "openai",
     "summarization_provider": "openai"
   },
+  "routing_effective": {
+    "strategy": "least_latency",
+    "strategy_reason": "from pack routing hint",
+    "embedding_provider": "openai",
+    "embedding_reason": "from pack routing hint",
+    "summarization_provider": "openai",
+    "summarization_reason": "from pack routing hint"
+  },
+  "effective_injections": [
+    {
+      "entity_type": "note",
+      "reason": "selected highest-priority pack injection",
+      "injection": { "...": "..." }
+    },
+    {
+      "entity_type": "artifact",
+      "reason": "no pack injection targets this entity",
+      "injection": null
+    }
+  ],
   "effective_embedding_provider": "openai",
   "effective_summarization_provider": "openai"
 }
@@ -93,4 +115,3 @@ curl -s \
   falls back to the routing strategy (default: `first`).
 - MCP tool visibility is pack-driven and toolset-scoped. Use this endpoint to
   confirm the active tool registry and agent/toolset bindings.
-
