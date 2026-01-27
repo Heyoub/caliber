@@ -30,21 +30,29 @@ The TUI uses REST API endpoints via `RestClient` in `caliber-tui/src/api_client.
 
 ## Missing Pack/Compose Endpoints
 
-The DSL/Pack endpoints are NOT implemented in the TUI:
+The DSL/Pack endpoints are implemented in the TUI REST client and wired to key actions in the DSL view:
 
 | Endpoint | Method | Status | Notes |
 |----------|--------|--------|-------|
-| `/api/v1/dsl/validate` | POST | NOT IMPLEMENTED | DSL validation not in TUI |
-| `/api/v1/dsl/parse` | POST | NOT IMPLEMENTED | DSL parsing not in TUI |
-| `/api/v1/dsl/compile` | POST | NOT IMPLEMENTED | DSL compilation not in TUI |
-| `/api/v1/dsl/compose` | POST | NOT IMPLEMENTED | Pack compose not in TUI |
-| `/api/v1/dsl/deploy` | POST | NOT IMPLEMENTED | Pack deploy not in TUI |
+| `/api/v1/dsl/validate` | POST | IMPLEMENTED | DSL validation (`Enter` in DSL view) |
+| `/api/v1/dsl/parse` | POST | IMPLEMENTED (client) | Available in `RestClient` |
+| `/api/v1/dsl/compile` | POST | IMPLEMENTED | DSL compile (`e` in DSL view) |
+| `/api/v1/dsl/compose` | POST | IMPLEMENTED | Pack compose (`n` or refresh in DSL view) |
+| `/api/v1/dsl/deploy` | POST | IMPLEMENTED | Pack/DSL deploy (`d` in DSL view) |
 
-## Summary
+### DSL View Keybindings (Current Wiring)
 
-- **Total TUI endpoints**: 12 (all GET, read-only operations)
-- **Missing DSL endpoints**: 5 (all POST, write operations)
-- **Write operations**: None implemented in TUI
+- `Enter`: validate DSL source
+- `n`: compose pack from `./agents-pack`
+- `e`: compile current DSL source
+- `d`: deploy (pack if present, otherwise DSL)
+- `Ctrl-r`: refresh (compose pack in DSL view)
+
+## Summary (Current State)
+
+- **Total TUI endpoints**: 12 GET endpoints + DSL/pack POST endpoints
+- **Missing DSL endpoints**: None at the REST client layer
+- **Write operations**: Implemented for DSL/pack flows
 
 ## Recommendation
 

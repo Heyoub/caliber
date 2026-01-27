@@ -43,5 +43,21 @@ Agent Runtime
 
 ## Enforcement
 
-Pack compose validates that all tool references resolve.
-Tools referenced in mcp.json but not declared in cal.toml are invalid.
+Current enforcement behavior:
+
+- Pack compose validates that all tool references resolve.
+- MCP is strict pack-only by default.
+- MCP tools are sourced from the active deployed pack (`CompiledConfig.tools`).
+- Toolset scoping is supported:
+  - `POST /mcp/tools/list` accepts `x-agent-name` or `x-agent-id`.
+  - `POST /mcp/tools/call` accepts `arguments.agent_name` or `arguments.agent_id`.
+  - When agent IDs are provided, MCP resolves the runtime agent record and uses
+    `agent_type` as the pack agent name for toolset scoping.
+- Active pack inspection is available at:
+  - `GET /api/v1/pack/inspect`
+  - Includes effective provider selection fields for embeddings/summarization.
+
+Operational notes:
+
+- If no pack is deployed, MCP tool listing is empty and tool calls fail in strict mode.
+- Strictness can be relaxed via `CALIBER_MCP_STRICT_PACK=0` (fallbacks re-enabled).

@@ -18,6 +18,7 @@ use caliber_core::{
     EdgeId, SummarizationPolicyId,
     DagPosition, Event, EventFlags, EventHeader, EventKind,
 };
+use caliber_dsl::compiler::CompiledConfig as DslCompiledConfig;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
@@ -1881,6 +1882,58 @@ impl DbClient {
         let rows = conn
             .query(
                 "SELECT row_to_json(c) FROM caliber_get_active_dsl_config($1, $2) c",
+                &[&tenant_id.as_uuid(), &name],
+            )
+            .await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(rows[0].get::<_, JsonValue>(0)))
+    }
+
+    /// Get the active compiled DSL config for a tenant by name.
+    pub async fn dsl_compiled_get_active(
+        &self,
+        tenant_id: TenantId,
+        name: &str,
+    ) -> ApiResult<Option<DslCompiledConfig>> {
+        let Some(active) = self.dsl_config_get_active(tenant_id, name).await? else {
+            return Ok(None);
+        };
+
+        let compiled = active
+            .get("compiled")
+            .cloned()
+            .ok_or_else(|| ApiError::internal_error("Active DSL config missing compiled field"))?;
+
+        if compiled.is_null() {
+            return Ok(None);
+        }
+
+        let parsed: DslCompiledConfig = serde_json::from_value(compiled)
+            .map_err(|e| ApiError::internal_error(format!("Failed to parse compiled config: {}", e)))?;
+
+        Ok(Some(parsed))
+    }
+
+    /// Get the active pack source (cal.toml + markdown) for a tenant by name.
+    pub async fn dsl_pack_get_active(
+        &self,
+        tenant_id: TenantId,
+        name: &str,
+    ) -> ApiResult<Option<JsonValue>> {
+        let conn = self.get_conn().await?;
+
+        let rows = conn
+            .query(
+                "SELECT p.pack_source
+                 FROM caliber_dsl_pack p
+                 JOIN caliber_dsl_config c ON c.config_id = p.config_id
+                 WHERE c.tenant_id = $1 AND c.name = $2 AND c.status = 'deployed'
+                 ORDER BY c.version DESC
+                 LIMIT 1",
                 &[&tenant_id.as_uuid(), &name],
             )
             .await?;

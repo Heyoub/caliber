@@ -23,6 +23,7 @@ use crate::{
     },
 };
 use caliber_dsl::pack::{compose_pack as compose_pack_internal, PackInput, PackMarkdownFile};
+use caliber_dsl::pretty_printer::pretty_print;
 use std::path::PathBuf;
 
 // ============================================================================
@@ -290,6 +291,21 @@ pub async fn compose_pack(
                     column: m.column,
                     message: m.message,
                 },
+                caliber_dsl::pack::PackError::Validation(msg)
+                    if msg.starts_with("injections.") =>
+                {
+                    let (file, message) = msg
+                        .split_once(':')
+                        .map(|(f, rest)| (f.trim().to_string(), rest.trim().to_string()))
+                        .unwrap_or_else(|| ("manifest".to_string(), msg));
+
+                    PackDiagnostic {
+                        file,
+                        line: 0,
+                        column: 0,
+                        message,
+                    }
+                }
                 other => PackDiagnostic {
                     file: "manifest".to_string(),
                     line: 0,
@@ -351,21 +367,47 @@ pub async fn deploy_dsl(
         "DSL deploy request"
     );
 
-    // Validate that source is not empty
-    if req.source.trim().is_empty() {
+    // Validate that either DSL source or pack source is provided
+    if req.pack.is_none() && req.source.trim().is_empty() {
         return Err(ApiError::missing_field("source"));
     }
 
-    // Step 1: Parse the DSL
-    let ast = caliber_dsl::parse(&req.source)
-        .map_err(|err| ApiError::invalid_input(format!(
-            "Parse error at line {}, column {}: {}", 
-            err.line, err.column, err.message
-        )))?;
+    // Step 1-2: Parse/compile either DSL source or pack source
+    let (dsl_source, ast, compiled) = if let Some(pack) = &req.pack {
+        let markdowns = pack
+            .markdowns
+            .iter()
+            .map(|m| PackMarkdownFile {
+                path: PathBuf::from(&m.path),
+                content: m.content.clone(),
+            })
+            .collect();
 
-    // Step 2: Compile the AST
-    let compiled = caliber_dsl::DslCompiler::compile(&ast)
-        .map_err(|err| ApiError::invalid_input(format!("Compilation error: {}", err)))?;
+        let input = PackInput {
+            root: PathBuf::from("."),
+            manifest: pack.manifest.clone(),
+            markdowns,
+        };
+
+        let output = compose_pack_internal(input).map_err(|err| {
+            ApiError::invalid_input(format!("Pack composition error: {}", err))
+        })?;
+
+        // Store canonical DSL source for audit/debug.
+        let dsl_source = pretty_print(&output.ast);
+        (dsl_source, output.ast, output.compiled)
+    } else {
+        let ast = caliber_dsl::parse(&req.source)
+            .map_err(|err| ApiError::invalid_input(format!(
+                "Parse error at line {}, column {}: {}",
+                err.line, err.column, err.message
+            )))?;
+
+        let compiled = caliber_dsl::DslCompiler::compile(&ast)
+            .map_err(|err| ApiError::invalid_input(format!("Compilation error: {}", err)))?;
+
+        (req.source.clone(), ast, compiled)
+    };
 
     // Step 3: Serialize for storage
     let ast_json = serde_json::to_value(&ast)
@@ -381,7 +423,7 @@ pub async fn deploy_dsl(
         auth.tenant_id,
         &req.name,
         version,
-        &req.source,
+        &dsl_source,
         ast_json,
         compiled_json,
     ).await?;

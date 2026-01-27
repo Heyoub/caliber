@@ -807,17 +807,28 @@ pub struct DslViewState {
     pub parse_errors: Vec<ParseErrorResponse>,
     pub ast_preview: Option<serde_json::Value>,
     pub file_path: Option<PathBuf>,
+    pub pack_root: Option<PathBuf>,
+    pub config_name: String,
     pub modified: bool,
 }
 
 impl DslViewState {
     pub fn new() -> Self {
+        let default_pack_root = PathBuf::from("agents-pack");
+        let pack_root = if default_pack_root.exists() {
+            Some(default_pack_root)
+        } else {
+            None
+        };
+
         Self {
             content: String::new(),
             cursor_position: (0, 0),
             parse_errors: Vec::new(),
             ast_preview: None,
             file_path: None,
+            pack_root,
+            config_name: "default".to_string(),
             modified: false,
         }
     }

@@ -103,6 +103,41 @@ pub struct CaliberConfig {
 }
 
 impl CaliberConfig {
+    /// Build a default context assembly configuration.
+    ///
+    /// This centralizes the "sane defaults" that API routes can reuse without
+    /// hardcoding policy in the IO layer.
+    pub fn default_context(token_budget: i32) -> Self {
+        Self {
+            token_budget,
+            section_priorities: SectionPriorities {
+                user: 100,
+                system: 90,
+                persona: 85,
+                artifacts: 80,
+                notes: 70,
+                history: 60,
+                custom: vec![],
+            },
+            checkpoint_retention: 10,
+            stale_threshold: Duration::from_secs(3600),
+            contradiction_threshold: 0.8,
+            context_window_persistence: ContextPersistence::Ephemeral,
+            validation_mode: ValidationMode::OnMutation,
+            embedding_provider: None,
+            summarization_provider: None,
+            llm_retry_config: RetryConfig {
+                max_retries: 3,
+                initial_backoff: Duration::from_millis(100),
+                max_backoff: Duration::from_secs(10),
+                backoff_multiplier: 2.0,
+            },
+            lock_timeout: Duration::from_secs(30),
+            message_retention: Duration::from_secs(86400),
+            delegation_timeout: Duration::from_secs(300),
+        }
+    }
+
     /// Validate the configuration.
     /// Returns Ok(()) if valid, Err(CaliberError::Config) if invalid.
     ///

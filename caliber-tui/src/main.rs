@@ -9,17 +9,22 @@ use caliber_tui::persistence::{self, PersistedState};
 use caliber_tui::state::App;
 use caliber_tui::views::render_view;
 use caliber_api::types::{
-    ListAgentsRequest, ListArtifactsRequest, ListMessagesRequest, ListNotesRequest,
-    ListTrajectoriesRequest,
+    CompileDslRequest, DeployDslRequest, ListAgentsRequest, ListArtifactsRequest,
+    ListMessagesRequest, ListNotesRequest, ListTrajectoriesRequest, PackSource, PackSourceFile,
+    ValidateDslRequest,
 };
 use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
+use caliber_dsl::parser::CaliberAst;
+use caliber_dsl::pretty_printer::pretty_print;
 use crossterm::{
     event::{self, Event as CrosstermEvent},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
+use std::fs;
 use std::io::{self, Stdout};
+use std::path::Path;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -181,7 +186,13 @@ async fn handle_action(app: &mut App, action: KeyAction) -> Result<bool, TuiErro
                 app.flush_queued_events();
             }
         }
-        KeyAction::Refresh => refresh_view(app).await?,
+        KeyAction::Refresh => {
+            if app.active_view == caliber_tui::nav::View::DslEditor {
+                refresh_dsl_view(app).await?;
+            } else {
+                refresh_view(app).await?;
+            }
+        }
         KeyAction::OpenHelp => app.modal = Some(caliber_tui::state::Modal {
             title: "Keybindings".to_string(),
             message: "Use h/j/k/l or arrows to move, Tab to switch views, q to quit.".to_string(),
@@ -191,10 +202,33 @@ async fn handle_action(app: &mut App, action: KeyAction) -> Result<bool, TuiErro
             input: String::new(),
             suggestions: Vec::new(),
         }),
-        KeyAction::NewItem | KeyAction::EditItem | KeyAction::DeleteItem => {
-            app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+        KeyAction::NewItem => {
+            if app.active_view == caliber_tui::nav::View::DslEditor {
+                compose_pack_action(app).await?;
+            } else {
+                app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+            }
         }
-        KeyAction::Confirm | KeyAction::Cancel | KeyAction::Select | KeyAction::MoveLeft | KeyAction::MoveRight => {}
+        KeyAction::EditItem => {
+            if app.active_view == caliber_tui::nav::View::DslEditor {
+                compile_dsl_action(app).await?;
+            } else {
+                app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+            }
+        }
+        KeyAction::DeleteItem => {
+            if app.active_view == caliber_tui::nav::View::DslEditor {
+                deploy_dsl_action(app).await?;
+            } else {
+                app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+            }
+        }
+        KeyAction::Confirm => {
+            if app.active_view == caliber_tui::nav::View::DslEditor {
+                validate_dsl_action(app).await?;
+            }
+        }
+        KeyAction::Cancel | KeyAction::Select | KeyAction::MoveLeft | KeyAction::MoveRight => {}
     }
     Ok(false)
 }
@@ -292,6 +326,270 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
             app.tenant_view.tenants = response.tenants;
         }
         caliber_tui::nav::View::DslEditor | caliber_tui::nav::View::ConfigViewer => {}
+    }
+    Ok(())
+}
+
+async fn refresh_dsl_view(app: &mut App) -> Result<(), TuiError> {
+    compose_pack_action(app).await
+}
+
+async fn validate_dsl_action(app: &mut App) -> Result<(), TuiError> {
+    let tenant_id = app.tenant.tenant_id;
+    let source = app.dsl_view.content.clone();
+    if source.trim().is_empty() {
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Warning,
+            "DSL content is empty; nothing to validate.",
+        );
+        return Ok(());
+    }
+
+    match app
+        .api
+        .rest()
+        .validate_dsl(tenant_id, &ValidateDslRequest { source })
+        .await
+    {
+        Ok(response) => {
+            app.dsl_view.parse_errors = response.errors.clone();
+            app.dsl_view.ast_preview = response.ast.clone();
+            let level = if response.valid {
+                caliber_tui::notifications::NotificationLevel::Success
+            } else {
+                caliber_tui::notifications::NotificationLevel::Error
+            };
+            let message = if response.valid {
+                "DSL is valid."
+            } else {
+                "DSL validation failed."
+            };
+            app.notify(level, message);
+        }
+        Err(err) => {
+            app.notify(
+                caliber_tui::notifications::NotificationLevel::Error,
+                format!("DSL validation error: {}", err),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+async fn compile_dsl_action(app: &mut App) -> Result<(), TuiError> {
+    let tenant_id = app.tenant.tenant_id;
+    let source = app.dsl_view.content.clone();
+    if source.trim().is_empty() {
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Warning,
+            "DSL content is empty; nothing to compile.",
+        );
+        return Ok(());
+    }
+
+    match app
+        .api
+        .rest()
+        .compile_dsl(tenant_id, &CompileDslRequest { source })
+        .await
+    {
+        Ok(response) => {
+            if response.success {
+                app.notify(
+                    caliber_tui::notifications::NotificationLevel::Success,
+                    "DSL compiled successfully.",
+                );
+            } else {
+                app.dsl_view.parse_errors = response
+                    .errors
+                    .iter()
+                    .map(|e| caliber_api::types::ParseErrorResponse {
+                        line: 0,
+                        column: 0,
+                        message: format!("{}: {}", e.error_type, e.message),
+                    })
+                    .collect();
+                app.notify(
+                    caliber_tui::notifications::NotificationLevel::Error,
+                    "DSL compilation failed.",
+                );
+            }
+        }
+        Err(err) => {
+            app.notify(
+                caliber_tui::notifications::NotificationLevel::Error,
+                format!("DSL compilation error: {}", err),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+async fn compose_pack_action(app: &mut App) -> Result<(), TuiError> {
+    if let Err(err) = compose_pack_inner(app).await {
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Error,
+            format!("Pack compose failed: {}", err),
+        );
+    }
+    Ok(())
+}
+
+async fn compose_pack_inner(app: &mut App) -> Result<(), TuiError> {
+    let tenant_id = app.tenant.tenant_id;
+    let Some(pack_root) = app.dsl_view.pack_root.clone() else {
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Warning,
+            "No pack root configured. Expected ./agents-pack",
+        );
+        return Ok(());
+    };
+
+    let pack_source = pack_source_from_root(&pack_root)?;
+    let markdowns: Vec<(String, String)> = pack_source
+        .markdowns
+        .iter()
+        .map(|m| (m.path.clone(), m.content.clone()))
+        .collect();
+
+    let response = app
+        .api
+        .rest()
+        .compose_pack(tenant_id, &pack_source.manifest, &markdowns)
+        .await?;
+
+    app.dsl_view.parse_errors = response
+        .errors
+        .iter()
+        .map(|e| caliber_api::types::ParseErrorResponse {
+            line: e.line,
+            column: e.column,
+            message: format!("{}: {}", e.file, e.message),
+        })
+        .collect();
+    app.dsl_view.ast_preview = response.ast.clone();
+
+    if response.success {
+        if let Some(ast_value) = &response.ast {
+            if let Some(dsl) = dsl_from_ast_value(ast_value) {
+                app.dsl_view.content = dsl;
+            }
+        }
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Success,
+            "Pack composed successfully.",
+        );
+    } else {
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Error,
+            "Pack composition reported errors.",
+        );
+    }
+
+    Ok(())
+}
+
+async fn deploy_dsl_action(app: &mut App) -> Result<(), TuiError> {
+    if let Err(err) = deploy_dsl_inner(app).await {
+        app.notify(
+            caliber_tui::notifications::NotificationLevel::Error,
+            format!("DSL deploy failed: {}", err),
+        );
+    }
+    Ok(())
+}
+
+async fn deploy_dsl_inner(app: &mut App) -> Result<(), TuiError> {
+    let tenant_id = app.tenant.tenant_id;
+    let config_name = app.dsl_view.config_name.clone();
+
+    let request = if let Some(pack_root) = app.dsl_view.pack_root.clone() {
+        let pack_source = pack_source_from_root(&pack_root)?;
+        DeployDslRequest {
+            source: String::new(),
+            name: config_name,
+            activate: true,
+            notes: Some("Deployed from TUI pack".to_string()),
+            pack: Some(pack_source),
+        }
+    } else {
+        let source = app.dsl_view.content.clone();
+        if source.trim().is_empty() {
+            app.notify(
+                caliber_tui::notifications::NotificationLevel::Warning,
+                "DSL content is empty; nothing to deploy.",
+            );
+            return Ok(());
+        }
+        DeployDslRequest {
+            source,
+            name: config_name,
+            activate: true,
+            notes: Some("Deployed from TUI DSL editor".to_string()),
+            pack: None,
+        }
+    };
+
+    let response = app.api.rest().deploy_dsl(tenant_id, &request).await?;
+    app.notify(
+        caliber_tui::notifications::NotificationLevel::Success,
+        response.message,
+    );
+    Ok(())
+}
+
+fn dsl_from_ast_value(ast_value: &serde_json::Value) -> Option<String> {
+    serde_json::from_value::<CaliberAst>(ast_value.clone())
+        .ok()
+        .map(|ast| pretty_print(&ast))
+}
+
+fn pack_source_from_root(root: &Path) -> Result<PackSource, TuiError> {
+    let manifest_path = root.join("cal.toml");
+    let manifest = fs::read_to_string(&manifest_path)?;
+    let markdowns = collect_markdowns(root)?;
+    Ok(PackSource { manifest, markdowns })
+}
+
+fn collect_markdowns(root: &Path) -> Result<Vec<PackSourceFile>, TuiError> {
+    let mut out = Vec::new();
+    collect_markdowns_recursive(root, root, &mut out)?;
+    Ok(out)
+}
+
+fn collect_markdowns_recursive(root: &Path, dir: &Path, out: &mut Vec<PackSourceFile>) -> Result<(), TuiError> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
+            collect_markdowns_recursive(root, &path, out)?;
+            continue;
+        }
+
+        let is_markdown = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("md"))
+            .unwrap_or(false);
+
+        if !is_markdown {
+            continue;
+        }
+
+        let rel_path = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_string();
+        let content = fs::read_to_string(&path)?;
+        out.push(PackSourceFile {
+            path: rel_path,
+            content,
+        });
     }
     Ok(())
 }

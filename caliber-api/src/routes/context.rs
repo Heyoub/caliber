@@ -32,15 +32,25 @@ use crate::components::{ArtifactListFilter, NoteListFilter, ScopeListFilter, Tur
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 use crate::auth::AuthContext;
-use crate::types::{ArtifactResponse, NoteResponse, ScopeResponse, TrajectoryResponse, TurnResponse};
-use axum::{extract::State, Extension, Json};
-use caliber_core::{
-    AgentId, CaliberConfig, ContextAssembler, ContextPackage, ContextWindow, KernelConfig,
-    ScopeId, SessionMarkers, TrajectoryId,
+use crate::types::{
+    ArtifactResponse, NoteResponse, ScopeResponse, SearchRequest, TrajectoryResponse, TurnResponse,
 };
-use caliber_core::{ContextPersistence, RetryConfig, SectionPriorities, ValidationMode};
-use std::time::Duration;
+use crate::providers::{
+    EmbedRequest, EmbedResponse, PingResponse, ProviderAdapter, ProviderRegistry, SummarizeRequest,
+    SummarizeResponse,
+};
+use axum::{extract::State, Extension, Json};
+use async_trait::async_trait;
+use caliber_core::{
+    AgentId, ArtifactId, CaliberConfig, CaliberError, ContextAssembler, ContextPackage, ContextWindow,
+    EntityIdType, EntityType, HealthStatus, KernelConfig, LlmError, NoteId, ProviderCapability,
+    RoutingStrategy, ScopeId, SessionMarkers, TrajectoryId,
+};
+use caliber_dsl::compiler::{CompiledConfig as DslCompiledConfig, CompiledInjectionMode, InjectionConfig};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -259,6 +269,15 @@ pub async fn assemble_context(
         }
     };
 
+    // Query text for semantic retrieval (prefer explicit relevance_query).
+    let query_text = req
+        .relevance_query
+        .clone()
+        .or_else(|| req.user_input.clone());
+
+    // Active compiled config (used for providers + injections).
+    let compiled_config = db.dsl_compiled_get_active(tenant_id, "default").await.ok().flatten();
+
     // Build the context package
     let mut pkg = ContextPackage::new(req.trajectory_id, scope_id);
 
@@ -285,19 +304,27 @@ pub async fn assemble_context(
     let mut notes_count = 0;
     if req.include_notes {
         let max_notes = req.max_notes.unwrap_or(10) as usize;
-        let filter = NoteListFilter {
-            source_trajectory_id: Some(req.trajectory_id),
-            ..Default::default()
+        let note_injection = compiled_config
+            .as_ref()
+            .and_then(|c| select_injection_mode(c, EntityType::Note));
+
+        let notes: Vec<NoteResponse> = if let (Some(query), Some(mode)) =
+            (query_text.as_deref(), note_injection.as_ref())
+        {
+            semantic_notes(&db, tenant_id, query, mode, max_notes).await?
+        } else {
+            let filter = NoteListFilter {
+                source_trajectory_id: Some(req.trajectory_id),
+                ..Default::default()
+            };
+            db.list::<NoteResponse>(&filter, tenant_id).await?
+                .into_iter()
+                .take(max_notes)
+                .collect()
         };
-        let notes = db.list::<NoteResponse>(&filter, tenant_id).await?;
 
-        // Apply limit
-        let limited_notes: Vec<_> = notes.into_iter().take(max_notes).collect();
-        notes_count = limited_notes.len() as i32;
-
-        // Convert API notes to core notes
-        let core_notes: Vec<caliber_core::Note> =
-            limited_notes.into_iter().map(note_response_to_core).collect();
+        notes_count = notes.len() as i32;
+        let core_notes: Vec<caliber_core::Note> = notes.into_iter().map(note_response_to_core).collect();
         pkg = pkg.with_notes(core_notes);
     }
 
@@ -305,19 +332,28 @@ pub async fn assemble_context(
     let mut artifacts_count = 0;
     if req.include_artifacts {
         let max_artifacts = req.max_artifacts.unwrap_or(5) as usize;
-        let filter = ArtifactListFilter {
-            scope_id: Some(scope_id),
-            ..Default::default()
+        let artifact_injection = compiled_config
+            .as_ref()
+            .and_then(|c| select_injection_mode(c, EntityType::Artifact));
+
+        let artifacts: Vec<ArtifactResponse> = if let (Some(query), Some(mode)) =
+            (query_text.as_deref(), artifact_injection.as_ref())
+        {
+            semantic_artifacts(&db, tenant_id, scope_id, query, mode, max_artifacts).await?
+        } else {
+            let filter = ArtifactListFilter {
+                scope_id: Some(scope_id),
+                ..Default::default()
+            };
+            db.list::<ArtifactResponse>(&filter, tenant_id).await?
+                .into_iter()
+                .take(max_artifacts)
+                .collect()
         };
-        let artifacts = db.list::<ArtifactResponse>(&filter, tenant_id).await?;
 
-        // Apply limit
-        let limited_artifacts: Vec<_> = artifacts.into_iter().take(max_artifacts).collect();
-        artifacts_count = limited_artifacts.len() as i32;
-
-        // Convert API artifacts to core artifacts
+        artifacts_count = artifacts.len() as i32;
         let core_artifacts: Vec<caliber_core::Artifact> =
-            limited_artifacts.into_iter().map(artifact_response_to_core).collect();
+            artifacts.into_iter().map(artifact_response_to_core).collect();
         pkg = pkg.with_artifacts(core_artifacts);
     }
 
@@ -364,36 +400,18 @@ pub async fn assemble_context(
         let _max_summaries = req.max_summaries.unwrap_or(5);
     }
 
-    // Build assembler config
+    // Build assembler config from core defaults, then layer in runtime config.
     let token_budget = req.token_budget.unwrap_or(8000);
-    let config = CaliberConfig {
-        token_budget,
-        section_priorities: SectionPriorities {
-            user: 100,
-            system: 90,
-            persona: 85,
-            artifacts: 80,
-            notes: 70,
-            history: 60,
-            custom: vec![],
-        },
-        checkpoint_retention: 10,
-        stale_threshold: Duration::from_secs(3600),
-        contradiction_threshold: 0.8,
-        context_window_persistence: ContextPersistence::Ephemeral,
-        validation_mode: ValidationMode::OnMutation,
-        embedding_provider: None,
-        summarization_provider: None,
-        llm_retry_config: RetryConfig {
-            max_retries: 3,
-            initial_backoff: Duration::from_millis(100),
-            max_backoff: Duration::from_secs(10),
-            backoff_multiplier: 2.0,
-        },
-        lock_timeout: Duration::from_secs(30),
-        message_retention: Duration::from_secs(86400),
-        delegation_timeout: Duration::from_secs(300),
-    };
+    let mut config = CaliberConfig::default_context(token_budget);
+
+    if let Some(compiled) = compiled_config.as_ref() {
+        if let Some(provider) = select_provider_for_capability(compiled, ProviderCapability::Embedding).await {
+            config.embedding_provider = Some(provider);
+        }
+        if let Some(provider) = select_provider_for_capability(compiled, ProviderCapability::Summarization).await {
+            config.summarization_provider = Some(provider);
+        }
+    }
 
     // Assemble the context
     let assembler = ContextAssembler::new(config)
@@ -424,6 +442,142 @@ pub async fn assemble_context(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+fn select_injection_mode(compiled: &DslCompiledConfig, entity_type: EntityType) -> Option<CompiledInjectionMode> {
+    if !compiled.pack_injections.is_empty() {
+        let mut best: Option<&caliber_dsl::compiler::CompiledPackInjectionConfig> = None;
+        for injection in &compiled.pack_injections {
+            if injection
+                .entity_type
+                .as_deref()
+                .and_then(entity_type_from_str)
+                != Some(entity_type)
+            {
+                continue;
+            }
+            match best {
+                Some(current) if current.priority >= injection.priority => {}
+                _ => best = Some(injection),
+            }
+        }
+        if best.is_some() {
+            return best.map(|i| i.mode.clone());
+        }
+    }
+
+    let mut best: Option<&InjectionConfig> = None;
+    for injection in &compiled.injections {
+        if injection_entity_type(injection) != Some(entity_type) {
+            continue;
+        }
+        match best {
+            Some(current) if current.priority >= injection.priority => {}
+            _ => best = Some(injection),
+        }
+    }
+    best.map(|i| i.mode.clone())
+}
+
+fn entity_type_from_str(value: &str) -> Option<EntityType> {
+    match value.to_lowercase().as_str() {
+        "note" | "notes" => Some(EntityType::Note),
+        "artifact" | "artifacts" => Some(EntityType::Artifact),
+        _ => None,
+    }
+}
+
+fn injection_entity_type(injection: &InjectionConfig) -> Option<EntityType> {
+    let source = injection.source.to_lowercase();
+    if source.contains("note") {
+        Some(EntityType::Note)
+    } else if source.contains("artifact") {
+        Some(EntityType::Artifact)
+    } else {
+        None
+    }
+}
+
+fn semantic_params(mode: &CompiledInjectionMode, max_items: usize) -> (i32, Option<f32>) {
+    let base_limit = i32::try_from(max_items).unwrap_or(50).max(1);
+    match mode {
+        CompiledInjectionMode::TopK { k } => (std::cmp::min(*k, base_limit).max(1), None),
+        CompiledInjectionMode::Relevant { threshold } => {
+            let overfetch = (base_limit * 3).max(10);
+            (overfetch, Some(*threshold))
+        }
+        CompiledInjectionMode::Full | CompiledInjectionMode::Summary => (base_limit, None),
+    }
+}
+
+async fn semantic_notes(
+    db: &DbClient,
+    tenant_id: caliber_core::TenantId,
+    query: &str,
+    mode: &CompiledInjectionMode,
+    max_notes: usize,
+) -> ApiResult<Vec<NoteResponse>> {
+    let (limit, threshold) = semantic_params(mode, max_notes);
+    let search = SearchRequest {
+        query: query.to_string(),
+        entity_types: vec![EntityType::Note],
+        filters: vec![],
+        limit: Some(limit),
+    };
+    let response = db.search(&search, tenant_id).await?;
+
+    let mut notes = Vec::new();
+    for result in response.results {
+        if let Some(threshold) = threshold {
+            if result.score < threshold {
+                continue;
+            }
+        }
+        let id = NoteId::new(result.id);
+        if let Some(note) = db.get::<NoteResponse>(id, tenant_id).await? {
+            notes.push(note);
+        }
+        if notes.len() >= max_notes {
+            break;
+        }
+    }
+    Ok(notes)
+}
+
+async fn semantic_artifacts(
+    db: &DbClient,
+    tenant_id: caliber_core::TenantId,
+    scope_id: ScopeId,
+    query: &str,
+    mode: &CompiledInjectionMode,
+    max_artifacts: usize,
+) -> ApiResult<Vec<ArtifactResponse>> {
+    let (limit, threshold) = semantic_params(mode, max_artifacts);
+    let filters = vec![caliber_core::FilterExpr::eq("scope_id", json!(scope_id.as_uuid()))];
+    let search = SearchRequest {
+        query: query.to_string(),
+        entity_types: vec![EntityType::Artifact],
+        filters,
+        limit: Some(limit),
+    };
+    let response = db.search(&search, tenant_id).await?;
+
+    let mut artifacts = Vec::new();
+    for result in response.results {
+        if let Some(threshold) = threshold {
+            if result.score < threshold {
+                continue;
+            }
+        }
+        let id = ArtifactId::new(result.id);
+        if let Some(artifact) = db.get::<ArtifactResponse>(id, tenant_id).await? {
+            artifacts.push(artifact);
+        }
+        if artifacts.len() >= max_artifacts {
+            break;
+        }
+    }
+    Ok(artifacts)
+}
 
 /// Convert an API NoteResponse to a core Note.
 fn note_response_to_core(note: crate::types::NoteResponse) -> caliber_core::Note {
@@ -481,4 +635,129 @@ use axum::{routing::post, Router};
 /// Create the context router.
 pub fn context_router() -> Router<crate::state::AppState> {
     Router::new().route("/assemble", post(assemble_context))
+}
+
+async fn select_provider_for_capability(
+    compiled: &DslCompiledConfig,
+    capability: ProviderCapability,
+) -> Option<caliber_core::ProviderConfig> {
+    if compiled.providers.is_empty() {
+        return None;
+    }
+
+    let providers_by_name: HashMap<&str, &caliber_dsl::compiler::ProviderConfig> = compiled
+        .providers
+        .iter()
+        .map(|p| (p.name.as_str(), p))
+        .collect();
+
+    // Respect explicit routing hints first.
+    let preferred = compiled.pack_routing.as_ref().and_then(|routing| match capability {
+        ProviderCapability::Embedding => routing.embedding_provider.as_deref(),
+        ProviderCapability::Summarization => routing.summarization_provider.as_deref(),
+        _ => None,
+    });
+
+    if let Some(name) = preferred {
+        if let Some(provider) = providers_by_name.get(name) {
+            return provider_from_compiled(provider);
+        }
+    }
+
+    // Fall back to registry-based selection using the routing strategy hint.
+    let strategy = compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|r| r.strategy.as_deref())
+        .and_then(routing_strategy_from_hint)
+        .unwrap_or(RoutingStrategy::First);
+
+    let registry = ProviderRegistry::new(strategy);
+    for provider in &compiled.providers {
+        let adapter: Arc<dyn ProviderAdapter> = Arc::new(PackProviderAdapter::new(&provider.name));
+        registry.register(adapter).await;
+    }
+
+    let selected = registry.select_provider(capability).await.ok()?;
+    providers_by_name
+        .get(selected.provider_id())
+        .and_then(|p| provider_from_compiled(p))
+}
+
+fn routing_strategy_from_hint(hint: &str) -> Option<RoutingStrategy> {
+    match hint.to_lowercase().as_str() {
+        "first" => Some(RoutingStrategy::First),
+        "round_robin" | "roundrobin" => Some(RoutingStrategy::RoundRobin),
+        "random" => Some(RoutingStrategy::Random),
+        "least_latency" | "leastlatency" => Some(RoutingStrategy::LeastLatency),
+        _ => None,
+    }
+}
+
+struct PackProviderAdapter {
+    id: String,
+    capabilities: Vec<ProviderCapability>,
+}
+
+impl PackProviderAdapter {
+    fn new(id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            capabilities: vec![ProviderCapability::Embedding, ProviderCapability::Summarization],
+        }
+    }
+}
+
+#[async_trait]
+impl ProviderAdapter for PackProviderAdapter {
+    fn provider_id(&self) -> &str {
+        &self.id
+    }
+
+    fn capabilities(&self) -> &[ProviderCapability] {
+        &self.capabilities
+    }
+
+    async fn ping(&self) -> caliber_core::CaliberResult<PingResponse> {
+        Ok(PingResponse {
+            provider_id: self.id.clone(),
+            capabilities: self.capabilities.clone(),
+            latency_ms: 1,
+            health: HealthStatus::Healthy,
+            metadata: HashMap::new(),
+        })
+    }
+
+    async fn embed(&self, _request: EmbedRequest) -> caliber_core::CaliberResult<EmbedResponse> {
+        Err(CaliberError::Llm(LlmError::ProviderNotConfigured))
+    }
+
+    async fn summarize(
+        &self,
+        _request: SummarizeRequest,
+    ) -> caliber_core::CaliberResult<SummarizeResponse> {
+        Err(CaliberError::Llm(LlmError::ProviderNotConfigured))
+    }
+}
+
+fn provider_from_compiled(p: &caliber_dsl::compiler::ProviderConfig) -> Option<caliber_core::ProviderConfig> {
+    let provider_type = match p.provider_type {
+        caliber_dsl::compiler::CompiledProviderType::OpenAI => "openai",
+        caliber_dsl::compiler::CompiledProviderType::Anthropic => "anthropic",
+        caliber_dsl::compiler::CompiledProviderType::Custom => "custom",
+    }
+    .to_string();
+
+    let endpoint = p.options.get("endpoint").cloned();
+    let dimensions = p
+        .options
+        .get("dimensions")
+        .and_then(|v| v.parse::<i32>().ok());
+
+    Some(caliber_core::ProviderConfig {
+        provider_type,
+        endpoint,
+        model: p.model.clone(),
+        dimensions,
+    })
 }

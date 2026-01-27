@@ -37,8 +37,16 @@ pub struct PackOutput {
 pub fn compose_pack(input: PackInput) -> Result<PackOutput, PackError> {
     let manifest = parse_manifest(&input.manifest)?;
     let md_docs = parse_markdown_files(&manifest, &input.markdowns)?;
-    let ir = PackIr::new(manifest, md_docs)?;
+    let ir = PackIr::new(manifest.clone(), md_docs)?;
     let ast = build_ast(&ir)?;
-    let compiled = DslCompiler::compile(&ast)?;
+    let mut compiled = DslCompiler::compile(&ast)?;
+
+    // Inject pack tool registry + toolsets into the runtime config.
+    compiled.tools = compile_tools(&manifest);
+    compiled.toolsets = compile_toolsets(&manifest);
+    compiled.pack_agents = compile_pack_agents(&manifest);
+    compiled.pack_injections = compile_pack_injections(&manifest)?;
+    compiled.pack_routing = compile_pack_routing(&manifest);
+
     Ok(PackOutput { ast, compiled })
 }

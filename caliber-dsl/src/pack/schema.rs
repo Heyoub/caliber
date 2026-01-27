@@ -9,6 +9,7 @@ pub struct PackManifest {
     pub meta: Option<MetaSection>,
     pub defaults: Option<DefaultsSection>,
     pub settings: Option<SettingsSection>,
+    pub routing: Option<RoutingSection>,
     #[serde(default)]
     pub profiles: HashMap<String, ProfileDef>,
     #[serde(default)]
@@ -19,6 +20,8 @@ pub struct PackManifest {
     pub policies: HashMap<String, PolicyDef>,
     #[serde(default)]
     pub injections: HashMap<String, InjectionDef>,
+    #[serde(default)]
+    pub providers: HashMap<String, ProviderDef>,
     #[serde(default)]
     pub tools: ToolsSection,
     #[serde(default)]
@@ -57,6 +60,17 @@ pub struct SettingsMatrix {
     pub allowed: Vec<ProfileBinding>,
     #[serde(default)]
     pub enforce_profiles_only: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoutingSection {
+    /// Routing strategy hint (first|round_robin|random|least_latency).
+    pub strategy: Option<String>,
+    /// Preferred provider name for embeddings.
+    pub embedding_provider: Option<String>,
+    /// Preferred provider name for summarization.
+    pub summarization_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -120,12 +134,25 @@ pub struct PolicyActionDef {
 pub struct InjectionDef {
     pub source: String,
     pub target: String,
+    /// Explicit entity type this injection targets (e.g., "note", "artifact").
+    pub entity_type: Option<String>,
     pub mode: String,
     #[serde(default)]
     pub priority: i32,
     pub max_tokens: Option<i32>,
     pub top_k: Option<usize>,
     pub threshold: Option<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderDef {
+    #[serde(rename = "type")]
+    pub provider_type: String,
+    pub api_key: String,
+    pub model: String,
+    #[serde(default)]
+    pub options: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

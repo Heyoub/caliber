@@ -5,14 +5,17 @@ use crate::events::TuiEvent;
 use caliber_api::error::ApiError as ApiServerError;
 use caliber_api::events::WsEvent;
 use caliber_api::types::{
-    AgentResponse, ListAgentsRequest, ListAgentsResponse, ListArtifactsRequest, ListArtifactsResponse,
-    ListLocksResponse, ListMessagesRequest, ListMessagesResponse, ListNotesRequest, ListNotesResponse,
-    ListTenantsResponse, ListTrajectoriesRequest, ListTrajectoriesResponse, LockResponse,
-    MessageResponse, ScopeResponse, TurnResponse,
+    AgentResponse, CompileDslRequest, CompileDslResponse, ComposePackResponse, DeployDslRequest,
+    DeployDslResponse, ListAgentsRequest, ListAgentsResponse, ListArtifactsRequest,
+    ListArtifactsResponse, ListLocksResponse, ListMessagesRequest, ListMessagesResponse,
+    ListNotesRequest, ListNotesResponse, ListTenantsResponse, ListTrajectoriesRequest,
+    ListTrajectoriesResponse, LockResponse, MessageResponse, ScopeResponse, TurnResponse,
+    ValidateDslRequest, ValidateDslResponse,
 };
 use caliber_core::{AgentId, EntityIdType, LockId, MessageId, ScopeId, TenantId, TrajectoryId};
 use futures_util::TryStreamExt;
 use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::multipart::{Form, Part};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::http::{HeaderName, Request};
@@ -205,6 +208,70 @@ impl RestClient {
         self.parse_response(response).await
     }
 
+    // ------------------------------------------------------------------------
+    // DSL / Pack endpoints (POST)
+    // ------------------------------------------------------------------------
+
+    pub async fn validate_dsl(
+        &self,
+        tenant_id: TenantId,
+        req: &ValidateDslRequest,
+    ) -> Result<ValidateDslResponse, ApiClientError> {
+        self.post_json(tenant_id, "/api/v1/dsl/validate", req).await
+    }
+
+    pub async fn parse_dsl(
+        &self,
+        tenant_id: TenantId,
+        req: &ValidateDslRequest,
+    ) -> Result<ValidateDslResponse, ApiClientError> {
+        self.post_json(tenant_id, "/api/v1/dsl/parse", req).await
+    }
+
+    pub async fn compile_dsl(
+        &self,
+        tenant_id: TenantId,
+        req: &CompileDslRequest,
+    ) -> Result<CompileDslResponse, ApiClientError> {
+        self.post_json(tenant_id, "/api/v1/dsl/compile", req).await
+    }
+
+    pub async fn deploy_dsl(
+        &self,
+        tenant_id: TenantId,
+        req: &DeployDslRequest,
+    ) -> Result<DeployDslResponse, ApiClientError> {
+        self.post_json(tenant_id, "/api/v1/dsl/deploy", req).await
+    }
+
+    /// Compose a pack using multipart/form-data.
+    ///
+    /// `markdowns` should contain `(file_name, content)` tuples.
+    pub async fn compose_pack(
+        &self,
+        tenant_id: TenantId,
+        manifest: &str,
+        markdowns: &[(String, String)],
+    ) -> Result<ComposePackResponse, ApiClientError> {
+        let url = format!("{}/api/v1/dsl/compose", self.base_url);
+        let mut form = Form::new().text("cal_toml", manifest.to_string());
+        for (file_name, content) in markdowns {
+            let part = Part::text(content.clone()).file_name(file_name.clone());
+            form = form.part("markdown", part);
+        }
+
+        let response = self
+            .client
+            .post(url)
+            .headers(self.auth_header.clone())
+            .header("x-tenant-id", tenant_id.as_uuid().to_string())
+            .multipart(form)
+            .send()
+            .await?;
+
+        self.parse_response(response).await
+    }
+
     async fn get_json<T, Q>(
         &self,
         tenant_id: TenantId,
@@ -225,6 +292,23 @@ impl RestClient {
             request = request.query(query);
         }
         let response = request.send().await?;
+        self.parse_response(response).await
+    }
+
+    async fn post_json<T, B>(&self, tenant_id: TenantId, path: &str, body: &B) -> Result<T, ApiClientError>
+    where
+        T: serde::de::DeserializeOwned,
+        B: serde::Serialize + ?Sized,
+    {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .post(url)
+            .headers(self.auth_header.clone())
+            .header("x-tenant-id", tenant_id.as_uuid().to_string())
+            .json(body)
+            .send()
+            .await?;
         self.parse_response(response).await
     }
 

@@ -1,9 +1,14 @@
 //! Pack IR and validation
 
+use crate::compiler::{
+    CompiledInjectionMode, CompiledPackAgentConfig, CompiledPackInjectionConfig, CompiledToolConfig,
+    CompiledToolKind, CompiledToolsetConfig, CompiledPackRoutingConfig,
+};
 use crate::parser::ast::{Action, InjectionMode, Trigger};
 use crate::parser::{AdapterType, CaliberAst, Definition, PolicyDef, PolicyRule};
-use crate::parser::{InjectionDef as AstInjectionDef};
 use crate::parser::{AdapterDef as AstAdapterDef};
+use crate::parser::{InjectionDef as AstInjectionDef};
+use crate::parser::{EnvValue, ProviderDef as AstProviderDef, ProviderType};
 use std::collections::HashSet;
 
 use super::markdown::MarkdownDoc;
@@ -16,6 +21,7 @@ pub struct PackIr {
     pub adapters: Vec<AstAdapterDef>,
     pub policies: Vec<PolicyDef>,
     pub injections: Vec<AstInjectionDef>,
+    pub providers: Vec<AstProviderDef>,
 }
 
 impl PackIr {
@@ -23,15 +29,18 @@ impl PackIr {
         validate_profiles(&manifest)?;
         validate_toolsets(&manifest)?;
         validate_agents(&manifest, &markdown)?;
+        validate_injections(&manifest)?;
         let adapters = build_adapters(&manifest)?;
         let policies = build_policies(&manifest)?;
         let injections = build_injections(&manifest)?;
+        let providers = build_providers(&manifest)?;
         Ok(Self {
             manifest,
             markdown,
             adapters,
             policies,
             injections,
+            providers,
         })
     }
 }
@@ -145,6 +154,22 @@ fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<
     Ok(())
 }
 
+fn validate_injections(manifest: &PackManifest) -> Result<(), PackError> {
+    for (name, injection) in &manifest.injections {
+        if let Some(entity_type) = injection.entity_type.as_deref() {
+            let normalized = entity_type.to_lowercase();
+            let valid = matches!(normalized.as_str(), "note" | "notes" | "artifact" | "artifacts");
+            if !valid {
+                return Err(PackError::Validation(format!(
+                    "injections.{}: invalid entity_type '{}' (expected 'note' or 'artifact')",
+                    name, entity_type
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn collect_tool_ids(tools: &ToolsSection) -> HashSet<String> {
     let mut ids = HashSet::new();
     for name in tools.bin.keys() {
@@ -154,6 +179,93 @@ fn collect_tool_ids(tools: &ToolsSection) -> HashSet<String> {
         ids.insert(format!("tools.prompts.{}", name));
     }
     ids
+}
+
+/// Compile pack tool registry into runtime tool configs.
+pub fn compile_tools(manifest: &PackManifest) -> Vec<CompiledToolConfig> {
+    let mut tools = Vec::new();
+
+    for (name, def) in &manifest.tools.bin {
+        tools.push(CompiledToolConfig {
+            id: format!("tools.bin.{}", name),
+            kind: CompiledToolKind::Exec,
+            cmd: Some(def.cmd.clone()),
+            prompt_md: None,
+            contract: None,
+            result_format: None,
+            timeout_ms: def.timeout_ms,
+            allow_network: def.allow_network,
+            allow_fs: def.allow_fs,
+            allow_subprocess: def.allow_subprocess,
+        });
+    }
+
+    for (name, def) in &manifest.tools.prompts {
+        tools.push(CompiledToolConfig {
+            id: format!("tools.prompts.{}", name),
+            kind: CompiledToolKind::Prompt,
+            cmd: None,
+            prompt_md: Some(def.prompt_md.clone()),
+            contract: def.contract.clone(),
+            result_format: def.result_format.clone(),
+            timeout_ms: def.timeout_ms,
+            allow_network: None,
+            allow_fs: None,
+            allow_subprocess: None,
+        });
+    }
+
+    tools
+}
+
+/// Compile pack toolsets into runtime toolset configs.
+pub fn compile_toolsets(manifest: &PackManifest) -> Vec<CompiledToolsetConfig> {
+    manifest
+        .toolsets
+        .iter()
+        .map(|(name, set)| CompiledToolsetConfig {
+            name: name.clone(),
+            tools: set.tools.clone(),
+        })
+        .collect()
+}
+
+/// Compile pack agent bindings to toolsets.
+pub fn compile_pack_agents(manifest: &PackManifest) -> Vec<CompiledPackAgentConfig> {
+    manifest
+        .agents
+        .iter()
+        .map(|(name, agent)| CompiledPackAgentConfig {
+            name: name.clone(),
+            toolsets: agent.toolsets.clone(),
+        })
+        .collect()
+}
+
+/// Compile pack injection metadata for runtime wiring.
+pub fn compile_pack_injections(manifest: &PackManifest) -> Result<Vec<CompiledPackInjectionConfig>, PackError> {
+    let mut out = Vec::new();
+    for def in manifest.injections.values() {
+        let mode = compile_injection_mode_compiled(def)?;
+        out.push(CompiledPackInjectionConfig {
+            source: def.source.clone(),
+            target: def.target.clone(),
+            entity_type: def.entity_type.clone().map(|s| s.to_lowercase()),
+            mode,
+            priority: def.priority,
+            max_tokens: def.max_tokens,
+        });
+    }
+    Ok(out)
+}
+
+/// Compile pack provider routing hints.
+pub fn compile_pack_routing(manifest: &PackManifest) -> Option<CompiledPackRoutingConfig> {
+    manifest.routing.as_ref().map(|routing| CompiledPackRoutingConfig {
+        strategy: routing.strategy.clone().map(|s| s.to_lowercase()),
+        embedding_provider: routing.embedding_provider.clone(),
+        summarization_provider: routing.summarization_provider.clone(),
+    })
 }
 
 fn build_adapters(manifest: &PackManifest) -> Result<Vec<AstAdapterDef>, PackError> {
@@ -215,6 +327,47 @@ fn build_injections(manifest: &PackManifest) -> Result<Vec<AstInjectionDef>, Pac
         });
     }
     Ok(injections)
+}
+
+fn build_providers(manifest: &PackManifest) -> Result<Vec<AstProviderDef>, PackError> {
+    let mut providers = Vec::new();
+    for (name, def) in &manifest.providers {
+        let provider_type = match def.provider_type.to_lowercase().as_str() {
+            "openai" => ProviderType::OpenAI,
+            "anthropic" => ProviderType::Anthropic,
+            "custom" => ProviderType::Custom,
+            other => {
+                return Err(PackError::Validation(format!(
+                    "provider '{}' has invalid type '{}'",
+                    name, other
+                )))
+            }
+        };
+
+        let api_key = parse_env_value(&def.api_key);
+        let options = def
+            .options
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<Vec<_>>();
+
+        providers.push(AstProviderDef {
+            name: name.clone(),
+            provider_type,
+            api_key,
+            model: def.model.clone(),
+            options,
+        });
+    }
+    Ok(providers)
+}
+
+fn parse_env_value(value: &str) -> EnvValue {
+    if let Some(rest) = value.strip_prefix("env:") {
+        EnvValue::Env(rest.trim().to_string())
+    } else {
+        EnvValue::Literal(value.to_string())
+    }
 }
 
 fn parse_trigger(value: &str) -> Result<Trigger, PackError> {
@@ -292,6 +445,28 @@ fn parse_injection_mode(def: &InjectionDef) -> Result<InjectionMode, PackError> 
     }
 }
 
+fn compile_injection_mode_compiled(def: &InjectionDef) -> Result<CompiledInjectionMode, PackError> {
+    match def.mode.to_lowercase().as_str() {
+        "full" => Ok(CompiledInjectionMode::Full),
+        "summary" => Ok(CompiledInjectionMode::Summary),
+        "topk" => {
+            let k = def.top_k.ok_or_else(|| PackError::Validation("topk mode requires top_k".into()))?;
+            let k = i32::try_from(k).map_err(|_| PackError::Validation("top_k out of range".into()))?;
+            Ok(CompiledInjectionMode::TopK { k })
+        }
+        "relevant" => {
+            let threshold = def
+                .threshold
+                .ok_or_else(|| PackError::Validation("relevant mode requires threshold".into()))?;
+            Ok(CompiledInjectionMode::Relevant { threshold })
+        }
+        other => Err(PackError::Validation(format!(
+            "invalid injection mode '{}'",
+            other
+        ))),
+    }
+}
+
 fn profile_key(ret: &str, idx: &str, emb: &str, fmt: &str) -> String {
     format!(
         "{}|{}|{}|{}",
@@ -312,6 +487,9 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
     }
     for i in &ir.injections {
         defs.push(Definition::Injection(i.clone()));
+    }
+    for provider in &ir.providers {
+        defs.push(Definition::Provider(provider.clone()));
     }
     CaliberAst {
         version: ir

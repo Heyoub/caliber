@@ -109,9 +109,14 @@ High-level sections:
 - [formats.*]
 - [policies.*]
 - [injections.*]
+- [routing] (provider routing hints)
 - [tools.*] (registry)
 - [toolsets.*]
 - [agents.*]
+
+Pack injection targeting:
+- `injections.*.entity_type` can explicitly target `note` or `artifact`.
+- Pack compose validates `entity_type` values at compose time.
 
 Example (abbreviated):
 ```toml

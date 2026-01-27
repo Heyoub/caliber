@@ -2,12 +2,18 @@
 
 use super::{types::*, tools::*};
 use crate::components::TrajectoryListFilter;
-use crate::types::{ArtifactResponse, TrajectoryResponse};
+use crate::middleware::AuthExtractor;
+use crate::types::{AgentResponse, ArtifactResponse, PackSource, TrajectoryResponse};
 use crate::*;
-use axum::{extract::State, response::IntoResponse, Json};
-use caliber_core::{EntityIdType, TenantId, TrajectoryId, ScopeId, AgentId};
+use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
+use caliber_core::{AgentId, EntityIdType, ScopeId, TenantId, TrajectoryId};
+use caliber_dsl::compiler::{CompiledConfig as DslCompiledConfig, CompiledToolKind};
 use serde_json::Value as JsonValue;
+use std::process::Stdio;
+use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 use uuid::Uuid;
 
 pub async fn initialize(
@@ -52,11 +58,108 @@ pub async fn initialize(
 )]
 pub async fn list_tools(
     State(state): State<Arc<McpState>>,
+    AuthExtractor(auth): AuthExtractor,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     tracing::debug!(db_pool_size = state.db.pool_size(), "MCP list_tools");
-    Json(ListToolsResponse {
-        tools: get_available_tools(),
-    })
+
+    let agent_name = resolve_agent_name_from_headers(&state.db, auth.tenant_id, &headers).await;
+
+    let tools = match state.db.dsl_compiled_get_active(auth.tenant_id, "default").await {
+        Ok(Some(compiled)) if !compiled.tools.is_empty() => {
+            tools_from_compiled(&compiled, agent_name.as_deref())
+        }
+        Ok(_) => {
+            tracing::warn!("No deployed pack tools found; MCP tools list is empty in strict mode");
+            Vec::new()
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "Failed to load active compiled config; MCP tools list is empty in strict mode");
+            Vec::new()
+        }
+    };
+
+    Json(ListToolsResponse { tools })
+}
+
+fn tools_from_compiled(compiled: &DslCompiledConfig, agent_name: Option<&str>) -> Vec<Tool> {
+    let allowed = agent_name
+        .map(|name| allowed_tools_for_agent(compiled, name))
+        .unwrap_or_else(|| all_tool_ids(compiled));
+
+    compiled
+        .tools
+        .iter()
+        .filter(|tool| allowed.contains(&tool.id))
+        .map(|tool| {
+            let description = match tool.kind {
+                CompiledToolKind::Exec => format!("Pack exec tool: {}", tool.id),
+                CompiledToolKind::Prompt => format!("Pack prompt tool: {}", tool.id),
+            };
+
+            Tool {
+                name: tool.id.clone(),
+                description,
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "input": {
+                            "type": "string",
+                            "description": "Optional input for the tool"
+                        },
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Optional agent name for toolset scoping"
+                        }
+                    }
+                }),
+            }
+        })
+        .collect()
+}
+
+fn all_tool_ids(compiled: &DslCompiledConfig) -> HashSet<String> {
+    compiled.tools.iter().map(|t| t.id.clone()).collect()
+}
+
+fn allowed_tools_for_agent(compiled: &DslCompiledConfig, agent_name: &str) -> HashSet<String> {
+    let Some(agent) = compiled.pack_agents.iter().find(|a| a.name == agent_name) else {
+        return HashSet::new();
+    };
+
+    let toolset_names: HashSet<&str> = agent.toolsets.iter().map(|s| s.as_str()).collect();
+    compiled
+        .toolsets
+        .iter()
+        .filter(|set| toolset_names.contains(set.name.as_str()))
+        .flat_map(|set| set.tools.iter().cloned())
+        .collect()
+}
+
+async fn resolve_agent_name_from_headers(
+    db: &crate::db::DbClient,
+    tenant_id: TenantId,
+    headers: &HeaderMap,
+) -> Option<String> {
+    if let Some(name) = headers
+        .get("x-agent-name")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+    {
+        return Some(name);
+    }
+
+    let agent_id = headers
+        .get("x-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(AgentId::new)?;
+
+    db.get::<AgentResponse>(agent_id, tenant_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|agent| agent.agent_type)
 }
 
 /// POST /mcp/tools/call - Execute a tool
@@ -115,6 +218,18 @@ async fn execute_tool(
     args: JsonValue,
     tenant_id: TenantId,
 ) -> ApiResult<Vec<ContentBlock>> {
+    if let Some(result) = execute_pack_tool(state, name, &args, tenant_id).await? {
+        return Ok(result);
+    }
+
+    // Strict pack-only mode: do not fall back to hardcoded MCP tools.
+    let strict_pack_only = std::env::var("CALIBER_MCP_STRICT_PACK")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+    if strict_pack_only {
+        return Err(ApiError::entity_not_found("Tool", Uuid::nil()));
+    }
+
     match name {
         "trajectory_create" => {
             let name = args["name"]
@@ -424,3 +539,142 @@ async fn execute_tool(
     }
 }
 
+async fn execute_pack_tool(
+    state: &McpState,
+    name: &str,
+    args: &JsonValue,
+    tenant_id: TenantId,
+) -> ApiResult<Option<Vec<ContentBlock>>> {
+    let Some(compiled) = state
+        .db
+        .dsl_compiled_get_active(tenant_id, "default")
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    let agent_name = resolve_agent_name_from_args(&state.db, tenant_id, args).await;
+    if let Some(agent_name) = agent_name.as_deref() {
+        let allowed = allowed_tools_for_agent(&compiled, agent_name);
+        if allowed.is_empty() {
+            return Err(ApiError::forbidden(format!(
+                "Agent '{}' has no toolsets configured in the active pack",
+                agent_name
+            )));
+        }
+        if !allowed.contains(name) {
+            return Err(ApiError::forbidden(format!(
+                "Tool '{}' is not allowed for agent '{}'",
+                name, agent_name
+            )));
+        }
+    }
+
+    let Some(tool) = compiled.tools.iter().find(|t| t.id == name) else {
+        return Ok(None);
+    };
+
+    match tool.kind {
+        CompiledToolKind::Exec => {
+            let cmd = tool
+                .cmd
+                .as_ref()
+                .ok_or_else(|| ApiError::internal_error("Exec tool missing cmd"))?;
+            let input = args.get("input").and_then(|v| v.as_str()).map(str::to_string);
+
+            let mut command = Command::new("bash");
+            command.arg("-lc").arg(cmd);
+            command.stdout(Stdio::piped()).stderr(Stdio::piped());
+            if input.is_some() {
+                command.stdin(Stdio::piped());
+            }
+
+            let mut child = command
+                .spawn()
+                .map_err(|e| ApiError::internal_error(format!("Failed to spawn tool: {}", e)))?;
+
+            if let Some(input_text) = input {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin
+                        .write_all(input_text.as_bytes())
+                        .await
+                        .map_err(|e| ApiError::internal_error(format!("Failed to write tool stdin: {}", e)))?;
+                }
+            }
+
+            let output = child
+                .wait_with_output()
+                .await
+                .map_err(|e| ApiError::internal_error(format!("Failed to run tool: {}", e)))?;
+
+            let status = output.status.code().unwrap_or_default();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+            let mut text = format!("Tool '{}' exited with status {}", name, status);
+            if !stdout.is_empty() {
+                text.push_str("\n\nstdout:\n");
+                text.push_str(&stdout);
+            }
+            if !stderr.is_empty() {
+                text.push_str("\n\nstderr:\n");
+                text.push_str(&stderr);
+            }
+
+            Ok(Some(vec![ContentBlock::Text { text }]))
+        }
+        CompiledToolKind::Prompt => {
+            let prompt_md = tool
+                .prompt_md
+                .as_ref()
+                .ok_or_else(|| ApiError::internal_error("Prompt tool missing prompt_md"))?;
+
+            let pack_source = state.db.dsl_pack_get_active(tenant_id, "default").await?;
+            let prompt_text = pack_source
+                .and_then(|value| serde_json::from_value::<PackSource>(value).ok())
+                .and_then(|pack| find_prompt_content(&pack, prompt_md));
+
+            let input = args.get("input").and_then(|v| v.as_str()).unwrap_or("");
+
+            let text = match prompt_text {
+                Some(prompt) if input.is_empty() => prompt,
+                Some(prompt) => format!("{}\n\n---\n\ninput:\n{}", prompt, input),
+                None => format!(
+                    "Prompt tool '{}' is configured but prompt content was not found in the active pack source.",
+                    name
+                ),
+            };
+
+            Ok(Some(vec![ContentBlock::Text { text }]))
+        }
+    }
+}
+
+fn find_prompt_content(pack: &PackSource, prompt_md: &str) -> Option<String> {
+    pack.markdowns
+        .iter()
+        .find(|m| m.path == prompt_md || m.path.ends_with(prompt_md))
+        .map(|m| m.content.clone())
+}
+
+async fn resolve_agent_name_from_args(
+    db: &crate::db::DbClient,
+    tenant_id: TenantId,
+    args: &JsonValue,
+) -> Option<String> {
+    if let Some(name) = args.get("agent_name").and_then(|v| v.as_str()) {
+        return Some(name.to_string());
+    }
+
+    let agent_id = args
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(AgentId::new)?;
+
+    db.get::<AgentResponse>(agent_id, tenant_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|agent| agent.agent_type)
+}

@@ -649,6 +649,7 @@ version = "0.4.4"
 dependencies = [
  "caliber-api",
  "caliber-core",
+ "caliber-dsl",
  "chrono",
  "crossterm",
  "futures-util",
@@ -3447,6 +3448,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "native-tls",
  "percent-encoding",
  "pin-project-lite",

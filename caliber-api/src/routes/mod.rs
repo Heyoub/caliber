@@ -28,6 +28,7 @@ pub mod lock;
 pub mod mcp;
 pub mod message;
 pub mod note;
+pub mod pack;
 pub mod scope;
 pub mod search;
 pub mod sso;
@@ -273,6 +274,7 @@ impl SecureRouterBuilder {
             .nest("/delegations", delegation::create_router())
             .nest("/handoffs", handoff::create_router())
             .nest("/dsl", dsl::create_router())
+            .nest("/pack", pack::create_router())
             .nest("/config", config::create_router())
             .nest("/tenants", tenant::create_router())
             .nest("/users", user::create_router())
@@ -556,6 +558,7 @@ pub fn create_api_router_unauthenticated(
         .nest("/delegations", delegation::create_router())
         .nest("/handoffs", handoff::create_router())
         .nest("/dsl", dsl::create_router())
+        .nest("/pack", pack::create_router())
         .nest("/config", config::create_router())
         .nest("/tenants", tenant::create_router())
         .nest("/users", user::create_router())

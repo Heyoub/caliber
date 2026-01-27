@@ -449,6 +449,67 @@ pub enum CompiledAbstractionLevel {
 }
 
 // ============================================================================
+// TOOL REGISTRY (PACK-DRIVEN RUNTIME CAPABILITIES)
+// ============================================================================
+
+/// Compiled tool kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CompiledToolKind {
+    Exec,
+    Prompt,
+}
+
+/// Compiled tool definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompiledToolConfig {
+    /// Fully-qualified tool id (e.g., "tools.prompts.search")
+    pub id: String,
+    pub kind: CompiledToolKind,
+    pub cmd: Option<String>,
+    pub prompt_md: Option<String>,
+    pub contract: Option<String>,
+    pub result_format: Option<String>,
+    pub timeout_ms: Option<i32>,
+    pub allow_network: Option<bool>,
+    pub allow_fs: Option<bool>,
+    pub allow_subprocess: Option<bool>,
+}
+
+/// Compiled toolset definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompiledToolsetConfig {
+    pub name: String,
+    pub tools: Vec<String>,
+}
+
+/// Pack agent-to-toolset bindings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompiledPackAgentConfig {
+    pub name: String,
+    pub toolsets: Vec<String>,
+}
+
+/// Pack injection metadata for runtime RAG wiring.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompiledPackInjectionConfig {
+    pub source: String,
+    pub target: String,
+    /// Explicit entity type for injection targeting (e.g., "note", "artifact").
+    pub entity_type: Option<String>,
+    pub mode: CompiledInjectionMode,
+    pub priority: i32,
+    pub max_tokens: Option<i32>,
+}
+
+/// Pack provider routing hints.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompiledPackRoutingConfig {
+    pub strategy: Option<String>,
+    pub embedding_provider: Option<String>,
+    pub summarization_provider: Option<String>,
+}
+
+// ============================================================================
 // COMPILED CONFIG (THE OUTPUT)
 // ============================================================================
 
@@ -488,6 +549,26 @@ pub struct CompiledConfig {
 
     /// LLM providers
     pub providers: Vec<ProviderConfig>,
+
+    /// Pack tool registry (optional; empty when compiling raw DSL)
+    #[serde(default)]
+    pub tools: Vec<CompiledToolConfig>,
+
+    /// Pack toolsets (optional; empty when compiling raw DSL)
+    #[serde(default)]
+    pub toolsets: Vec<CompiledToolsetConfig>,
+
+    /// Pack agent bindings (optional; empty when compiling raw DSL)
+    #[serde(default)]
+    pub pack_agents: Vec<CompiledPackAgentConfig>,
+
+    /// Pack injection metadata (optional; empty when compiling raw DSL)
+    #[serde(default)]
+    pub pack_injections: Vec<CompiledPackInjectionConfig>,
+
+    /// Pack routing hints (optional)
+    #[serde(default)]
+    pub pack_routing: Option<CompiledPackRoutingConfig>,
 }
 
 // ============================================================================
