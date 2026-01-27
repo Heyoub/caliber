@@ -595,7 +595,7 @@ async fn execute_pack_tool(
     // Validate input against compiled JSON Schema if present
     if let Some(schema) = &tool.compiled_schema {
         if let Err(e) = validate_tool_input(args, schema) {
-            return Err(ApiError::bad_request(format!(
+            return Err(ApiError::validation_failed(format!(
                 "Tool '{}' input validation failed: {}",
                 name, e
             )));
@@ -617,6 +617,21 @@ async fn execute_pack_tool(
                     "Tool '{}' is not allowed to spawn subprocesses (allow_subprocess=false)",
                     name
                 )));
+            }
+
+            // Log permission policy for audit trail
+            // Note: Without OS-level sandboxing, we can only audit, not enforce
+            if !tool.allow_network.unwrap_or(false) {
+                tracing::debug!(
+                    tool_name = %name,
+                    "Exec tool does not declare network permission (allow_network=false or unset)"
+                );
+            }
+            if !tool.allow_fs.unwrap_or(false) {
+                tracing::debug!(
+                    tool_name = %name,
+                    "Exec tool does not declare filesystem permission (allow_fs=false or unset)"
+                );
             }
 
             let cmd = tool
@@ -768,12 +783,7 @@ fn validate_tool_input(input: &JsonValue, schema: &JsonValue) -> Result<(), Stri
 
     compiled
         .validate(input)
-        .map_err(|errors| {
-            errors
-                .map(|e| format!("{}: {}", e.instance_path, e))
-                .collect::<Vec<_>>()
-                .join("; ")
-        })
+        .map_err(|e| format!("{}: {}", e.instance_path, e))
 }
 
 async fn resolve_agent_name_from_args(

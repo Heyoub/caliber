@@ -378,6 +378,11 @@ pub fn tenant_id_from_event(event: &WsEvent) -> Option<TenantId> {
         WsEvent::SummarizationTriggered { tenant_id, .. } => Some(*tenant_id),
         WsEvent::EdgeCreated { tenant_id, .. } => Some(*tenant_id),
         WsEvent::EdgesBatchCreated { tenant_id, .. } => Some(*tenant_id),
+
+        // ========================================================================
+        // TOOL EVENTS (MCP Security Audit)
+        // ========================================================================
+        WsEvent::ToolExecuted { tenant_id, .. } => Some(*tenant_id),
     }
 }
 

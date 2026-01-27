@@ -4,7 +4,7 @@ use caliber_core::{AgentId, ArtifactId, DelegationId, DelegationResultStatus, De
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 
 /// Request to create a delegation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -65,103 +65,29 @@ pub struct DelegationResponse {
 }
 
 // ============================================================================
-// STATE TRANSITION METHODS
+// STATE TRANSITION METHODS (delegating to service layer)
 // ============================================================================
 
 impl DelegationResponse {
     /// Accept this delegation (Pending -> Accepted transition).
     ///
-    /// # Arguments
-    /// - `db`: Database client for persisting the update
-    /// - `accepting_agent_id`: ID of the agent accepting the delegation
-    ///
-    /// # Errors
-    /// Returns error if delegation is not in Pending state.
+    /// Delegates to `services::accept_delegation()`.
     pub async fn accept(&self, db: &DbClient, accepting_agent_id: AgentId) -> ApiResult<Self> {
-        if self.status != DelegationStatus::Pending {
-            return Err(ApiError::state_conflict(format!(
-                "Delegation is in '{:?}' state, cannot accept (expected Pending)",
-                self.status
-            )));
-        }
-
-        // Verify the accepting agent is the delegatee
-        if self.delegatee_id != accepting_agent_id {
-            return Err(ApiError::forbidden(
-                "Only the delegatee can accept this delegation",
-            ));
-        }
-
-        let updates = serde_json::json!({
-            "status": "Accepted",
-            "accepted_at": chrono::Utc::now().to_rfc3339()
-        });
-
-        db.update_raw::<Self>(self.delegation_id, updates, self.tenant_id).await
+        crate::services::accept_delegation(db, self, accepting_agent_id).await
     }
 
     /// Reject this delegation (Pending -> Rejected transition).
     ///
-    /// # Arguments
-    /// - `db`: Database client for persisting the update
-    /// - `rejecting_agent_id`: ID of the agent rejecting the delegation
-    /// - `reason`: Reason for rejection
-    ///
-    /// # Errors
-    /// Returns error if delegation is not in Pending state.
+    /// Delegates to `services::reject_delegation()`.
     pub async fn reject(&self, db: &DbClient, rejecting_agent_id: AgentId, reason: &str) -> ApiResult<Self> {
-        if self.status != DelegationStatus::Pending {
-            return Err(ApiError::state_conflict(format!(
-                "Delegation is in '{:?}' state, cannot reject (expected Pending)",
-                self.status
-            )));
-        }
-
-        // Verify the rejecting agent is the delegatee
-        if self.delegatee_id != rejecting_agent_id {
-            return Err(ApiError::forbidden(
-                "Only the delegatee can reject this delegation",
-            ));
-        }
-
-        let updates = serde_json::json!({
-            "status": "Rejected",
-            "rejection_reason": reason
-        });
-
-        db.update_raw::<Self>(self.delegation_id, updates, self.tenant_id).await
+        crate::services::reject_delegation(db, self, rejecting_agent_id, reason).await
     }
 
     /// Complete this delegation (Accepted/InProgress -> Completed transition).
     ///
-    /// # Arguments
-    /// - `db`: Database client for persisting the update
-    /// - `result`: The result of the delegation
-    ///
-    /// # Errors
-    /// Returns error if delegation is not in Accepted or InProgress state.
+    /// Delegates to `services::complete_delegation()`.
     pub async fn complete(&self, db: &DbClient, result: &DelegationResultResponse) -> ApiResult<Self> {
-        let can_complete = matches!(
-            self.status,
-            DelegationStatus::Accepted | DelegationStatus::InProgress
-        );
-
-        if !can_complete {
-            return Err(ApiError::state_conflict(format!(
-                "Delegation is in '{:?}' state, cannot complete (expected Accepted or InProgress)",
-                self.status
-            )));
-        }
-
-        let result_json = serde_json::to_value(result)?;
-
-        let updates = serde_json::json!({
-            "status": "Completed",
-            "completed_at": chrono::Utc::now().to_rfc3339(),
-            "result": result_json
-        });
-
-        db.update_raw::<Self>(self.delegation_id, updates, self.tenant_id).await
+        crate::services::complete_delegation(db, self, result).await
     }
 }
 

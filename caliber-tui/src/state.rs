@@ -252,7 +252,8 @@ impl App {
             }
             WsEvent::SummarizationTriggered { .. }
             | WsEvent::EdgeCreated { .. }
-            | WsEvent::EdgesBatchCreated { .. } => {}
+            | WsEvent::EdgesBatchCreated { .. }
+            | WsEvent::ToolExecuted { .. } => {}
         }
     }
 }

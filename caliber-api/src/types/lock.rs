@@ -6,7 +6,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::db::DbClient;
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 
 /// Request to acquire a lock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,64 +74,27 @@ pub struct ListLocksResponse {
 }
 
 // ============================================================================
-// STATE TRANSITION METHODS
+// STATE TRANSITION METHODS (delegating to service layer)
 // ============================================================================
 
 impl LockResponse {
     /// Check if this lock is currently held (not expired).
+    #[inline]
     pub fn is_held(&self) -> bool {
-        chrono::Utc::now() < self.expires_at
+        crate::services::is_lock_held(self)
     }
 
     /// Release this lock.
     ///
-    /// # Arguments
-    /// - `db`: Database client for persisting the update
-    /// - `releasing_agent_id`: ID of the agent releasing the lock
-    ///
-    /// # Errors
-    /// Returns error if the agent is not the lock holder or lock is expired.
+    /// Delegates to `services::release_lock()`.
     pub async fn release(&self, db: &DbClient, releasing_agent_id: AgentId) -> ApiResult<()> {
-        // Verify the releasing agent is the lock holder
-        if self.holder_agent_id != releasing_agent_id {
-            return Err(ApiError::forbidden(
-                "Only the lock holder can release this lock",
-            ));
-        }
-
-        if !self.is_held() {
-            return Err(ApiError::state_conflict(
-                "Lock has already expired",
-            ));
-        }
-
-        // Delete the lock record (release = delete for locks)
-        db.delete::<Self>(self.lock_id, self.tenant_id).await?;
-        Ok(())
+        crate::services::release_lock(db, self, releasing_agent_id).await
     }
 
     /// Extend this lock's expiration time.
     ///
-    /// # Arguments
-    /// - `db`: Database client for persisting the update
-    /// - `additional`: Additional duration to add to expiration
-    ///
-    /// # Errors
-    /// Returns error if the lock has expired.
+    /// Delegates to `services::extend_lock()`.
     pub async fn extend(&self, db: &DbClient, additional: Duration) -> ApiResult<Self> {
-        if !self.is_held() {
-            return Err(ApiError::state_conflict(
-                "Cannot extend an expired lock",
-            ));
-        }
-
-        let new_expires = self.expires_at + chrono::Duration::from_std(additional)
-            .map_err(|e| ApiError::invalid_input(format!("Invalid duration: {}", e)))?;
-
-        let updates = serde_json::json!({
-            "expires_at": new_expires.to_rfc3339()
-        });
-
-        db.update_raw::<Self>(self.lock_id, updates, self.tenant_id).await
+        crate::services::extend_lock(db, self, additional).await
     }
 }

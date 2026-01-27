@@ -1233,7 +1233,8 @@ mod tests {
                 | TTL::ShortTerm
                 | TTL::MediumTerm
                 | TTL::LongTerm
-                | TTL::Permanent => {}
+                | TTL::Permanent
+                | TTL::Max(_) => {}
             }
         }
 

@@ -14,6 +14,7 @@ pub mod components;
 pub mod config;
 pub mod constants;
 pub mod db;
+pub mod db_helpers;
 pub mod error;
 pub mod events;
 pub mod extractors;
@@ -24,10 +25,12 @@ pub mod middleware;
 pub mod openapi;
 pub mod providers;
 pub mod routes;
+pub mod services;
 pub mod state;
 pub mod telemetry;
 pub mod traits;
 pub mod types;
+pub mod validation;
 pub mod ws;
 
 /// WorkOS SSO authentication module.
