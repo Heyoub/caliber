@@ -3,6 +3,8 @@
 use caliber_core::{AgentId, ArtifactId, NoteId, OutcomeStatus, TenantId, Timestamp, TrajectoryId, TrajectoryStatus};
 use serde::{Deserialize, Serialize};
 
+use super::{Linkable, Links, LINK_REGISTRY};
+
 /// Request to create a new trajectory.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -92,6 +94,42 @@ pub struct TrajectoryResponse {
     pub outcome: Option<TrajectoryOutcomeResponse>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
+
+    /// HATEOAS links for available actions.
+    #[serde(rename = "_links", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub links: Option<Links>,
+}
+
+impl Linkable for TrajectoryResponse {
+    const ENTITY_TYPE: &'static str = "trajectory";
+
+    fn entity_id(&self) -> String {
+        self.trajectory_id.to_string()
+    }
+
+    fn check_condition(&self, condition: &str) -> bool {
+        match condition {
+            "mutable" => matches!(self.status, TrajectoryStatus::Active | TrajectoryStatus::Paused),
+            "has_parent" => self.parent_trajectory_id.is_some(),
+            _ => true,
+        }
+    }
+
+    fn relation_id(&self, relation: &str) -> Option<String> {
+        match relation {
+            "parent_id" => self.parent_trajectory_id.map(|id| id.to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl TrajectoryResponse {
+    /// Add HATEOAS links from the registry.
+    pub fn linked(mut self) -> Self {
+        self.links = Some(LINK_REGISTRY.generate(&self));
+        self
+    }
 }
 
 /// Trajectory outcome details.

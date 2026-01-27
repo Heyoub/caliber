@@ -3,6 +3,14 @@
 //! This module defines all request and response types for the CALIBER API.
 //! These types are used by both REST and gRPC endpoints.
 
+// HATEOAS link types
+mod links;
+pub use links::*;
+
+// Link registry (centralized link definitions)
+mod link_registry;
+pub use link_registry::*;
+
 // Trajectory types
 mod trajectory;
 pub use trajectory::*;

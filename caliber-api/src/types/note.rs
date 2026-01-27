@@ -3,7 +3,7 @@
 use caliber_core::{ArtifactId, NoteId, NoteType, TenantId, Timestamp, TrajectoryId, TTL};
 use serde::{Deserialize, Serialize};
 
-use super::EmbeddingResponse;
+use super::{EmbeddingResponse, Linkable, Links, LINK_REGISTRY};
 
 /// Request to create a new note.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,4 +107,39 @@ pub struct NoteResponse {
     pub superseded_by: Option<NoteId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
+
+    /// HATEOAS links for available actions.
+    #[serde(rename = "_links", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub links: Option<Links>,
+}
+
+impl Linkable for NoteResponse {
+    const ENTITY_TYPE: &'static str = "note";
+
+    fn entity_id(&self) -> String {
+        self.note_id.to_string()
+    }
+
+    fn check_condition(&self, condition: &str) -> bool {
+        match condition {
+            "has_superseded" => self.superseded_by.is_some(),
+            _ => true,
+        }
+    }
+
+    fn relation_id(&self, relation: &str) -> Option<String> {
+        match relation {
+            "superseded_by" => self.superseded_by.map(|id| id.to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl NoteResponse {
+    /// Add HATEOAS links from the registry.
+    pub fn linked(mut self) -> Self {
+        self.links = Some(LINK_REGISTRY.generate(&self));
+        self
+    }
 }

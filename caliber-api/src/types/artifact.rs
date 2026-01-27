@@ -3,6 +3,8 @@
 use caliber_core::{ArtifactId, ArtifactType, ExtractionMethod, ScopeId, TenantId, Timestamp, TrajectoryId, TTL};
 use serde::{Deserialize, Serialize};
 
+use super::{Linkable, Links, LINK_REGISTRY};
+
 /// Request to create a new artifact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -112,6 +114,43 @@ pub struct ArtifactResponse {
     pub superseded_by: Option<ArtifactId>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
+
+    /// HATEOAS links for available actions.
+    #[serde(rename = "_links", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub links: Option<Links>,
+}
+
+impl Linkable for ArtifactResponse {
+    const ENTITY_TYPE: &'static str = "artifact";
+
+    fn entity_id(&self) -> String {
+        self.artifact_id.to_string()
+    }
+
+    fn check_condition(&self, condition: &str) -> bool {
+        match condition {
+            "has_superseded" => self.superseded_by.is_some(),
+            _ => true,
+        }
+    }
+
+    fn relation_id(&self, relation: &str) -> Option<String> {
+        match relation {
+            "trajectory_id" => Some(self.trajectory_id.to_string()),
+            "scope_id" => Some(self.scope_id.to_string()),
+            "superseded_by" => self.superseded_by.map(|id| id.to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl ArtifactResponse {
+    /// Add HATEOAS links from the registry.
+    pub fn linked(mut self) -> Self {
+        self.links = Some(LINK_REGISTRY.generate(&self));
+        self
+    }
 }
 
 /// Provenance information for an artifact.

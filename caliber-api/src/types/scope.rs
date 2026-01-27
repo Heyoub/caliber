@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
 
+use super::{Linkable, Links, LINK_REGISTRY};
+
 /// Request to create a new scope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -78,6 +80,43 @@ pub struct ScopeResponse {
     pub tokens_used: i32,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
+
+    /// HATEOAS links for available actions.
+    #[serde(rename = "_links", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub links: Option<Links>,
+}
+
+impl Linkable for ScopeResponse {
+    const ENTITY_TYPE: &'static str = "scope";
+
+    fn entity_id(&self) -> String {
+        self.scope_id.to_string()
+    }
+
+    fn check_condition(&self, condition: &str) -> bool {
+        match condition {
+            "active" => self.is_active,
+            "has_parent" => self.parent_scope_id.is_some(),
+            _ => true,
+        }
+    }
+
+    fn relation_id(&self, relation: &str) -> Option<String> {
+        match relation {
+            "trajectory_id" => Some(self.trajectory_id.to_string()),
+            "parent_id" => self.parent_scope_id.map(|id| id.to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl ScopeResponse {
+    /// Add HATEOAS links from the registry.
+    pub fn linked(mut self) -> Self {
+        self.links = Some(LINK_REGISTRY.generate(&self));
+        self
+    }
 }
 
 /// Checkpoint response.
