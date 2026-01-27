@@ -155,7 +155,7 @@ async fn select_provider_name_effective(
         return None;
     }
 
-    let providers_by_name: HashMap<&str, &caliber_dsl::compiler::ProviderConfig> = compiled
+    let providers_by_name: HashMap<&str, &caliber_dsl::compiler::CompiledProviderConfig> = compiled
         .providers
         .iter()
         .map(|p| (p.name.as_str(), p))

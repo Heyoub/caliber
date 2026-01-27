@@ -9,7 +9,8 @@ use std::str::FromStr;
 // CORE ENUMS
 // ============================================================================
 
-/// Time-to-live configuration for memory entries.
+/// Time-to-live and retention configuration for memory entries.
+/// Supports both time-based expiration and count-based limits.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TTL {
@@ -31,6 +32,8 @@ pub enum TTL {
     LongTerm,
     /// Permanent - never expires (alias for Persistent)
     Permanent,
+    /// Keep at most N entries (count-based retention from DSL)
+    Max(usize),
 }
 
 /// Entity type discriminator for polymorphic references.
@@ -63,6 +66,33 @@ pub enum MemoryCategory {
     Semantic,
     Procedural,
     Meta,
+}
+
+/// Field types for schema definitions.
+/// Used by DSL compiler and runtime validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum FieldType {
+    /// UUID identifier
+    Uuid,
+    /// Text/string
+    Text,
+    /// Integer
+    Int,
+    /// Floating point
+    Float,
+    /// Boolean
+    Bool,
+    /// Timestamp
+    Timestamp,
+    /// JSON blob
+    Json,
+    /// Vector embedding with optional dimension hint
+    Embedding { dimensions: Option<usize> },
+    /// Enumeration with named variants
+    Enum { variants: Vec<String> },
+    /// Array of another field type
+    Array(Box<FieldType>),
 }
 
 /// Status of a trajectory (task container).

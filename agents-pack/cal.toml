@@ -1,11 +1,35 @@
+# =============================================================================
+# CALIBER Pack Manifest - Comprehensive Example
+# =============================================================================
+# This pack demonstrates all features of the cal.toml schema.
+# Use it as a reference for what CALIBER expects.
+
 [meta]
 version = "1.0"
-project = "agents-pack-routing-example"
+project = "caliber-example-pack"
+env = "development"  # development | staging | production
 
+# =============================================================================
+# DEFAULTS - Global settings for all agents
+# =============================================================================
 [defaults]
-strict_markdown = true
-strict_refs = true
+context_format = "markdown"     # markdown | json
+token_budget = 8000             # Default context window size
+strict_markdown = true          # Validate markdown in prompts
+strict_refs = true              # Validate all tool/agent refs exist
+secrets_mode = "env"            # env | vault | inject
 
+# =============================================================================
+# ROUTING - Provider selection strategy
+# =============================================================================
+[routing]
+strategy = "least_latency"      # first | round_robin | random | least_latency
+embedding_provider = "openai"   # Prefer this provider for embeddings
+summarization_provider = "openai"  # Prefer this provider for summaries
+
+# =============================================================================
+# PROVIDERS - LLM/embedding backends
+# =============================================================================
 [providers.openai]
 type = "openai"
 api_key = "env:OPENAI_API_KEY"
@@ -14,35 +38,219 @@ model = "text-embedding-3-small"
 endpoint = "https://api.openai.com/v1"
 dimensions = "1536"
 
-[routing]
-strategy = "least_latency"
-embedding_provider = "openai"
-summarization_provider = "openai"
+[providers.anthropic]
+type = "anthropic"
+api_key = "env:ANTHROPIC_API_KEY"
+model = "claude-3-haiku-20240307"
+[providers.anthropic.options]
+max_tokens = "4096"
 
-[tools.prompts.example]
-kind = "prompt"
-prompt_md = "tools/example.tool.md"
-timeout_ms = 30000
+# =============================================================================
+# PROFILES - Memory/retention configurations
+# =============================================================================
+# Profiles define how different types of data are stored and indexed.
+# Agents reference profiles to get their memory behavior.
 
-[toolsets.core]
-tools = ["tools.prompts.example"]
+[profiles.default]
+retention = "persistent"        # persistent | session | ephemeral
+index = "vector"                # vector | keyword | hybrid
+embeddings = "openai"           # Which provider for embeddings
+format = "markdown"             # Output format
 
-[agents.support]
-enabled = true
-profile = "default"
-adapter = "main"
-prompt_md = "agents/example.agent.md"
-toolsets = ["core"]
+[profiles.fast]
+retention = "session"
+index = "keyword"
+embeddings = "openai"
+format = "markdown"
 
+[profiles.archival]
+retention = "persistent"
+index = "hybrid"
+embeddings = "openai"
+format = "json"
+
+# =============================================================================
+# SETTINGS MATRIX - Allowed profile combinations
+# =============================================================================
+[settings.matrix]
+enforce_profiles_only = true    # Reject configs not in this list
+allowed = [
+    { name = "default-combo", retention = "persistent", index = "vector", embeddings = "openai", format = "markdown" },
+    { name = "fast-combo", retention = "session", index = "keyword", embeddings = "openai", format = "markdown" },
+]
+
+# =============================================================================
+# ADAPTERS - Database/storage connections
+# =============================================================================
 [adapters.main]
 type = "postgres"
-connection = "postgresql://localhost/caliber"
+connection = "env:DATABASE_URL"
+[adapters.main.options]
+pool_size = "10"
+timeout_ms = "5000"
+
+[adapters.readonly]
+type = "postgres"
+connection = "env:DATABASE_URL_READONLY"
+
+# =============================================================================
+# FORMATS - Output formatting rules
+# =============================================================================
+[formats.markdown]
+type = "markdown"
+include_audit = false
+include_sources = true
+
+[formats.json]
+type = "json"
+include_audit = true
+include_sources = true
+
+# =============================================================================
+# POLICIES - Automated lifecycle triggers
+# =============================================================================
+[policies.summarize_on_budget]
+trigger = "token_usage > 80%"
+[[policies.summarize_on_budget.actions]]
+type = "summarize"
+target = "scope"
+max_tokens = 500
+mode = "abstractive"
+
+[policies.archive_old_artifacts]
+trigger = "artifact_age > 7d"
+[[policies.archive_old_artifacts.actions]]
+type = "archive"
+target = "artifact"
+
+# =============================================================================
+# INJECTIONS - Context assembly rules
+# =============================================================================
+# Injections control how notes/artifacts are pulled into agent context.
 
 [injections.notes_relevant]
 entity_type = "note"
 source = "notes"
 target = "context"
-mode = "relevant"
-threshold = 0.72
+mode = "relevant"               # full | summary | topk | relevant
+threshold = 0.72                # Relevance threshold (for mode=relevant)
 priority = 80
 max_tokens = 2000
+
+[injections.artifacts_topk]
+entity_type = "artifact"
+source = "artifacts"
+target = "context"
+mode = "topk"
+top_k = 5
+priority = 60
+max_tokens = 3000
+
+[injections.procedures_full]
+entity_type = "note"
+source = "procedures"
+target = "system_prompt"
+mode = "full"
+priority = 100
+max_tokens = 1000
+
+# =============================================================================
+# TOOLS - Executable capabilities
+# =============================================================================
+
+# --- Prompt-based tools (LLM-powered) ---
+[tools.prompts.search]
+kind = "prompt"
+prompt_md = "tools/prompts/search.md"
+contract = "tools/contracts/search.json"  # Optional JSON schema
+result_format = "json"
+timeout_ms = 30000
+
+[tools.prompts.summarize]
+kind = "prompt"
+prompt_md = "tools/prompts/summarize.md"
+timeout_ms = 60000
+
+[tools.prompts.extract_entities]
+kind = "prompt"
+prompt_md = "tools/prompts/extract_entities.md"
+result_format = "json"
+timeout_ms = 45000
+
+# --- Binary tools (subprocess execution) ---
+[tools.bin.fetch_url]
+kind = "exec"
+cmd = "curl -sL {{url}}"
+timeout_ms = 10000
+allow_network = true
+allow_fs = false
+allow_subprocess = false
+
+[tools.bin.run_query]
+kind = "exec"
+cmd = "psql -c '{{query}}' $DATABASE_URL"
+timeout_ms = 30000
+allow_network = true
+allow_fs = false
+allow_subprocess = true
+
+# =============================================================================
+# TOOLSETS - Tool groupings for agents
+# =============================================================================
+[toolsets.core]
+tools = ["tools.prompts.search", "tools.prompts.summarize"]
+
+[toolsets.research]
+tools = ["tools.prompts.search", "tools.prompts.extract_entities", "tools.bin.fetch_url"]
+
+[toolsets.data]
+tools = ["tools.bin.run_query", "tools.prompts.summarize"]
+
+[toolsets.all]
+tools = [
+    "tools.prompts.search",
+    "tools.prompts.summarize",
+    "tools.prompts.extract_entities",
+    "tools.bin.fetch_url",
+    "tools.bin.run_query"
+]
+
+# =============================================================================
+# AGENTS - The actual agent definitions
+# =============================================================================
+
+[agents.support]
+enabled = true
+profile = "default"
+adapter = "main"
+format = "markdown"
+token_budget = 8000
+prompt_md = "agents/support.agent.md"
+toolsets = ["core"]
+
+[agents.researcher]
+enabled = true
+profile = "default"
+adapter = "main"
+format = "markdown"
+token_budget = 16000
+prompt_md = "agents/researcher.agent.md"
+toolsets = ["research"]
+
+[agents.analyst]
+enabled = true
+profile = "archival"
+adapter = "readonly"
+format = "json"
+token_budget = 12000
+prompt_md = "agents/analyst.agent.md"
+toolsets = ["data", "core"]
+
+[agents.coordinator]
+enabled = true
+profile = "fast"
+adapter = "main"
+format = "markdown"
+token_budget = 4000
+prompt_md = "agents/coordinator.agent.md"
+toolsets = ["all"]

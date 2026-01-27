@@ -12,6 +12,7 @@
 //! ```
 
 use crate::parser::ast::*;
+use caliber_core::MemoryCategory;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -84,9 +85,11 @@ pub enum CompiledAdapterType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemoryConfig {
     pub name: String,
-    pub memory_type: CompiledMemoryType,
+    /// Memory category (uses `caliber_core::MemoryCategory`).
+    pub memory_type: MemoryCategory,
     pub schema: Vec<FieldConfig>,
-    pub retention: CompiledRetention,
+    /// Retention policy (uses `caliber_core::TTL`).
+    pub retention: caliber_core::TTL,
     pub lifecycle: CompiledLifecycle,
     pub parent: Option<String>,
     pub indexes: Vec<IndexConfig>,
@@ -95,22 +98,12 @@ pub struct MemoryConfig {
     pub modifiers: MemoryModifiers,
 }
 
-/// Compiled memory types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum CompiledMemoryType {
-    Ephemeral,
-    Working,
-    Episodic,
-    Semantic,
-    Procedural,
-    Meta,
-}
-
 /// Compiled field configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldConfig {
     pub name: String,
-    pub field_type: CompiledFieldType,
+    /// Field type (uses `caliber_core::FieldType`).
+    pub field_type: caliber_core::FieldType,
     pub nullable: bool,
     /// Security configuration for PII fields.
     pub security: Option<CompiledFieldSecurity>,
@@ -144,30 +137,11 @@ pub struct CompiledFieldSecurity {
     pub env_source: Option<String>,
 }
 
-/// Compiled field types.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum CompiledFieldType {
-    Uuid,
-    Text,
-    Int,
-    Float,
-    Bool,
-    Timestamp,
-    Json,
-    Embedding { dimensions: Option<usize> },
-    Enum { variants: Vec<String> },
-    Array(Box<CompiledFieldType>),
-}
+// NOTE: Field types use `caliber_core::FieldType`.
+// The former `CompiledFieldType` was removed as it was identical.
 
-/// Compiled retention configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum CompiledRetention {
-    Persistent,
-    Session,
-    Scope,
-    Duration(Duration),
-    Max(usize),
-}
+// NOTE: Retention uses `caliber_core::TTL`.
+// The former `CompiledRetention` was removed - Duration is converted to milliseconds.
 
 /// Compiled lifecycle configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -401,9 +375,10 @@ pub enum CompiledFreshness {
     Strict,
 }
 
-/// Compiled provider configuration.
+/// Compiled provider configuration from DSL.
+/// Note: Different from `caliber_core::config::ProviderConfig` (system bootstrap config).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProviderConfig {
+pub struct CompiledProviderConfig {
     pub name: String,
     pub provider_type: CompiledProviderType,
     pub api_key: String,
@@ -467,7 +442,12 @@ pub struct CompiledToolConfig {
     pub kind: CompiledToolKind,
     pub cmd: Option<String>,
     pub prompt_md: Option<String>,
+    /// Path to contract JSON Schema file (original reference).
     pub contract: Option<String>,
+    /// Compiled JSON Schema for runtime input validation.
+    /// Populated during pack compilation if contract is specified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compiled_schema: Option<serde_json::Value>,
     pub result_format: Option<String>,
     pub timeout_ms: Option<i32>,
     pub allow_network: Option<bool>,
@@ -482,11 +462,20 @@ pub struct CompiledToolsetConfig {
     pub tools: Vec<String>,
 }
 
-/// Pack agent-to-toolset bindings.
+/// Pack agent-to-toolset bindings with extracted markdown metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompiledPackAgentConfig {
     pub name: String,
     pub toolsets: Vec<String>,
+    /// Constraints extracted from ```constraints block in agent markdown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extracted_constraints: Vec<String>,
+    /// Tool references extracted from ```tools block (validated against TOML).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extracted_tool_refs: Vec<String>,
+    /// RAG configuration extracted from ```rag block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extracted_rag_config: Option<String>,
 }
 
 /// Pack injection metadata for runtime RAG wiring.
@@ -548,7 +537,7 @@ pub struct CompiledConfig {
     pub cache: Option<CacheConfig>,
 
     /// LLM providers
-    pub providers: Vec<ProviderConfig>,
+    pub providers: Vec<CompiledProviderConfig>,
 
     /// Pack tool registry (optional; empty when compiling raw DSL)
     #[serde(default)]
@@ -569,6 +558,12 @@ pub struct CompiledConfig {
     /// Pack routing hints (optional)
     #[serde(default)]
     pub pack_routing: Option<CompiledPackRoutingConfig>,
+
+    /// File hashes for artifact determinism (lockfile support).
+    /// Maps relative file paths to their SHA-256 hashes.
+    /// Used to detect when pack sources change without recompilation.
+    #[serde(default)]
+    pub file_hashes: HashMap<String, String>,
 }
 
 // ============================================================================
@@ -785,14 +780,14 @@ impl DslCompiler {
         })
     }
 
-    fn compile_memory_type(mt: &MemoryType) -> CompileResult<CompiledMemoryType> {
+    fn compile_memory_type(mt: &MemoryType) -> CompileResult<MemoryCategory> {
         Ok(match mt {
-            MemoryType::Ephemeral => CompiledMemoryType::Ephemeral,
-            MemoryType::Working => CompiledMemoryType::Working,
-            MemoryType::Episodic => CompiledMemoryType::Episodic,
-            MemoryType::Semantic => CompiledMemoryType::Semantic,
-            MemoryType::Procedural => CompiledMemoryType::Procedural,
-            MemoryType::Meta => CompiledMemoryType::Meta,
+            MemoryType::Ephemeral => MemoryCategory::Ephemeral,
+            MemoryType::Working => MemoryCategory::Working,
+            MemoryType::Episodic => MemoryCategory::Episodic,
+            MemoryType::Semantic => MemoryCategory::Semantic,
+            MemoryType::Procedural => MemoryCategory::Procedural,
+            MemoryType::Meta => MemoryCategory::Meta,
         })
     }
 
@@ -825,38 +820,41 @@ impl DslCompiler {
         }
     }
 
-    fn compile_field_type(ft: &FieldType) -> CompileResult<CompiledFieldType> {
+    fn compile_field_type(ft: &FieldType) -> CompileResult<caliber_core::FieldType> {
+        use caliber_core::FieldType as CoreFieldType;
         Ok(match ft {
-            FieldType::Uuid => CompiledFieldType::Uuid,
-            FieldType::Text => CompiledFieldType::Text,
-            FieldType::Int => CompiledFieldType::Int,
-            FieldType::Float => CompiledFieldType::Float,
-            FieldType::Bool => CompiledFieldType::Bool,
-            FieldType::Timestamp => CompiledFieldType::Timestamp,
-            FieldType::Json => CompiledFieldType::Json,
-            FieldType::Embedding(dimensions) => CompiledFieldType::Embedding {
+            FieldType::Uuid => CoreFieldType::Uuid,
+            FieldType::Text => CoreFieldType::Text,
+            FieldType::Int => CoreFieldType::Int,
+            FieldType::Float => CoreFieldType::Float,
+            FieldType::Bool => CoreFieldType::Bool,
+            FieldType::Timestamp => CoreFieldType::Timestamp,
+            FieldType::Json => CoreFieldType::Json,
+            FieldType::Embedding(dimensions) => CoreFieldType::Embedding {
                 dimensions: *dimensions,
             },
-            FieldType::Enum(variants) => CompiledFieldType::Enum {
+            FieldType::Enum(variants) => CoreFieldType::Enum {
                 variants: variants.clone(),
             },
             FieldType::Array(inner) => {
                 let compiled_inner = Self::compile_field_type(inner)?;
-                CompiledFieldType::Array(Box::new(compiled_inner))
+                CoreFieldType::Array(Box::new(compiled_inner))
             }
         })
     }
 
-    fn compile_retention(ret: &Retention) -> CompileResult<CompiledRetention> {
+    fn compile_retention(ret: &Retention) -> CompileResult<caliber_core::TTL> {
+        use caliber_core::TTL;
         Ok(match ret {
-            Retention::Persistent => CompiledRetention::Persistent,
-            Retention::Session => CompiledRetention::Session,
-            Retention::Scope => CompiledRetention::Scope,
+            Retention::Persistent => TTL::Persistent,
+            Retention::Session => TTL::Session,
+            Retention::Scope => TTL::Scope,
             Retention::Duration(s) => {
                 let duration = Self::parse_duration(s)?;
-                CompiledRetention::Duration(duration)
+                // Convert Duration to milliseconds for TTL
+                TTL::Duration(duration.as_millis() as i64)
             }
-            Retention::Max(n) => CompiledRetention::Max(*n),
+            Retention::Max(n) => TTL::Max(*n),
         })
     }
 
@@ -1169,7 +1167,7 @@ impl DslCompiler {
     }
 
     /// Compile a provider definition.
-    fn compile_provider(def: &ProviderDef) -> CompileResult<ProviderConfig> {
+    fn compile_provider(def: &ProviderDef) -> CompileResult<CompiledProviderConfig> {
         let provider_type = match def.provider_type {
             ProviderType::OpenAI => CompiledProviderType::OpenAI,
             ProviderType::Anthropic => CompiledProviderType::Anthropic,
@@ -1179,7 +1177,7 @@ impl DslCompiler {
         let api_key = Self::resolve_env_value(&def.api_key)?;
         let options: HashMap<String, String> = def.options.iter().cloned().collect();
 
-        Ok(ProviderConfig {
+        Ok(CompiledProviderConfig {
             name: def.name.clone(),
             provider_type,
             api_key,

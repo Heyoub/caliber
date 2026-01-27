@@ -645,7 +645,7 @@ async fn select_provider_for_capability(
         return None;
     }
 
-    let providers_by_name: HashMap<&str, &caliber_dsl::compiler::ProviderConfig> = compiled
+    let providers_by_name: HashMap<&str, &caliber_dsl::compiler::CompiledProviderConfig> = compiled
         .providers
         .iter()
         .map(|p| (p.name.as_str(), p))
@@ -740,7 +740,7 @@ impl ProviderAdapter for PackProviderAdapter {
     }
 }
 
-fn provider_from_compiled(p: &caliber_dsl::compiler::ProviderConfig) -> Option<caliber_core::ProviderConfig> {
+fn provider_from_compiled(p: &caliber_dsl::compiler::CompiledProviderConfig) -> Option<caliber_core::ProviderConfig> {
     let provider_type = match p.provider_type {
         caliber_dsl::compiler::CompiledProviderType::OpenAI => "openai",
         caliber_dsl::compiler::CompiledProviderType::Anthropic => "anthropic",

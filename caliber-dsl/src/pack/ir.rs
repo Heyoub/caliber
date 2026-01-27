@@ -131,8 +131,19 @@ fn validate_toolsets(manifest: &PackManifest) -> Result<(), PackError> {
 
 fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<(), PackError> {
     let toolsets: HashSet<String> = manifest.toolsets.keys().cloned().collect();
+    let profiles: HashSet<String> = manifest.profiles.keys().cloned().collect();
     let md_paths: HashSet<String> = markdown.iter().map(|m| m.file.clone()).collect();
+
     for (name, agent) in &manifest.agents {
+        // Validate profile reference exists
+        if !profiles.contains(&agent.profile) {
+            return Err(PackError::Validation(format!(
+                "agent '{}' references unknown profile '{}'. Available profiles: {:?}",
+                name, agent.profile, profiles.iter().collect::<Vec<_>>()
+            )));
+        }
+
+        // Validate toolset references
         for toolset in &agent.toolsets {
             if !toolsets.contains(toolset) {
                 return Err(PackError::Validation(format!(
@@ -141,6 +152,8 @@ fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<
                 )));
             }
         }
+
+        // Validate prompt markdown path
         if !md_paths.contains(&agent.prompt_md) {
             // allow relative path match by suffix
             let found = md_paths.iter().any(|p| p.ends_with(&agent.prompt_md));
@@ -155,8 +168,13 @@ fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<
     Ok(())
 }
 
+/// Maximum priority allowed for pack injections.
+/// Priorities 900+ are reserved for platform-level injections.
+const MAX_PACK_INJECTION_PRIORITY: i32 = 899;
+
 fn validate_injections(manifest: &PackManifest) -> Result<(), PackError> {
     for (name, injection) in &manifest.injections {
+        // Validate entity type if specified
         if let Some(entity_type) = injection.entity_type.as_deref() {
             let normalized = entity_type.to_lowercase();
             let valid = matches!(normalized.as_str(), "note" | "notes" | "artifact" | "artifacts");
@@ -166,6 +184,14 @@ fn validate_injections(manifest: &PackManifest) -> Result<(), PackError> {
                     name, entity_type
                 )));
             }
+        }
+
+        // Validate priority is within pack range (0-899)
+        if injection.priority > MAX_PACK_INJECTION_PRIORITY {
+            return Err(PackError::Validation(format!(
+                "injections.{}: priority {} exceeds pack maximum ({}). Priorities {}+ are reserved for platform.",
+                name, injection.priority, MAX_PACK_INJECTION_PRIORITY, MAX_PACK_INJECTION_PRIORITY + 1
+            )));
         }
     }
     Ok(())
@@ -222,8 +248,12 @@ fn collect_tool_ids(tools: &ToolsSection) -> HashSet<String> {
     ids
 }
 
+/// Contract files loaded from the pack for schema compilation.
+pub type ContractFiles = std::collections::HashMap<String, String>;
+
 /// Compile pack tool registry into runtime tool configs.
-pub fn compile_tools(manifest: &PackManifest) -> Vec<CompiledToolConfig> {
+/// `contracts` maps contract paths to their JSON content.
+pub fn compile_tools(manifest: &PackManifest, contracts: &ContractFiles) -> Result<Vec<CompiledToolConfig>, PackError> {
     let mut tools = Vec::new();
 
     for (name, def) in &manifest.tools.bin {
@@ -233,6 +263,7 @@ pub fn compile_tools(manifest: &PackManifest) -> Vec<CompiledToolConfig> {
             cmd: Some(def.cmd.clone()),
             prompt_md: None,
             contract: None,
+            compiled_schema: None,
             result_format: None,
             timeout_ms: def.timeout_ms,
             allow_network: def.allow_network,
@@ -242,12 +273,32 @@ pub fn compile_tools(manifest: &PackManifest) -> Vec<CompiledToolConfig> {
     }
 
     for (name, def) in &manifest.tools.prompts {
+        // If contract specified, compile the schema
+        let compiled_schema = if let Some(contract_path) = &def.contract {
+            let json_str = contracts.get(contract_path).ok_or_else(|| {
+                PackError::Validation(format!(
+                    "tools.prompts.{}: contract file '{}' not found",
+                    name, contract_path
+                ))
+            })?;
+            let schema: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+                PackError::Validation(format!(
+                    "tools.prompts.{}: contract '{}' is invalid JSON: {}",
+                    name, contract_path, e
+                ))
+            })?;
+            Some(schema)
+        } else {
+            None
+        };
+
         tools.push(CompiledToolConfig {
             id: format!("tools.prompts.{}", name),
             kind: CompiledToolKind::Prompt,
             cmd: None,
             prompt_md: Some(def.prompt_md.clone()),
             contract: def.contract.clone(),
+            compiled_schema,
             result_format: def.result_format.clone(),
             timeout_ms: def.timeout_ms,
             allow_network: None,
@@ -256,7 +307,7 @@ pub fn compile_tools(manifest: &PackManifest) -> Vec<CompiledToolConfig> {
         });
     }
 
-    tools
+    Ok(tools)
 }
 
 /// Compile pack toolsets into runtime toolset configs.
@@ -271,14 +322,48 @@ pub fn compile_toolsets(manifest: &PackManifest) -> Vec<CompiledToolsetConfig> {
         .collect()
 }
 
-/// Compile pack agent bindings to toolsets.
-pub fn compile_pack_agents(manifest: &PackManifest) -> Vec<CompiledPackAgentConfig> {
+/// Compile pack agent bindings to toolsets with extracted markdown metadata.
+pub fn compile_pack_agents(
+    manifest: &PackManifest,
+    markdown_docs: &[super::MarkdownDoc],
+) -> Vec<CompiledPackAgentConfig> {
+    // Build lookup from markdown file path to extracted data
+    let md_by_path: std::collections::HashMap<&str, &super::MarkdownDoc> = markdown_docs
+        .iter()
+        .map(|m| (m.file.as_str(), m))
+        .collect();
+
     manifest
         .agents
         .iter()
-        .map(|(name, agent)| CompiledPackAgentConfig {
-            name: name.clone(),
-            toolsets: agent.toolsets.clone(),
+        .map(|(name, agent)| {
+            // Find matching markdown doc by prompt_md path
+            let md: Option<&super::MarkdownDoc> = md_by_path
+                .get(agent.prompt_md.as_str())
+                .copied()
+                .or_else(|| {
+                    // Try suffix match for relative paths
+                    md_by_path.iter()
+                        .find(|(path, _)| path.ends_with(&agent.prompt_md))
+                        .map(|(_, doc)| *doc)
+                });
+
+            let (constraints, tool_refs, rag_config) = match md {
+                Some(doc) => (
+                    doc.extracted_constraints.clone(),
+                    doc.extracted_tool_refs.clone(),
+                    doc.extracted_rag_config.clone(),
+                ),
+                None => (Vec::new(), Vec::new(), None),
+            };
+
+            CompiledPackAgentConfig {
+                name: name.clone(),
+                toolsets: agent.toolsets.clone(),
+                extracted_constraints: constraints,
+                extracted_tool_refs: tool_refs,
+                extracted_rag_config: rag_config,
+            }
         })
         .collect()
 }

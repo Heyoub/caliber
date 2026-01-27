@@ -1,0 +1,80 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/mcp.json",
+  "name": "caliber-example-pack",
+  "version": "1.0.0",
+  "description": "MCP runtime wiring for CALIBER example pack",
+
+  "servers": {
+    "caliber": {
+      "command": "caliber-api",
+      "args": ["serve", "--mcp"],
+      "env": {
+        "CALIBER_MCP_STRICT_PACK": "1"
+      }
+    }
+  },
+
+  "tools": {
+    "search": {
+      "server": "caliber",
+      "description": "Search notes and artifacts",
+      "inputSchema": {
+        "$ref": "tools/contracts/search.json#/definitions/input"
+      }
+    },
+    "summarize": {
+      "server": "caliber",
+      "description": "Summarize content",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string" },
+          "max_tokens": { "type": "integer", "default": 500 },
+          "style": { "type": "string", "enum": ["abstractive", "extractive"] }
+        },
+        "required": ["content"]
+      }
+    },
+    "extract_entities": {
+      "server": "caliber",
+      "description": "Extract entities from text",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string" },
+          "entity_types": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["content"]
+      }
+    },
+    "fetch_url": {
+      "server": "caliber",
+      "description": "Fetch content from URL",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" }
+        },
+        "required": ["url"]
+      }
+    },
+    "run_query": {
+      "server": "caliber",
+      "description": "Execute SQL query",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" }
+        },
+        "required": ["query"]
+      }
+    }
+  },
+
+  "prompts": {},
+
+  "resources": {}
+}

@@ -9,6 +9,12 @@ pub struct MarkdownDoc {
     pub system: String,
     pub pcp: String,
     pub users: Vec<UserSection>,
+    /// Constraints extracted from ```constraints blocks.
+    pub extracted_constraints: Vec<String>,
+    /// Tool references extracted from ```tools blocks (validated against TOML).
+    pub extracted_tool_refs: Vec<String>,
+    /// RAG configuration extracted from ```rag block.
+    pub extracted_rag_config: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -227,9 +233,17 @@ fn parse_markdown(
         }));
     }
 
-    // Validate fenced blocks per user section
+    // Validate fenced blocks per user section and collect extracted metadata
+    let mut all_constraints = Vec::new();
+    let mut all_tool_refs = Vec::new();
+    let mut rag_config = None;
     for user in &users {
-        validate_blocks(file, user, &tool_ids, strict_refs)?;
+        let extracted = validate_blocks(file, user, &tool_ids, strict_refs)?;
+        all_constraints.extend(extracted.constraints);
+        all_tool_refs.extend(extracted.tool_refs);
+        if extracted.rag_config.is_some() {
+            rag_config = extracted.rag_config;
+        }
     }
 
     Ok(MarkdownDoc {
@@ -237,7 +251,18 @@ fn parse_markdown(
         system: system.trim().to_string(),
         pcp: pcp.trim().to_string(),
         users,
+        extracted_constraints: all_constraints,
+        extracted_tool_refs: all_tool_refs,
+        extracted_rag_config: rag_config,
     })
+}
+
+/// Extracted metadata from markdown fenced blocks.
+#[derive(Debug, Clone, Default)]
+pub struct ExtractedBlocks {
+    pub constraints: Vec<String>,
+    pub tool_refs: Vec<String>,
+    pub rag_config: Option<String>,
 }
 
 fn validate_blocks(
@@ -245,7 +270,8 @@ fn validate_blocks(
     user: &UserSection,
     tool_ids: &std::collections::HashSet<String>,
     strict_refs: bool,
-) -> Result<(), PackError> {
+) -> Result<ExtractedBlocks, PackError> {
+    let mut extracted = ExtractedBlocks::default();
     let mut i = 0;
     while i < user.blocks.len() {
         let block = &user.blocks[i];
@@ -298,6 +324,47 @@ fn validate_blocks(
                     message: "payload block must follow a tool block".into(),
                 }));
             }
+            // Extended block types for agent metadata extraction
+            "constraints" => {
+                // Extract constraints as individual lines
+                for line in block.content.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                        extracted.constraints.push(trimmed.to_string());
+                    }
+                }
+                i += 1;
+            }
+            "tools" => {
+                // Extract tool references, validate against known tool IDs
+                for line in block.content.lines() {
+                    let trimmed = line.trim().trim_start_matches('-').trim();
+                    if trimmed.is_empty() || trimmed.starts_with('#') {
+                        continue;
+                    }
+                    if !tool_ids.contains(trimmed) {
+                        return Err(PackError::Markdown(MarkdownError {
+                            file: file.to_string(),
+                            line: block.line,
+                            column: 1,
+                            message: format!(
+                                "tools block references unknown tool '{}'. Must match TOML-declared tool IDs.",
+                                trimmed
+                            ),
+                        }));
+                    }
+                    extracted.tool_refs.push(trimmed.to_string());
+                }
+                i += 1;
+            }
+            "rag" => {
+                // Extract RAG configuration as-is
+                let content = block.content.trim();
+                if !content.is_empty() {
+                    extracted.rag_config = Some(content.to_string());
+                }
+                i += 1;
+            }
             _ => {
                 return Err(PackError::Markdown(MarkdownError {
                     file: file.to_string(),
@@ -308,7 +375,7 @@ fn validate_blocks(
             }
         }
     }
-    Ok(())
+    Ok(extracted)
 }
 
 fn heading_level(line: &str) -> Option<usize> {

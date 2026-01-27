@@ -569,9 +569,11 @@ version = "0.4.4"
 dependencies = [
  "caliber-core",
  "criterion",
+ "hex",
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.17",
  "toml 0.8.23",
 ]

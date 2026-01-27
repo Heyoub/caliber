@@ -27,7 +27,7 @@ pub struct PackManifest {
     #[serde(default)]
     pub toolsets: HashMap<String, ToolsetDef>,
     #[serde(default)]
-    pub agents: HashMap<String, AgentDef>,
+    pub agents: HashMap<String, PackAgentBinding>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -193,9 +193,11 @@ pub struct ToolsetDef {
     pub tools: Vec<String>,
 }
 
+/// Pack agent binding - wires toolsets and prompts to an agent role.
+/// Not to be confused with parser::AgentDef which defines agent capabilities.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AgentDef {
+pub struct PackAgentBinding {
     pub enabled: Option<bool>,
     pub profile: String,
     pub adapter: Option<String>,
