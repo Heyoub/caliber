@@ -97,15 +97,15 @@ sha2 = "0.10"
 hex = "0.4"
 
 # OpenTelemetry (http exporter to avoid tonic/axum conflict)
-opentelemetry = { version = "0.27", features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client"] }
-opentelemetry-prometheus = "0.27"
-tracing-opentelemetry = "0.28"
-opentelemetry-http = "0.27"
+opentelemetry = { version = "0.31", features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client"] }
+opentelemetry-prometheus = "0.31"
+tracing-opentelemetry = "0.32"
+opentelemetry-http = "0.31"
 
 # Prometheus metrics
-prometheus = { version = "0.13", features = ["process"] }
+prometheus = { version = "0.14", features = ["process"] }
 
 # Utilities
 regex = "1.10"
