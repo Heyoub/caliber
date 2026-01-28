@@ -1656,6 +1656,7 @@ impl Learning {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_message_type_roundtrip() {
@@ -1695,6 +1696,237 @@ mod tests {
         assert!(!ConflictStatus::Resolving.is_terminal());
         assert!(ConflictStatus::Resolved.is_terminal());
         assert!(ConflictStatus::Escalated.is_terminal());
+    }
+
+    #[test]
+    fn test_agent_goal_builders_and_lifecycle() {
+        let agent_id = AgentId::now_v7();
+        let trajectory_id = TrajectoryId::now_v7();
+        let parent_id = GoalId::now_v7();
+        let deadline = chrono::Utc::now();
+        let criterion = SuccessCriterion::new("done");
+
+        let mut goal = AgentGoal::new(agent_id, "ship", GoalType::Terminal)
+            .with_trajectory(trajectory_id)
+            .with_parent(parent_id)
+            .with_criterion(criterion)
+            .with_priority(5)
+            .with_deadline(deadline);
+
+        assert_eq!(goal.agent_id, agent_id);
+        assert_eq!(goal.trajectory_id, Some(trajectory_id));
+        assert_eq!(goal.parent_goal_id, Some(parent_id));
+        assert_eq!(goal.priority, 5);
+        assert_eq!(goal.deadline, Some(deadline));
+        assert_eq!(goal.status, GoalStatus::Pending);
+        assert!(goal.started_at.is_none());
+        assert!(goal.completed_at.is_none());
+
+        let before_start = chrono::Utc::now();
+        goal.start();
+        assert_eq!(goal.status, GoalStatus::Active);
+        assert!(goal.started_at.is_some());
+        assert!(goal.started_at.unwrap() >= before_start);
+
+        goal.achieve();
+        assert_eq!(goal.status, GoalStatus::Achieved);
+        assert!(goal.completed_at.is_some());
+
+        let mut failed = AgentGoal::new(agent_id, "fail", GoalType::Milestone);
+        failed.fail("nope");
+        assert_eq!(failed.status, GoalStatus::Failed);
+        assert_eq!(failed.failure_reason.as_deref(), Some("nope"));
+        assert!(failed.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_agent_goal_criteria_satisfaction() {
+        let agent_id = AgentId::now_v7();
+        let goal = AgentGoal::new(agent_id, "empty", GoalType::Terminal);
+        assert!(goal.all_criteria_satisfied());
+
+        let mut unsatisfied = AgentGoal::new(agent_id, "needs work", GoalType::Subgoal)
+            .with_criterion(SuccessCriterion::new("a"))
+            .with_criterion(SuccessCriterion::new("b"));
+        assert!(!unsatisfied.all_criteria_satisfied());
+        unsatisfied.success_criteria[0].satisfied = true;
+        unsatisfied.success_criteria[1].satisfied = true;
+        assert!(unsatisfied.all_criteria_satisfied());
+    }
+
+    #[test]
+    fn test_plan_step_and_cost_builders() {
+        let dep = StepId::now_v7();
+        let step = PlanStep::new(1, "do", ActionType::Operation)
+            .with_precondition("ready")
+            .with_postcondition("done")
+            .depends_on(dep);
+
+        assert_eq!(step.index, 1);
+        assert_eq!(step.preconditions, vec!["ready".to_string()]);
+        assert_eq!(step.postconditions, vec!["done".to_string()]);
+        assert_eq!(step.depends_on, vec![dep]);
+        assert_eq!(step.status, StepStatus::Pending);
+
+        let cost = PlanCost::new(100, 2500).with_monetary_cost(1.25);
+        assert_eq!(cost.estimated_tokens, 100);
+        assert_eq!(cost.estimated_duration_ms, 2500);
+        assert_eq!(cost.monetary_cost_usd, Some(1.25));
+    }
+
+    #[test]
+    fn test_agent_plan_flow_and_next_step() {
+        let agent_id = AgentId::now_v7();
+        let goal_id = GoalId::now_v7();
+        let mut plan = AgentPlan::new(agent_id, goal_id, "plan it");
+        assert_eq!(plan.status, PlanStatus::Draft);
+
+        let mut step_ready = PlanStep::new(1, "prep", ActionType::Operation);
+        step_ready.status = StepStatus::Ready;
+        let step_pending = PlanStep::new(2, "execute", ActionType::ToolCall);
+
+        plan.add_step(step_ready.clone());
+        plan.add_step(step_pending.clone());
+
+        let next = plan.next_step().expect("expected next step");
+        assert_eq!(next.step_id, step_ready.step_id);
+
+        plan.ready();
+        assert_eq!(plan.status, PlanStatus::Ready);
+
+        let before_start = chrono::Utc::now();
+        plan.start();
+        assert_eq!(plan.status, PlanStatus::InProgress);
+        assert!(plan.started_at.is_some());
+        assert!(plan.started_at.unwrap() >= before_start);
+
+        let cost = PlanCost::new(10, 100);
+        plan.complete(Some(cost.clone()));
+        assert_eq!(plan.status, PlanStatus::Completed);
+        assert_eq!(plan.actual_cost, Some(cost));
+        assert!(plan.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_backoff_strategy_delay() {
+        let fixed = BackoffStrategy::Fixed { delay_ms: 100 };
+        assert_eq!(fixed.delay_for_attempt(3), 100);
+
+        let linear = BackoffStrategy::Linear { base_ms: 50, increment_ms: 10 };
+        assert_eq!(linear.delay_for_attempt(0), 50);
+        assert_eq!(linear.delay_for_attempt(3), 80);
+
+        let exp = BackoffStrategy::Exponential { base_ms: 100, multiplier: 2.0, max_ms: 1000 };
+        assert_eq!(exp.delay_for_attempt(0), 100);
+        assert_eq!(exp.delay_for_attempt(3), 800);
+        assert_eq!(exp.delay_for_attempt(4), 1000);
+    }
+
+    #[test]
+    fn test_agent_action_flow_and_retry() {
+        let agent_id = AgentId::now_v7();
+        let policy = RetryPolicy {
+            max_attempts: 2,
+            backoff: BackoffStrategy::None,
+            timeout_per_attempt_ms: 1000,
+        };
+
+        let mut action = AgentAction::new(agent_id, ActionType::Operation, "do")
+            .with_retry_policy(policy)
+            .with_parameters(json!({"k": "v"}))
+            .with_timeout(500);
+
+        assert_eq!(action.status, ActionStatus::Pending);
+        assert_eq!(action.attempt_count, 0);
+        assert!(action.can_retry());
+
+        action.start();
+        assert_eq!(action.status, ActionStatus::InProgress);
+        assert_eq!(action.attempt_count, 1);
+        let started_at = action.started_at;
+
+        action.start();
+        assert_eq!(action.attempt_count, 2);
+        assert_eq!(action.started_at, started_at);
+
+        action.complete();
+        assert_eq!(action.status, ActionStatus::Completed);
+        assert!(action.completed_at.is_some());
+
+        action.attempt_count = 2;
+        assert!(!action.can_retry());
+    }
+
+    #[test]
+    fn test_belief_confidence_clamp_and_active() {
+        let agent_id = AgentId::now_v7();
+        let mut belief = Belief::new(agent_id, "fact", BeliefType::Fact, BeliefSource::Observation)
+            .with_confidence(2.5);
+        assert_eq!(belief.confidence, 1.0);
+
+        let before_update = belief.updated_at;
+        belief.update_confidence(-5.0);
+        assert_eq!(belief.confidence, 0.0);
+        assert!(belief.updated_at >= before_update);
+
+        let new_id = BeliefId::now_v7();
+        belief.supersede(new_id);
+        assert_eq!(belief.superseded_by, Some(new_id));
+        assert!(!belief.is_active());
+    }
+
+    #[test]
+    fn test_agent_beliefs_add_and_active_filter() {
+        let agent_id = AgentId::now_v7();
+        let mut beliefs = AgentBeliefs::new(agent_id);
+
+        let fact = Belief::new(agent_id, "fact", BeliefType::Fact, BeliefSource::MemoryRecall);
+        let hypothesis = Belief::new(agent_id, "maybe", BeliefType::Hypothesis, BeliefSource::Inference);
+        let mut superseded = Belief::new(agent_id, "old", BeliefType::Fact, BeliefSource::Observation);
+        superseded.supersede(BeliefId::now_v7());
+
+        beliefs.add(fact.clone());
+        beliefs.add(hypothesis.clone());
+        beliefs.add(superseded.clone());
+
+        assert_eq!(beliefs.facts.len(), 2);
+        assert_eq!(beliefs.hypotheses.len(), 1);
+        assert_eq!(beliefs.uncertainties.len(), 0);
+
+        let active: Vec<_> = beliefs.active_beliefs().collect();
+        assert!(active.iter().all(|b| b.is_active()));
+        assert_eq!(active.len(), 2);
+    }
+
+    #[test]
+    fn test_agent_observation_and_learning_builders() {
+        let agent_id = AgentId::now_v7();
+        let action_id = ActionId::now_v7();
+        let belief_id = BeliefId::now_v7();
+
+        let learning = Learning::new(ObservationId::now_v7(), LearningType::PatternRecognition, "pattern")
+            .with_abstraction(AbstractionLevel::Summary)
+            .with_applicability("global")
+            .with_confidence(0.4);
+
+        let mut obs = AgentObservation::new(agent_id, action_id, true, 150)
+            .with_result(json!({"ok": true}))
+            .with_error("none")
+            .with_tokens(42)
+            .with_cost(0.25);
+
+        obs.add_belief_update(belief_id);
+        obs.add_learning(learning);
+
+        assert_eq!(obs.agent_id, agent_id);
+        assert_eq!(obs.action_id, action_id);
+        assert_eq!(obs.duration_ms, 150);
+        assert_eq!(obs.tokens_used, Some(42));
+        assert_eq!(obs.cost_usd, Some(0.25));
+        assert_eq!(obs.belief_updates, vec![belief_id]);
+        assert_eq!(obs.learnings.len(), 1);
+        assert!(obs.result.is_some());
+        assert!(obs.error.is_some());
     }
 
 }

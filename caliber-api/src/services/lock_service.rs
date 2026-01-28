@@ -72,3 +72,74 @@ pub async fn extend_lock(
 
     db.update_raw::<LockResponse>(lock.lock_id, updates, lock.tenant_id).await
 }
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::DbConfig;
+    use crate::error::ErrorCode;
+    use caliber_core::{AgentId, LockId, TenantId};
+    use chrono::{Duration as ChronoDuration, Utc};
+    use uuid::Uuid;
+
+    fn dummy_db() -> DbClient {
+        DbClient::from_config(&DbConfig::default()).expect("db client")
+    }
+
+    fn sample_lock(expires_at: chrono::DateTime<Utc>, holder: AgentId) -> LockResponse {
+        LockResponse {
+            tenant_id: TenantId::now_v7(),
+            lock_id: LockId::now_v7(),
+            resource_type: "resource".to_string(),
+            resource_id: Uuid::now_v7(),
+            holder_agent_id: holder,
+            acquired_at: Utc::now(),
+            expires_at,
+            mode: "exclusive".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_is_lock_held_checks_expiration() {
+        let holder = AgentId::now_v7();
+        let future = Utc::now() + ChronoDuration::seconds(30);
+        let past = Utc::now() - ChronoDuration::seconds(30);
+        assert!(is_lock_held(&sample_lock(future, holder)));
+        assert!(!is_lock_held(&sample_lock(past, holder)));
+    }
+
+    #[tokio::test]
+    async fn test_release_lock_rejects_wrong_holder() {
+        let db = dummy_db();
+        let holder = AgentId::now_v7();
+        let lock = sample_lock(Utc::now() + ChronoDuration::seconds(30), holder);
+        let err = release_lock(&db, &lock, AgentId::now_v7())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Forbidden);
+    }
+
+    #[tokio::test]
+    async fn test_release_lock_rejects_expired_lock() {
+        let db = dummy_db();
+        let holder = AgentId::now_v7();
+        let lock = sample_lock(Utc::now() - ChronoDuration::seconds(5), holder);
+        let err = release_lock(&db, &lock, holder).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::StateConflict);
+    }
+
+    #[tokio::test]
+    async fn test_extend_lock_rejects_expired_lock() {
+        let db = dummy_db();
+        let holder = AgentId::now_v7();
+        let lock = sample_lock(Utc::now() - ChronoDuration::seconds(5), holder);
+        let err = extend_lock(&db, &lock, Duration::from_secs(5))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::StateConflict);
+    }
+}

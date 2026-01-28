@@ -138,4 +138,39 @@ mod tests {
             CaliberError::Vector(VectorError::DimensionMismatch { expected: 2, got: 3 })
         ));
     }
+
+    #[test]
+    fn test_cosine_similarity_opposite_vectors() {
+        let a = EmbeddingVector::new(vec![1.0, 0.0], "model".to_string());
+        let b = EmbeddingVector::new(vec![-1.0, 0.0], "model".to_string());
+        let sim = a.cosine_similarity(&b).unwrap();
+        assert!((sim + 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_similarity_scaled_vectors() {
+        let a = EmbeddingVector::new(vec![1.0, 2.0, 3.0], "model".to_string());
+        let b = EmbeddingVector::new(vec![2.0, 4.0, 6.0], "model".to_string());
+        let sim = a.cosine_similarity(&b).unwrap();
+        assert!((sim - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_similarity_is_symmetric() {
+        let a = EmbeddingVector::new(vec![1.0, 2.0], "model".to_string());
+        let b = EmbeddingVector::new(vec![3.0, 4.0], "model".to_string());
+        let ab = a.cosine_similarity(&b).unwrap();
+        let ba = b.cosine_similarity(&a).unwrap();
+        assert!((ab - ba).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_is_valid_negative_dimensions() {
+        let invalid = EmbeddingVector {
+            data: vec![0.0, 1.0],
+            model_id: "m".to_string(),
+            dimensions: -1,
+        };
+        assert!(!invalid.is_valid());
+    }
 }

@@ -8,6 +8,7 @@
 // API Configuration
 export const API_BASE_URL = __ENV.CALIBER_API_URL || 'http://localhost:3000';
 export const API_KEY = __ENV.CALIBER_API_KEY || '';
+export const TENANT_ID = __ENV.CALIBER_TENANT_ID || '';
 
 // Quality Gates - These are our SLOs
 export const thresholds = {
@@ -61,6 +62,10 @@ export function getHeaders(authenticated = false) {
 
   if (authenticated && API_KEY) {
     headers['Authorization'] = `Bearer ${API_KEY}`;
+  }
+
+  if (TENANT_ID) {
+    headers['X-Tenant-ID'] = TENANT_ID;
   }
 
   return headers;
