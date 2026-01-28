@@ -283,7 +283,7 @@ impl RecallService {
             .collect();
 
         // Sort by created_at descending (most recent first)
-        results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        results.sort_by_key(|commit| std::cmp::Reverse(commit.created_at));
 
         // Apply limit
         results.truncate(limit as usize);
@@ -317,7 +317,7 @@ impl RecallService {
             .collect();
 
         // Sort by created_at descending
-        results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        results.sort_by_key(|commit| std::cmp::Reverse(commit.created_at));
 
         // Apply limit
         results.truncate(limit as usize);
@@ -363,7 +363,7 @@ impl RecallService {
             .collect();
 
         // Sort by created_at descending
-        results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        results.sort_by_key(|commit| std::cmp::Reverse(commit.created_at));
 
         // Apply limit
         results.truncate(limit as usize);
@@ -1516,7 +1516,7 @@ impl PCPRuntime {
         if self.checkpoints.len() > max {
             // Sort by created_at ascending (oldest first)
             self.checkpoints
-                .sort_by(|a, b| a.created_at.cmp(&b.created_at));
+                .sort_by_key(|checkpoint| checkpoint.created_at);
 
             // Remove oldest checkpoints
             let excess = self.checkpoints.len() - max;

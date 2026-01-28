@@ -623,7 +623,7 @@ impl ContextAssembler {
         let mut sections = self.build_sections(&pkg);
 
         // Sort sections by priority (descending - higher priority first)
-        sections.sort_by(|a, b| b.priority.cmp(&a.priority));
+        sections.sort_by_key(|section| std::cmp::Reverse(section.priority));
 
         // Add sections in priority order until budget is exhausted
         for section in sections {

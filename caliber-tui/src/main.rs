@@ -30,6 +30,7 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<(), TuiError> {
+    let _ = color_eyre::install();
     let config = TuiConfig::load()?;
     let api = ApiClient::new(&config)?;
     let mut app = App::new(config, api);

@@ -38,6 +38,8 @@ pub mod trajectory;
 pub mod turn;
 pub mod user;
 pub mod webhooks;
+#[cfg(feature = "workos")]
+pub mod workos_webhooks;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -353,13 +355,15 @@ impl SecureRouterBuilder {
             // Metrics endpoint (no auth, but rate-limited)
             .route("/metrics", get(metrics_handler));
 
-        // Add SSO routes when workos feature is enabled
-        #[cfg(feature = "workos")]
-        {
-            if app_state.workos_config.is_some() {
-                router = router.nest("/auth/sso", sso::create_router());
-            }
+    // Add SSO routes when workos feature is enabled
+    #[cfg(feature = "workos")]
+    {
+        let webhook_enabled = std::env::var("CALIBER_WORKOS_WEBHOOK_SECRET").is_ok();
+        if app_state.workos_config.is_some() || webhook_enabled {
+            router = router.nest("/auth/sso", sso::create_router());
+            router = router.nest("/workos", workos_webhooks::create_router());
         }
+    }
 
         // Add YAML endpoint if openapi feature is enabled
         #[cfg(feature = "openapi")]
@@ -587,8 +591,10 @@ pub fn create_api_router_unauthenticated(
 
     #[cfg(feature = "workos")]
     {
-        if app_state.workos_config.is_some() {
+        let webhook_enabled = std::env::var("CALIBER_WORKOS_WEBHOOK_SECRET").is_ok();
+        if app_state.workos_config.is_some() || webhook_enabled {
             router = router.nest("/auth/sso", sso::create_router());
+            router = router.nest("/workos", workos_webhooks::create_router());
         }
     }
 
