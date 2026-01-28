@@ -94,6 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test coverage reporting (planned)
 
 ### Changed
+- Telemetry stack now uses OpenTelemetry 0.29 + Prometheus 0.14 to eliminate protobuf 2.x exposure
+- CI PostgreSQL install uses non-interactive GPG key import for pgdg
+- cargo-deny config updated for new `unmaintained` scope format
 - `ContextWindow` now supports optional segment-based budgets
 - `ContextAssembler` respects segment budgets when assembling context
 - `FieldDef` in DSL AST now includes optional `security` field

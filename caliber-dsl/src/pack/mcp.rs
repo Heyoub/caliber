@@ -38,7 +38,7 @@ pub struct McpTool {
 /// - File hashes are in a BTreeMap (sorted keys)
 /// - JSON output will be consistent across runs
 pub fn generate_mcp_schema(config: &CompiledConfig) -> McpSchema {
-    let mut tools: Vec<McpTool> = config.tools.iter().map(|t| tool_to_mcp(t)).collect();
+    let mut tools: Vec<McpTool> = config.tools.iter().map(tool_to_mcp).collect();
 
     // Sort by name for deterministic output
     tools.sort_by(|a, b| a.name.cmp(&b.name));

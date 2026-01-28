@@ -10,9 +10,10 @@ use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
-    trace::{RandomIdGenerator, Sampler, TracerProvider},
+    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
     Resource,
 };
+use std::sync::OnceLock;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -56,6 +57,8 @@ impl Default for TelemetryConfig {
     }
 }
 
+static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
+
 /// Initialize the OpenTelemetry tracer and tracing subscriber.
 ///
 /// This function should be called once at application startup before any
@@ -68,11 +71,13 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     // Build resource with service metadata
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", config.service_name.clone()),
-        KeyValue::new("service.version", config.service_version.clone()),
-        KeyValue::new("deployment.environment", config.environment.clone()),
-    ]);
+    let resource = Resource::builder_empty()
+        .with_attributes([
+            KeyValue::new("service.name", config.service_name.clone()),
+            KeyValue::new("service.version", config.service_version.clone()),
+            KeyValue::new("deployment.environment", config.environment.clone()),
+        ])
+        .build();
 
     // Configure sampler based on sample rate
     let sampler = if config.trace_sample_rate >= 1.0 {
@@ -94,7 +99,7 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
                 ApiError::internal_error(format!("Failed to create OTLP exporter: {}", e))
             })?;
 
-        TracerProvider::builder()
+        SdkTracerProvider::builder()
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_sampler(sampler)
             .with_id_generator(RandomIdGenerator::default())
@@ -102,7 +107,7 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
             .build()
     } else {
         // No OTLP endpoint - use simple tracer (still captures spans for local logging)
-        TracerProvider::builder()
+        SdkTracerProvider::builder()
             .with_sampler(sampler)
             .with_id_generator(RandomIdGenerator::default())
             .with_resource(resource)
@@ -110,6 +115,7 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
     };
 
     let tracer = tracer_provider.tracer("caliber-api");
+    let _ = TRACER_PROVIDER.set(tracer_provider.clone());
     global::set_tracer_provider(tracer_provider);
 
     // Build tracing subscriber with OpenTelemetry layer
@@ -138,7 +144,11 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
 ///
 /// Should be called before application exit.
 pub fn shutdown_tracer() {
-    global::shutdown_tracer_provider();
+    if let Some(provider) = TRACER_PROVIDER.get() {
+        if let Err(err) = provider.shutdown() {
+            tracing::warn!(error = %err, "Failed to shutdown tracer provider cleanly");
+        }
+    }
     tracing::info!("Tracer shutdown complete");
 }
 

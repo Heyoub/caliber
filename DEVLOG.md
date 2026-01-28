@@ -30,6 +30,15 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 - ✅ Version tagger workflow to create `vX.Y.Z` tags on main version bumps
 - ✅ Review bot configs updated to schema-backed `.coderabbit.yaml` + `greptile.json` (strictness=2)
 
+### January 28, 2026 — Dependency + CI Hardening
+
+**Completed:**
+
+- ✅ Upgraded telemetry stack to OpenTelemetry 0.29 + Prometheus 0.14 (removes protobuf 2.x advisory)
+- ✅ cargo-deny config aligned to new `unmaintained` scope schema
+- ✅ CI installs `protoc` for clippy/build/quality jobs
+- ✅ Non-interactive GPG key import for pgdg-based PostgreSQL installs in CI
+
 ### January 28, 2026 — Post-v0.4.3 CI + HATEOAS + DSL Pack + Tooling
 
 **Completed:**
