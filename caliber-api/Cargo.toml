@@ -62,7 +62,7 @@ thiserror = { workspace = true }
 async-trait = "0.1"
 
 # JSON Schema validation for MCP tool input
-jsonschema = "0.29"
+jsonschema = "0.40"
 
 # Utilities
 uuid = { workspace = true, features = ["v5"] }
