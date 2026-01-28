@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+#### Test Coverage & Services
+- Deterministic unit tests for agent planning/action/belief primitives and embedding vector edge cases
+- Service-layer error-path tests for lock, delegation, and handoff workflows
+
+#### CI (Tenant Enforcement)
+- CI jobs for security/e2e/load now bootstrap PG18 + `caliber_pg` on the runner, mint a tenant-scoped JWT, and enforce `X-Tenant-ID` headers
+
 #### Test Tooling
 - `scripts/test.sh` to run clippy, workspace tests (excluding `caliber-pg`), and `cargo pgrx test`
 - DB test harness now bootstraps schema via `caliber_init` or SQL bootstrap when `DB_TESTS=1`

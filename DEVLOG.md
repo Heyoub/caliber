@@ -19,6 +19,20 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### January 28, 2026 — CI Tenant Enforcement + Service/Core Tests
+
+**Completed:**
+
+- ✅ CI runner bootstrap for PG18 + `caliber_pg` in security/e2e/load jobs (no Postgres service container)
+- ✅ Tenant-scoped JWT creation in CI with `CALIBER_REQUIRE_TENANT_HEADER=true`
+- ✅ Added service-layer error-path tests (delegation/handoff/lock)
+- ✅ Expanded core agent/embedding deterministic tests (plans/actions/beliefs + cosine edge cases)
+
+**Notes:**
+
+- Tests remain deterministic and DB-free unless explicitly integration-gated
+- k6 load tests now send `X-Tenant-ID` when `CALIBER_TENANT_ID` is provided
+
 ### February 5, 2026 — Typed ID Test Migration + PG Test Harness
 
 **Completed:**
