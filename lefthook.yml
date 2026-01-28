@@ -1,0 +1,44 @@
+# Lefthook pre-commit hooks for CALIBER
+# Install: cargo install lefthook && lefthook install
+# Or: npm install -g @evilmartians/lefthook && lefthook install
+
+pre-commit:
+  parallel: true
+  commands:
+    rust-fmt:
+      glob: "*.rs"
+      run: cargo fmt --all -- --check
+
+    rust-clippy:
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets -- -D warnings
+
+    biome-check:
+      glob: "*.{ts,tsx,js,jsx,json}"
+      run: bunx biome check --changed
+
+    biome-format:
+      glob: "*.{ts,tsx,js,jsx,json}"
+      run: bunx biome format --changed --write
+
+pre-push:
+  parallel: true
+  commands:
+    rust-test:
+      run: cargo nextest run --workspace --exclude caliber-pg --no-fail-fast
+
+    ts-test:
+      run: bun test ./tests/ --no-coverage
+
+commit-msg:
+  commands:
+    conventional:
+      # Enforce conventional commits format
+      run: |
+        if ! grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+" "$1"; then
+          echo "Commit message must follow Conventional Commits format:"
+          echo "  <type>(<scope>): <description>"
+          echo ""
+          echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+          exit 1
+        fi

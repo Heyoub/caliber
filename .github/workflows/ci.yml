@@ -2,10 +2,12 @@
 # Runs on every PR and push to main
 #
 # Jobs:
-#   - lint: rustfmt + clippy
-#   - test: cargo test with coverage
-#   - build: verify release build
-#   - openapi: validate OpenAPI spec
+#   Fast Feedback (<5 min): lint
+#   Core Tests (<15 min): test, test-property, test-fuzz, test-chaos
+#   Security: security, deps, test-security
+#   Build: build, openapi
+#   Extended (main only): test-e2e
+#   Scheduled: test-load (nightly), test-mutation (weekly)
 
 name: CI
 
@@ -14,12 +16,20 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Nightly at 2am UTC for load tests
+    - cron: '0 2 * * *'
+    # Weekly on Sunday at 3am UTC for mutation tests
+    - cron: '0 3 * * 0'
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+  RUST_BACKTRACE: short
 
 jobs:
+  # =============================================================================
+  # Fast Feedback (Every PR, <5 min)
+  # =============================================================================
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -42,12 +52,26 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Biome
+        run: bunx biome check .
+
+  # =============================================================================
+  # Core Tests (Every PR, <15 min)
+  # =============================================================================
   test:
-    name: Test
+    name: Test (Unit)
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_USER: caliber
           POSTGRES_PASSWORD: test_password
@@ -74,6 +98,9 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Run tests with coverage
         env:
           CALIBER_DB_HOST: localhost
@@ -94,6 +121,219 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  test-property:
+    name: Test (Property)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run property tests (fast-check)
+        run: bun test --test-name-pattern property
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: property
+
+      - name: Run property tests (proptest)
+        run: cargo test --workspace --exclude caliber-pg -- --test-threads=1 proptest
+        continue-on-error: true  # proptest may need DB for some tests
+
+  test-fuzz:
+    name: Test (Fuzz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run fuzz tests (fast-check)
+        env:
+          FUZZ_RUNS: "5000"
+        run: bun test ./tests/fuzz/
+
+  test-chaos:
+    name: Test (Chaos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run chaos tests
+        run: bun test ./tests/chaos/
+
+  test-integration:
+    name: Test (Integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: caliber
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: caliber_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: integration
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run integration tests
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: 5432
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_REDIS_URL: redis://localhost:6379
+        run: |
+          cargo nextest run --workspace --exclude caliber-pg \
+            -E 'test(/integration/)' --test-threads=1
+
+  # =============================================================================
+  # Security (Every PR)
+  # =============================================================================
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run security audit
+        run: cargo audit
+
+  deps:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+
+      - name: Check dependencies
+        run: cargo deny check
+
+  test-security:
+    name: Test (Security/OWASP)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: caliber
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: caliber_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: security
+
+      - name: Build API server
+        run: cargo build --release -p caliber-api
+
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: 5432
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
+        run: |
+          ./target/release/caliber-api &
+          sleep 5  # Wait for server to start
+
+      - name: Run OWASP security tests
+        env:
+          CALIBER_API_URL: http://localhost:3000
+        run: bun test ./tests/security/
+
+  # =============================================================================
+  # Build + Validate
+  # =============================================================================
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -150,34 +390,172 @@ jobs:
           path: openapi.json
           retention-days: 30
 
-  # Security scanning
-  security:
-    name: Security Audit
+  # =============================================================================
+  # Extended (Main branch only)
+  # =============================================================================
+  test-e2e:
+    name: Test (E2E)
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [build]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: caliber
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: caliber_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: caliber-api
+
+      - name: Make binary executable
+        run: chmod +x caliber-api
+
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: 5432
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_REDIS_URL: redis://localhost:6379
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
+        run: |
+          ./caliber-api &
+          sleep 5
+
+      - name: Run E2E tests
+        env:
+          CALIBER_API_URL: http://localhost:3000
+        run: bun test ./tests/e2e/
+
+  # =============================================================================
+  # Scheduled Jobs
+  # =============================================================================
+  test-load:
+    name: Test (Load)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: caliber
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: caliber_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: load
 
-      - name: Run security audit
-        run: cargo audit
+      - name: Build release
+        run: cargo build --release -p caliber-api
 
-  # Dependency check
-  deps:
-    name: Dependency Check
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: 5432
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_REDIS_URL: redis://localhost:6379
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
+        run: |
+          ./target/release/caliber-api &
+          sleep 5
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run baseline load test
+        run: k6 run tests/load/k6/api-baseline.js
+
+      - name: Run stress test
+        run: k6 run tests/load/k6/api-stress.js
+        continue-on-error: true  # Stress test may exceed thresholds
+
+      - name: Upload load test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            load-test-*.json
+          retention-days: 30
+
+  test-mutation:
+    name: Test (Mutation)
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
 
-      - name: Install cargo-deny
-        run: cargo install cargo-deny
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
-      - name: Check dependencies
-        run: cargo deny check
+      - name: Run mutation tests
+        run: bunx stryker run --reporters json,html
+        continue-on-error: true  # Mutation tests are informational
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          retention-days: 30

@@ -1,0 +1,16 @@
+# Bun Configuration
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+# Preload MSW mock setup for all tests
+preload = ["./tests/setup.ts"]
+
+# Coverage settings
+coverage = true
+coverageDir = "./coverage"
+
+# Timeout for individual tests (30 seconds)
+timeout = 30000
+
+# Retry flaky tests once
+retry = 1

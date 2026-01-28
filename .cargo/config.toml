@@ -1,0 +1,24 @@
+# Cargo configuration for CALIBER development
+# Optimized for better test output and developer experience
+
+[env]
+# Short backtraces for cleaner test output (LLM-friendly)
+RUST_BACKTRACE = "short"
+
+[profile.dev]
+# Faster tests, simpler stack traces on panic
+panic = "abort"
+
+[profile.test]
+# Keep tests fast
+opt-level = 0
+
+[alias]
+# Quick shortcuts
+t = "nextest run"
+tw = "nextest run --watch"
+ta = "nextest run --workspace --exclude caliber-pg"
+b = "build"
+br = "build --release"
+c = "clippy --workspace --all-targets --all-features -- -D warnings"
+f = "fmt --all"
