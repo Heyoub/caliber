@@ -100,7 +100,7 @@ pub fn init_tracer(config: &TelemetryConfig) -> ApiResult<()> {
             })?;
 
         SdkTracerProvider::builder()
-            .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+            .with_batch_exporter(exporter)
             .with_sampler(sampler)
             .with_id_generator(RandomIdGenerator::default())
             .with_resource(resource)
