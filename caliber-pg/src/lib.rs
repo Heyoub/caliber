@@ -980,10 +980,9 @@ fn caliber_trajectory_update(id: pgrx::Uuid, updates: pgrx::JsonB, tenant_id: pg
         }
     });
 
-    let metadata =
-        update_obj
-            .get("metadata")
-            .map(|v| if v.is_null() { None } else { Some(v.clone()) });
+    let metadata = update_obj
+        .get("metadata")
+        .map(|v| if v.is_null() { None } else { Some(v.clone()) });
 
     // Check if any fields are being updated
     if name.is_none()
