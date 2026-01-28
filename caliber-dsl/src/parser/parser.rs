@@ -2905,4 +2905,19 @@ mod prop_tests {
             prop_assert_eq!(ast, parsed);
         }
     }
+
+    #[test]
+    fn test_parse_empty_input_fails() {
+        let result = parse("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_round_trip_minimal_config() -> Result<(), ParseError> {
+        let source = r#"caliber: "1.0" {}"#;
+        let formatted = round_trip(source)?;
+        let parsed = parse(&formatted)?;
+        assert_eq!(parsed.version, "1.0");
+        Ok(())
+    }
 }

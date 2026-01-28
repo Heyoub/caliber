@@ -738,3 +738,290 @@ impl ConflictResolutionRecord {
     }
 }
 
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn sample_hash() -> ContentHash {
+        [7u8; 32]
+    }
+
+    fn sample_embedding() -> EmbeddingVector {
+        EmbeddingVector::new(vec![0.0, 1.0, 0.5], "test-model".to_string())
+    }
+
+    #[test]
+    fn test_entity_ref_serde_roundtrip() {
+        let entity = EntityRef {
+            entity_type: EntityType::Trajectory,
+            id: Uuid::now_v7(),
+        };
+        let json = serde_json::to_string(&entity).unwrap();
+        let restored: EntityRef = serde_json::from_str(&json).unwrap();
+        assert_eq!(entity, restored);
+    }
+
+    #[test]
+    fn test_trajectory_serde_roundtrip() {
+        let outcome = TrajectoryOutcome {
+            status: OutcomeStatus::Success,
+            summary: "done".to_string(),
+            produced_artifacts: vec![ArtifactId::now_v7()],
+            produced_notes: vec![NoteId::now_v7()],
+            error: None,
+        };
+        let trajectory = Trajectory {
+            trajectory_id: TrajectoryId::now_v7(),
+            name: "test".to_string(),
+            description: Some("desc".to_string()),
+            status: TrajectoryStatus::Active,
+            parent_trajectory_id: None,
+            root_trajectory_id: None,
+            agent_id: Some(AgentId::now_v7()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            completed_at: None,
+            outcome: Some(outcome),
+            metadata: Some(json!({"k": "v"})),
+        };
+        let json = serde_json::to_string(&trajectory).unwrap();
+        let restored: Trajectory = serde_json::from_str(&json).unwrap();
+        assert_eq!(trajectory, restored);
+    }
+
+    #[test]
+    fn test_scope_serde_roundtrip() {
+        let scope = Scope {
+            scope_id: ScopeId::now_v7(),
+            trajectory_id: TrajectoryId::now_v7(),
+            parent_scope_id: None,
+            name: "scope".to_string(),
+            purpose: Some("purpose".to_string()),
+            is_active: true,
+            created_at: Utc::now(),
+            closed_at: None,
+            checkpoint: Some(Checkpoint {
+                context_state: vec![1, 2, 3],
+                recoverable: true,
+            }),
+            token_budget: 8000,
+            tokens_used: 42,
+            metadata: Some(json!({"a": 1})),
+        };
+        let json = serde_json::to_string(&scope).unwrap();
+        let restored: Scope = serde_json::from_str(&json).unwrap();
+        assert_eq!(scope, restored);
+    }
+
+    #[test]
+    fn test_artifact_serde_roundtrip() {
+        let artifact = Artifact {
+            artifact_id: ArtifactId::now_v7(),
+            trajectory_id: TrajectoryId::now_v7(),
+            scope_id: ScopeId::now_v7(),
+            artifact_type: ArtifactType::Fact,
+            name: "artifact".to_string(),
+            content: "content".to_string(),
+            content_hash: sample_hash(),
+            embedding: Some(sample_embedding()),
+            provenance: Provenance {
+                source_turn: 1,
+                extraction_method: ExtractionMethod::Explicit,
+                confidence: Some(1.0),
+            },
+            ttl: TTL::Persistent,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            superseded_by: None,
+            metadata: Some(json!({"meta": true})),
+        };
+        let json = serde_json::to_string(&artifact).unwrap();
+        let restored: Artifact = serde_json::from_str(&json).unwrap();
+        assert_eq!(artifact, restored);
+    }
+
+    #[test]
+    fn test_note_serde_roundtrip() {
+        let note = Note {
+            note_id: NoteId::now_v7(),
+            note_type: NoteType::Insight,
+            title: "title".to_string(),
+            content: "content".to_string(),
+            content_hash: sample_hash(),
+            embedding: Some(sample_embedding()),
+            source_trajectory_ids: vec![TrajectoryId::now_v7()],
+            source_artifact_ids: vec![ArtifactId::now_v7()],
+            ttl: TTL::Persistent,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            accessed_at: Utc::now(),
+            access_count: 2,
+            superseded_by: None,
+            metadata: Some(json!({"n": 1})),
+            abstraction_level: AbstractionLevel::Raw,
+            source_note_ids: vec![NoteId::now_v7()],
+        };
+        let json = serde_json::to_string(&note).unwrap();
+        let restored: Note = serde_json::from_str(&json).unwrap();
+        assert_eq!(note, restored);
+    }
+
+    #[test]
+    fn test_turn_serde_roundtrip() {
+        let turn = Turn {
+            turn_id: TurnId::now_v7(),
+            scope_id: ScopeId::now_v7(),
+            sequence: 1,
+            role: TurnRole::User,
+            content: "hi".to_string(),
+            token_count: 10,
+            created_at: Utc::now(),
+            tool_calls: Some(json!({"tool": "search"})),
+            tool_results: Some(json!({"result": "ok"})),
+            metadata: Some(json!({"m": true})),
+        };
+        let json = serde_json::to_string(&turn).unwrap();
+        let restored: Turn = serde_json::from_str(&json).unwrap();
+        assert_eq!(turn, restored);
+    }
+
+    #[test]
+    fn test_agent_builder_and_helpers() {
+        let mut agent = Agent::new("coder", vec!["code".to_string(), "review".to_string()]);
+        assert_eq!(agent.status, AgentStatus::Idle);
+        assert!(agent.has_capability("code"));
+        assert!(!agent.has_capability("design"));
+
+        let access = MemoryAccess::default();
+        agent = agent.with_memory_access(access.clone());
+        assert_eq!(agent.memory_access, access);
+
+        agent = agent.with_delegation_targets(vec!["planner".to_string()]);
+        assert!(agent.can_delegate_to_type("planner"));
+
+        let supervisor = AgentId::now_v7();
+        agent = agent.with_supervisor(supervisor);
+        assert_eq!(agent.reports_to, Some(supervisor));
+
+        let before = agent.last_heartbeat;
+        agent.heartbeat();
+        assert!(agent.last_heartbeat >= before);
+    }
+
+    #[test]
+    fn test_agent_message_builders_and_state() {
+        let from = AgentId::now_v7();
+        let to = AgentId::now_v7();
+        let mut msg = AgentMessage::to_agent(from, to, MessageType::TaskDelegation, "do it")
+            .with_trajectory(TrajectoryId::now_v7())
+            .with_scope(ScopeId::now_v7())
+            .with_artifacts(vec![ArtifactId::now_v7()])
+            .with_priority(MessagePriority::High);
+
+        assert_eq!(msg.to_agent_id, Some(to));
+        assert!(msg.to_agent_type.is_none());
+        assert!(msg.is_for_agent(to));
+        assert_eq!(msg.priority, MessagePriority::High);
+
+        msg.mark_delivered();
+        assert!(msg.delivered_at.is_some());
+        msg.mark_acknowledged();
+        assert!(msg.acknowledged_at.is_some());
+
+        let by_type = AgentMessage::to_type(from, "planner", MessageType::Heartbeat, "ping");
+        assert!(by_type.to_agent_id.is_none());
+        assert_eq!(by_type.to_agent_type.as_deref(), Some("planner"));
+    }
+
+    #[test]
+    fn test_delegated_task_lifecycle() {
+        let from = AgentId::now_v7();
+        let to = AgentId::now_v7();
+        let trajectory = TrajectoryId::now_v7();
+        let mut task = DelegatedTask::to_agent(from, to, trajectory, "do it")
+            .with_shared_artifacts(vec![ArtifactId::now_v7()])
+            .with_shared_notes(vec![NoteId::now_v7()]);
+
+        assert_eq!(task.status, DelegationStatus::Pending);
+        assert!(task.accepted_at.is_none());
+        task.accept();
+        assert_eq!(task.status, DelegationStatus::Accepted);
+        assert!(task.accepted_at.is_some());
+
+        let result = DelegationResult::success("ok", vec![]);
+        task.complete(result.clone());
+        assert_eq!(task.status, DelegationStatus::Completed);
+        assert_eq!(task.result, Some(result));
+        assert!(task.completed_at.is_some());
+
+        let mut failed = DelegatedTask::to_type(from, "planner", trajectory, "fail");
+        let fail_result = DelegationResult::failure("bad");
+        failed.complete(fail_result.clone());
+        assert_eq!(failed.status, DelegationStatus::Failed);
+        assert_eq!(failed.result, Some(fail_result));
+    }
+
+    #[test]
+    fn test_handoff_lifecycle() {
+        let from = AgentId::now_v7();
+        let to = AgentId::now_v7();
+        let trajectory = TrajectoryId::now_v7();
+        let scope = ScopeId::now_v7();
+        let mut handoff = AgentHandoff::to_agent(from, to, trajectory, scope, HandoffReason::Timeout)
+            .with_notes("note")
+            .with_next_steps(vec!["step1".to_string()]);
+
+        assert_eq!(handoff.status, HandoffStatus::Initiated);
+        assert_eq!(handoff.handoff_notes.as_deref(), Some("note"));
+        assert_eq!(handoff.next_steps.len(), 1);
+
+        handoff.accept();
+        assert_eq!(handoff.status, HandoffStatus::Accepted);
+        assert!(handoff.accepted_at.is_some());
+
+        handoff.complete();
+        assert_eq!(handoff.status, HandoffStatus::Completed);
+        assert!(handoff.completed_at.is_some());
+
+        let by_type = AgentHandoff::to_type(from, "planner", trajectory, scope, HandoffReason::Failure);
+        assert!(by_type.to_agent_id.is_none());
+        assert_eq!(by_type.to_agent_type.as_deref(), Some("planner"));
+    }
+
+    #[test]
+    fn test_conflict_resolution_flow() {
+        let item_a = Uuid::now_v7();
+        let item_b = Uuid::now_v7();
+        let mut conflict = Conflict::new(ConflictType::ContradictingFact, "artifact", item_a, "note", item_b);
+        assert_eq!(conflict.status, ConflictStatus::Detected);
+
+        let agent_a = AgentId::now_v7();
+        let agent_b = AgentId::now_v7();
+        conflict = conflict.with_agents(agent_a, agent_b);
+        assert_eq!(conflict.agent_a_id, Some(agent_a));
+        assert_eq!(conflict.agent_b_id, Some(agent_b));
+
+        let trajectory_id = TrajectoryId::now_v7();
+        conflict = conflict.with_trajectory(trajectory_id);
+        assert_eq!(conflict.trajectory_id, Some(trajectory_id));
+
+        let resolution = ConflictResolutionRecord::automatic(ResolutionStrategy::Merge, "auto");
+        conflict.resolve(resolution.clone());
+        assert_eq!(conflict.status, ConflictStatus::Resolved);
+        assert_eq!(conflict.resolution, Some(resolution));
+        assert!(conflict.resolved_at.is_some());
+    }
+
+    #[test]
+    fn test_conflict_resolution_record_manual() {
+        let resolver = AgentId::now_v7();
+        let record = ConflictResolutionRecord::manual(ResolutionStrategy::Escalate, "ok", resolver);
+        assert_eq!(record.resolved_by, Some(resolver));
+        assert_eq!(record.reason, "ok");
+    }
+}

@@ -1429,4 +1429,10 @@ mod tests {
         let err = registry.register("adapter", "pg").unwrap_err();
         assert!(matches!(err, CompileError::DuplicateDefinition { .. }));
     }
+
+    #[test]
+    fn test_parse_duration_invalid() {
+        let err = DslCompiler::parse_duration("10weeks").unwrap_err();
+        assert!(matches!(err, CompileError::InvalidDuration(_)));
+    }
 }

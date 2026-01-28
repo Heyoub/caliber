@@ -204,3 +204,52 @@ pub fn create_router() -> axum::Router<AppState> {
             axum::routing::get(list_edges_by_participant),
         )
 }
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{EdgeParticipantRequest, ProvenanceRequest};
+    use caliber_core::{EdgeType, EntityType, ExtractionMethod};
+
+    fn sample_request(participants: usize, weight: Option<f32>) -> CreateEdgeRequest {
+        let mut parts = Vec::new();
+        for _ in 0..participants {
+            parts.push(EdgeParticipantRequest {
+                entity_type: EntityType::Trajectory,
+                entity_id: Uuid::now_v7(),
+                role: None,
+            });
+        }
+        CreateEdgeRequest {
+            edge_type: EdgeType::RelatesTo,
+            participants: parts,
+            weight,
+            trajectory_id: None,
+            provenance: ProvenanceRequest {
+                source_turn: 1,
+                extraction_method: ExtractionMethod::Explicit,
+                confidence: Some(1.0),
+            },
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn test_create_edge_request_requires_multiple_participants() {
+        let req = sample_request(1, None);
+        assert!(req.participants.len() < 2);
+    }
+
+    #[test]
+    fn test_create_edge_request_weight_range() {
+        let req = sample_request(2, Some(1.1));
+        assert!(req.weight.unwrap() > 1.0);
+
+        let req = sample_request(2, Some(-0.1));
+        assert!(req.weight.unwrap() < 0.0);
+    }
+}

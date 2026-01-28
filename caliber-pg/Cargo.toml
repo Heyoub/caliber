@@ -24,8 +24,8 @@ default = ["pg18"]
 # Older versions (pg13-pg17) are no longer supported.
 # This enables use of PG18 features and simplifies maintenance.
 pg18 = ["pgrx/pg18"]
-# pg_test feature gates pgrx-tests dependency (currently broken with PG18)
-# Once pgrx-tests is fixed upstream, enable with: cargo pgrx test pg18 --features pg_test
+# pg_test feature gates pgrx-tests dependency
+# Enable with: cargo pgrx test pg18 --features pg_test
 pg_test = ["dep:pgrx-tests", "pgrx-tests/pg18"]
 debug = []  # Enable debug endpoints (caliber_debug_*)
 
@@ -47,8 +47,6 @@ paste = "1"
 proptest = { workspace = true }
 
 # pgrx-tests is optional - gated behind pg_test feature
-# Currently broken with Postgres 18 (Pg_magic_struct field changes)
-# Tracking: https://github.com/pgcentralfoundation/pgrx/issues
 [dependencies.pgrx-tests]
 version = "0.16.1"
 default-features = false

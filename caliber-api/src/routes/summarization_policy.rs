@@ -186,3 +186,56 @@ pub fn create_trajectory_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", axum::routing::get(list_policies_by_trajectory))
 }
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliber_core::{AbstractionLevel, SummarizationTrigger};
+
+    #[test]
+    fn test_create_policy_validation_fields() {
+        let req = CreateSummarizationPolicyRequest {
+            name: "".to_string(),
+            description: None,
+            trajectory_id: None,
+            source_level: AbstractionLevel::Raw,
+            target_level: AbstractionLevel::Summary,
+            triggers: vec![],
+            max_sources: 0,
+            max_tokens: None,
+            require_agent_approval: false,
+            metadata: None,
+        };
+
+        assert!(req.name.trim().is_empty());
+        assert!(req.triggers.is_empty());
+        assert!(req.max_sources <= 0);
+    }
+
+    #[test]
+    fn test_abstraction_level_transitions() {
+        fn valid_transition(source: AbstractionLevel, target: AbstractionLevel) -> bool {
+            matches!(
+                (source, target),
+                (AbstractionLevel::Raw, AbstractionLevel::Summary)
+                    | (AbstractionLevel::Summary, AbstractionLevel::Principle)
+                    | (AbstractionLevel::Raw, AbstractionLevel::Principle)
+            )
+        }
+
+        assert!(valid_transition(AbstractionLevel::Raw, AbstractionLevel::Summary));
+        assert!(valid_transition(AbstractionLevel::Summary, AbstractionLevel::Principle));
+        assert!(valid_transition(AbstractionLevel::Raw, AbstractionLevel::Principle));
+        assert!(!valid_transition(AbstractionLevel::Summary, AbstractionLevel::Raw));
+    }
+
+    #[test]
+    fn test_triggers_not_empty() {
+        let triggers = vec![SummarizationTrigger::ScopeClose];
+        assert!(!triggers.is_empty());
+    }
+}

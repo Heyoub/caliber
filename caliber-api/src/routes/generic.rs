@@ -247,3 +247,107 @@ impl<T> ListResponse<T> {
         Self { items, total }
     }
 }
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::component::{ListFilter, SqlParam};
+    use crate::error::ApiError;
+    use caliber_core::{TenantId, TrajectoryId};
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct DummyEntity {
+        id: TrajectoryId,
+        tenant_id: TenantId,
+        name: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct DummyCreate {
+        name: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct DummyUpdate {
+        name: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    struct DummyFilter {
+        limit: Option<i32>,
+        offset: Option<i32>,
+    }
+
+    impl ListFilter for DummyFilter {
+        fn build_where(&self, _tenant_id: TenantId) -> (Option<String>, Vec<SqlParam>) {
+            (None, vec![])
+        }
+
+        fn limit(&self) -> i32 {
+            self.limit.unwrap_or(100)
+        }
+
+        fn offset(&self) -> i32 {
+            self.offset.unwrap_or(0)
+        }
+    }
+
+    impl Component for DummyEntity {
+        type Id = TrajectoryId;
+        type Create = DummyCreate;
+        type Update = DummyUpdate;
+        type ListFilter = DummyFilter;
+
+        const ENTITY_NAME: &'static str = "dummy";
+        const PK_FIELD: &'static str = "dummy_id";
+
+        fn entity_id(&self) -> Self::Id {
+            self.id
+        }
+
+        fn create_params(req: &Self::Create, _tenant_id: TenantId) -> Vec<SqlParam> {
+            vec![SqlParam::String(req.name.clone())]
+        }
+
+        fn create_param_count() -> usize {
+            1
+        }
+
+        fn build_updates(req: &Self::Update) -> serde_json::Value {
+            let mut value = serde_json::Map::new();
+            if let Some(name) = &req.name {
+                value.insert("name".to_string(), serde_json::Value::String(name.clone()));
+            }
+            serde_json::Value::Object(value)
+        }
+
+        fn not_found_error(id: Self::Id) -> ApiError {
+            ApiError::entity_not_found("Dummy", id)
+        }
+    }
+
+    impl TenantScoped for DummyEntity {
+        fn tenant_id(&self) -> TenantId {
+            self.tenant_id
+        }
+    }
+
+    impl Listable for DummyEntity {}
+
+    #[test]
+    fn test_crud_routes_builds() {
+        let _router = crud_routes::<DummyEntity>();
+    }
+
+    #[test]
+    fn test_dummy_filter_defaults() {
+        let filter = DummyFilter::default();
+        assert_eq!(filter.limit(), 100);
+        assert_eq!(filter.offset(), 0);
+    }
+}

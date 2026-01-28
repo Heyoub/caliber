@@ -182,3 +182,114 @@ pub enum CaliberError {
 /// Result type alias for CALIBER operations.
 pub type CaliberResult<T> = Result<T, CaliberError>;
 
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_storage_error_display_not_found() {
+        let err = StorageError::NotFound {
+            entity_type: EntityType::Trajectory,
+            id: Uuid::nil(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Entity not found"));
+        assert!(msg.contains("Trajectory"));
+        assert!(msg.contains("00000000-0000-0000-0000-000000000000"));
+    }
+
+    #[test]
+    fn test_validation_error_display_stale_data() {
+        let err = ValidationError::StaleData {
+            entity_type: EntityType::Artifact,
+            id: Uuid::nil(),
+            age: Duration::from_secs(42),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Stale data"));
+        assert!(msg.contains("Artifact"));
+    }
+
+    #[test]
+    fn test_llm_error_display_rate_limited() {
+        let err = LlmError::RateLimited {
+            provider: "openai".to_string(),
+            retry_after_ms: 1500,
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Rate limited"));
+        assert!(msg.contains("openai"));
+        assert!(msg.contains("1500"));
+    }
+
+    #[test]
+    fn test_config_error_display_invalid_value() {
+        let err = ConfigError::InvalidValue {
+            field: "api_base_url".to_string(),
+            value: "bad".to_string(),
+            reason: "must be url".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("api_base_url"));
+        assert!(msg.contains("bad"));
+        assert!(msg.contains("must be url"));
+    }
+
+    #[test]
+    fn test_vector_error_display_dimension_mismatch() {
+        let err = VectorError::DimensionMismatch {
+            expected: 1536,
+            got: 768,
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Dimension mismatch"));
+        assert!(msg.contains("1536"));
+        assert!(msg.contains("768"));
+    }
+
+    #[test]
+    fn test_agent_error_display_permission_denied() {
+        let err = AgentError::PermissionDenied {
+            agent_id: Uuid::nil(),
+            action: "read".to_string(),
+            resource: "artifact".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Permission denied"));
+        assert!(msg.contains("read"));
+        assert!(msg.contains("artifact"));
+    }
+
+    #[test]
+    fn test_caliber_error_from_variants() {
+        let storage = CaliberError::from(StorageError::LockPoisoned);
+        assert!(matches!(storage, CaliberError::Storage(_)));
+
+        let llm = CaliberError::from(LlmError::ProviderNotConfigured);
+        assert!(matches!(llm, CaliberError::Llm(_)));
+
+        let validation = CaliberError::from(ValidationError::RequiredFieldMissing {
+            field: "name".to_string(),
+        });
+        assert!(matches!(validation, CaliberError::Validation(_)));
+
+        let config = CaliberError::from(ConfigError::ProviderNotSupported {
+            provider: "test".to_string(),
+        });
+        assert!(matches!(config, CaliberError::Config(_)));
+
+        let vector = CaliberError::from(VectorError::InvalidVector {
+            reason: "empty".to_string(),
+        });
+        assert!(matches!(vector, CaliberError::Vector(_)));
+
+        let agent = CaliberError::from(AgentError::DelegationFailed {
+            reason: "timeout".to_string(),
+        });
+        assert!(matches!(agent, CaliberError::Agent(_)));
+    }
+}

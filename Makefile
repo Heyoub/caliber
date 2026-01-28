@@ -2,8 +2,8 @@
 # Run `make help` for available targets
 
 .PHONY: help test test-unit test-property test-fuzz test-chaos \
-        test-integration test-e2e test-load test-security test-all \
-        bench lint ci clean dev setup
+        test-integration test-e2e test-load test-security test-component \
+        test-all bench lint ci clean dev setup
 
 # Default target
 .DEFAULT_GOAL := help
@@ -96,6 +96,10 @@ test-smoke: ## Run smoke tests (quick sanity check)
 	@echo "$(CYAN)Running smoke tests...$(RESET)"
 	bun test ./tests/smoke/
 
+test-component: ## Run component tests
+	@echo "$(CYAN)Running component tests...$(RESET)"
+	bun test ./tests/component/
+
 #==============================================================================
 # Load & Performance Tests
 #==============================================================================
@@ -145,6 +149,8 @@ test-all: ## Run ALL tests (comprehensive, slow)
 	$(MAKE) test-property
 	$(MAKE) test-fuzz FUZZ_RUNS=5000
 	$(MAKE) test-chaos
+	$(MAKE) test-smoke
+	$(MAKE) test-component
 	$(MAKE) test-integration
 	$(MAKE) test-security-audit
 	@echo "$(GREEN)All tests completed!$(RESET)"

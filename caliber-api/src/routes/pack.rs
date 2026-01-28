@@ -323,6 +323,73 @@ impl ProviderAdapter for PackProviderAdapter {
     }
 }
 
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_routing_strategy_from_hint() {
+        assert_eq!(
+            routing_strategy_from_hint("round_robin"),
+            Some(RoutingStrategy::RoundRobin)
+        );
+        assert_eq!(
+            routing_strategy_from_hint("leastlatency"),
+            Some(RoutingStrategy::LeastLatency)
+        );
+        assert_eq!(routing_strategy_from_hint("unknown"), None);
+    }
+
+    #[test]
+    fn test_routing_strategy_label() {
+        assert_eq!(routing_strategy_label(RoutingStrategy::First), "first");
+        assert_eq!(
+            routing_strategy_label(RoutingStrategy::RoundRobin),
+            "round_robin"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pack_provider_adapter_ping() {
+        let adapter = PackProviderAdapter::new("test");
+        assert_eq!(adapter.provider_id(), "test");
+        assert!(adapter
+            .capabilities()
+            .contains(&ProviderCapability::Summarization));
+
+        let response = adapter.ping().await.unwrap();
+        assert_eq!(response.provider_id, "test");
+        assert_eq!(response.health, HealthStatus::Healthy);
+    }
+
+    #[test]
+    fn test_pack_inspect_response_roundtrip() {
+        let response = PackInspectResponse {
+            has_active: false,
+            compiled: None,
+            pack_source: None,
+            tools: vec![],
+            toolsets: HashMap::new(),
+            agents: HashMap::new(),
+            injections: vec![],
+            providers: vec![],
+            routing: None,
+            effective_embedding_provider: None,
+            effective_summarization_provider: None,
+            effective_injections: vec![],
+            routing_effective: None,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        let restored: PackInspectResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(response.has_active, restored.has_active);
+        assert_eq!(response.tools, restored.tools);
+    }
+}
+
 fn inspect_injections(compiled: &DslCompiledConfig) -> Vec<PackInspectInjection> {
     if !compiled.pack_injections.is_empty() {
         return compiled

@@ -761,3 +761,131 @@ fn provider_from_compiled(p: &caliber_dsl::compiler::CompiledProviderConfig) -> 
         dimensions,
     })
 }
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliber_dsl::compiler::{CompiledInjectionMode, InjectionConfig};
+
+    #[test]
+    fn test_default_true_is_true() {
+        assert!(default_true());
+    }
+
+    #[test]
+    fn test_context_format_serde() {
+        let json = serde_json::to_string(&ContextFormat::Markdown).unwrap();
+        assert_eq!(json, "\"markdown\"");
+
+        let parsed: ContextFormat = serde_json::from_str("\"xml\"").unwrap();
+        assert_eq!(parsed, ContextFormat::Xml);
+    }
+
+    #[test]
+    fn test_kernel_config_request_conversion() {
+        let req = KernelConfigRequest {
+            persona: Some("analyst".to_string()),
+            tone: Some("concise".to_string()),
+            reasoning_style: Some("stepwise".to_string()),
+            domain_focus: Some("security".to_string()),
+        };
+        let cfg: KernelConfig = req.clone().into();
+        assert_eq!(cfg.persona, req.persona);
+        assert_eq!(cfg.tone, req.tone);
+        assert_eq!(cfg.reasoning_style, req.reasoning_style);
+        assert_eq!(cfg.domain_focus, req.domain_focus);
+    }
+
+    #[test]
+    fn test_entity_type_from_str() {
+        assert_eq!(entity_type_from_str("note"), Some(EntityType::Note));
+        assert_eq!(entity_type_from_str("notes"), Some(EntityType::Note));
+        assert_eq!(entity_type_from_str("artifact"), Some(EntityType::Artifact));
+        assert_eq!(entity_type_from_str("ARTIFACTS"), Some(EntityType::Artifact));
+        assert_eq!(entity_type_from_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_injection_entity_type() {
+        let note_injection = InjectionConfig {
+            source: "notes.semantic".to_string(),
+            target: "context".to_string(),
+            mode: CompiledInjectionMode::Summary,
+            priority: 1,
+            max_tokens: None,
+            filter: None,
+        };
+        assert_eq!(injection_entity_type(&note_injection), Some(EntityType::Note));
+
+        let artifact_injection = InjectionConfig {
+            source: "artifacts.recent".to_string(),
+            target: "context".to_string(),
+            mode: CompiledInjectionMode::Full,
+            priority: 1,
+            max_tokens: None,
+            filter: None,
+        };
+        assert_eq!(
+            injection_entity_type(&artifact_injection),
+            Some(EntityType::Artifact)
+        );
+
+        let unknown = InjectionConfig {
+            source: "memory".to_string(),
+            target: "context".to_string(),
+            mode: CompiledInjectionMode::Full,
+            priority: 1,
+            max_tokens: None,
+            filter: None,
+        };
+        assert_eq!(injection_entity_type(&unknown), None);
+    }
+
+    #[test]
+    fn test_semantic_params() {
+        let (limit, threshold) = semantic_params(&CompiledInjectionMode::TopK { k: 3 }, 10);
+        assert_eq!(limit, 3);
+        assert!(threshold.is_none());
+
+        let (limit, threshold) = semantic_params(
+            &CompiledInjectionMode::Relevant { threshold: 0.42 },
+            5,
+        );
+        assert_eq!(limit, 15);
+        assert_eq!(threshold, Some(0.42));
+
+        let (limit, threshold) = semantic_params(&CompiledInjectionMode::Full, 0);
+        assert_eq!(limit, 1);
+        assert!(threshold.is_none());
+    }
+
+    #[test]
+    fn test_routing_strategy_from_hint() {
+        assert_eq!(
+            routing_strategy_from_hint("round_robin"),
+            Some(RoutingStrategy::RoundRobin)
+        );
+        assert_eq!(
+            routing_strategy_from_hint("leastlatency"),
+            Some(RoutingStrategy::LeastLatency)
+        );
+        assert_eq!(routing_strategy_from_hint("unknown"), None);
+    }
+
+    #[tokio::test]
+    async fn test_pack_provider_adapter_ping() {
+        let adapter = PackProviderAdapter::new("test");
+        assert_eq!(adapter.provider_id(), "test");
+        assert!(adapter
+            .capabilities()
+            .contains(&ProviderCapability::Embedding));
+
+        let response = adapter.ping().await.unwrap();
+        assert_eq!(response.provider_id, "test");
+        assert_eq!(response.health, HealthStatus::Healthy);
+    }
+}

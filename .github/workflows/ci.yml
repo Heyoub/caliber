@@ -3,10 +3,11 @@
 #
 # Jobs:
 #   Fast Feedback (<5 min): lint
-#   Core Tests (<15 min): test, test-property, test-fuzz, test-chaos
-#   Security: security, deps, test-security
+#   Core Tests (<15 min): test, test-property, test-fuzz, test-chaos, test-smoke, test-component
+#   Security: security, deps, test-security, ai-code-quality
 #   Build: build, openapi
 #   Extended (main only): test-e2e
+#   Live Component: test-component-live
 #   Scheduled: test-load (nightly), test-mutation (weekly)
 
 name: CI
@@ -186,6 +187,123 @@ jobs:
       - name: Run chaos tests
         run: bun test ./tests/chaos/
 
+  test-smoke:
+    name: Test (Smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run smoke tests
+        run: bun test ./tests/smoke/
+
+  test-component:
+    name: Test (Component)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run component tests
+        run: bun test ./tests/component/
+
+  test-component-live:
+    name: Test (Component Live)
+    runs-on: ubuntu-latest
+    needs: [build]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: caliber
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: caliber_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: caliber-api
+
+      - name: Make binary executable
+        run: chmod +x caliber-api
+
+      - name: Create test JWT
+        id: jwt
+        env:
+          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
+        run: |
+          node - <<'NODE'
+          const crypto = require('crypto');
+          const secret = process.env.CALIBER_JWT_SECRET;
+          const header = { alg: 'HS256', typ: 'JWT' };
+          const now = Math.floor(Date.now() / 1000);
+          const payload = { sub: 'ci-test', iat: now, exp: now + 3600 };
+          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+          const data = `${b64url(header)}.${b64url(payload)}`;
+          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+          const token = `${data}.${sig}`;
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
+          NODE
+
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: 5432
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_REDIS_URL: redis://localhost:6379
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
+          CALIBER_AUTH_PROVIDER: jwt
+          CALIBER_REQUIRE_TENANT_HEADER: "false"
+        run: |
+          ./caliber-api &
+          sleep 5
+
+      - name: Run component tests (live)
+        env:
+          CALIBER_API_URL: http://localhost:3000
+          CALIBER_TEST_TOKEN: ${{ steps.jwt.outputs.token }}
+        run: bun test ./tests/component/
+
   test-integration:
     name: Test (Integration)
     runs-on: ubuntu-latest
@@ -330,6 +448,44 @@ jobs:
         env:
           CALIBER_API_URL: http://localhost:3000
         run: bun test ./tests/security/
+
+  ai-code-quality:
+    name: AI Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ai-quality
+
+      - name: Install quality tools
+        run: |
+          cargo install cargo-udeps --locked
+          cargo install cargo-machete
+          cargo install cargo-llvm-cov
+
+      - name: Check for unused dependencies
+        run: cargo +nightly udeps --workspace
+        continue-on-error: true
+
+      - name: Check for unused code
+        run: cargo clippy --workspace -- -W dead_code -W unused_imports
+
+      - name: Check for duplicate/machete code
+        run: cargo machete
+        continue-on-error: true
+
+      - name: Generate coverage report
+        run: |
+          cargo llvm-cov --workspace --exclude caliber-pg --lcov --output-path lcov.info
+          cargo llvm-cov report --workspace --exclude caliber-pg
 
   # =============================================================================
   # Build + Validate
@@ -562,7 +718,7 @@ jobs:
         run: cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
 
       - name: Run caliber-pg tests
-        run: cargo pgrx test pg18 --package caliber-pg
+        run: cargo pgrx test pg18 --package caliber-pg --features pg_test
 
   test-mutation:
     name: Test (Mutation)
