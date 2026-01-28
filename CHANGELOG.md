@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 #### Test Coverage & Services
-- Deterministic unit tests for agent planning/action/belief primitives and embedding vector edge cases
-- Service-layer error-path tests for lock, delegation, and handoff workflows
+- Deterministic unit tests for agent planning/action/belief primitives and embedding vector edge cases (commit 18e5db5)
+- Service-layer error-path tests for lock, delegation, and handoff workflows (commit 18e5db5)
 
 #### CI (Tenant Enforcement)
-- CI jobs for security/e2e/load now bootstrap PG18 + `caliber_pg` on the runner, mint a tenant-scoped JWT, and enforce `X-Tenant-ID` headers
+- CI jobs for security/e2e/load now bootstrap PG18 + `caliber_pg` on the runner, mint a tenant-scoped JWT, and enforce `X-Tenant-ID` headers (commit 18e5db5)
 
 #### Test Tooling
 - `scripts/test.sh` to run clippy, workspace tests (excluding `caliber-pg`), and `cargo pgrx test`

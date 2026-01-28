@@ -19,7 +19,7 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
-### January 28, 2026 — CI Tenant Enforcement + Service/Core Tests
+### January 28, 2026 — CI Tenant Enforcement + Service/Core Tests (commit 18e5db5)
 
 **Completed:**
 
