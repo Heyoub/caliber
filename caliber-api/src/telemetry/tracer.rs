@@ -146,8 +146,34 @@ pub fn shutdown_tracer() {
 mod tests {
     use super::*;
 
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let original = std::env::var(key).ok();
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match self.original.as_deref() {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn test_telemetry_config_default() {
+        let _guard = EnvVarGuard::set("CALIBER_TRACE_SAMPLE_RATE", None);
         let config = TelemetryConfig::default();
         assert_eq!(config.service_name, "caliber-api");
         assert_eq!(config.trace_sample_rate, 1.0);

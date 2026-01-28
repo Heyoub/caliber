@@ -953,6 +953,7 @@ mod tests {
     fn test_production_validation_rejects_insecure_default() {
         let _env_lock = ENV_MUTEX.lock().unwrap();
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
+        let _secret_guard = EnvVarGuard::set("CALIBER_JWT_SECRET", None);
         let config = AuthConfig::default(); // Uses insecure default
 
         // Should fail

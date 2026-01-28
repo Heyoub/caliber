@@ -330,7 +330,7 @@ impl ProviderAdapter for PackProviderAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{extract::State, Json};
+    use axum::{body::to_bytes, extract::State, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::middleware::AuthExtractor;
@@ -424,16 +424,25 @@ mod tests {
         Some(DbTestContext { db, auth })
     }
 
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
     #[tokio::test]
     async fn test_inspect_pack_db_backed_no_active() {
         let Some(ctx) = db_test_context().await else { return; };
 
-        let Json(response) = inspect_pack(
+        let response = inspect_pack(
             State(ctx.db.clone()),
             AuthExtractor(ctx.auth.clone()),
         )
         .await
-        .expect("inspect pack");
+        .expect("inspect pack")
+        .into_response();
+        let response: PackInspectResponse = response_json(response).await;
 
         assert!(!response.has_active);
         assert!(response.compiled.is_none());

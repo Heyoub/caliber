@@ -297,19 +297,17 @@ mod tests {
     fn test_storage_error_display_lock_poisoned() {
         let err = StorageError::LockPoisoned;
         let msg = format!("{}", err);
-        assert!(msg.contains("Lock poisoned"));
+        assert!(msg.contains("Storage lock poisoned"));
     }
 
     #[test]
     fn test_validation_error_display_invalid_field_value() {
-        let err = ValidationError::InvalidFieldValue {
+        let err = ValidationError::InvalidValue {
             field: "priority".to_string(),
-            value: "high".to_string(),
             reason: "must be numeric".to_string(),
         };
         let msg = format!("{}", err);
         assert!(msg.contains("priority"));
-        assert!(msg.contains("high"));
         assert!(msg.contains("must be numeric"));
     }
 

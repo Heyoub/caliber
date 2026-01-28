@@ -338,7 +338,7 @@ mod tests {
     use crate::db::{DbClient, DbConfig};
     use crate::routes::trajectory::create_trajectory;
     use crate::state::ApiEventDag;
-    use crate::types::TrajectoryResponse;
+    use crate::types::{CreateTrajectoryRequest, TrajectoryResponse};
     use crate::ws::WsState;
     use caliber_core::{EntityIdType, NoteType, TrajectoryId, TTL};
     use std::sync::Arc;

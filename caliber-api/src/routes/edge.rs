@@ -219,7 +219,7 @@ mod tests {
     use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
     use crate::ws::WsState;
     use crate::types::{EdgeParticipantRequest, ProvenanceRequest};
-    use caliber_core::{EdgeType, EntityType, ExtractionMethod};
+    use caliber_core::{EdgeType, EntityIdType, EntityType, ExtractionMethod};
     use std::sync::Arc;
     use uuid::Uuid;
 

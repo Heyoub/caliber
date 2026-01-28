@@ -85,7 +85,7 @@ mod tests {
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, ScopeResponse,
         TrajectoryResponse,
     };
-    use caliber_core::{AgentId, HandoffId, HandoffStatus, ScopeId, TenantId, TrajectoryId};
+    use caliber_core::{AgentId, EntityIdType, HandoffId, HandoffStatus, ScopeId, TenantId, TrajectoryId};
     use chrono::Utc;
 
     fn dummy_db() -> DbClient {

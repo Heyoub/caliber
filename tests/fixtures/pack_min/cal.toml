@@ -13,6 +13,12 @@ connection = "postgresql://localhost"
 [toolsets.core]
 tools = ["tools.prompts.search"]
 
+[profiles.default]
+retention = "persistent"
+index = "vector"
+embeddings = "openai"
+format = "markdown"
+
 [agents.support]
 enabled = true
 profile = "default"

@@ -1434,7 +1434,7 @@ mod tests {
     #[test]
     fn test_parse_duration_invalid() {
         let err = DslCompiler::parse_duration("10weeks").unwrap_err();
-        assert!(matches!(err, CompileError::InvalidDuration(_)));
+        assert!(matches!(err, CompileError::InvalidDuration { value: _ }));
     }
 
     #[test]

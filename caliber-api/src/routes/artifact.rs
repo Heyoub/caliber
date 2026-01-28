@@ -350,7 +350,7 @@ mod tests {
     use crate::routes::scope::create_scope;
     use crate::routes::trajectory::create_trajectory;
     use crate::state::ApiEventDag;
-    use crate::types::{ScopeResponse, TrajectoryResponse};
+    use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
     use crate::ws::WsState;
     use caliber_core::{ArtifactType, EntityIdType, ExtractionMethod, ScopeId, TrajectoryId, TTL};
     use std::sync::Arc;

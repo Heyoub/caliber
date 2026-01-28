@@ -488,12 +488,14 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
+    use crate::extractors::PathId;
+    use crate::routes::trajectory::list_trajectory_scopes;
     use crate::routes::trajectory::create_trajectory;
     use crate::state::ApiEventDag;
-    use crate::types::TrajectoryResponse;
+    use crate::types::{CreateTrajectoryRequest, TrajectoryResponse};
     use crate::ws::WsState;
     use caliber_core::TrajectoryId;
     use std::sync::Arc;
@@ -643,23 +645,17 @@ mod tests {
         assert_eq!(scope_response.status(), StatusCode::CREATED);
         let scope: ScopeResponse = response_json(scope_response).await;
 
-        let list_response = list_scopes(
+        let list_response = list_trajectory_scopes(
             State(ctx.db.clone()),
             AuthExtractor(ctx.auth.clone()),
-            Query(ListScopesRequest {
-                trajectory_id: Some(trajectory.trajectory_id),
-                parent_scope_id: None,
-                is_active: None,
-                limit: None,
-                offset: None,
-            }),
+            PathId(trajectory.trajectory_id),
         )
         .await
         .unwrap()
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
-        let list: ListScopesResponse = response_json(list_response).await;
-        assert!(list.scopes.iter().any(|s| s.scope_id == scope.scope_id));
+        let list: Vec<ScopeResponse> = response_json(list_response).await;
+        assert!(list.iter().any(|s| s.scope_id == scope.scope_id));
 
         ctx.db
             .delete::<ScopeResponse>(scope.scope_id, ctx.auth.tenant_id)

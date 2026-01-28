@@ -83,7 +83,7 @@ mod tests {
     use crate::db::{DbClient, DbConfig};
     use crate::error::ErrorCode;
     use crate::types::{AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest};
-    use caliber_core::{AgentId, LockId, TenantId};
+    use caliber_core::{AgentId, EntityIdType, LockId, TenantId};
     use chrono::{Duration as ChronoDuration, Utc};
     use uuid::Uuid;
 

@@ -12,7 +12,8 @@ mkdir -p "$OUT_DIR"
 # LLM-friendly defaults without flag spam
 export RUST_BACKTRACE="${RUST_BACKTRACE:-short}"
 export NEXTEST_MESSAGE_FORMAT="${NEXTEST_MESSAGE_FORMAT:-libtest-json-plus}"
-export NEXTEST_MESSAGE_FORMAT_VERSION="${NEXTEST_MESSAGE_FORMAT_VERSION:-1}"
+export NEXTEST_MESSAGE_FORMAT_VERSION="${NEXTEST_MESSAGE_FORMAT_VERSION:-0.1}"
+export NEXTEST_EXPERIMENTAL_LIBTEST_JSON="${NEXTEST_EXPERIMENTAL_LIBTEST_JSON:-1}"
 
 # Run tests and capture JSONL output
 cargo nextest run --profile ci --workspace --exclude caliber-pg \

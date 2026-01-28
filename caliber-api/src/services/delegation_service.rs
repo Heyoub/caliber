@@ -134,8 +134,8 @@ mod tests {
         TrajectoryResponse,
     };
     use caliber_core::{
-        AgentId, DelegationId, DelegationResultStatus, DelegationStatus, ScopeId, TenantId,
-        TrajectoryId,
+        AgentId, DelegationId, DelegationResultStatus, DelegationStatus, EntityIdType, ScopeId,
+        TenantId, TrajectoryId,
     };
     use chrono::Utc;
 
