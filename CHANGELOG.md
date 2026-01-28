@@ -165,6 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vercel build configuration for the landing subdirectory
 - pgrx SQL schema generation and output file handling
 - `pgvector` extension installation for embedding columns
+- Removed accidental `pgvector` git submodule entry; rely on the DB extension package instead.
 
 ### Changed
 

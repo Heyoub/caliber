@@ -5911,3 +5911,17 @@ Key abstractions:
 - Extended `scripts/test.sh` to handle DB bootstrap with optional superuser credentials.
 - Added guardrails for pgvector and `caliber_pg` extension availability.
 - Documented extension install requirements for DB-backed API tests.
+
+---
+
+## 2026-01-28
+
+**CI + Repo Hygiene**
+- Removed the accidental `pgvector` git submodule entry (kept the pgvector DB extension install).
+- Fixed CI to start Postgres 18 explicitly and route all DB connections through its port.
+- Added `protoc` to property tests and initialized `cargo-pgrx` for AI code quality checks.
+- Updated Swagger UI integration and OpenTelemetry config to match v0.31 APIs.
+
+**Commits:**
+- `4bdb7a4` - fix(ci): stabilize pg18 and pgrx deps
+- `03d209f` - fix(api): align swagger ui and otel v0.31
