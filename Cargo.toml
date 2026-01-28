@@ -58,7 +58,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 tui-textarea = "0.6"
-toml = "0.8"
+toml = "0.9"
 
 # Internal crates
 caliber-core = { path = "caliber-core", version = "0.4.4" }
