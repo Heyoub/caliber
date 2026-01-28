@@ -42,7 +42,7 @@ proptest = "1.5"
 # OpenAPI / SDK generation
 utoipa = { version = "5.3", features = ["axum_extras", "uuid", "chrono"] }
 # Keep swagger-ui aligned with axum 0.7 (axum 0.8 comes with utoipa-swagger-ui 9.x).
-utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 tokio-stream = "0.1"
 
 # gRPC - tonic 0.12 uses axum 0.7 internally, isolated from our axum 0.8
@@ -51,13 +51,13 @@ prost = "0.13"
 tonic-build = "0.12"
 
 # TUI dependencies
-ratatui = "0.26"
-crossterm = "0.27"
+ratatui = "0.27"
+crossterm = "0.29"
 tokio = "1.42"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
-tui-textarea = "0.5"
+tui-textarea = "0.6"
 toml = "0.8"
 
 # Internal crates

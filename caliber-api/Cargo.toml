@@ -86,7 +86,7 @@ async-graphql = { version = "=7.0.0", features = ["uuid", "chrono"] }
 async-graphql-axum = { version = "=7.0.0" }
 async-graphql-derive = { version = "=7.0.0" }
 async-graphql-parser = { version = "=7.0.0" }
-async-graphql-value = { version = "=7.0.0" }
+async-graphql-value = { version = "=7.2.1" }
 async-stream = "0.3"
 futures-util = "0.3"
 
@@ -97,12 +97,12 @@ sha2 = "0.10"
 hex = "0.4"
 
 # OpenTelemetry (http exporter to avoid tonic/axum conflict)
-opentelemetry = { version = "0.29", features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.29", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.29", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client"] }
-opentelemetry-prometheus = "0.29.1"
-tracing-opentelemetry = "0.30"
-opentelemetry-http = "0.29"
+opentelemetry = { version = "0.31", features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client"] }
+opentelemetry-prometheus = "0.31.0"
+tracing-opentelemetry = "0.32"
+opentelemetry-http = "0.31"
 
 # Prometheus metrics
 prometheus = { version = "0.14", features = ["process"] }
@@ -112,7 +112,7 @@ regex = "1.10"
 once_cell = "1.19"
 
 # Rate limiting
-governor = "0.8"
+governor = "0.10"
 
 # Concurrent data structures
 dashmap = "6.1"
