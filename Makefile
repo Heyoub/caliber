@@ -3,7 +3,7 @@
 
 .PHONY: help test test-unit test-property test-fuzz test-chaos \
         test-integration test-e2e test-load test-security test-component \
-        test-all test-llm llm-graphs journey-map llm-all bench lint ci clean dev setup
+        test-all test-llm llm-graphs journey-map llm-all bench lint ci ci-cloud clean dev setup
 
 # Default target
 .DEFAULT_GOAL := help
@@ -17,6 +17,8 @@ RESET := \033[0m
 # Configuration
 API_URL ?= http://localhost:3000
 FUZZ_RUNS ?= 10000
+CI_WORKFLOW ?= CI
+CI_REF ?= main
 
 #==============================================================================
 # Help
@@ -31,6 +33,7 @@ help: ## Show this help message
 	@echo "  make test          Run core tests (unit + property)"
 	@echo "  make test-all      Run ALL tests (comprehensive)"
 	@echo "  make ci            Full CI pipeline (lint + test + build)"
+	@echo "  make ci-cloud      Run CI in GitHub Actions and fetch logs"
 	@echo ""
 	@echo "$(GREEN)Available Targets:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-18s$(RESET) %s\n", $$1, $$2}'
@@ -219,6 +222,10 @@ ci-fast: ## Fast CI check (lint + unit tests only)
 	@echo "$(CYAN)Running fast CI check...$(RESET)"
 	$(MAKE) lint
 	$(MAKE) test-unit
+
+ci-cloud: ## Run CI in GitHub Actions and download logs
+	@echo "$(CYAN)Running CI in GitHub Actions...$(RESET)"
+	./scripts/ci/run-ci-and-fetch-logs.sh "$(CI_WORKFLOW)" "$(CI_REF)"
 
 #==============================================================================
 # Build
