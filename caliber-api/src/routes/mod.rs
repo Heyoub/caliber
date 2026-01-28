@@ -372,10 +372,9 @@ impl SecureRouterBuilder {
         #[cfg(feature = "swagger-ui")]
         {
             use utoipa_swagger_ui::SwaggerUi;
-            let swagger: Router<()> = SwaggerUi::new("/swagger-ui")
+            let swagger: Router<AppState> = SwaggerUi::new("/swagger-ui")
                 .url("/openapi.json", ApiDoc::openapi())
                 .into();
-            let swagger = swagger.with_state(app_state.clone());
             router = router.merge(swagger);
         }
 
@@ -601,10 +600,9 @@ pub fn create_api_router_unauthenticated(
     #[cfg(feature = "swagger-ui")]
     {
         use utoipa_swagger_ui::SwaggerUi;
-        let swagger: Router<()> = SwaggerUi::new("/swagger-ui")
+        let swagger: Router<AppState> = SwaggerUi::new("/swagger-ui")
             .url("/openapi.json", ApiDoc::openapi())
             .into();
-        let swagger = swagger.with_state(app_state.clone());
         router = router.merge(swagger);
     }
 

@@ -36,6 +36,8 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - Swagger UI router state wiring to avoid type inference failures during builds
 - cargo-deny config updated for current schema (removed deprecated keys)
 - CI installs PG18 server dev headers to satisfy pgrx bindgen (postgres.h)
+- Swagger UI pinned to axum 0.7-compatible version to avoid mixed axum Router types
+- cargo-deny licenses include AGPL-3.0-or-later and MIT-0; unmaintained advisories downgraded to warnings
 
 #### Documentation
 - OpenAPI regeneration policy

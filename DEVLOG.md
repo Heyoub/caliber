@@ -5922,6 +5922,8 @@ Key abstractions:
 - Added `protoc` to property tests and initialized `cargo-pgrx` for AI code quality checks.
 - Updated Swagger UI integration and OpenTelemetry config to match v0.31 APIs.
 - Resolved Swagger UI router type inference, updated cargo-deny config, and installed PG18 dev headers for pgrx bindgen.
+- Pinned Swagger UI to the axum 0.7-compatible release to avoid mixed axum versions in CI.
+- Allowed AGPL-3.0-or-later and MIT-0 licenses in cargo-deny and downgraded unmaintained advisories to warnings.
 
 **Commits:**
 - `4bdb7a4` - fix(ci): stabilize pg18 and pgrx deps
