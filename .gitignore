@@ -42,6 +42,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .github/.logs/*
+pgvector/
 # Node (for landing page and SDKs)
 node_modules/
 .npm
