@@ -4,8 +4,9 @@ All notable changes to CALIBER will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entries begin at 0.6.0.
 
-## [Unreleased]
+## [Unreleased] (pre-0.6.0)
 
 ### Added
 #### CI & DevOps
@@ -103,6 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SectionType` enum expanded with segment-specific variants (SystemPrompt, Instructions, Evidence, Memory, ToolResult, ConversationHistory)
 - Delegation and handoff state transitions centralized in service layer
 - DSL parser error handling and identifier expectations refined
+
+## [0.6.0] - TBD
+
+First strict semver release. Changes will be curated into versioned entries from this point onward.
 
 ## [0.4.4] - 2026-01-24
 
