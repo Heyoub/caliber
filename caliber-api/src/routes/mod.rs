@@ -619,6 +619,26 @@ pub fn create_test_router(_db: DbClient) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ApiConfig;
+    use crate::error::ErrorCode;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env_var<F: FnOnce() -> T, T>(key: &str, value: Option<&str>, f: F) -> T {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let prev = std::env::var(key).ok();
+        match value {
+            Some(val) => std::env::set_var(key, val),
+            None => std::env::remove_var(key),
+        }
+        let result = f();
+        match prev {
+            Some(val) => std::env::set_var(key, val),
+            None => std::env::remove_var(key),
+        }
+        result
+    }
 
     #[test]
     fn test_openapi_json_endpoint_exists() {
@@ -645,5 +665,32 @@ mod tests {
         // Battle Intel modules
         let _ = edge::create_router;
         let _ = summarization_policy::create_router;
+    }
+
+    #[test]
+    fn test_is_production_environment_from_env() {
+        with_env_var("CALIBER_ENVIRONMENT", Some("production"), || {
+            assert!(is_production_environment());
+        });
+        with_env_var("CALIBER_ENVIRONMENT", Some("prod"), || {
+            assert!(is_production_environment());
+        });
+        with_env_var("CALIBER_ENVIRONMENT", Some("development"), || {
+            assert!(!is_production_environment());
+        });
+        with_env_var("CALIBER_ENVIRONMENT", None, || {
+            assert!(!is_production_environment());
+        });
+    }
+
+    #[test]
+    fn test_validate_api_config_for_production_cors_required() {
+        let mut config = ApiConfig::default();
+        config.cors_origins = Vec::new();
+        let err = validate_api_config_for_production(&config).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+
+        config.cors_origins = vec!["https://example.com".to_string()];
+        assert!(validate_api_config_for_production(&config).is_ok());
     }
 }

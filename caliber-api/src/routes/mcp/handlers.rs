@@ -786,6 +786,75 @@ fn validate_tool_input(input: &JsonValue, schema: &JsonValue) -> Result<(), Stri
         .map_err(|e| format!("{}: {}", e.instance_path, e))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_find_prompt_content_exact_and_suffix() {
+        let pack = PackSource {
+            manifest: "manifest".to_string(),
+            markdowns: vec![
+                crate::types::PackSourceFile {
+                    path: "prompts/summary.md".to_string(),
+                    content: "summary".to_string(),
+                },
+                crate::types::PackSourceFile {
+                    path: "notes.md".to_string(),
+                    content: "notes".to_string(),
+                },
+            ],
+        };
+
+        assert_eq!(
+            find_prompt_content(&pack, "prompts/summary.md"),
+            Some("summary".to_string())
+        );
+        assert_eq!(
+            find_prompt_content(&pack, "summary.md"),
+            Some("summary".to_string())
+        );
+        assert_eq!(
+            find_prompt_content(&pack, "missing.md"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_validate_tool_input_accepts_valid_payload() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" } },
+            "required": ["name"],
+            "additionalProperties": false
+        });
+        let input = json!({ "name": "ok" });
+        assert!(validate_tool_input(&input, &schema).is_ok());
+    }
+
+    #[test]
+    fn test_validate_tool_input_rejects_invalid_payload() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" } },
+            "required": ["name"],
+            "additionalProperties": false
+        });
+        let input = json!({ "name": 123 });
+        let err = validate_tool_input(&input, &schema).unwrap_err();
+        assert!(err.contains("/name"));
+    }
+
+    #[test]
+    fn test_validate_tool_input_rejects_invalid_schema() {
+        let schema = json!("not-a-schema");
+        let input = json!({});
+        let err = validate_tool_input(&input, &schema).unwrap_err();
+        assert!(err.starts_with("Invalid schema:"));
+    }
+}
+
 async fn resolve_agent_name_from_args(
     db: &crate::db::DbClient,
     tenant_id: TenantId,

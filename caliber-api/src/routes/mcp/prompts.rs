@@ -206,3 +206,33 @@ fn parse_uuid(args: &HashMap<String, String>, key: &str) -> ApiResult<Uuid> {
         .ok_or_else(|| ApiError::missing_field(key))?;
     Uuid::parse_str(value).map_err(|_| ApiError::invalid_input(format!("Invalid UUID for {}", key)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::ErrorCode;
+
+    #[test]
+    fn test_parse_uuid_success() {
+        let mut args = HashMap::new();
+        let id = Uuid::now_v7();
+        args.insert("id".to_string(), id.to_string());
+        let parsed = parse_uuid(&args, "id").unwrap();
+        assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn test_parse_uuid_missing_field() {
+        let args = HashMap::new();
+        let err = parse_uuid(&args, "id").unwrap_err();
+        assert_eq!(err.code, ErrorCode::MissingField);
+    }
+
+    #[test]
+    fn test_parse_uuid_invalid_value() {
+        let mut args = HashMap::new();
+        args.insert("id".to_string(), "not-a-uuid".to_string());
+        let err = parse_uuid(&args, "id").unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+    }
+}

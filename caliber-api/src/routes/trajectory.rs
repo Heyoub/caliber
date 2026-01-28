@@ -352,7 +352,59 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::state::ApiEventDag;
+    use crate::ws::WsState;
     use caliber_core::TrajectoryStatus;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+        event_dag: Arc<ApiEventDag>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-trajectory", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+            event_dag: Arc::new(ApiEventDag::new()),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
 
     #[test]
     fn test_create_trajectory_request_validation() {
@@ -396,5 +448,66 @@ mod tests {
 
         assert_eq!(params.limit, Some(10));
         assert_eq!(params.offset, Some(0));
+    }
+
+    #[tokio::test]
+    async fn test_create_and_list_trajectory_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let req = CreateTrajectoryRequest {
+            name: format!("db-test-{}", Uuid::now_v7()),
+            description: Some("db-backed trajectory".to_string()),
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+
+        let response = create_trajectory(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            State(ctx.event_dag.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let created: TrajectoryResponse = response_json(response).await;
+
+        let fetched = ctx
+            .db
+            .get::<TrajectoryResponse>(created.trajectory_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
+        assert!(fetched.is_some());
+
+        let list_response = list_trajectories(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Query(ListTrajectoriesRequest {
+                status: None,
+                agent_id: None,
+                parent_id: None,
+                limit: None,
+                offset: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListTrajectoriesResponse = response_json(list_response).await;
+        assert!(list
+            .trajectories
+            .iter()
+            .any(|t| t.trajectory_id == created.trajectory_id));
+
+        ctx.db
+            .delete::<TrajectoryResponse>(created.trajectory_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
     }
 }

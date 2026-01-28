@@ -344,7 +344,58 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::state::ApiEventDag;
+    use crate::ws::WsState;
     use crate::types::{MemoryAccessRequest, MemoryPermissionRequest};
+    use std::sync::Arc;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+        event_dag: Arc<ApiEventDag>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-agent", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+            event_dag: Arc::new(ApiEventDag::new()),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
 
     #[test]
     fn test_register_agent_request_validation() {
@@ -420,5 +471,84 @@ mod tests {
         assert_eq!(perm.memory_type, "artifact");
         assert_eq!(perm.scope, "own");
         assert!(perm.filter.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_register_list_heartbeat_agent_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let req = RegisterAgentRequest {
+            agent_type: "tester".to_string(),
+            capabilities: vec!["read".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+                write: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+            },
+            can_delegate_to: vec!["planner".to_string()],
+            reports_to: None,
+        };
+
+        let response = register_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let created: AgentResponse = response_json(response).await;
+
+        let list_response = list_agents(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Query(ListAgentsRequest {
+                agent_type: Some("tester".to_string()),
+                status: None,
+                trajectory_id: None,
+                active_only: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListAgentsResponse = response_json(list_response).await;
+        assert!(list.agents.iter().any(|a| a.agent_id == created.agent_id));
+
+        let heartbeat_response = agent_heartbeat(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(created.agent_id),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(heartbeat_response.status(), StatusCode::OK);
+        let updated: AgentResponse = response_json(heartbeat_response).await;
+        assert!(updated.last_heartbeat >= created.last_heartbeat);
+
+        let status = unregister_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(created.agent_id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(status, StatusCode::NO_CONTENT);
     }
 }

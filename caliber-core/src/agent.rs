@@ -1823,6 +1823,21 @@ mod tests {
     }
 
     #[test]
+    fn test_retry_policy_default_values() {
+        let policy = RetryPolicy::default();
+        assert_eq!(policy.max_attempts, 3);
+        assert_eq!(policy.timeout_per_attempt_ms, 30_000);
+        match policy.backoff {
+            BackoffStrategy::Exponential { base_ms, multiplier, max_ms } => {
+                assert_eq!(base_ms, 100);
+                assert!((multiplier - 2.0).abs() < f64::EPSILON);
+                assert_eq!(max_ms, 10_000);
+            }
+            _ => panic!("expected exponential backoff"),
+        }
+    }
+
+    #[test]
     fn test_agent_action_flow_and_retry() {
         let agent_id = AgentId::now_v7();
         let policy = RetryPolicy {
@@ -1855,6 +1870,23 @@ mod tests {
 
         action.attempt_count = 2;
         assert!(!action.can_retry());
+    }
+
+    #[test]
+    fn test_agent_action_without_retry_policy() {
+        let agent_id = AgentId::now_v7();
+        let action = AgentAction::new(agent_id, ActionType::Operation, "do");
+        assert!(!action.can_retry());
+    }
+
+    #[test]
+    fn test_success_criterion_defaults() {
+        let criterion = SuccessCriterion::new("ok");
+        assert_eq!(criterion.description, "ok");
+        assert!(!criterion.measurable);
+        assert!(criterion.target_value.is_none());
+        assert!(criterion.current_value.is_none());
+        assert!(!criterion.satisfied);
     }
 
     #[test]
