@@ -226,20 +226,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_USER: caliber
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: caliber_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -247,6 +233,32 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo service postgresql start
+          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Install caliber_pg extension
+        run: |
+          cargo install cargo-pgrx --version 0.16.1 --locked
+          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -264,24 +276,6 @@ jobs:
       - name: Make binary executable
         run: chmod +x caliber-api
 
-      - name: Create test JWT
-        id: jwt
-        env:
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-        run: |
-          node - <<'NODE'
-          const crypto = require('crypto');
-          const secret = process.env.CALIBER_JWT_SECRET;
-          const header = { alg: 'HS256', typ: 'JWT' };
-          const now = Math.floor(Date.now() / 1000);
-          const payload = { sub: 'ci-test', iat: now, exp: now + 3600 };
-          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-          const data = `${b64url(header)}.${b64url(payload)}`;
-          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
-          const token = `${data}.${sig}`;
-          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
-          NODE
-
       - name: Start API server
         env:
           CALIBER_DB_HOST: localhost
@@ -293,15 +287,52 @@ jobs:
           CALIBER_API_PORT: 3000
           CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
           CALIBER_AUTH_PROVIDER: jwt
-          CALIBER_REQUIRE_TENANT_HEADER: "false"
+          CALIBER_REQUIRE_TENANT_HEADER: "true"
         run: |
           ./caliber-api &
           sleep 5
+
+      - name: Create test tenant
+        id: tenant
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: caliber
+          PGPASSWORD: test_password
+          PGDATABASE: caliber_test
+        run: |
+          TENANT_ID=$(psql -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
+          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
+
+      - name: Create test JWT
+        id: jwt
+        env:
+          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
+          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
+        run: |
+          node - <<'NODE'
+          const crypto = require('crypto');
+          const secret = process.env.CALIBER_JWT_SECRET;
+          const header = { alg: 'HS256', typ: 'JWT' };
+          const now = Math.floor(Date.now() / 1000);
+          const payload = {
+            sub: 'ci-test',
+            iat: now,
+            exp: now + 3600,
+            tenant_id: process.env.CALIBER_TEST_TENANT_ID || undefined,
+          };
+          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+          const data = `${b64url(header)}.${b64url(payload)}`;
+          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+          const token = `${data}.${sig}`;
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
+          NODE
 
       - name: Run component tests (live)
         env:
           CALIBER_API_URL: http://localhost:3000
           CALIBER_TEST_TOKEN: ${{ steps.jwt.outputs.token }}
+          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
         run: bun test ./tests/component/
 
   test-integration:
@@ -394,21 +425,6 @@ jobs:
   test-security:
     name: Test (Security/OWASP)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_USER: caliber
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: caliber_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
@@ -422,6 +438,24 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo service postgresql start
+          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Install caliber_pg extension
+        run: |
+          cargo install cargo-pgrx --version 0.16.1 --locked
+          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -555,20 +589,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [build]
     services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_USER: caliber
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: caliber_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -576,6 +596,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo service postgresql start
+          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Install caliber_pg extension
+        run: |
+          cargo install cargo-pgrx --version 0.16.1 --locked
+          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -620,20 +661,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
     services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_USER: caliber
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: caliber_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -644,6 +671,24 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo service postgresql start
+          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Install caliber_pg extension
+        run: |
+          cargo install cargo-pgrx --version 0.16.1 --locked
+          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

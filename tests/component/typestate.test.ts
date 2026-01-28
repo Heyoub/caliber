@@ -12,6 +12,7 @@ const USING_MOCKS = isUsingMocks();
 const TEST_TOKEN = USING_MOCKS
   ? process.env.CALIBER_TEST_TOKEN ?? getTestToken()
   : process.env.CALIBER_TEST_TOKEN ?? '';
+const TEST_TENANT_ID = process.env.CALIBER_TEST_TENANT_ID;
 const SKIP_COMPONENT = process.env.SKIP_COMPONENT_TESTS === 'true';
 
 interface ApiResult<T> {
@@ -30,6 +31,7 @@ async function api<T = unknown>(
     headers: {
       'Content-Type': 'application/json',
       ...(TEST_TOKEN ? { Authorization: `Bearer ${TEST_TOKEN}` } : {}),
+      ...(TEST_TENANT_ID ? { 'X-Tenant-ID': TEST_TENANT_ID } : {}),
     },
   };
 

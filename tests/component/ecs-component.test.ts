@@ -8,8 +8,11 @@ import { describe, expect, it, beforeAll } from 'bun:test';
 import { clearRateLimits, getTestToken, isUsingMocks, setupMocking } from '../mocks/server';
 
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
-const TEST_TOKEN = process.env.CALIBER_TEST_TOKEN ?? getTestToken();
 const USING_MOCKS = isUsingMocks();
+const TEST_TOKEN = USING_MOCKS
+  ? process.env.CALIBER_TEST_TOKEN ?? getTestToken()
+  : process.env.CALIBER_TEST_TOKEN ?? '';
+const TEST_TENANT_ID = process.env.CALIBER_TEST_TENANT_ID;
 
 interface EntitySpec {
   name: string;
@@ -35,6 +38,7 @@ async function api<T = unknown>(
     headers: {
       'Content-Type': 'application/json',
       ...(TEST_TOKEN ? { Authorization: `Bearer ${TEST_TOKEN}` } : {}),
+      ...(TEST_TENANT_ID ? { 'X-Tenant-ID': TEST_TENANT_ID } : {}),
     },
   };
 

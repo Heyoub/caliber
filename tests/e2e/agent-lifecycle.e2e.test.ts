@@ -16,6 +16,7 @@ import { clearRateLimits } from '../mocks/server';
 
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const TEST_TOKEN = process.env.CALIBER_TEST_TOKEN ?? '';
+const TEST_TENANT_ID = process.env.CALIBER_TEST_TENANT_ID;
 const SKIP_E2E = process.env.SKIP_E2E_TESTS === 'true';
 
 // Test state
@@ -39,6 +40,7 @@ async function api<T = unknown>(
     headers: {
       'Content-Type': 'application/json',
       ...(TEST_TOKEN ? { Authorization: `Bearer ${TEST_TOKEN}` } : {}),
+      ...(TEST_TENANT_ID ? { 'X-Tenant-ID': TEST_TENANT_ID } : {}),
     },
   };
 
