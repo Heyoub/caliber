@@ -1,9 +1,0 @@
-review:
-  auto_review: true
-  high_level_summary: true
-  review_status: true
-  request_changes_workflow: true
-  severity: strict
-  path_filters:
-    include:
-      - "**/*"

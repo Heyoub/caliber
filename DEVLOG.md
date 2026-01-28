@@ -19,6 +19,27 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### January 28, 2026 — CI Docs Guard + Review Bots + Release Tagging
+
+**Completed:**
+
+- ✅ Added `workflow_dispatch` for manual CI runs
+- ✅ Docs Guard: warn on PRs, fail on `main` when code changes without README/docs/CHANGELOG/DEVLOG updates
+- ✅ OpenAPI drift check against committed `openapi.json`
+- ✅ Coverage regression gate using LCOV baseline (`.ci/coverage-baseline.txt`)
+- ✅ Version tagger workflow to create `vX.Y.Z` tags on main version bumps
+- ✅ Review bot configs updated to schema-backed `.coderabbit.yaml` + `greptile.json` (strictness=2)
+
+### January 28, 2026 — Post-v0.4.3 CI + HATEOAS + DSL Pack + Tooling
+
+**Completed:**
+
+- ✅ Added HATEOAS links across API responses and TUI follow_link support
+- ✅ Integrated DSL pack composition into API routing/inspection flow
+- ✅ Added component/smoke test targets and CI wiring
+- ✅ Improved Makefile/test tooling (LLM-friendly nextest output, schema reset, PG init)
+- ✅ Documentation updates: OpenAPI regen policy, cal.toml vs mcp.json, TUI coverage gaps, SQL/install flow
+
 ### January 28, 2026 — CI Tenant Enforcement + Service/Core Tests (commit 18e5db5)
 
 **Completed:**

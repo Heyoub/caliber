@@ -66,7 +66,7 @@ cargo pgrx package -p caliber-pg
 cargo pgrx test pg18 --package caliber-pg
 ```
 
-Note: `openapi.json` is CI-generated and not committed.
+Note: `openapi.json` is committed; CI regenerates it and fails on drift.
 
 Use `./scripts/test.sh` to run clippy, workspace tests, and pg18 pgrx tests in one pass.
 
@@ -108,6 +108,8 @@ caliber/
 ├── terraform/           # Infrastructure as Code (AWS, Azure, GCP)
 ├── landing/             # Marketing website (Astro + Svelte)
 ├── .github/             # CI/CD workflows and issue templates
+├── .coderabbit.yaml     # CodeRabbit review bot config
+├── greptile.json        # Greptile review bot config
 ├── Cargo.toml           # Workspace manifest
 ├── DEVLOG.md            # Development timeline
 ├── BENCHMARKS.md        # Performance benchmarks and comparisons

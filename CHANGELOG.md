@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+#### CI & DevOps
+- Manual CI trigger via `workflow_dispatch`
+- Docs Guard job (warn on PRs, fail on `main` when code changes without README/docs/CHANGELOG/DEVLOG updates)
+- OpenAPI drift check against committed `openapi.json`
+- Coverage regression gate (LCOV vs `.ci/coverage-baseline.txt`)
+- Version tagger workflow to create `vX.Y.Z` tags on main when root `Cargo.toml` version bumps
+- Code review bot configs: `.coderabbit.yaml` and `greptile.json` (strictness=2)
+
+#### API & HATEOAS
+- HATEOAS links added to trajectory/scope/artifact/note responses and tests
+- TUI API client link following via `follow_link`, with link handling tests
+- Unified links field on API responses for consistent navigation
+
+#### DSL & Pack
+- DSL pack composition and storage functionality
+- DSL + pack integration into API routing/inspection flows
+- Tool execution auditing + JSON Schema validation for tool inputs
+
+#### Tooling & Tests
+- Makefile + CI updates for LLM-friendly nextest output and developer tooling
+- Component + smoke test targets wired into CI/Makefile
+- Test script updates for schema reset and PG extension init
+
+#### Documentation
+- OpenAPI regeneration policy
+- cal.toml vs mcp.json relationship
+- TUI endpoint coverage and gaps
+- Extension bootstrap vs `caliber_init()` clarification
+- SQL generation + extension install flow
+- Repo config file classification
+- Archived deployment examples (terraform + railway)
+
 #### Test Coverage & Services
 - Deterministic unit tests for agent planning/action/belief primitives and embedding vector edge cases (commit 18e5db5)
 - Service-layer error-path tests for lock, delegation, and handoff workflows (commit 18e5db5)
@@ -66,6 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContextAssembler` respects segment budgets when assembling context
 - `FieldDef` in DSL AST now includes optional `security` field
 - `SectionType` enum expanded with segment-specific variants (SystemPrompt, Instructions, Evidence, Memory, ToolResult, ConversationHistory)
+- Delegation and handoff state transitions centralized in service layer
+- DSL parser error handling and identifier expectations refined
 
 ## [0.4.4] - 2026-01-24
 
