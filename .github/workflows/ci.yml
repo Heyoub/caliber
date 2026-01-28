@@ -319,8 +319,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
           sudo pg_ctlcluster 16 main stop || true
-          sudo pg_ctlcluster 18 main start
-          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+            sudo pg_createcluster 18 main --start
+          else
+            sudo pg_ctlcluster 18 main start
+          fi
+          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+          if [ -z "$PGPORT" ]; then
+            echo "PG18 cluster not found"
+            exit 1
+          fi
           echo "PGPORT=$PGPORT" >> $GITHUB_ENV
           sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
           sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
@@ -438,8 +446,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
           sudo pg_ctlcluster 16 main stop || true
-          sudo pg_ctlcluster 18 main start
-          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+            sudo pg_createcluster 18 main --start
+          else
+            sudo pg_ctlcluster 18 main start
+          fi
+          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+          if [ -z "$PGPORT" ]; then
+            echo "PG18 cluster not found"
+            exit 1
+          fi
           echo "PGPORT=$PGPORT" >> $GITHUB_ENV
           sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
           sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
@@ -522,8 +538,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
           sudo pg_ctlcluster 16 main stop || true
-          sudo pg_ctlcluster 18 main start
-          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+            sudo pg_createcluster 18 main --start
+          else
+            sudo pg_ctlcluster 18 main start
+          fi
+          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+          if [ -z "$PGPORT" ]; then
+            echo "PG18 cluster not found"
+            exit 1
+          fi
           echo "PGPORT=$PGPORT" >> $GITHUB_ENV
           sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
           sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
@@ -777,8 +801,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
           sudo pg_ctlcluster 16 main stop || true
-          sudo pg_ctlcluster 18 main start
-          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+            sudo pg_createcluster 18 main --start
+          else
+            sudo pg_ctlcluster 18 main start
+          fi
+          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+          if [ -z "$PGPORT" ]; then
+            echo "PG18 cluster not found"
+            exit 1
+          fi
           echo "PGPORT=$PGPORT" >> $GITHUB_ENV
           sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
           sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
@@ -893,8 +925,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
           sudo pg_ctlcluster 16 main stop || true
-          sudo pg_ctlcluster 18 main start
-          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+            sudo pg_createcluster 18 main --start
+          else
+            sudo pg_ctlcluster 18 main start
+          fi
+          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+          if [ -z "$PGPORT" ]; then
+            echo "PG18 cluster not found"
+            exit 1
+          fi
           echo "PGPORT=$PGPORT" >> $GITHUB_ENV
           sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
           sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
