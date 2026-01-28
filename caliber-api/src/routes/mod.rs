@@ -369,15 +369,15 @@ impl SecureRouterBuilder {
 
         // Add Swagger UI if swagger-ui feature is enabled
         // Note: SwaggerUi::url() also serves the OpenAPI spec at that URL
-    #[cfg(feature = "swagger-ui")]
-    {
-        use utoipa_swagger_ui::SwaggerUi;
-        let swagger = SwaggerUi::new("/swagger-ui")
-            .url("/openapi.json", ApiDoc::openapi())
-            .into()
-            .with_state(app_state.clone());
-        router = router.merge(swagger);
-    }
+        #[cfg(feature = "swagger-ui")]
+        {
+            use utoipa_swagger_ui::SwaggerUi;
+            let swagger = SwaggerUi::new("/swagger-ui")
+                .url("/openapi.json", ApiDoc::openapi())
+                .into()
+                .with_state(app_state.clone());
+            router = router.merge(swagger);
+        }
 
         // Add OpenAPI JSON endpoint only when swagger-ui is NOT enabled
         // (swagger-ui feature already serves it via SwaggerUi::url())
@@ -598,15 +598,15 @@ pub fn create_api_router_unauthenticated(
         router = router.route("/openapi.yaml", get(openapi_yaml));
     }
 
-        #[cfg(feature = "swagger-ui")]
-        {
-            use utoipa_swagger_ui::SwaggerUi;
-            let swagger = SwaggerUi::new("/swagger-ui")
-                .url("/openapi.json", ApiDoc::openapi())
-                .into()
-                .with_state(app_state.clone());
-            router = router.merge(swagger);
-        }
+    #[cfg(feature = "swagger-ui")]
+    {
+        use utoipa_swagger_ui::SwaggerUi;
+        let swagger = SwaggerUi::new("/swagger-ui")
+            .url("/openapi.json", ApiDoc::openapi())
+            .into()
+            .with_state(app_state.clone());
+        router = router.merge(swagger);
+    }
 
     #[cfg(not(feature = "swagger-ui"))]
     {
