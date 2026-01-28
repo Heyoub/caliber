@@ -218,6 +218,9 @@ jobs:
         with:
           shared-key: property
 
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Run property tests (proptest)
         run: cargo test --workspace --exclude caliber-pg -- --test-threads=1 proptest
         continue-on-error: true  # proptest may need DB for some tests
@@ -315,17 +318,20 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
-          sudo service postgresql start
-          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          sudo pg_ctlcluster 16 main stop || true
+          sudo pg_ctlcluster 18 main start
+          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Install PostgreSQL client
         run: |
@@ -351,7 +357,7 @@ jobs:
       - name: Start API server
         env:
           CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: 5432
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
           CALIBER_DB_NAME: caliber_test
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
@@ -368,7 +374,7 @@ jobs:
         id: tenant
         env:
           PGHOST: localhost
-          PGPORT: 5432
+          PGPORT: ${{ env.PGPORT }}
           PGUSER: caliber
           PGPASSWORD: test_password
           PGDATABASE: caliber_test
@@ -431,22 +437,25 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
-          sudo service postgresql start
-          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          sudo pg_ctlcluster 16 main stop || true
+          sudo pg_ctlcluster 18 main start
+          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Run DB-backed route tests
         env:
           CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: 5432
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
           CALIBER_DB_NAME: caliber_test
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
@@ -512,17 +521,20 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
-          sudo service postgresql start
-          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          sudo pg_ctlcluster 16 main stop || true
+          sudo pg_ctlcluster 18 main start
+          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -535,7 +547,7 @@ jobs:
       - name: Start API server
         env:
           CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: 5432
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
           CALIBER_DB_NAME: caliber_test
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
@@ -551,7 +563,7 @@ jobs:
         id: tenant
         env:
           PGHOST: localhost
-          PGPORT: 5432
+          PGPORT: ${{ env.PGPORT }}
           PGUSER: caliber
           PGPASSWORD: test_password
           PGDATABASE: caliber_test
@@ -603,6 +615,25 @@ jobs:
 
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+
+      - name: Install cargo-pgrx
+        run: cargo install cargo-pgrx --version 0.16.1 --locked
+
+      - name: Initialize pgrx
+        run: |
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
+          echo "PGRX_HOME=$PGRX_HOME" >> $GITHUB_ENV
+          echo "PG_CONFIG=/usr/lib/postgresql/18/bin/pg_config" >> $GITHUB_ENV
+          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -745,17 +776,20 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
-          sudo service postgresql start
-          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          sudo pg_ctlcluster 16 main stop || true
+          sudo pg_ctlcluster 18 main start
+          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -776,7 +810,7 @@ jobs:
       - name: Start API server
         env:
           CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: 5432
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
           CALIBER_DB_NAME: caliber_test
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
@@ -793,7 +827,7 @@ jobs:
         id: tenant
         env:
           PGHOST: localhost
-          PGPORT: 5432
+          PGPORT: ${{ env.PGPORT }}
           PGUSER: caliber
           PGPASSWORD: test_password
           PGDATABASE: caliber_test
@@ -858,17 +892,20 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
-          sudo service postgresql start
-          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          sudo pg_ctlcluster 16 main stop || true
+          sudo pg_ctlcluster 18 main start
+          PGPORT="$(pg_lsclusters --no-header | awk '$1==\"18\" && $2==\"main\" {print $3; exit}')"
+          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -881,7 +918,7 @@ jobs:
       - name: Start API server
         env:
           CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: 5432
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
           CALIBER_DB_NAME: caliber_test
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
@@ -898,7 +935,7 @@ jobs:
         id: tenant
         env:
           PGHOST: localhost
-          PGPORT: 5432
+          PGPORT: ${{ env.PGPORT }}
           PGUSER: caliber
           PGPASSWORD: test_password
           PGDATABASE: caliber_test
