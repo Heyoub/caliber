@@ -22,12 +22,77 @@ on:
     - cron: '0 2 * * *'
     # Weekly on Sunday at 3am UTC for mutation tests
     - cron: '0 3 * * 0'
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
 
 jobs:
+  # =============================================================================
+  # Docs Guard (Warn on PR, Fail on main)
+  # =============================================================================
+  docs-guard:
+    name: Docs Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect doc/code changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - README.md
+              - CHANGELOG.md
+              - DEVLOG.md
+              - docs/**
+            code:
+              - '**/*'
+              - '!README.md'
+              - '!CHANGELOG.md'
+              - '!DEVLOG.md'
+              - '!docs/**'
+
+      - name: Warn on PR (code changed without docs)
+        if: github.event_name == 'pull_request' && steps.changes.outputs.code == 'true' && steps.changes.outputs.docs == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const label = 'docs-needed';
+            try {
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: label,
+                color: 'd4c5f9',
+                description: 'Code changes without docs updates',
+              });
+            } catch (e) {
+              // Ignore if label already exists
+              if (e.status !== 422) throw e;
+            }
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [label],
+            });
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: context.payload.pull_request.number,
+              body: 'Docs check: code changed but docs were not updated. Please update README/docs/CHANGELOG/DEVLOG as needed.',
+            });
+
+      - name: Fail on main (code changed without docs)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.code == 'true' && steps.changes.outputs.docs == 'false'
+        run: |
+          echo "Docs required: code changed without updates to README/docs/CHANGELOG/DEVLOG."
+          exit 1
   # =============================================================================
   # Fast Feedback (Every PR, <5 min)
   # =============================================================================
@@ -554,6 +619,10 @@ jobs:
           cargo llvm-cov --workspace --exclude caliber-pg --lcov --output-path lcov.info
           cargo llvm-cov report --workspace --exclude caliber-pg
 
+      - name: Fail on coverage regression
+        run: |
+          python3 scripts/ci/coverage_check.py lcov.info .ci/coverage-baseline.txt
+
   # =============================================================================
   # Build + Validate
   # =============================================================================
@@ -596,10 +665,31 @@ jobs:
       - name: Make binary executable
         run: chmod +x caliber-api
 
+      - name: Snapshot committed OpenAPI spec
+        run: |
+          if [ -f openapi.json ]; then
+            cp openapi.json openapi.repo.json
+          else
+            echo "No committed openapi.json found"
+            touch openapi.repo.json
+          fi
+
       - name: Generate OpenAPI spec
         run: |
           # Start server briefly to generate spec
           timeout 10 ./caliber-api --generate-openapi > openapi.json || true
+
+      - name: Fail on OpenAPI drift
+        run: |
+          if [ ! -f openapi.json ]; then
+            echo "openapi.json not generated"
+            exit 1
+          fi
+          if ! diff -u openapi.repo.json openapi.json >/dev/null 2>&1; then
+            echo "OpenAPI drift detected. Regenerate and commit openapi.json."
+            diff -u openapi.repo.json openapi.json || true
+            exit 1
+          fi
 
       - name: Validate OpenAPI spec
         uses: char0n/swagger-editor-validate@v1
