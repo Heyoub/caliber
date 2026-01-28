@@ -333,7 +333,61 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::routes::trajectory::create_trajectory;
+    use crate::state::ApiEventDag;
+    use crate::types::TrajectoryResponse;
+    use crate::ws::WsState;
     use caliber_core::{EntityIdType, NoteType, TrajectoryId, TTL};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+        event_dag: Arc<ApiEventDag>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-note", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+            event_dag: Arc::new(ApiEventDag::new()),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
 
     #[test]
     fn test_create_note_request_validation() {
@@ -436,5 +490,80 @@ mod tests {
         ];
 
         assert_eq!(ttls.len(), 9);
+    }
+
+    #[tokio::test]
+    async fn test_create_and_list_notes_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let trajectory_req = CreateTrajectoryRequest {
+            name: format!("note-traj-{}", Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+        let trajectory_response = create_trajectory(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            State(ctx.event_dag.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(trajectory_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(trajectory_response.status(), StatusCode::CREATED);
+        let trajectory: TrajectoryResponse = response_json(trajectory_response).await;
+
+        let note_req = CreateNoteRequest {
+            note_type: NoteType::Fact,
+            title: "note".to_string(),
+            content: "note content".to_string(),
+            source_trajectory_ids: vec![trajectory.trajectory_id],
+            source_artifact_ids: vec![],
+            ttl: TTL::Persistent,
+            metadata: None,
+        };
+
+        let note_response = create_note(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(note_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(note_response.status(), StatusCode::CREATED);
+        let note: NoteResponse = response_json(note_response).await;
+
+        let list_response = list_notes(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Query(ListNotesRequest {
+                note_type: Some(NoteType::Fact),
+                source_trajectory_id: Some(trajectory.trajectory_id),
+                created_after: None,
+                created_before: None,
+                limit: None,
+                offset: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListNotesResponse = response_json(list_response).await;
+        assert!(list.notes.iter().any(|n| n.note_id == note.note_id));
+
+        ctx.db
+            .delete::<NoteResponse>(note.note_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
+        ctx.db
+            .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
     }
 }

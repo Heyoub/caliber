@@ -3,7 +3,7 @@
 
 .PHONY: help test test-unit test-property test-fuzz test-chaos \
         test-integration test-e2e test-load test-security test-component \
-        test-all bench lint ci clean dev setup
+        test-all test-llm llm-graphs journey-map llm-all bench lint ci clean dev setup
 
 # Default target
 .DEFAULT_GOAL := help
@@ -56,12 +56,12 @@ test: test-unit test-property ## Run core tests (unit + property)
 
 test-unit: ## Run unit tests only (Rust + TypeScript)
 	@echo "$(CYAN)Running Rust unit tests...$(RESET)"
-	cargo nextest run --workspace --exclude caliber-pg
+	$(MAKE) test-llm
 	@echo "$(CYAN)Running TypeScript unit tests...$(RESET)"
 	bun test ./tests/unit/ ./caliber-sdk/
 
 test-rust: ## Run Rust tests only
-	cargo nextest run --workspace --exclude caliber-pg
+	$(MAKE) test-llm
 
 test-ts: ## Run TypeScript tests only
 	bun test ./tests/ ./caliber-sdk/
@@ -86,7 +86,7 @@ test-chaos: ## Run chaos/resilience tests
 
 test-integration: ## Run integration tests (requires DB)
 	@echo "$(CYAN)Running integration tests...$(RESET)"
-	cargo nextest run --workspace --exclude caliber-pg -E 'test(/integration/)' --test-threads=1
+	cargo nextest run --workspace --exclude caliber-pg -E 'test(/db_backed/)' --test-threads=1
 
 test-e2e: ## Run end-to-end tests (requires running API)
 	@echo "$(CYAN)Running E2E tests against $(API_URL)...$(RESET)"
@@ -99,6 +99,25 @@ test-smoke: ## Run smoke tests (quick sanity check)
 test-component: ## Run component tests
 	@echo "$(CYAN)Running component tests...$(RESET)"
 	bun test ./tests/component/
+
+#==============================================================================
+# LLM-Friendly Outputs
+#==============================================================================
+
+test-llm: ## Run Rust tests with LLM-friendly output + JUnit/JSON reports
+	@echo "$(CYAN)Running Rust tests (LLM-friendly output)...$(RESET)"
+	./scripts/llm/nextest_llm.sh
+
+llm-graphs: ## Generate dependency graph + type signature index for LLMs
+	@echo "$(CYAN)Generating dependency graph + type signature index...$(RESET)"
+	node ./scripts/llm/gen_dep_graph.js
+	node ./scripts/llm/gen_type_index.js
+
+journey-map: ## Generate user journey map for LLMs
+	@echo "$(CYAN)Generating user journey map...$(RESET)"
+	node ./scripts/llm/gen_journey_map.js
+
+llm-all: test-llm llm-graphs journey-map ## Run all LLM tooling
 
 #==============================================================================
 # Load & Performance Tests

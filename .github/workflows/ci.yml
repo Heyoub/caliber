@@ -338,31 +338,6 @@ jobs:
   test-integration:
     name: Test (Integration)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_USER: caliber
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: caliber_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
@@ -377,17 +352,35 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Run integration tests
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo service postgresql start
+          sudo -u postgres psql -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Install caliber_pg extension
+        run: |
+          cargo install cargo-pgrx --version 0.16.1 --locked
+          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo -u postgres psql -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+
+      - name: Run DB-backed route tests
         env:
           CALIBER_DB_HOST: localhost
           CALIBER_DB_PORT: 5432
           CALIBER_DB_NAME: caliber_test
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
-          CALIBER_REDIS_URL: redis://localhost:6379
+          DB_TESTS: "1"
         run: |
           cargo nextest run --workspace --exclude caliber-pg \
-            -E 'test(/integration/)' --test-threads=1
+            -E 'test(/db_backed/)' --test-threads=1
 
   # =============================================================================
   # Security (Every PR)

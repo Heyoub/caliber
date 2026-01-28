@@ -212,8 +212,16 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::State, http::StatusCode, response::IntoResponse, Json};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::extractors::PathId;
+    use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
+    use crate::ws::WsState;
     use crate::types::{EdgeParticipantRequest, ProvenanceRequest};
     use caliber_core::{EdgeType, EntityType, ExtractionMethod};
+    use std::sync::Arc;
+    use uuid::Uuid;
 
     fn sample_request(participants: usize, weight: Option<f32>) -> CreateEdgeRequest {
         let mut parts = Vec::new();
@@ -251,5 +259,151 @@ mod tests {
 
         let req = sample_request(2, Some(-0.1));
         assert!(req.weight.unwrap() < 0.0);
+    }
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-edge", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
+    #[tokio::test]
+    async fn test_create_get_list_edges_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let traj_req = CreateTrajectoryRequest {
+            name: format!("edge-traj-{}", Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+        let trajectory: TrajectoryResponse = ctx
+            .db
+            .create::<TrajectoryResponse>(&traj_req, ctx.auth.tenant_id)
+            .await
+            .expect("create trajectory");
+
+        let scope_req = CreateScopeRequest {
+            trajectory_id: trajectory.trajectory_id,
+            parent_scope_id: None,
+            name: "edge-scope".to_string(),
+            purpose: None,
+            token_budget: 1000,
+            metadata: None,
+        };
+        let scope: ScopeResponse = ctx
+            .db
+            .create::<ScopeResponse>(&scope_req, ctx.auth.tenant_id)
+            .await
+            .expect("create scope");
+
+        let req = CreateEdgeRequest {
+            edge_type: EdgeType::RelatesTo,
+            participants: vec![
+                EdgeParticipantRequest {
+                    entity_type: EntityType::Trajectory,
+                    entity_id: trajectory.trajectory_id.as_uuid(),
+                    role: Some("source".to_string()),
+                },
+                EdgeParticipantRequest {
+                    entity_type: EntityType::Scope,
+                    entity_id: scope.scope_id.as_uuid(),
+                    role: Some("target".to_string()),
+                },
+            ],
+            weight: Some(0.5),
+            trajectory_id: Some(trajectory.trajectory_id),
+            provenance: ProvenanceRequest {
+                source_turn: 1,
+                extraction_method: ExtractionMethod::Explicit,
+                confidence: Some(0.9),
+            },
+            metadata: None,
+        };
+
+        let create_response = create_edge(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let edge: EdgeResponse = response_json(create_response).await;
+
+        let get_response = get_edge(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(edge.edge_id),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(get_response.status(), StatusCode::OK);
+
+        let list_response = list_edges_by_participant(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            axum::extract::Path(trajectory.trajectory_id.as_uuid()),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListEdgesResponse = response_json(list_response).await;
+        assert!(list.edges.iter().any(|e| e.edge_id == edge.edge_id));
+
+        ctx.db
+            .delete::<EdgeResponse>(edge.edge_id, ctx.auth.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<ScopeResponse>(scope.scope_id, ctx.auth.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.auth.tenant_id)
+            .await
+            .ok();
     }
 }

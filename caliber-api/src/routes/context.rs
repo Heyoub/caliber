@@ -769,7 +769,12 @@ fn provider_from_compiled(p: &caliber_dsl::compiler::CompiledProviderConfig) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{extract::State, Extension, Json};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
     use caliber_dsl::compiler::{CompiledInjectionMode, InjectionConfig};
+    use uuid::Uuid;
 
     #[test]
     fn test_default_true_is_true() {
@@ -887,5 +892,111 @@ mod tests {
         let response = adapter.ping().await.unwrap();
         assert_eq!(response.provider_id, "test");
         assert_eq!(response.health, HealthStatus::Healthy);
+    }
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-context", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext { db, auth })
+    }
+
+    #[tokio::test]
+    async fn test_assemble_context_db_backed_minimal() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let traj_req = CreateTrajectoryRequest {
+            name: format!("context-traj-{}", Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+        let trajectory: TrajectoryResponse = ctx
+            .db
+            .create::<TrajectoryResponse>(&traj_req, ctx.auth.tenant_id)
+            .await
+            .expect("create trajectory");
+
+        let scope_req = CreateScopeRequest {
+            trajectory_id: trajectory.trajectory_id,
+            parent_scope_id: None,
+            name: "context-scope".to_string(),
+            purpose: None,
+            token_budget: 1000,
+            metadata: None,
+        };
+        let scope: ScopeResponse = ctx
+            .db
+            .create::<ScopeResponse>(&scope_req, ctx.auth.tenant_id)
+            .await
+            .expect("create scope");
+
+        let req = AssembleContextRequest {
+            trajectory_id: trajectory.trajectory_id,
+            scope_id: Some(scope.scope_id),
+            user_input: None,
+            token_budget: Some(1000),
+            include_notes: false,
+            include_artifacts: false,
+            include_history: false,
+            include_turns: false,
+            include_hierarchy: false,
+            max_notes: None,
+            max_artifacts: None,
+            max_summaries: None,
+            max_turns: None,
+            kernel_config: None,
+            agent_id: None,
+            relevance_query: None,
+            min_relevance: None,
+            format: ContextFormat::Markdown,
+        };
+
+        let Json(resp) = assemble_context(
+            State(ctx.db.clone()),
+            Extension(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .expect("assemble context");
+
+        assert_eq!(resp.notes_count, 0);
+        assert_eq!(resp.artifacts_count, 0);
+        assert_eq!(resp.turns_count, 0);
+        assert_eq!(resp.summaries_count, 0);
+
+        ctx.db
+            .delete::<ScopeResponse>(scope.scope_id, ctx.auth.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.auth.tenant_id)
+            .await
+            .ok();
     }
 }

@@ -194,20 +194,24 @@ pub fn create_trajectory_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::State, http::StatusCode, response::IntoResponse, Json};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::extractors::PathId;
+    use crate::types::{CreateTrajectoryRequest, TrajectoryResponse};
     use caliber_core::{AbstractionLevel, SummarizationTrigger};
+    use uuid::Uuid;
 
     #[test]
     fn test_create_policy_validation_fields() {
         let req = CreateSummarizationPolicyRequest {
             name: "".to_string(),
-            description: None,
             trajectory_id: None,
             source_level: AbstractionLevel::Raw,
             target_level: AbstractionLevel::Summary,
             triggers: vec![],
             max_sources: 0,
-            max_tokens: None,
-            require_agent_approval: false,
+            create_edges: false,
             metadata: None,
         };
 
@@ -237,5 +241,119 @@ mod tests {
     fn test_triggers_not_empty() {
         let triggers = vec![SummarizationTrigger::ScopeClose];
         assert!(!triggers.is_empty());
+    }
+
+    struct DbTestContext {
+        db: DbClient,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        Some(DbTestContext { db })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
+    #[tokio::test]
+    async fn test_create_list_delete_policy_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let tenant_id = ctx
+            .db
+            .tenant_create("test-summarization", None, None)
+            .await
+            .unwrap();
+        let _auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        let traj_req = CreateTrajectoryRequest {
+            name: format!("summ-traj-{}", Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+        let trajectory: TrajectoryResponse = ctx
+            .db
+            .create::<TrajectoryResponse>(&traj_req, tenant_id)
+            .await
+            .expect("create trajectory");
+
+        let req = CreateSummarizationPolicyRequest {
+            name: "policy".to_string(),
+            triggers: vec![SummarizationTrigger::ScopeClose],
+            source_level: AbstractionLevel::Raw,
+            target_level: AbstractionLevel::Summary,
+            max_sources: 10,
+            create_edges: false,
+            trajectory_id: Some(trajectory.trajectory_id),
+            metadata: None,
+        };
+
+        let create_response = create_policy(
+            State(ctx.db.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+        let policy: SummarizationPolicyResponse = response_json(create_response).await;
+
+        let get_response = get_policy(
+            State(ctx.db.clone()),
+            PathId(policy.policy_id),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(get_response.status(), StatusCode::OK);
+
+        let list_response = list_policies_by_trajectory(
+            State(ctx.db.clone()),
+            PathId(trajectory.trajectory_id),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListSummarizationPoliciesResponse = response_json(list_response).await;
+        assert!(list.policies.iter().any(|p| p.policy_id == policy.policy_id));
+
+        let delete_response = delete_policy(
+            State(ctx.db.clone()),
+            PathId(policy.policy_id),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
+
+        ctx.db
+            .delete::<TrajectoryResponse>(trajectory.trajectory_id, tenant_id)
+            .await
+            .ok();
     }
 }

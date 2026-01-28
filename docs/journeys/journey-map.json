@@ -1,0 +1,75 @@
+{
+  "generated_at": "2026-01-28T09:02:17.943Z",
+  "name": "critical-path",
+  "description": "Create trajectory → scope → artifact → close scope → complete trajectory",
+  "steps": [
+    {
+      "id": "trajectory.create",
+      "action": "Create trajectory",
+      "route": {
+        "method": "POST",
+        "path": "/api/v1/trajectories"
+      },
+      "handler": "caliber-api/src/routes/trajectory.rs",
+      "db": "DbClient::create<TrajectoryResponse>",
+      "tests": [
+        "tests/e2e/critical-path.e2e.test.ts",
+        "caliber-api/src/routes/trajectory.rs"
+      ]
+    },
+    {
+      "id": "scope.create",
+      "action": "Create scope",
+      "route": {
+        "method": "POST",
+        "path": "/api/v1/scopes"
+      },
+      "handler": "caliber-api/src/routes/scope.rs",
+      "db": "DbClient::create<ScopeResponse>",
+      "tests": [
+        "tests/e2e/critical-path.e2e.test.ts",
+        "caliber-api/src/routes/scope.rs"
+      ]
+    },
+    {
+      "id": "artifact.create",
+      "action": "Create artifact",
+      "route": {
+        "method": "POST",
+        "path": "/api/v1/artifacts"
+      },
+      "handler": "caliber-api/src/routes/artifact.rs",
+      "db": "DbClient::create<ArtifactResponse>",
+      "tests": [
+        "tests/e2e/critical-path.e2e.test.ts",
+        "caliber-api/src/routes/artifact.rs"
+      ]
+    },
+    {
+      "id": "scope.close",
+      "action": "Close scope",
+      "route": {
+        "method": "POST",
+        "path": "/api/v1/scopes/{id}/close"
+      },
+      "handler": "caliber-api/src/routes/scope.rs",
+      "db": "DbClient::scope_close",
+      "tests": [
+        "tests/e2e/critical-path.e2e.test.ts"
+      ]
+    },
+    {
+      "id": "trajectory.complete",
+      "action": "Complete trajectory",
+      "route": {
+        "method": "PATCH",
+        "path": "/api/v1/trajectories/{id}"
+      },
+      "handler": "caliber-api/src/routes/trajectory.rs",
+      "db": "DbClient::update_raw<TrajectoryResponse>",
+      "tests": [
+        "tests/e2e/critical-path.e2e.test.ts"
+      ]
+    }
+  ]
+}

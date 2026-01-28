@@ -105,6 +105,13 @@ mod tests {
     }
 
     #[test]
+    fn test_empty_vector_is_invalid() {
+        let vec = EmbeddingVector::new(vec![], "model".to_string());
+        assert_eq!(vec.dimensions, 0);
+        assert!(!vec.is_valid());
+    }
+
+    #[test]
     fn test_cosine_similarity_identical_vectors() {
         let a = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "model".to_string());
         let b = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "model".to_string());

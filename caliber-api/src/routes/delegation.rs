@@ -297,7 +297,102 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::extractors::PathId;
+    use crate::routes::agent::register_agent;
+    use crate::routes::scope::create_scope;
+    use crate::routes::trajectory::create_trajectory;
+    use crate::state::ApiEventDag;
+    use crate::types::{
+        AgentResponse, CreateScopeRequest, CreateTrajectoryRequest, MemoryAccessRequest,
+        MemoryPermissionRequest, RegisterAgentRequest, ScopeResponse, TrajectoryResponse,
+    };
+    use crate::ws::WsState;
+    use caliber_core::DelegationResultStatus;
     use caliber_core::{AgentId, EntityIdType, ScopeId, TrajectoryId};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+        event_dag: Arc<ApiEventDag>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-delegation", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+            event_dag: Arc::new(ApiEventDag::new()),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
+    async fn register_test_agent(ctx: &DbTestContext, agent_type: &str) -> AgentResponse {
+        let req = RegisterAgentRequest {
+            agent_type: agent_type.to_string(),
+            capabilities: vec!["read".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+                write: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+            },
+            can_delegate_to: vec!["planner".to_string()],
+            reports_to: None,
+        };
+
+        let response = register_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        response_json(response).await
+    }
 
     #[test]
     fn test_create_delegation_request_validation() {
@@ -360,5 +455,106 @@ mod tests {
         };
 
         assert!(!req.reason.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_create_accept_complete_delegation_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let trajectory_req = CreateTrajectoryRequest {
+            name: format!("delegation-traj-{}", Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+        let trajectory_response = create_trajectory(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            State(ctx.event_dag.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(trajectory_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(trajectory_response.status(), StatusCode::CREATED);
+        let trajectory: TrajectoryResponse = response_json(trajectory_response).await;
+
+        let scope_req = CreateScopeRequest {
+            trajectory_id: trajectory.trajectory_id,
+            parent_scope_id: None,
+            name: "delegation-scope".to_string(),
+            purpose: None,
+            token_budget: 1000,
+            metadata: None,
+        };
+        let scope_response = create_scope(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            State(ctx.event_dag.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(scope_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(scope_response.status(), StatusCode::CREATED);
+        let scope: ScopeResponse = response_json(scope_response).await;
+
+        let from_agent = register_test_agent(&ctx, "delegator").await;
+        let to_agent = register_test_agent(&ctx, "delegatee").await;
+
+        let create_req = CreateDelegationRequest {
+            from_agent_id: from_agent.agent_id,
+            to_agent_id: to_agent.agent_id,
+            trajectory_id: trajectory.trajectory_id,
+            scope_id: scope.scope_id,
+            task_description: "Do the thing".to_string(),
+            expected_completion: None,
+            context: None,
+        };
+        let delegation_response = create_delegation(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(create_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(delegation_response.status(), StatusCode::CREATED);
+        let delegation: DelegationResponse = response_json(delegation_response).await;
+
+        let accept_status = accept_delegation(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(delegation.delegation_id),
+            Json(AcceptDelegationRequest {
+                accepting_agent_id: to_agent.agent_id,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(accept_status, StatusCode::NO_CONTENT);
+
+        let complete_status = complete_delegation(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(delegation.delegation_id),
+            Json(CompleteDelegationRequest {
+                result: DelegationResultResponse {
+                    status: DelegationResultStatus::Success,
+                    output: Some("done".to_string()),
+                    artifacts: vec![],
+                    error: None,
+                },
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(complete_status, StatusCode::NO_CONTENT);
     }
 }

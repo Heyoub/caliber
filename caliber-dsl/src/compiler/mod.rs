@@ -1397,6 +1397,7 @@ impl Default for DslCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::parse;
 
     #[test]
     fn test_parse_duration() {
@@ -1434,5 +1435,84 @@ mod tests {
     fn test_parse_duration_invalid() {
         let err = DslCompiler::parse_duration("10weeks").unwrap_err();
         assert!(matches!(err, CompileError::InvalidDuration(_)));
+    }
+
+    #[test]
+    fn test_compile_undefined_agent_reference() {
+        let source = r#"
+            caliber: "1.0" {
+                trajectory "t1" {
+                    agent_type: "missing"
+                    token_budget: 1000
+                }
+            }
+        "#;
+        let ast = parse(source).unwrap();
+        let err = DslCompiler::compile(&ast).unwrap_err();
+        assert!(matches!(
+            err,
+            CompileError::UndefinedReference { kind, .. } if kind == "agent"
+        ));
+    }
+
+    #[test]
+    fn test_compile_undefined_memory_reference() {
+        let source = r#"
+            caliber: "1.0" {
+                agent "worker" {
+                }
+                trajectory "t1" {
+                    agent_type: "worker"
+                    token_budget: 1000
+                    memory_refs: [notes]
+                }
+            }
+        "#;
+        let ast = parse(source).unwrap();
+        let err = DslCompiler::compile(&ast).unwrap_err();
+        assert!(matches!(
+            err,
+            CompileError::UndefinedReference { kind, .. } if kind == "memory"
+        ));
+    }
+
+    #[test]
+    fn test_compile_invalid_token_budget() {
+        let source = r#"
+            caliber: "1.0" {
+                agent "worker" {
+                }
+                trajectory "t1" {
+                    agent_type: "worker"
+                    token_budget: 0
+                }
+            }
+        "#;
+        let ast = parse(source).unwrap();
+        let err = DslCompiler::compile(&ast).unwrap_err();
+        assert!(matches!(
+            err,
+            CompileError::InvalidValue { field, .. } if field == "token_budget"
+        ));
+    }
+
+    #[test]
+    fn test_compile_invalid_evolution_benchmark_queries() {
+        let source = r#"
+            caliber: "1.0" {
+                evolve "config" {
+                    baseline: "base"
+                    candidates: ["c1"]
+                    benchmark_queries: 0
+                    metrics: ["latency"]
+                }
+            }
+        "#;
+        let ast = parse(source).unwrap();
+        let err = DslCompiler::compile(&ast).unwrap_err();
+        assert!(matches!(
+            err,
+            CompileError::InvalidValue { field, .. } if field == "benchmark_queries"
+        ));
     }
 }

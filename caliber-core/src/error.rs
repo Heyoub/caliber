@@ -292,4 +292,34 @@ mod tests {
         });
         assert!(matches!(agent, CaliberError::Agent(_)));
     }
+
+    #[test]
+    fn test_storage_error_display_lock_poisoned() {
+        let err = StorageError::LockPoisoned;
+        let msg = format!("{}", err);
+        assert!(msg.contains("Lock poisoned"));
+    }
+
+    #[test]
+    fn test_validation_error_display_invalid_field_value() {
+        let err = ValidationError::InvalidFieldValue {
+            field: "priority".to_string(),
+            value: "high".to_string(),
+            reason: "must be numeric".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("priority"));
+        assert!(msg.contains("high"));
+        assert!(msg.contains("must be numeric"));
+    }
+
+    #[test]
+    fn test_agent_error_display_delegation_failed() {
+        let err = AgentError::DelegationFailed {
+            reason: "timeout".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Delegation failed"));
+        assert!(msg.contains("timeout"));
+    }
 }

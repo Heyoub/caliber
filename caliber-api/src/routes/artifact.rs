@@ -344,7 +344,62 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::routes::scope::create_scope;
+    use crate::routes::trajectory::create_trajectory;
+    use crate::state::ApiEventDag;
+    use crate::types::{ScopeResponse, TrajectoryResponse};
+    use crate::ws::WsState;
     use caliber_core::{ArtifactType, EntityIdType, ExtractionMethod, ScopeId, TrajectoryId, TTL};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+        event_dag: Arc<ApiEventDag>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-artifact", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+            event_dag: Arc::new(ApiEventDag::new()),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
 
     #[test]
     fn test_create_artifact_request_validation() {
@@ -424,5 +479,109 @@ mod tests {
         assert!((0.0..=1.0).contains(&valid_confidence));
         assert!(!(0.0..=1.0).contains(&invalid_low));
         assert!(!(0.0..=1.0).contains(&invalid_high));
+    }
+
+    #[tokio::test]
+    async fn test_create_and_list_artifacts_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let trajectory_req = CreateTrajectoryRequest {
+            name: format!("artifact-traj-{}", Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+        let trajectory_response = create_trajectory(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            State(ctx.event_dag.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(trajectory_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(trajectory_response.status(), StatusCode::CREATED);
+        let trajectory: TrajectoryResponse = response_json(trajectory_response).await;
+
+        let scope_req = CreateScopeRequest {
+            trajectory_id: trajectory.trajectory_id,
+            parent_scope_id: None,
+            name: "artifact-scope".to_string(),
+            purpose: None,
+            token_budget: 1000,
+            metadata: None,
+        };
+        let scope_response = create_scope(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            State(ctx.event_dag.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(scope_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(scope_response.status(), StatusCode::CREATED);
+        let scope: ScopeResponse = response_json(scope_response).await;
+
+        let artifact_req = CreateArtifactRequest {
+            trajectory_id: trajectory.trajectory_id,
+            scope_id: scope.scope_id,
+            artifact_type: ArtifactType::Fact,
+            name: "artifact".to_string(),
+            content: "content".to_string(),
+            source_turn: 1,
+            extraction_method: ExtractionMethod::Explicit,
+            confidence: Some(0.9),
+            ttl: TTL::Persistent,
+            metadata: None,
+        };
+
+        let artifact_response = create_artifact(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(artifact_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(artifact_response.status(), StatusCode::CREATED);
+        let artifact: ArtifactResponse = response_json(artifact_response).await;
+
+        let list_response = list_artifacts(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Query(ListArtifactsRequest {
+                artifact_type: Some(ArtifactType::Fact),
+                trajectory_id: Some(trajectory.trajectory_id),
+                scope_id: Some(scope.scope_id),
+                created_after: None,
+                created_before: None,
+                limit: None,
+                offset: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListArtifactsResponse = response_json(list_response).await;
+        assert!(list.artifacts.iter().any(|a| a.artifact_id == artifact.artifact_id));
+
+        ctx.db
+            .delete::<ArtifactResponse>(artifact.artifact_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
+        ctx.db
+            .delete::<ScopeResponse>(scope.scope_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
+        ctx.db
+            .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.auth.tenant_id)
+            .await
+            .unwrap();
     }
 }

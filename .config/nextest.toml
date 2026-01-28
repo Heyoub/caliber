@@ -1,0 +1,2 @@
+[profile.ci]
+# LLM-friendly defaults can be controlled via env in scripts.

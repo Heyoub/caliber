@@ -2469,6 +2469,87 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_parse_trajectory_missing_agent_type() {
+        let source = r#"
+            caliber: "1.0" {
+                trajectory "t1" {
+                    token_budget: 1000
+                }
+            }
+        "#;
+        let err = parse(source).unwrap_err();
+        assert!(err.message.contains("missing required field: agent_type"));
+    }
+
+    #[test]
+    fn test_parse_trajectory_missing_token_budget() {
+        let source = r#"
+            caliber: "1.0" {
+                trajectory "t1" {
+                    agent_type: "worker"
+                }
+            }
+        "#;
+        let err = parse(source).unwrap_err();
+        assert!(err.message.contains("missing required field: token_budget"));
+    }
+
+    #[test]
+    fn test_parse_cache_missing_backend() {
+        let source = r#"
+            caliber: "1.0" {
+                cache {
+                    size_mb: 64
+                }
+            }
+        "#;
+        let err = parse(source).unwrap_err();
+        assert!(err.message.contains("missing required field: backend"));
+    }
+
+    #[test]
+    fn test_parse_cache_missing_size_mb() {
+        let source = r#"
+            caliber: "1.0" {
+                cache {
+                    backend: memory
+                }
+            }
+        "#;
+        let err = parse(source).unwrap_err();
+        assert!(err.message.contains("missing required field: size_mb"));
+    }
+
+    #[test]
+    fn test_parse_provider_missing_fields() {
+        let source = r#"
+            caliber: "1.0" {
+                provider "openai" {
+                    type: openai
+                    api_key: env("OPENAI_API_KEY")
+                }
+            }
+        "#;
+        let err = parse(source).unwrap_err();
+        assert!(err.message.contains("missing required field: model"));
+    }
+
+    #[test]
+    fn test_parse_evolution_requires_candidates() {
+        let source = r#"
+            caliber: "1.0" {
+                evolve "config" {
+                    baseline: "base"
+                    benchmark_queries: 100
+                    metrics: ["latency"]
+                }
+            }
+        "#;
+        let err = parse(source).unwrap_err();
+        assert!(err.message.contains("candidates must contain at least one config name"));
+    }
+
     // ========================================================================
     // Pretty Printer Tests
     // ========================================================================

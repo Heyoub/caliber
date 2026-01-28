@@ -272,7 +272,92 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::extractors::PathId;
+    use crate::routes::agent::register_agent;
+    use crate::types::{AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest};
+    use crate::ws::WsState;
     use caliber_core::{AgentId, EntityIdType, MessagePriority, MessageType};
+    use std::sync::Arc;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-message", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
+    async fn register_test_agent(ctx: &DbTestContext, agent_type: &str) -> AgentResponse {
+        let req = RegisterAgentRequest {
+            agent_type: agent_type.to_string(),
+            capabilities: vec!["read".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+                write: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+            },
+            can_delegate_to: vec!["planner".to_string()],
+            reports_to: None,
+        };
+
+        let response = register_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        response_json(response).await
+    }
 
     #[test]
     fn test_send_message_request_validation() {
@@ -340,5 +425,81 @@ mod tests {
         assert_eq!(req.message_type, Some(MessageType::TaskDelegation));
         assert_eq!(req.priority, Some(MessagePriority::High));
         assert_eq!(req.undelivered_only, Some(true));
+    }
+
+    #[tokio::test]
+    async fn test_send_list_deliver_ack_message_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let from_agent = register_test_agent(&ctx, "sender").await;
+        let to_agent = register_test_agent(&ctx, "receiver").await;
+
+        let req = SendMessageRequest {
+            from_agent_id: from_agent.agent_id,
+            to_agent_id: Some(to_agent.agent_id),
+            to_agent_type: None,
+            message_type: "TaskDelegation".to_string(),
+            payload: "{}".to_string(),
+            trajectory_id: None,
+            scope_id: None,
+            artifact_ids: vec![],
+            priority: "Normal".to_string(),
+            expires_at: None,
+        };
+
+        let send_response = send_message(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(send_response.status(), StatusCode::CREATED);
+        let message: MessageResponse = response_json(send_response).await;
+
+        let list_response = list_messages(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Query(ListMessagesRequest {
+                message_type: Some(MessageType::TaskDelegation),
+                from_agent_id: Some(from_agent.agent_id),
+                to_agent_id: Some(to_agent.agent_id),
+                to_agent_type: None,
+                trajectory_id: None,
+                priority: Some(MessagePriority::Normal),
+                undelivered_only: Some(true),
+                unacknowledged_only: Some(true),
+                limit: None,
+                offset: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListMessagesResponse = response_json(list_response).await;
+        assert!(list.messages.iter().any(|m| m.message_id == message.message_id));
+
+        let deliver_status = deliver_message(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(message.message_id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(deliver_status, StatusCode::NO_CONTENT);
+
+        let ack_status = acknowledge_message(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(message.message_id),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ack_status, StatusCode::NO_CONTENT);
     }
 }

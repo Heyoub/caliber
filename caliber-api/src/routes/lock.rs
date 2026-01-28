@@ -247,8 +247,93 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::extractors::PathId;
+    use crate::routes::agent::register_agent;
+    use crate::types::{AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest};
+    use crate::ws::WsState;
     use caliber_core::{AgentId, EntityIdType};
+    use std::sync::Arc;
     use uuid::Uuid;
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+        ws: Arc<WsState>,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-lock", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext {
+            db,
+            auth,
+            ws: Arc::new(WsState::new(8)),
+        })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
+    async fn register_test_agent(ctx: &DbTestContext, agent_type: &str) -> AgentResponse {
+        let req = RegisterAgentRequest {
+            agent_type: agent_type.to_string(),
+            capabilities: vec!["read".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+                write: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+            },
+            can_delegate_to: vec!["planner".to_string()],
+            reports_to: None,
+        };
+
+        let response = register_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        response_json(response).await
+    }
 
     #[test]
     fn test_acquire_lock_request_validation() {
@@ -280,5 +365,71 @@ mod tests {
         };
 
         assert!(req.additional_ms <= 0);
+    }
+
+    #[tokio::test]
+    async fn test_acquire_list_extend_release_lock_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let agent = register_test_agent(&ctx, "locker").await;
+        let resource_id = Uuid::now_v7();
+
+        let acquire_req = AcquireLockRequest {
+            resource_type: "test-resource".to_string(),
+            resource_id,
+            holder_agent_id: agent.agent_id,
+            timeout_ms: 5_000,
+            mode: "exclusive".to_string(),
+        };
+
+        let acquire_response = acquire_lock(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(acquire_req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(acquire_response.status(), StatusCode::CREATED);
+        let lock: LockResponse = response_json(acquire_response).await;
+        assert_eq!(lock.resource_id, resource_id);
+
+        let list_response = list_locks(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list: ListLocksResponse = response_json(list_response).await;
+        assert!(list.locks.iter().any(|l| l.lock_id == lock.lock_id));
+
+        let extend_response = extend_lock(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(lock.lock_id),
+            Json(ExtendLockRequest { additional_ms: 1_000 }),
+        )
+        .await
+        .unwrap()
+        .into_response();
+        assert_eq!(extend_response.status(), StatusCode::OK);
+        let extended: LockResponse = response_json(extend_response).await;
+        assert_eq!(extended.lock_id, lock.lock_id);
+
+        let release_status = release_lock(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            PathId(lock.lock_id),
+            Json(ReleaseLockRequest {
+                releasing_agent_id: agent.agent_id,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(release_status, StatusCode::NO_CONTENT);
     }
 }

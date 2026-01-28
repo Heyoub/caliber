@@ -330,6 +330,10 @@ impl ProviderAdapter for PackProviderAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{extract::State, Json};
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::middleware::AuthExtractor;
 
     #[test]
     fn test_routing_strategy_from_hint() {
@@ -387,6 +391,53 @@ mod tests {
         let restored: PackInspectResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(response.has_active, restored.has_active);
         assert_eq!(response.tools, restored.tools);
+    }
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-pack", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext { db, auth })
+    }
+
+    #[tokio::test]
+    async fn test_inspect_pack_db_backed_no_active() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let Json(response) = inspect_pack(
+            State(ctx.db.clone()),
+            AuthExtractor(ctx.auth.clone()),
+        )
+        .await
+        .expect("inspect pack");
+
+        assert!(!response.has_active);
+        assert!(response.compiled.is_none());
+        assert!(response.tools.is_empty());
     }
 }
 

@@ -126,9 +126,17 @@ pub async fn complete_delegation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::DbConfig;
+    use crate::db::{DbClient, DbConfig};
     use crate::error::ErrorCode;
-    use caliber_core::{AgentId, DelegationId, DelegationResultStatus, ScopeId, TenantId, TrajectoryId};
+    use crate::types::{
+        AgentResponse, CreateDelegationRequest, CreateScopeRequest, CreateTrajectoryRequest,
+        MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, ScopeResponse,
+        TrajectoryResponse,
+    };
+    use caliber_core::{
+        AgentId, DelegationId, DelegationResultStatus, DelegationStatus, ScopeId, TenantId,
+        TrajectoryId,
+    };
     use chrono::Utc;
 
     fn dummy_db() -> DbClient {
@@ -211,5 +219,174 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::StateConflict);
+    }
+
+    struct DbTestContext {
+        db: DbClient,
+        tenant_id: TenantId,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-delegation-service", None, None).await.ok()?;
+        Some(DbTestContext { db, tenant_id })
+    }
+
+    async fn register_agent(db: &DbClient, tenant_id: TenantId, agent_type: &str) -> AgentResponse {
+        let req = RegisterAgentRequest {
+            agent_type: agent_type.to_string(),
+            capabilities: vec!["read".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+                write: vec![MemoryPermissionRequest {
+                    memory_type: "artifact".to_string(),
+                    scope: "own".to_string(),
+                    filter: None,
+                }],
+            },
+            can_delegate_to: vec!["planner".to_string()],
+            reports_to: None,
+        };
+
+        db.agent_register(&req, tenant_id)
+            .await
+            .expect("register agent")
+    }
+
+    async fn create_trajectory(db: &DbClient, tenant_id: TenantId) -> TrajectoryResponse {
+        let req = CreateTrajectoryRequest {
+            name: format!("delegation-svc-{}", uuid::Uuid::now_v7()),
+            description: None,
+            parent_trajectory_id: None,
+            agent_id: None,
+            metadata: None,
+        };
+
+        db.create::<TrajectoryResponse>(&req, tenant_id)
+            .await
+            .expect("create trajectory")
+    }
+
+    async fn create_scope(
+        db: &DbClient,
+        tenant_id: TenantId,
+        trajectory_id: TrajectoryId,
+    ) -> ScopeResponse {
+        let req = CreateScopeRequest {
+            trajectory_id,
+            parent_scope_id: None,
+            name: "delegation-scope".to_string(),
+            purpose: None,
+            token_budget: 1000,
+            metadata: None,
+        };
+
+        db.create::<ScopeResponse>(&req, tenant_id)
+            .await
+            .expect("create scope")
+    }
+
+    async fn create_delegation(
+        db: &DbClient,
+        tenant_id: TenantId,
+        from_agent: AgentId,
+        to_agent: AgentId,
+        trajectory_id: TrajectoryId,
+        scope_id: ScopeId,
+    ) -> DelegationResponse {
+        let req = CreateDelegationRequest {
+            from_agent_id: from_agent,
+            to_agent_id: to_agent,
+            trajectory_id,
+            scope_id,
+            task_description: "do the thing".to_string(),
+            expected_completion: None,
+            context: None,
+        };
+
+        db.create::<DelegationResponse>(&req, tenant_id)
+            .await
+            .expect("create delegation")
+    }
+
+    #[tokio::test]
+    async fn test_accept_complete_delegation_db_backed() {
+        let Some(ctx) = db_test_context().await else { return; };
+
+        let trajectory = create_trajectory(&ctx.db, ctx.tenant_id).await;
+        let scope = create_scope(&ctx.db, ctx.tenant_id, trajectory.trajectory_id).await;
+        let delegator = register_agent(&ctx.db, ctx.tenant_id, "delegator").await;
+        let delegatee = register_agent(&ctx.db, ctx.tenant_id, "delegatee").await;
+
+        let delegation = create_delegation(
+            &ctx.db,
+            ctx.tenant_id,
+            delegator.agent_id,
+            delegatee.agent_id,
+            trajectory.trajectory_id,
+            scope.scope_id,
+        )
+        .await;
+        assert_eq!(delegation.status, DelegationStatus::Pending);
+
+        let accepted = accept_delegation(&ctx.db, &delegation, delegatee.agent_id)
+            .await
+            .expect("accept delegation");
+        assert_eq!(accepted.status, DelegationStatus::Accepted);
+
+        let result = DelegationResultResponse {
+            status: DelegationResultStatus::Success,
+            output: Some("ok".to_string()),
+            artifacts: vec![],
+            error: None,
+        };
+        let completed = complete_delegation(&ctx.db, &accepted, &result)
+            .await
+            .expect("complete delegation");
+        assert_eq!(completed.status, DelegationStatus::Completed);
+        assert!(completed.result.is_some());
+
+        ctx.db
+            .delete::<DelegationResponse>(completed.delegation_id, ctx.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<ScopeResponse>(scope.scope_id, ctx.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<AgentResponse>(delegator.agent_id, ctx.tenant_id)
+            .await
+            .ok();
+        ctx.db
+            .delete::<AgentResponse>(delegatee.agent_id, ctx.tenant_id)
+            .await
+            .ok();
     }
 }

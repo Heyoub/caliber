@@ -1961,4 +1961,52 @@ mod tests {
         assert!(obs.error.is_some());
     }
 
+    #[test]
+    fn test_message_type_parsing_variants_and_errors() {
+        let underscored = MessageType::from_db_str("task_delegation").unwrap();
+        assert_eq!(underscored, MessageType::TaskDelegation);
+
+        let mixed = MessageType::from_db_str("Coordination_Signal").unwrap();
+        assert_eq!(mixed, MessageType::CoordinationSignal);
+
+        let err = MessageType::from_db_str("unknown_type").unwrap_err();
+        assert_eq!(err.0, "unknown_type");
+    }
+
+    #[test]
+    fn test_message_priority_parsing_variants_and_errors() {
+        let high = MessagePriority::from_db_str("HIGH").unwrap();
+        assert_eq!(high, MessagePriority::High);
+
+        let normal = MessagePriority::from_db_str("normal").unwrap();
+        assert_eq!(normal, MessagePriority::Normal);
+
+        let err = MessagePriority::from_db_str("urgent").unwrap_err();
+        assert_eq!(err.0, "urgent");
+    }
+
+    #[test]
+    fn test_handoff_reason_parsing_aliases() {
+        let failed = HandoffReason::from_db_str("failed").unwrap();
+        assert_eq!(failed, HandoffReason::Failure);
+
+        let load = HandoffReason::from_db_str("load_balancing").unwrap();
+        assert_eq!(load, HandoffReason::LoadBalancing);
+
+        let err = HandoffReason::from_db_str("nonsense").unwrap_err();
+        assert_eq!(err.0, "nonsense");
+    }
+
+    #[test]
+    fn test_memory_access_default_permissions() {
+        let access = MemoryAccess::default();
+        assert_eq!(access.read.len(), 1);
+        assert_eq!(access.write.len(), 1);
+        assert_eq!(access.read[0].memory_type, "*");
+        assert_eq!(access.write[0].memory_type, "*");
+        assert_eq!(access.read[0].scope, PermissionScope::Own);
+        assert_eq!(access.write[0].scope, PermissionScope::Own);
+        assert!(access.read[0].filter.is_none());
+        assert!(access.write[0].filter.is_none());
+    }
 }
