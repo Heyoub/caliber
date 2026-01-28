@@ -2,7 +2,11 @@
 set -euo pipefail
 
 workflow="${1:-CI}"
-ref="${2:-main}"
+ref="${2:-}"
+
+if [ -z "$ref" ]; then
+  ref="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+fi
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh CLI not found. Install GitHub CLI first."
