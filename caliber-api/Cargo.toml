@@ -52,7 +52,7 @@ serde_yaml = "0.9"
 
 # Authentication
 jsonwebtoken = "9.3"
-secrecy = "0.8"
+secrecy = "0.10"
 urlencoding = "2.1"  # For WorkOS URL encoding
 
 # Error handling
