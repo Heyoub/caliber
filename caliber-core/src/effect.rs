@@ -39,11 +39,11 @@
 //! Domain errors are part of the business logic and must be tracked.
 //! Operational errors are infrastructure concerns and can be handled separately.
 
-use crate::{EventId, DagPosition};
-use uuid::Uuid;
+use crate::{DagPosition, EventId};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
+use uuid::Uuid;
 
 // ============================================================================
 // EFFECT TYPE
@@ -122,7 +122,12 @@ impl<T> Effect<T> {
     }
 
     /// Create a retry effect.
-    pub fn retry(after: Duration, attempt: u32, max_attempts: u32, reason: impl Into<String>) -> Self {
+    pub fn retry(
+        after: Duration,
+        attempt: u32,
+        max_attempts: u32,
+        reason: impl Into<String>,
+    ) -> Self {
         Effect::Retry {
             after,
             attempt,
@@ -164,13 +169,17 @@ impl<T> Effect<T> {
         match self {
             Effect::Ok(v) => Ok(v),
             Effect::Err(e) => Err(e),
-            Effect::Retry { reason, .. } => Err(ErrorEffect::Operational(OperationalError::RetryExhausted {
-                reason,
-            })),
+            Effect::Retry { reason, .. } => {
+                Err(ErrorEffect::Operational(OperationalError::RetryExhausted {
+                    reason,
+                }))
+            }
             Effect::Compensate { cause, .. } => Err(*cause),
-            Effect::Pending { waiting_for, .. } => Err(ErrorEffect::Operational(OperationalError::Timeout {
-                operation: format!("Pending: {:?}", waiting_for),
-            })),
+            Effect::Pending { waiting_for, .. } => {
+                Err(ErrorEffect::Operational(OperationalError::Timeout {
+                    operation: format!("Pending: {:?}", waiting_for),
+                }))
+            }
             Effect::Batch(effects) => {
                 // Return first error or last success
                 for effect in effects {
@@ -188,14 +197,28 @@ impl<T> Effect<T> {
         match self {
             Effect::Ok(v) => Effect::Ok(f(v)),
             Effect::Err(e) => Effect::Err(e),
-            Effect::Retry { after, attempt, max_attempts, reason } => {
-                Effect::Retry { after, attempt, max_attempts, reason }
-            }
+            Effect::Retry {
+                after,
+                attempt,
+                max_attempts,
+                reason,
+            } => Effect::Retry {
+                after,
+                attempt,
+                max_attempts,
+                reason,
+            },
             Effect::Compensate { action, cause } => Effect::Compensate { action, cause },
-            Effect::Pending { waiting_for, resume_token } => {
-                Effect::Pending { waiting_for, resume_token }
+            Effect::Pending {
+                waiting_for,
+                resume_token,
+            } => Effect::Pending {
+                waiting_for,
+                resume_token,
+            },
+            Effect::Batch(effects) => {
+                Effect::Batch(effects.into_iter().map(|e| e.map(f.clone())).collect())
             }
-            Effect::Batch(effects) => Effect::Batch(effects.into_iter().map(|e| e.map(f.clone())).collect()),
         }
     }
 
@@ -203,7 +226,10 @@ impl<T> Effect<T> {
     pub fn unwrap(self) -> T {
         match self {
             Effect::Ok(v) => v,
-            _ => panic!("Called unwrap on non-Ok effect: {:?}", std::any::type_name::<Self>()),
+            _ => panic!(
+                "Called unwrap on non-Ok effect: {:?}",
+                std::any::type_name::<Self>()
+            ),
         }
     }
 
@@ -215,13 +241,25 @@ impl<T> Effect<T> {
         match self {
             Effect::Ok(v) => f(v),
             Effect::Err(e) => Effect::Err(e),
-            Effect::Retry { after, attempt, max_attempts, reason } => {
-                Effect::Retry { after, attempt, max_attempts, reason }
-            }
+            Effect::Retry {
+                after,
+                attempt,
+                max_attempts,
+                reason,
+            } => Effect::Retry {
+                after,
+                attempt,
+                max_attempts,
+                reason,
+            },
             Effect::Compensate { action, cause } => Effect::Compensate { action, cause },
-            Effect::Pending { waiting_for, resume_token } => {
-                Effect::Pending { waiting_for, resume_token }
-            }
+            Effect::Pending {
+                waiting_for,
+                resume_token,
+            } => Effect::Pending {
+                waiting_for,
+                resume_token,
+            },
             Effect::Batch(_) => Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
                 message: "Cannot and_then on Batch effect".to_string(),
             })),
@@ -266,13 +304,17 @@ impl<T> Effect<T> {
         match self {
             Effect::Ok(v) => v,
             Effect::Err(e) => f(e),
-            Effect::Retry { reason, .. } => f(ErrorEffect::Operational(OperationalError::RetryExhausted {
-                reason,
-            })),
+            Effect::Retry { reason, .. } => {
+                f(ErrorEffect::Operational(OperationalError::RetryExhausted {
+                    reason,
+                }))
+            }
             Effect::Compensate { cause, .. } => f(*cause),
-            Effect::Pending { waiting_for, .. } => f(ErrorEffect::Operational(OperationalError::Timeout {
-                operation: format!("Pending: {:?}", waiting_for),
-            })),
+            Effect::Pending { waiting_for, .. } => {
+                f(ErrorEffect::Operational(OperationalError::Timeout {
+                    operation: format!("Pending: {:?}", waiting_for),
+                }))
+            }
             Effect::Batch(_) => f(ErrorEffect::Operational(OperationalError::Internal {
                 message: "Cannot unwrap Batch effect".to_string(),
             })),
@@ -498,14 +540,36 @@ impl fmt::Display for DomainError {
             DomainError::EntityAlreadyExists { entity_type, id } => {
                 write!(f, "{} already exists: {}", entity_type, id)
             }
-            DomainError::EntityConflict { entity_type, id, reason } => {
+            DomainError::EntityConflict {
+                entity_type,
+                id,
+                reason,
+            } => {
                 write!(f, "Conflict on {} {}: {}", entity_type, id, reason)
             }
-            DomainError::InvalidStateTransition { entity_type, from_state, to_state, reason } => {
-                write!(f, "Invalid {} transition {} -> {}: {}", entity_type, from_state, to_state, reason)
+            DomainError::InvalidStateTransition {
+                entity_type,
+                from_state,
+                to_state,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Invalid {} transition {} -> {}: {}",
+                    entity_type, from_state, to_state, reason
+                )
             }
-            DomainError::StaleData { entity_type, id, expected_version, actual_version } => {
-                write!(f, "Stale {} {}: expected version {}, got {}", entity_type, id, expected_version, actual_version)
+            DomainError::StaleData {
+                entity_type,
+                id,
+                expected_version,
+                actual_version,
+            } => {
+                write!(
+                    f,
+                    "Stale {} {}: expected version {}, got {}",
+                    entity_type, id, expected_version, actual_version
+                )
             }
             DomainError::ValidationFailed { field, reason } => {
                 write!(f, "Validation failed for {}: {}", field, reason)
@@ -516,29 +580,68 @@ impl fmt::Display for DomainError {
             DomainError::CircularReference { entity_type, ids } => {
                 write!(f, "Circular reference in {}: {:?}", entity_type, ids)
             }
-            DomainError::Contradiction { artifact_a, artifact_b, description } => {
-                write!(f, "Contradiction between {} and {}: {}", artifact_a, artifact_b, description)
+            DomainError::Contradiction {
+                artifact_a,
+                artifact_b,
+                description,
+            } => {
+                write!(
+                    f,
+                    "Contradiction between {} and {}: {}",
+                    artifact_a, artifact_b, description
+                )
             }
-            DomainError::QuotaExceeded { resource, limit, requested } => {
-                write!(f, "Quota exceeded for {}: limit {}, requested {}", resource, limit, requested)
+            DomainError::QuotaExceeded {
+                resource,
+                limit,
+                requested,
+            } => {
+                write!(
+                    f,
+                    "Quota exceeded for {}: limit {}, requested {}",
+                    resource, limit, requested
+                )
             }
-            DomainError::PermissionDenied { agent_id, action, resource } => {
-                write!(f, "Permission denied: agent {} cannot {} on {}", agent_id, action, resource)
+            DomainError::PermissionDenied {
+                agent_id,
+                action,
+                resource,
+            } => {
+                write!(
+                    f,
+                    "Permission denied: agent {} cannot {} on {}",
+                    agent_id, action, resource
+                )
             }
             DomainError::LockAcquisitionFailed { resource, holder } => {
-                write!(f, "Lock acquisition failed for {}: held by {}", resource, holder)
+                write!(
+                    f,
+                    "Lock acquisition failed for {}: held by {}",
+                    resource, holder
+                )
             }
             DomainError::LockExpired { lock_id } => {
                 write!(f, "Lock expired: {}", lock_id)
             }
-            DomainError::DelegationFailed { delegation_id, reason } => {
+            DomainError::DelegationFailed {
+                delegation_id,
+                reason,
+            } => {
                 write!(f, "Delegation {} failed: {}", delegation_id, reason)
             }
             DomainError::HandoffFailed { handoff_id, reason } => {
                 write!(f, "Handoff {} failed: {}", handoff_id, reason)
             }
-            DomainError::ToolPolicyViolation { tool_name, policy, reason } => {
-                write!(f, "Tool policy violation for '{}' ({}): {}", tool_name, policy, reason)
+            DomainError::ToolPolicyViolation {
+                tool_name,
+                policy,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Tool policy violation for '{}' ({}): {}",
+                    tool_name, policy, reason
+                )
             }
         }
     }
@@ -564,7 +667,10 @@ pub enum OperationalError {
     /// Operation timed out
     Timeout { operation: String },
     /// Rate limited by external service
-    RateLimited { service: String, retry_after_ms: i64 },
+    RateLimited {
+        service: String,
+        retry_after_ms: i64,
+    },
     /// Internal error (unexpected)
     Internal { message: String },
     /// Resource temporarily unavailable
@@ -595,15 +701,28 @@ impl fmt::Display for OperationalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OperationalError::NetworkError { message } => write!(f, "Network error: {}", message),
-            OperationalError::DatabaseConnectionError { message } => write!(f, "Database error: {}", message),
+            OperationalError::DatabaseConnectionError { message } => {
+                write!(f, "Database error: {}", message)
+            }
             OperationalError::Timeout { operation } => write!(f, "Timeout: {}", operation),
-            OperationalError::RateLimited { service, retry_after_ms } => {
-                write!(f, "Rate limited by {}, retry after {}ms", service, retry_after_ms)
+            OperationalError::RateLimited {
+                service,
+                retry_after_ms,
+            } => {
+                write!(
+                    f,
+                    "Rate limited by {}, retry after {}ms",
+                    service, retry_after_ms
+                )
             }
             OperationalError::Internal { message } => write!(f, "Internal error: {}", message),
             OperationalError::Unavailable { resource } => write!(f, "Unavailable: {}", resource),
-            OperationalError::RetryExhausted { reason } => write!(f, "Retries exhausted: {}", reason),
-            OperationalError::SerializationError { message } => write!(f, "Serialization error: {}", message),
+            OperationalError::RetryExhausted { reason } => {
+                write!(f, "Retries exhausted: {}", reason)
+            }
+            OperationalError::SerializationError { message } => {
+                write!(f, "Serialization error: {}", message)
+            }
         }
     }
 }
@@ -734,9 +853,7 @@ pub enum WaitCondition {
         resume_at: i64,
     },
     /// Waiting for external input
-    ExternalInput {
-        source: String,
-    },
+    ExternalInput { source: String },
 }
 
 // ============================================================================
@@ -784,12 +901,7 @@ mod tests {
 
     #[test]
     fn test_effect_retry() {
-        let effect: Effect<i32> = Effect::retry(
-            Duration::from_secs(1),
-            1,
-            3,
-            "Temporary failure",
-        );
+        let effect: Effect<i32> = Effect::retry(Duration::from_secs(1), 1, 3, "Temporary failure");
         assert!(effect.needs_retry());
     }
 

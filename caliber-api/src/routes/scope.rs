@@ -6,12 +6,7 @@
 //! Includes Battle Intel Feature 4: Auto-summarization trigger checking
 //! on scope close to enable L0→L1→L2 abstraction transitions.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use caliber_core::{EntityIdType, ScopeId};
 use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
@@ -70,7 +65,9 @@ pub async fn create_scope(
     }
 
     // Create scope via database client with event emission for audit trail
-    let scope = db.create_with_event::<ScopeResponse>(&req, auth.tenant_id, &event_dag).await?;
+    let scope = db
+        .create_with_event::<ScopeResponse>(&req, auth.tenant_id, &event_dag)
+        .await?;
 
     // Broadcast ScopeCreated event via WebSocket
     ws.broadcast(WsEvent::ScopeCreated {
@@ -168,7 +165,9 @@ pub async fn update_scope(
     validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update scope via database client with event emission for audit trail
-    let scope = db.update_with_event::<ScopeResponse>(id, &req, auth.tenant_id, &event_dag).await?;
+    let scope = db
+        .update_with_event::<ScopeResponse>(id, &req, auth.tenant_id, &event_dag)
+        .await?;
 
     // Broadcast ScopeUpdated event via WebSocket
     ws.broadcast(WsEvent::ScopeUpdated {
@@ -206,9 +205,7 @@ pub async fn create_checkpoint(
 ) -> ApiResult<impl IntoResponse> {
     // Validate context_state is not empty
     if req.context_state.is_empty() {
-        return Err(ApiError::invalid_input(
-            "context_state cannot be empty",
-        ));
+        return Err(ApiError::invalid_input("context_state cannot be empty"));
     }
 
     // Get the scope and verify tenant ownership
@@ -222,7 +219,8 @@ pub async fn create_checkpoint(
     let updated_scope = scope.create_checkpoint(&db, &req).await?;
 
     // Extract the checkpoint from the updated scope
-    let checkpoint = updated_scope.checkpoint
+    let checkpoint = updated_scope
+        .checkpoint
         .ok_or_else(|| ApiError::internal_error("Checkpoint was not set after creation"))?;
 
     Ok((StatusCode::CREATED, Json(checkpoint)))
@@ -255,7 +253,7 @@ pub async fn close_scope(
     AuthExtractor(auth): AuthExtractor,
     PathId(id): PathId<ScopeId>,
 ) -> ApiResult<impl IntoResponse> {
-    use caliber_core::{DagPosition, Event, EventFlags, EventHeader, EventKind, EventDag};
+    use caliber_core::{DagPosition, Event, EventDag, EventFlags, EventHeader, EventKind};
 
     // Get the scope and verify tenant ownership
     let existing = db
@@ -301,7 +299,10 @@ pub async fn close_scope(
     let trajectory_id = scope.trajectory_id;
 
     // Fetch summarization policies for this trajectory
-    if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
+    if let Ok(policies) = db
+        .summarization_policies_for_trajectory(trajectory_id)
+        .await
+    {
         if !policies.is_empty() {
             // Get turn count for this scope using generic list
             let turn_filter = TurnListFilter {
@@ -466,7 +467,12 @@ pub async fn list_scope_artifacts(
     };
     let artifacts = db.list::<ArtifactResponse>(&filter, auth.tenant_id).await?;
 
-    Ok(Json(artifacts.into_iter().map(|a| a.linked()).collect::<Vec<_>>()))
+    Ok(Json(
+        artifacts
+            .into_iter()
+            .map(|a| a.linked())
+            .collect::<Vec<_>>(),
+    ))
 }
 
 // ============================================================================
@@ -488,15 +494,15 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::extractors::PathId;
-    use crate::routes::trajectory::list_trajectory_scopes;
     use crate::routes::trajectory::create_trajectory;
+    use crate::routes::trajectory::list_trajectory_scopes;
     use crate::state::ApiEventDag;
     use crate::types::{CreateTrajectoryRequest, TrajectoryResponse};
     use crate::ws::WsState;
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use caliber_core::TrajectoryId;
     use std::sync::Arc;
     use uuid::Uuid;
@@ -539,7 +545,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -601,7 +609,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_list_scopes_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let trajectory_req = CreateTrajectoryRequest {
             name: format!("scope-traj-{}", Uuid::now_v7()),

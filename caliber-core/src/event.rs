@@ -45,7 +45,11 @@ pub struct DagPosition {
 impl DagPosition {
     /// Create a new DAG position.
     pub const fn new(depth: u32, lane: u32, sequence: u32) -> Self {
-        Self { depth, lane, sequence }
+        Self {
+            depth,
+            lane,
+            sequence,
+        }
     }
 
     /// Create the root position.
@@ -300,7 +304,9 @@ impl utoipa::ToSchema for EventFlags {
 impl utoipa::PartialSchema for EventFlags {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
         utoipa::openapi::ObjectBuilder::new()
-            .schema_type(utoipa::openapi::schema::SchemaType::Type(utoipa::openapi::schema::Type::Integer))
+            .schema_type(utoipa::openapi::schema::SchemaType::Type(
+                utoipa::openapi::schema::Type::Integer,
+            ))
             .description(Some("Event processing flags as a u8 bitfield (0-255)"))
             .minimum(Some(0.0))
             .maximum(Some(255.0))
@@ -540,7 +546,7 @@ pub struct HashChain {
 impl Default for HashChain {
     fn default() -> Self {
         Self {
-            prev_hash: [0u8; 32],  // Genesis event has zero prev_hash
+            prev_hash: [0u8; 32], // Genesis event has zero prev_hash
             event_hash: [0u8; 32],
             algorithm: HashAlgorithm::Blake3,
         }
@@ -620,7 +626,7 @@ impl Causality {
 // RICH EVIDENCE REFERENCES (Phase 1.3)
 // ============================================================================
 
-use crate::{ArtifactId, NoteId, AgentId, Timestamp, ExtractionMethod};
+use crate::{AgentId, ArtifactId, ExtractionMethod, NoteId, Timestamp};
 
 /// Evidence reference types for provenance tracking.
 ///
@@ -655,18 +661,11 @@ pub enum EvidenceRef {
         hash: Option<[u8; 32]>,
     },
     /// Reference to knowledge pack section
-    KnowledgePack {
-        pack_id: String,
-        section: String,
-    },
+    KnowledgePack { pack_id: String, section: String },
     /// Reference to artifact
-    Artifact {
-        artifact_id: ArtifactId,
-    },
+    Artifact { artifact_id: ArtifactId },
     /// Reference to note
-    Note {
-        note_id: NoteId,
-    },
+    Note { note_id: NoteId },
     /// Manual user-provided evidence
     Manual {
         user_id: String,
@@ -691,8 +690,6 @@ pub enum VerificationStatus {
     /// Evidence has expired
     Expired,
 }
-
-
 
 /// Enhanced provenance with evidence chains.
 ///
@@ -959,7 +956,10 @@ pub trait EventDagExt: EventDag {
             other => return other.map(|_| unreachable!()),
         };
 
-        let position = match self.next_position(Some(parent), parent_event.header.position.lane).await {
+        let position = match self
+            .next_position(Some(parent), parent_event.header.position.lane)
+            .await
+        {
             Effect::Ok(pos) => pos,
             Effect::Err(e) => return Effect::Err(e),
             other => return other.map(|_| unreachable!()),
@@ -982,7 +982,12 @@ pub trait EventDagExt: EventDag {
     }
 
     /// Fork a new lane from an existing event.
-    async fn fork(&self, parent: EventId, new_lane: u32, payload: Self::Payload) -> Effect<EventId> {
+    async fn fork(
+        &self,
+        parent: EventId,
+        new_lane: u32,
+        payload: Self::Payload,
+    ) -> Effect<EventId> {
         let parent_event = match self.read(parent).await {
             Effect::Ok(e) => e,
             Effect::Err(e) => return Effect::Err(e),

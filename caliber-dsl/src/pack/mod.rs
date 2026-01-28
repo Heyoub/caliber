@@ -9,7 +9,7 @@ mod mcp;
 mod schema;
 
 use crate::{compiler::CompiledConfig, parser::CaliberAst, DslCompiler};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -73,7 +73,8 @@ fn compute_file_hashes(input: &PackInput) -> HashMap<String, String> {
 
     // Hash all markdown files
     for md in &input.markdowns {
-        let rel_path = md.path
+        let rel_path = md
+            .path
             .strip_prefix(&input.root)
             .unwrap_or(&md.path)
             .to_string_lossy()

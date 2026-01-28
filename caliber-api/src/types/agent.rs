@@ -1,6 +1,6 @@
 //! Agent-related API types
 
-use caliber_core::{AgentId, AgentStatus, TenantId, Timestamp, TrajectoryId, ScopeId};
+use caliber_core::{AgentId, AgentStatus, ScopeId, TenantId, Timestamp, TrajectoryId};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -147,7 +147,8 @@ impl AgentResponse {
             "last_heartbeat": chrono::Utc::now().to_rfc3339()
         });
 
-        db.update_raw::<Self>(self.agent_id, updates, self.tenant_id).await
+        db.update_raw::<Self>(self.agent_id, updates, self.tenant_id)
+            .await
     }
 
     /// Unregister this agent (set status to Offline).
@@ -162,6 +163,7 @@ impl AgentResponse {
             "status": "Offline"
         });
 
-        db.update_raw::<Self>(self.agent_id, updates, self.tenant_id).await
+        db.update_raw::<Self>(self.agent_id, updates, self.tenant_id)
+            .await
     }
 }

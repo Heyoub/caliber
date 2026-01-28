@@ -1,6 +1,9 @@
 //! Battle Intel: Summarization policy types
 
-use caliber_core::{AbstractionLevel, SummarizationPolicyId, SummarizationTrigger, TenantId, Timestamp, TrajectoryId};
+use caliber_core::{
+    AbstractionLevel, SummarizationPolicyId, SummarizationTrigger, TenantId, Timestamp,
+    TrajectoryId,
+};
 use serde::{Deserialize, Serialize};
 
 /// Request to create a summarization policy.

@@ -16,9 +16,14 @@
 use caliber_api::{
     components::ArtifactListFilter,
     db::DbClient,
-    types::{ArtifactResponse, CreateArtifactRequest, CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse},
+    types::{
+        ArtifactResponse, CreateArtifactRequest, CreateScopeRequest, CreateTrajectoryRequest,
+        ScopeResponse,
+    },
 };
-use caliber_core::{ArtifactId, EntityIdType, ScopeId, TenantId, TrajectoryId, ArtifactType, ExtractionMethod, TTL};
+use caliber_core::{
+    ArtifactId, ArtifactType, EntityIdType, ExtractionMethod, ScopeId, TenantId, TrajectoryId, TTL,
+};
 use proptest::prelude::*;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -233,7 +238,16 @@ fn create_artifact_request_strategy(
         optional_metadata_strategy(),
     )
         .prop_map(
-            move |(artifact_type, name, content, source_turn, extraction_method, confidence, ttl, metadata)| {
+            move |(
+                artifact_type,
+                name,
+                content,
+                source_turn,
+                extraction_method,
+                confidence,
+                ttl,
+                metadata,
+            )| {
                 CreateArtifactRequest {
                     trajectory_id,
                     scope_id,
@@ -896,7 +910,9 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -925,7 +941,9 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Either it fails, or it succeeds with empty content
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -954,7 +972,9 @@ mod edge_cases {
         };
 
         // This should fail validation
-        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Should fail
         assert!(result.is_err());
@@ -982,7 +1002,9 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
+            .await;
         assert!(result.is_err(), "Confidence > 1.0 should fail");
 
         // Test confidence < 0.0
@@ -991,7 +1013,9 @@ mod edge_cases {
             ..create_req
         };
 
-        let result2 = db.create::<ArtifactResponse>(&create_req2, auth.tenant_id).await;
+        let result2 = db
+            .create::<ArtifactResponse>(&create_req2, auth.tenant_id)
+            .await;
         assert!(result2.is_err(), "Confidence < 0.0 should fail");
         Ok(())
     }
@@ -1019,7 +1043,9 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.create::<ArtifactResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ArtifactResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -1393,7 +1419,7 @@ mod edge_cases {
 
         // Content hash should be SHA-256 (32 bytes)
         assert_eq!(created.content_hash.len(), 32);
-        
+
         // Hash should not be all zeros
         assert_ne!(created.content_hash, [0u8; 32]);
         Ok(())

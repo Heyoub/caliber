@@ -11,16 +11,54 @@ pub use caliber_storage::MockStorage;
 
 // Re-export core types for convenience
 pub use caliber_core::{
-    AbstractionLevel, Artifact, ArtifactType, CaliberConfig, CaliberError, CaliberResult,
-    Checkpoint, ContentHash, ContextPersistence, EmbeddingVector, EntityRef,
-    EntityType, ExtractionMethod, MemoryCategory, Note, NoteType, OutcomeStatus, Provenance,
-    ProviderConfig, RawContent, RetryConfig, Scope, SectionPriorities, StorageError,
-    TTL, Timestamp, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
-    ValidationMode, VectorError, compute_content_hash,
-    // Strongly-typed entity IDs
-    TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, AgentId, EntityIdType,
+    compute_content_hash,
+    AbstractionLevel,
+    AgentId,
+    Artifact,
+    ArtifactId,
+    ArtifactType,
+    CaliberConfig,
+    CaliberError,
+    CaliberResult,
+    Checkpoint,
+    ContentHash,
+    ContextPersistence,
     // LLM types for mock providers
-    EmbeddingProvider, SummarizationProvider, SummarizeConfig, SummarizeStyle, ExtractedArtifact,
+    EmbeddingProvider,
+    EmbeddingVector,
+    EntityIdType,
+    EntityRef,
+    EntityType,
+    ExtractedArtifact,
+    ExtractionMethod,
+    MemoryCategory,
+    Note,
+    NoteId,
+    NoteType,
+    OutcomeStatus,
+    Provenance,
+    ProviderConfig,
+    RawContent,
+    RetryConfig,
+    Scope,
+    ScopeId,
+    SectionPriorities,
+    StorageError,
+    SummarizationProvider,
+    SummarizeConfig,
+    SummarizeStyle,
+    Timestamp,
+    Trajectory,
+    // Strongly-typed entity IDs
+    TrajectoryId,
+    TrajectoryOutcome,
+    TrajectoryStatus,
+    Turn,
+    TurnId,
+    TurnRole,
+    ValidationMode,
+    VectorError,
+    TTL,
 };
 
 use async_trait::async_trait;
@@ -178,7 +216,7 @@ use uuid::Uuid;
 
 pub mod generators {
     //! Proptest strategies for generating CALIBER entity types.
-    
+
     use super::*;
     use proptest::prelude::*;
 
@@ -227,9 +265,8 @@ pub mod generators {
     /// Generate a Timestamp (DateTime<Utc>).
     pub fn arb_timestamp() -> impl Strategy<Value = Timestamp> {
         // Generate timestamps within a reasonable range (2020-2030)
-        (1577836800i64..1893456000i64).prop_map(|secs| {
-            chrono::DateTime::from_timestamp(secs, 0).unwrap_or_else(Utc::now)
-        })
+        (1577836800i64..1893456000i64)
+            .prop_map(|secs| chrono::DateTime::from_timestamp(secs, 0).unwrap_or_else(Utc::now))
     }
 
     /// Generate a ContentHash (32 bytes).
@@ -379,10 +416,7 @@ pub mod generators {
 
     /// Generate an EntityRef.
     pub fn arb_entity_ref() -> impl Strategy<Value = EntityRef> {
-        (arb_entity_type(), arb_uuid()).prop_map(|(entity_type, id)| EntityRef {
-            entity_type,
-            id,
-        })
+        (arb_entity_type(), arb_uuid()).prop_map(|(entity_type, id)| EntityRef { entity_type, id })
     }
 
     /// Generate a Provenance struct.
@@ -512,7 +546,10 @@ pub mod generators {
     }
 
     /// Generate an Artifact struct.
-    pub fn arb_artifact(trajectory_id: TrajectoryId, scope_id: ScopeId) -> impl Strategy<Value = Artifact> {
+    pub fn arb_artifact(
+        trajectory_id: TrajectoryId,
+        scope_id: ScopeId,
+    ) -> impl Strategy<Value = Artifact> {
         (
             arb_artifact_id(),
             arb_artifact_type(),
@@ -524,7 +561,16 @@ pub mod generators {
             arb_timestamp(),
         )
             .prop_map(
-                move |(artifact_id, artifact_type, name, content, provenance, ttl, created_at, updated_at)| {
+                move |(
+                    artifact_id,
+                    artifact_type,
+                    name,
+                    content,
+                    provenance,
+                    ttl,
+                    created_at,
+                    updated_at,
+                )| {
                     let content_hash = compute_content_hash(content.as_bytes());
                     Artifact {
                         artifact_id,
@@ -560,7 +606,17 @@ pub mod generators {
             0i32..1000,
         )
             .prop_map(
-                move |(note_id, note_type, title, content, ttl, created_at, updated_at, accessed_at, access_count)| {
+                move |(
+                    note_id,
+                    note_type,
+                    title,
+                    content,
+                    ttl,
+                    created_at,
+                    updated_at,
+                    accessed_at,
+                    access_count,
+                )| {
                     let content_hash = compute_content_hash(content.as_bytes());
                     Note {
                         note_id,
@@ -621,31 +677,29 @@ pub mod generators {
             0i32..100,
             0i32..100,
         )
-            .prop_map(|(user, system, persona, artifacts, notes, history)| SectionPriorities {
-                user,
-                system,
-                persona,
-                artifacts,
-                notes,
-                history,
-                custom: vec![],
+            .prop_map(|(user, system, persona, artifacts, notes, history)| {
+                SectionPriorities {
+                    user,
+                    system,
+                    persona,
+                    artifacts,
+                    notes,
+                    history,
+                    custom: vec![],
+                }
             })
     }
 
     /// Generate a RetryConfig struct.
     pub fn arb_retry_config() -> impl Strategy<Value = RetryConfig> {
-        (
-            0i32..10,
-            1u64..1000,
-            1000u64..60000,
-            1.1f32..5.0f32,
-        )
-            .prop_map(|(max_retries, initial_ms, max_ms, multiplier)| RetryConfig {
+        (0i32..10, 1u64..1000, 1000u64..60000, 1.1f32..5.0f32).prop_map(
+            |(max_retries, initial_ms, max_ms, multiplier)| RetryConfig {
                 max_retries,
                 initial_backoff: Duration::from_millis(initial_ms),
                 max_backoff: Duration::from_millis(max_ms),
                 backoff_multiplier: multiplier,
-            })
+            },
+        )
     }
 
     /// Generate a valid CaliberConfig struct.
@@ -697,14 +751,13 @@ pub mod generators {
     }
 }
 
-
 // ============================================================================
 // TEST FIXTURES (Task 13.4)
 // ============================================================================
 
 pub mod fixtures {
     //! Pre-built test fixtures for common testing scenarios.
-    
+
     use super::*;
 
     /// Create a minimal valid CaliberConfig for testing.
@@ -891,7 +944,9 @@ pub mod fixtures {
 
     /// Create a test EmbeddingVector with specified dimensions.
     pub fn test_embedding(dimensions: usize) -> EmbeddingVector {
-        let data: Vec<f32> = (0..dimensions).map(|i| (i as f32) / (dimensions as f32)).collect();
+        let data: Vec<f32> = (0..dimensions)
+            .map(|i| (i as f32) / (dimensions as f32))
+            .collect();
         EmbeddingVector::new(data, "test-model".to_string())
     }
 
@@ -905,14 +960,13 @@ pub mod fixtures {
     }
 }
 
-
 // ============================================================================
 // CUSTOM ASSERTIONS (Task 13.5)
 // ============================================================================
 
 pub mod assertions {
     //! Custom assertion macros and functions for CALIBER-specific validation.
-    
+
     use super::*;
 
     /// Assert that a CaliberResult is Ok.
@@ -938,12 +992,20 @@ pub mod assertions {
 
     /// Assert that a CaliberResult is a NotFound storage error.
     #[track_caller]
-    pub fn assert_not_found<T: std::fmt::Debug>(result: &CaliberResult<T>, entity_type: EntityType) {
+    pub fn assert_not_found<T: std::fmt::Debug>(
+        result: &CaliberResult<T>,
+        entity_type: EntityType,
+    ) {
         match result {
-            Err(CaliberError::Storage(StorageError::NotFound { entity_type: et, .. })) => {
+            Err(CaliberError::Storage(StorageError::NotFound {
+                entity_type: et, ..
+            })) => {
                 assert_eq!(*et, entity_type, "Wrong entity type in NotFound error");
             }
-            other => panic!("Expected NotFound error for {:?}, got: {:?}", entity_type, other),
+            other => panic!(
+                "Expected NotFound error for {:?}, got: {:?}",
+                entity_type, other
+            ),
         }
     }
 
@@ -973,7 +1035,10 @@ pub mod assertions {
         got: i32,
     ) {
         match result {
-            Err(CaliberError::Vector(VectorError::DimensionMismatch { expected: e, got: g })) => {
+            Err(CaliberError::Vector(VectorError::DimensionMismatch {
+                expected: e,
+                got: g,
+            })) => {
                 assert_eq!(*e, expected, "Wrong expected dimension");
                 assert_eq!(*g, got, "Wrong got dimension");
             }
@@ -1067,14 +1132,20 @@ pub mod assertions {
     #[track_caller]
     pub fn assert_scope_active(scope: &Scope) {
         assert!(scope.is_active, "Expected scope to be active");
-        assert!(scope.closed_at.is_none(), "Active scope should not have closed_at");
+        assert!(
+            scope.closed_at.is_none(),
+            "Active scope should not have closed_at"
+        );
     }
 
     /// Assert that a Scope is closed.
     #[track_caller]
     pub fn assert_scope_closed(scope: &Scope) {
         assert!(!scope.is_active, "Expected scope to be closed");
-        assert!(scope.closed_at.is_some(), "Closed scope should have closed_at");
+        assert!(
+            scope.closed_at.is_some(),
+            "Closed scope should have closed_at"
+        );
     }
 
     /// Assert that token usage is within budget.
@@ -1097,7 +1168,6 @@ pub mod assertions {
         }
     }
 }
-
 
 // ============================================================================
 // TESTS
@@ -1153,7 +1223,9 @@ mod tests {
     fn test_test_note_fixture() {
         let trajectory = fixtures::active_trajectory();
         let note = fixtures::test_note(trajectory.trajectory_id);
-        assert!(note.source_trajectory_ids.contains(&trajectory.trajectory_id));
+        assert!(note
+            .source_trajectory_ids
+            .contains(&trajectory.trajectory_id));
         assert_eq!(note.note_type, NoteType::Fact);
     }
 
@@ -1161,11 +1233,11 @@ mod tests {
     fn test_turn_fixtures() {
         let trajectory = fixtures::active_trajectory();
         let scope = fixtures::active_scope(trajectory.trajectory_id);
-        
+
         let user = fixtures::user_turn(scope.scope_id, 1);
         assert_eq!(user.role, TurnRole::User);
         assert_eq!(user.sequence, 1);
-        
+
         let assistant = fixtures::assistant_turn(scope.scope_id, 2);
         assert_eq!(assistant.role, TurnRole::Assistant);
         assert_eq!(assistant.sequence, 2);
@@ -1176,7 +1248,7 @@ mod tests {
         let embedding = fixtures::test_embedding(384);
         assertions::assert_valid_embedding(&embedding);
         assert_eq!(embedding.dimensions, 384);
-        
+
         let unit = fixtures::unit_embedding(384, 0);
         assertions::assert_valid_embedding(&unit);
         assert_eq!(unit.data[0], 1.0);
@@ -1194,10 +1266,11 @@ mod tests {
 
     #[test]
     fn test_assertion_dimension_mismatch() {
-        let result: CaliberResult<f32> = Err(CaliberError::Vector(VectorError::DimensionMismatch {
-            expected: 384,
-            got: 768,
-        }));
+        let result: CaliberResult<f32> =
+            Err(CaliberError::Vector(VectorError::DimensionMismatch {
+                expected: 384,
+                got: 768,
+            }));
         assertions::assert_dimension_mismatch(&result, 384, 768);
     }
 

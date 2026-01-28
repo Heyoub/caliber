@@ -5,11 +5,26 @@
 //! and recovery mechanisms.
 
 use caliber_core::{
-    AbstractionLevel, AgentId, Artifact, ArtifactId, CaliberConfig, CaliberError, CaliberResult,
-    EntityIdType, NoteId, RawContent, Scope, ScopeId, SummarizationPolicy, SummarizationPolicyId,
-    SummarizationTrigger, Timestamp, TrajectoryId, ValidationError,
+    AbstractionLevel,
+    AgentId,
+    Artifact,
+    ArtifactId,
+    CaliberConfig,
+    CaliberError,
+    CaliberResult,
     // Re-exported from caliber-core (was previously defined locally)
     ConflictResolution,
+    EntityIdType,
+    NoteId,
+    RawContent,
+    Scope,
+    ScopeId,
+    SummarizationPolicy,
+    SummarizationPolicyId,
+    SummarizationTrigger,
+    Timestamp,
+    TrajectoryId,
+    ValidationError,
 };
 use chrono::Utc;
 use regex::Regex;
@@ -149,7 +164,6 @@ impl MemoryCommit {
         self.tokens_input + self.tokens_output
     }
 }
-
 
 // ============================================================================
 // RECALL SERVICE (Task 8.2)
@@ -334,9 +348,8 @@ impl RecallService {
                 let has_decision = contains_decision_keywords(&c.response);
 
                 // Filter by topic if provided
-                let topic_match = topic.is_none_or(|t| {
-                    c.query.to_lowercase().contains(&t.to_lowercase())
-                });
+                let topic_match =
+                    topic.is_none_or(|t| c.query.to_lowercase().contains(&t.to_lowercase()));
 
                 (mode_match || has_decision) && topic_match
             })
@@ -392,7 +405,10 @@ impl RecallService {
     ///
     /// # Returns
     /// Memory statistics
-    pub fn get_memory_stats(&self, trajectory_id: Option<TrajectoryId>) -> CaliberResult<MemoryStats> {
+    pub fn get_memory_stats(
+        &self,
+        trajectory_id: Option<TrajectoryId>,
+    ) -> CaliberResult<MemoryStats> {
         let filtered: Vec<&MemoryCommit> = self
             .commits
             .iter()
@@ -435,7 +451,6 @@ impl RecallService {
         })
     }
 }
-
 
 // ============================================================================
 // DECISION EXTRACTION (Task 8.3)
@@ -513,10 +528,10 @@ fn extract_first_sentence(text: &str) -> String {
             // Include the punctuation - use byte position after the char
             return text[..i + c.len_utf8()].trim().to_string();
         }
-        
+
         char_count += 1;
         last_valid_pos = i + c.len_utf8();
-        
+
         if char_count >= max_chars {
             break;
         }
@@ -529,7 +544,6 @@ fn extract_first_sentence(text: &str) -> String {
         text.to_string()
     }
 }
-
 
 // ============================================================================
 // PCP CONFIG (Task 8.4)
@@ -739,7 +753,6 @@ impl PCPConfig {
 // NOTE: Default impl intentionally removed per REQ-6 (PCP Configuration Without Defaults)
 // All PCPConfig values must be explicitly provided by the user.
 // This follows the CALIBER philosophy: "NOTHING HARD-CODED. This is a FRAMEWORK, not a product."
-
 
 // ============================================================================
 // VALIDATION TYPES (Task 8.5, 8.6)
@@ -990,7 +1003,6 @@ impl PCPRuntime {
     }
 }
 
-
 // ============================================================================
 // VALIDATION IMPLEMENTATION (Task 8.6)
 // ============================================================================
@@ -1115,7 +1127,6 @@ impl PCPRuntime {
     }
 }
 
-
 // ============================================================================
 // CONTRADICTION DETECTION (Task 8.7)
 // ============================================================================
@@ -1131,7 +1142,10 @@ impl PCPRuntime {
     ///
     /// # Returns
     /// Vector of detected contradictions
-    pub fn detect_contradictions(&self, artifacts: &[Artifact]) -> CaliberResult<Vec<Contradiction>> {
+    pub fn detect_contradictions(
+        &self,
+        artifacts: &[Artifact],
+    ) -> CaliberResult<Vec<Contradiction>> {
         let mut contradictions = Vec::new();
 
         // Compare each pair of artifacts
@@ -1141,11 +1155,11 @@ impl PCPRuntime {
                 let artifact_b = &artifacts[j];
 
                 // Skip if either artifact lacks an embedding
-                let (embedding_a, embedding_b) = match (&artifact_a.embedding, &artifact_b.embedding)
-                {
-                    (Some(a), Some(b)) => (a, b),
-                    _ => continue,
-                };
+                let (embedding_a, embedding_b) =
+                    match (&artifact_a.embedding, &artifact_b.embedding) {
+                        (Some(a), Some(b)) => (a, b),
+                        _ => continue,
+                    };
 
                 // Calculate similarity
                 let similarity = match embedding_a.cosine_similarity(embedding_b) {
@@ -1175,7 +1189,6 @@ impl PCPRuntime {
         Ok(contradictions)
     }
 }
-
 
 // ============================================================================
 // DOSAGE LIMITS (Task 8.8)
@@ -1249,9 +1262,7 @@ impl PCPRuntime {
             result.tokens_trimmed = current_tokens - self.config.dosage.max_tokens_per_scope;
             result.add_warning(format!(
                 "Token limit exceeded: {} > {}. Need to trim {} tokens.",
-                current_tokens,
-                self.config.dosage.max_tokens_per_scope,
-                result.tokens_trimmed
+                current_tokens, self.config.dosage.max_tokens_per_scope, result.tokens_trimmed
             ));
         }
 
@@ -1300,7 +1311,6 @@ impl PCPRuntime {
             || new_tokens > self.config.dosage.max_tokens_per_scope
     }
 }
-
 
 // ============================================================================
 // ARTIFACT LINTING (Task 8.9)
@@ -1434,7 +1444,6 @@ impl PCPRuntime {
     }
 }
 
-
 // ============================================================================
 // CHECKPOINT CREATION AND RECOVERY (Task 8.10)
 // ============================================================================
@@ -1458,10 +1467,12 @@ impl PCPRuntime {
     ) -> CaliberResult<PCPCheckpoint> {
         // Check if recovery is enabled
         if !self.config.recovery.enabled {
-            return Err(CaliberError::Validation(ValidationError::ConstraintViolation {
-                constraint: "recovery.enabled".to_string(),
-                reason: "Recovery is disabled in configuration".to_string(),
-            }));
+            return Err(CaliberError::Validation(
+                ValidationError::ConstraintViolation {
+                    constraint: "recovery.enabled".to_string(),
+                    reason: "Recovery is disabled in configuration".to_string(),
+                },
+            ));
         }
 
         // Serialize the scope state
@@ -1504,7 +1515,8 @@ impl PCPRuntime {
         let max = self.config.recovery.max_checkpoints as usize;
         if self.checkpoints.len() > max {
             // Sort by created_at ascending (oldest first)
-            self.checkpoints.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            self.checkpoints
+                .sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
             // Remove oldest checkpoints
             let excess = self.checkpoints.len() - max;
@@ -1519,7 +1531,10 @@ impl PCPRuntime {
     ///
     /// # Returns
     /// RecoveryResult with the recovered scope
-    pub fn recover_from_checkpoint(&self, checkpoint: &PCPCheckpoint) -> CaliberResult<RecoveryResult> {
+    pub fn recover_from_checkpoint(
+        &self,
+        checkpoint: &PCPCheckpoint,
+    ) -> CaliberResult<RecoveryResult> {
         // Check if recovery is enabled
         if !self.config.recovery.enabled {
             return Ok(RecoveryResult::failure(vec![
@@ -1596,7 +1611,6 @@ impl PCPRuntime {
         initial_len - self.checkpoints.len()
     }
 }
-
 
 // ============================================================================
 // BATTLE INTEL FEATURE 4: SUMMARIZATION TRIGGER CHECKING
@@ -1728,7 +1742,6 @@ impl PCPRuntime {
     }
 }
 
-
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -1738,7 +1751,7 @@ mod tests {
     use super::*;
     use caliber_core::{
         ArtifactType, ContextPersistence, ExtractionMethod, Provenance, RetryConfig,
-        SectionPriorities, TTL, ValidationMode,
+        SectionPriorities, ValidationMode, TTL,
     };
     use std::time::Duration;
 
@@ -2029,7 +2042,10 @@ mod tests {
             .validate_context_integrity(&scope, &artifacts, 1000)
             .unwrap();
         // Should have a warning about dosage
-        assert!(result.issues.iter().any(|i| i.issue_type == IssueType::DosageExceeded));
+        assert!(result
+            .issues
+            .iter()
+            .any(|i| i.issue_type == IssueType::DosageExceeded));
     }
 
     // ========================================================================
@@ -2093,10 +2109,12 @@ mod tests {
 
         let result = runtime.lint_artifact(&artifact2, &[artifact1]).unwrap();
         assert!(!result.passed);
-        assert!(result.issues.iter().any(|i| i.issue_type == LintIssueType::Duplicate));
+        assert!(result
+            .issues
+            .iter()
+            .any(|i| i.issue_type == LintIssueType::Duplicate));
     }
 }
-
 
 // ============================================================================
 // PROPERTY-BASED TESTS (Task 8.11)
@@ -2105,10 +2123,7 @@ mod tests {
 #[cfg(test)]
 mod prop_tests {
     use super::*;
-    use caliber_core::{
-        ContextPersistence, RetryConfig,
-        SectionPriorities, ValidationMode,
-    };
+    use caliber_core::{ContextPersistence, RetryConfig, SectionPriorities, ValidationMode};
     use proptest::prelude::*;
     use std::time::Duration;
 

@@ -3,11 +3,11 @@
 //! This module contains agent identity, memory access control, and message types
 //! that were consolidated from caliber-agents into caliber-core.
 
-use crate::{
-    identity::EntityIdType, AbstractionLevel, ActionId, AgentId, BeliefId, GoalId,
-    LearningId, ObservationId, PlanId, StepId, Timestamp, TrajectoryId,
-};
 use crate::event::EvidenceRef;
+use crate::{
+    identity::EntityIdType, AbstractionLevel, ActionId, AgentId, BeliefId, GoalId, LearningId,
+    ObservationId, PlanId, StepId, Timestamp, TrajectoryId,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -673,7 +673,6 @@ impl MemoryRegionConfig {
 // TESTS
 // ============================================================================
 
-
 // ============================================================================
 // BDI PRIMITIVES: GOAL SYSTEM (Phase 2.2)
 // ============================================================================
@@ -800,11 +799,7 @@ pub struct AgentGoal {
 
 impl AgentGoal {
     /// Create a new goal.
-    pub fn new(
-        agent_id: AgentId,
-        description: impl Into<String>,
-        goal_type: GoalType,
-    ) -> Self {
+    pub fn new(agent_id: AgentId, description: impl Into<String>, goal_type: GoalType) -> Self {
         Self {
             goal_id: GoalId::now_v7(),
             agent_id,
@@ -1091,7 +1086,9 @@ impl AgentPlan {
 
     /// Get next pending step.
     pub fn next_step(&self) -> Option<&PlanStep> {
-        self.steps.iter().find(|s| s.status == StepStatus::Pending || s.status == StepStatus::Ready)
+        self.steps
+            .iter()
+            .find(|s| s.status == StepStatus::Pending || s.status == StepStatus::Ready)
     }
 }
 
@@ -1147,14 +1144,9 @@ pub enum BackoffStrategy {
     #[default]
     None,
     /// Fixed delay
-    Fixed {
-        delay_ms: i64,
-    },
+    Fixed { delay_ms: i64 },
     /// Linear backoff
-    Linear {
-        base_ms: i64,
-        increment_ms: i64,
-    },
+    Linear { base_ms: i64, increment_ms: i64 },
     /// Exponential backoff
     Exponential {
         base_ms: i64,
@@ -1169,10 +1161,15 @@ impl BackoffStrategy {
         match self {
             BackoffStrategy::None => 0,
             BackoffStrategy::Fixed { delay_ms } => *delay_ms,
-            BackoffStrategy::Linear { base_ms, increment_ms } => {
-                base_ms + (attempt as i64 * increment_ms)
-            }
-            BackoffStrategy::Exponential { base_ms, multiplier, max_ms } => {
+            BackoffStrategy::Linear {
+                base_ms,
+                increment_ms,
+            } => base_ms + (attempt as i64 * increment_ms),
+            BackoffStrategy::Exponential {
+                base_ms,
+                multiplier,
+                max_ms,
+            } => {
                 let delay = (*base_ms as f64) * multiplier.powi(attempt);
                 (delay as i64).min(*max_ms)
             }
@@ -1243,11 +1240,7 @@ pub struct AgentAction {
 
 impl AgentAction {
     /// Create a new action.
-    pub fn new(
-        agent_id: AgentId,
-        action_type: ActionType,
-        description: impl Into<String>,
-    ) -> Self {
+    pub fn new(agent_id: AgentId, action_type: ActionType, description: impl Into<String>) -> Self {
         Self {
             action_id: ActionId::now_v7(),
             agent_id,
@@ -1812,11 +1805,18 @@ mod tests {
         let fixed = BackoffStrategy::Fixed { delay_ms: 100 };
         assert_eq!(fixed.delay_for_attempt(3), 100);
 
-        let linear = BackoffStrategy::Linear { base_ms: 50, increment_ms: 10 };
+        let linear = BackoffStrategy::Linear {
+            base_ms: 50,
+            increment_ms: 10,
+        };
         assert_eq!(linear.delay_for_attempt(0), 50);
         assert_eq!(linear.delay_for_attempt(3), 80);
 
-        let exp = BackoffStrategy::Exponential { base_ms: 100, multiplier: 2.0, max_ms: 1000 };
+        let exp = BackoffStrategy::Exponential {
+            base_ms: 100,
+            multiplier: 2.0,
+            max_ms: 1000,
+        };
         assert_eq!(exp.delay_for_attempt(0), 100);
         assert_eq!(exp.delay_for_attempt(3), 800);
         assert_eq!(exp.delay_for_attempt(4), 1000);
@@ -1828,7 +1828,11 @@ mod tests {
         assert_eq!(policy.max_attempts, 3);
         assert_eq!(policy.timeout_per_attempt_ms, 30_000);
         match policy.backoff {
-            BackoffStrategy::Exponential { base_ms, multiplier, max_ms } => {
+            BackoffStrategy::Exponential {
+                base_ms,
+                multiplier,
+                max_ms,
+            } => {
                 assert_eq!(base_ms, 100);
                 assert!((multiplier - 2.0).abs() < f64::EPSILON);
                 assert_eq!(max_ms, 10_000);
@@ -1892,8 +1896,13 @@ mod tests {
     #[test]
     fn test_belief_confidence_clamp_and_active() {
         let agent_id = AgentId::now_v7();
-        let mut belief = Belief::new(agent_id, "fact", BeliefType::Fact, BeliefSource::Observation)
-            .with_confidence(2.5);
+        let mut belief = Belief::new(
+            agent_id,
+            "fact",
+            BeliefType::Fact,
+            BeliefSource::Observation,
+        )
+        .with_confidence(2.5);
         assert_eq!(belief.confidence, 1.0);
 
         let before_update = belief.updated_at;
@@ -1912,9 +1921,20 @@ mod tests {
         let agent_id = AgentId::now_v7();
         let mut beliefs = AgentBeliefs::new(agent_id);
 
-        let fact = Belief::new(agent_id, "fact", BeliefType::Fact, BeliefSource::MemoryRecall);
-        let hypothesis = Belief::new(agent_id, "maybe", BeliefType::Hypothesis, BeliefSource::Inference);
-        let mut superseded = Belief::new(agent_id, "old", BeliefType::Fact, BeliefSource::Observation);
+        let fact = Belief::new(
+            agent_id,
+            "fact",
+            BeliefType::Fact,
+            BeliefSource::MemoryRecall,
+        );
+        let hypothesis = Belief::new(
+            agent_id,
+            "maybe",
+            BeliefType::Hypothesis,
+            BeliefSource::Inference,
+        );
+        let mut superseded =
+            Belief::new(agent_id, "old", BeliefType::Fact, BeliefSource::Observation);
         superseded.supersede(BeliefId::now_v7());
 
         beliefs.add(fact.clone());
@@ -1936,10 +1956,14 @@ mod tests {
         let action_id = ActionId::now_v7();
         let belief_id = BeliefId::now_v7();
 
-        let learning = Learning::new(ObservationId::now_v7(), LearningType::PatternRecognition, "pattern")
-            .with_abstraction(AbstractionLevel::Summary)
-            .with_applicability("global")
-            .with_confidence(0.4);
+        let learning = Learning::new(
+            ObservationId::now_v7(),
+            LearningType::PatternRecognition,
+            "pattern",
+        )
+        .with_abstraction(AbstractionLevel::Summary)
+        .with_applicability("global")
+        .with_confidence(0.4);
 
         let mut obs = AgentObservation::new(agent_id, action_id, true, 150)
             .with_result(json!({"ok": true}))

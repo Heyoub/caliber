@@ -138,8 +138,14 @@ impl std::fmt::Debug for AuthConfig {
             .field("jwt_algorithm", &self.jwt_algorithm)
             .field("jwt_expiration_secs", &self.jwt_expiration_secs)
             .field("require_tenant_header", &self.require_tenant_header)
-            .field("workos_client_id", &self.workos_client_id.as_ref().map(|_| "[REDACTED]"))
-            .field("workos_api_key", &self.workos_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "workos_client_id",
+                &self.workos_client_id.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "workos_api_key",
+                &self.workos_api_key.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("workos_redirect_uri", &self.workos_redirect_uri)
             .field("auth_provider", &self.auth_provider)
             .finish()
@@ -251,12 +257,12 @@ impl AuthConfig {
 
         Ok(())
     }
-    
+
     /// Add an API key to the valid set.
     pub fn add_api_key(&mut self, key: String) {
         self.api_keys.insert(key);
     }
-    
+
     /// Check if an API key is valid.
     pub fn is_valid_api_key(&self, key: &str) -> bool {
         self.api_keys.contains(key)
@@ -289,16 +295,16 @@ fn build_jwt_secret(secret_str: String) -> JwtSecret {
 pub struct Claims {
     /// Subject (user ID)
     pub sub: String,
-    
+
     /// Issued at (Unix timestamp)
     pub iat: i64,
-    
+
     /// Expiration time (Unix timestamp)
     pub exp: i64,
-    
+
     /// Tenant ID the user has access to
     pub tenant_id: Option<String>,
-    
+
     /// User roles/permissions
     #[serde(default)]
     pub roles: Vec<String>,
@@ -317,25 +323,25 @@ impl Claims {
             roles: Vec::new(),
         }
     }
-    
+
     /// Add a role to the claims.
     pub fn with_role(mut self, role: String) -> Self {
         self.roles.push(role);
         self
     }
-    
+
     /// Add multiple roles to the claims.
     pub fn with_roles(mut self, roles: Vec<String>) -> Self {
         self.roles.extend(roles);
         self
     }
-    
+
     /// Check if the token has expired.
     pub fn is_expired(&self) -> bool {
         let now = chrono::Utc::now().timestamp();
         self.exp < now
     }
-    
+
     /// Get the tenant ID as TenantId.
     pub fn tenant_id(&self) -> Option<TenantId> {
         self.tenant_id
@@ -415,17 +421,17 @@ impl AuthContext {
             last_name,
         }
     }
-    
+
     /// Check if the user has a specific role.
     pub fn has_role(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role)
     }
-    
+
     /// Check if the user has any of the specified roles.
     pub fn has_any_role(&self, roles: &[&str]) -> bool {
         roles.iter().any(|role| self.has_role(role))
     }
-    
+
     /// Check if the user has all of the specified roles.
     pub fn has_all_roles(&self, roles: &[&str]) -> bool {
         roles.iter().all(|role| self.has_role(role))
@@ -465,12 +471,12 @@ pub fn validate_api_key(config: &AuthConfig, api_key: &str) -> ApiResult<()> {
 /// Returns the claims if the token is valid, Err otherwise.
 pub fn validate_jwt_token(config: &AuthConfig, token: &str) -> ApiResult<Claims> {
     let decoding_key = DecodingKey::from_secret(config.jwt_secret.expose().as_bytes());
-    
+
     let mut validation = Validation::new(config.jwt_algorithm);
     validation.validate_exp = true;
-    
-    let token_data = decode::<Claims>(token, &decoding_key, &validation)
-        .map_err(|e| match e.kind() {
+
+    let token_data =
+        decode::<Claims>(token, &decoding_key, &validation).map_err(|e| match e.kind() {
             jsonwebtoken::errors::ErrorKind::ExpiredSignature => ApiError::token_expired(),
             jsonwebtoken::errors::ErrorKind::InvalidToken => {
                 ApiError::invalid_token("Token is invalid")
@@ -480,14 +486,14 @@ pub fn validate_jwt_token(config: &AuthConfig, token: &str) -> ApiResult<Claims>
             }
             _ => ApiError::invalid_token(format!("Token validation failed: {}", e)),
         })?;
-    
+
     let claims = token_data.claims;
-    
+
     // Double-check expiration (validation should catch this, but be defensive)
     if claims.is_expired() {
         return Err(ApiError::token_expired());
     }
-    
+
     Ok(claims)
 }
 
@@ -529,7 +535,7 @@ pub fn authenticate_api_key(
 ) -> ApiResult<AuthContext> {
     // Validate API key
     validate_api_key(config, api_key)?;
-    
+
     // Extract tenant ID
     let tenant_id = if let Some(tenant_header) = tenant_id_header {
         extract_tenant_id(tenant_header)?
@@ -539,11 +545,11 @@ pub fn authenticate_api_key(
         // Use a default tenant ID if not required (for single-tenant deployments)
         TenantId::new(Uuid::nil())
     };
-    
+
     // For API key auth, we use the key itself as a user identifier
     // In production, you'd look up the user associated with the key
     let user_id = format!("api_key_{}", &api_key[..8.min(api_key.len())]);
-    
+
     Ok(AuthContext::new(
         user_id,
         tenant_id,
@@ -563,19 +569,21 @@ pub fn authenticate_jwt(
 ) -> ApiResult<AuthContext> {
     // Validate JWT and extract claims
     let claims = validate_jwt_token(config, token)?;
-    
+
     // Determine tenant ID (header takes precedence over JWT claim)
     let tenant_id = if let Some(tenant_header) = tenant_id_header {
         extract_tenant_id(tenant_header)?
     } else if let Some(jwt_tenant_id) = claims.tenant_id() {
         jwt_tenant_id
     } else if config.require_tenant_header {
-        return Err(ApiError::missing_field("X-Tenant-ID or JWT tenant_id claim"));
+        return Err(ApiError::missing_field(
+            "X-Tenant-ID or JWT tenant_id claim",
+        ));
     } else {
         // Use a default tenant ID if not required
         TenantId::new(Uuid::nil())
     };
-    
+
     Ok(AuthContext::new(
         claims.sub,
         tenant_id,
@@ -602,7 +610,7 @@ pub fn authenticate(
     if let Some(api_key) = api_key_header {
         return authenticate_api_key(config, api_key, tenant_id_header);
     }
-    
+
     // Try JWT authentication
     if let Some(auth_value) = auth_header {
         // Extract Bearer token
@@ -614,7 +622,7 @@ pub fn authenticate(
             ));
         }
     }
-    
+
     // No authentication provided
     Err(ApiError::unauthorized(
         "Authentication required: provide X-API-Key or Authorization header",
@@ -624,7 +632,10 @@ pub fn authenticate(
 /// Check if a user has access to a specific tenant.
 ///
 /// This validates that the authenticated user's tenant ID matches the requested tenant.
-pub fn check_tenant_access(auth_context: &AuthContext, requested_tenant_id: TenantId) -> ApiResult<()> {
+pub fn check_tenant_access(
+    auth_context: &AuthContext,
+    requested_tenant_id: TenantId,
+) -> ApiResult<()> {
     if auth_context.tenant_id == requested_tenant_id {
         Ok(())
     } else {
@@ -666,7 +677,7 @@ pub fn validate_tenant_ownership(
                 "Attempted access to resource without tenant_id (legacy data)"
             );
             Err(ApiError::forbidden(
-                "Access denied: resource has no tenant association (legacy data)"
+                "Access denied: resource has no tenant association (legacy data)",
             ))
         }
     }
@@ -707,27 +718,27 @@ mod tests {
             }
         }
     }
-    
+
     fn test_config() -> AuthConfig {
         let mut config = AuthConfig::default();
         config.add_api_key("test_key_123".to_string());
-        config.jwt_secret = JwtSecret::new("test_secret".to_string())
-            .expect("Test secret should be valid");
+        config.jwt_secret =
+            JwtSecret::new("test_secret".to_string()).expect("Test secret should be valid");
         config.require_tenant_header = false;
         config
     }
-    
+
     #[test]
     fn test_api_key_validation() {
         let config = test_config();
-        
+
         // Valid key
         assert!(validate_api_key(&config, "test_key_123").is_ok());
-        
+
         // Invalid key
         assert!(validate_api_key(&config, "invalid_key").is_err());
     }
-    
+
     #[test]
     fn test_jwt_generation_and_validation() -> ApiResult<()> {
         let config = test_config();
@@ -746,31 +757,26 @@ mod tests {
         assert!(!claims.is_expired());
         Ok(())
     }
-    
+
     #[test]
     fn test_expired_token() -> ApiResult<()> {
         let mut config = test_config();
         config.jwt_expiration_secs = -1; // Already expired
-        
-        let token = generate_jwt_token(
-            &config,
-            "user123".to_string(),
-            None,
-            vec![],
-        )?;
-        
+
+        let token = generate_jwt_token(&config, "user123".to_string(), None, vec![])?;
+
         // Reset expiration for validation
         config.jwt_expiration_secs = 3600;
-        
+
         let result = validate_jwt_token(&config, &token);
         assert!(result.is_err());
-        
+
         if let Err(e) = result {
             assert_eq!(e.code, crate::error::ErrorCode::TokenExpired);
         }
         Ok(())
     }
-    
+
     #[test]
     fn test_tenant_id_extraction() -> ApiResult<()> {
         let tenant_id = Uuid::now_v7();
@@ -784,17 +790,14 @@ mod tests {
         assert!(extract_tenant_id("not-a-uuid").is_err());
         Ok(())
     }
-    
+
     #[test]
     fn test_authenticate_api_key() -> ApiResult<()> {
         let config = test_config();
         let tenant_id = Uuid::now_v7();
 
-        let auth_context = authenticate_api_key(
-            &config,
-            "test_key_123",
-            Some(&tenant_id.to_string()),
-        )?;
+        let auth_context =
+            authenticate_api_key(&config, "test_key_123", Some(&tenant_id.to_string()))?;
 
         let expected_tenant = TenantId::new(tenant_id);
         assert_eq!(auth_context.tenant_id, expected_tenant);
@@ -802,7 +805,7 @@ mod tests {
         assert!(auth_context.has_role("api_user"));
         Ok(())
     }
-    
+
     #[test]
     fn test_authenticate_jwt() -> ApiResult<()> {
         let config = test_config();
@@ -826,30 +829,35 @@ mod tests {
         assert_eq!(auth_context.auth_method, AuthMethod::Jwt);
         Ok(())
     }
-    
+
     #[test]
     fn test_authenticate_with_api_key() -> ApiResult<()> {
         let config = test_config();
         let tenant_id = Uuid::now_v7();
-        
+
         let auth_context = authenticate(
             &config,
             Some("test_key_123"),
             None,
             Some(&tenant_id.to_string()),
         )?;
-        
+
         assert_eq!(auth_context.auth_method, AuthMethod::ApiKey);
         Ok(())
     }
-    
+
     #[test]
     fn test_authenticate_with_jwt() -> ApiResult<()> {
         let config = test_config();
         let user_id = "user123".to_string();
         let tenant_id = Uuid::now_v7();
 
-        let token = generate_jwt_token(&config, user_id.clone(), Some(TenantId::new(tenant_id)), vec![])?;
+        let token = generate_jwt_token(
+            &config,
+            user_id.clone(),
+            Some(TenantId::new(tenant_id)),
+            vec![],
+        )?;
 
         let auth_header = format!("Bearer {}", token);
 
@@ -859,28 +867,24 @@ mod tests {
         assert_eq!(auth_context.user_id, user_id);
         Ok(())
     }
-    
+
     #[test]
     fn test_authenticate_no_credentials() {
         let config = test_config();
-        
+
         let result = authenticate(&config, None, None, None);
         assert!(result.is_err());
-        
+
         if let Err(e) = result {
             assert_eq!(e.code, crate::error::ErrorCode::Unauthorized);
         }
     }
-    
+
     #[test]
     fn test_check_tenant_access() {
         let tenant_id = TenantId::new(Uuid::now_v7());
-        let auth_context = AuthContext::new(
-            "user123".to_string(),
-            tenant_id,
-            vec![],
-            AuthMethod::ApiKey,
-        );
+        let auth_context =
+            AuthContext::new("user123".to_string(), tenant_id, vec![], AuthMethod::ApiKey);
 
         // Same tenant - should succeed
         assert!(check_tenant_access(&auth_context, tenant_id).is_ok());
@@ -894,7 +898,7 @@ mod tests {
             assert_eq!(e.code, crate::error::ErrorCode::Forbidden);
         }
     }
-    
+
     #[test]
     fn test_auth_context_role_checks() {
         let auth_context = AuthContext::new(
@@ -914,7 +918,7 @@ mod tests {
         assert!(auth_context.has_all_roles(&["admin", "editor"]));
         assert!(!auth_context.has_all_roles(&["admin", "viewer"]));
     }
-    
+
     #[test]
     fn test_claims_creation() {
         let user_id = "user123".to_string();
@@ -946,7 +950,6 @@ mod tests {
 
         // Should succeed
         assert!(config.validate_for_production().is_ok());
-
     }
 
     #[test]
@@ -971,7 +974,6 @@ mod tests {
 
         // Should fail
         assert!(config.validate_for_production().is_err());
-
     }
 
     #[test]

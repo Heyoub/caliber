@@ -3,11 +3,7 @@
 //! This module implements Axum route handlers for configuration operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use std::sync::Arc;
 
 use crate::{
@@ -37,9 +33,7 @@ use crate::{
         ("bearer_auth" = [])
     )
 )]
-pub async fn get_config(
-    State(db): State<DbClient>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn get_config(State(db): State<DbClient>) -> ApiResult<impl IntoResponse> {
     let response = db.config_get().await?;
     Ok(Json(response))
 }

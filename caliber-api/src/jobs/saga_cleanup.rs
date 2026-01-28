@@ -75,8 +75,8 @@ impl Default for SagaCleanupConfig {
     fn default() -> Self {
         Self {
             check_interval: Duration::from_secs(60),
-            delegation_timeout: Duration::from_secs(3600),  // 1 hour
-            handoff_timeout: Duration::from_secs(1800),     // 30 minutes
+            delegation_timeout: Duration::from_secs(3600), // 1 hour
+            handoff_timeout: Duration::from_secs(1800),    // 30 minutes
             batch_size: 100,
             idempotency_cleanup_interval: Duration::from_secs(3600), // 1 hour
             log_timeouts: true,
@@ -101,8 +101,8 @@ impl SagaCleanupConfig {
     pub fn production() -> Self {
         Self {
             check_interval: Duration::from_secs(60),
-            delegation_timeout: Duration::from_secs(7200),  // 2 hours
-            handoff_timeout: Duration::from_secs(3600),     // 1 hour
+            delegation_timeout: Duration::from_secs(7200), // 2 hours
+            handoff_timeout: Duration::from_secs(3600),    // 1 hour
             batch_size: 100,
             idempotency_cleanup_interval: Duration::from_secs(3600),
             log_timeouts: true,
@@ -317,7 +317,9 @@ async fn cleanup_stuck_delegations(
         match timeout_delegation(db, delegation.id, "Cleanup: exceeded timeout threshold").await {
             Ok(true) => {
                 timed_out += 1;
-                metrics.delegations_timed_out.fetch_add(1, Ordering::Relaxed);
+                metrics
+                    .delegations_timed_out
+                    .fetch_add(1, Ordering::Relaxed);
             }
             Ok(false) => {
                 // Delegation was already updated (race condition) - not an error
@@ -449,10 +451,8 @@ async fn find_stuck_delegations(
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [
-        &timeout_interval,
-        &(batch_size as i64),
-    ];
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] =
+        [&timeout_interval, &(batch_size as i64)];
     let rows: Vec<tokio_postgres::Row> = client
         .query(
             "SELECT delegation_id, status, EXTRACT(EPOCH FROM stuck_duration) \
@@ -492,10 +492,8 @@ async fn find_stuck_handoffs(
         tokio_postgres::Error::__private_api_timeout()
     })?;
 
-    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [
-        &timeout_interval,
-        &(batch_size as i64),
-    ];
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] =
+        [&timeout_interval, &(batch_size as i64)];
     let rows: Vec<tokio_postgres::Row> = client
         .query(
             "SELECT handoff_id, status, EXTRACT(EPOCH FROM stuck_duration) \
@@ -537,10 +535,7 @@ async fn timeout_delegation(
 
     let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [&delegation_id, &reason];
     let row: tokio_postgres::Row = client
-        .query_one(
-            "SELECT caliber_timeout_delegation($1, $2)",
-            &params,
-        )
+        .query_one("SELECT caliber_timeout_delegation($1, $2)", &params)
         .await?;
 
     Ok(row.get(0))
@@ -559,10 +554,7 @@ async fn timeout_handoff(
 
     let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [&handoff_id, &reason];
     let row: tokio_postgres::Row = client
-        .query_one(
-            "SELECT caliber_timeout_handoff($1, $2)",
-            &params,
-        )
+        .query_one("SELECT caliber_timeout_handoff($1, $2)", &params)
         .await?;
 
     Ok(row.get(0))

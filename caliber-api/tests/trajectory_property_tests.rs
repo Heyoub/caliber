@@ -152,9 +152,15 @@ fn create_trajectory_request_strategy() -> impl Strategy<Value = CreateTrajector
 fn update_trajectory_request_strategy() -> impl Strategy<Value = UpdateTrajectoryRequest> {
     (
         prop::option::of(trajectory_name_strategy()),
-        prop::option::of(description_strategy().prop_map(|opt| opt.unwrap_or_else(|| "Updated description".to_string()))),
+        prop::option::of(
+            description_strategy()
+                .prop_map(|opt| opt.unwrap_or_else(|| "Updated description".to_string())),
+        ),
         prop::option::of(trajectory_status_strategy()),
-        prop::option::of(optional_metadata_strategy().prop_map(|opt| opt.unwrap_or_else(|| serde_json::json!({"updated": true})))),
+        prop::option::of(
+            optional_metadata_strategy()
+                .prop_map(|opt| opt.unwrap_or_else(|| serde_json::json!({"updated": true}))),
+        ),
     )
         .prop_filter(
             "At least one field must be updated",
@@ -162,12 +168,14 @@ fn update_trajectory_request_strategy() -> impl Strategy<Value = UpdateTrajector
                 name.is_some() || description.is_some() || status.is_some() || metadata.is_some()
             },
         )
-        .prop_map(|(name, description, status, metadata)| UpdateTrajectoryRequest {
-            name,
-            description,
-            status,
-            metadata,
-        })
+        .prop_map(
+            |(name, description, status, metadata)| UpdateTrajectoryRequest {
+                name,
+                description,
+                status,
+                metadata,
+            },
+        )
 }
 
 // ============================================================================
@@ -211,7 +219,7 @@ proptest! {
             prop_assert_eq!(&created.name, &create_req.name);
             prop_assert_eq!(&created.description, &create_req.description);
             prop_assert_eq!(&created.agent_id, &create_req.agent_id);
-            
+
             // Status should be Active by default
             prop_assert_eq!(created.status, TrajectoryStatus::Active);
 
@@ -677,7 +685,9 @@ mod edge_cases {
             .map_err(|e| e.to_string())?;
 
         // Should contain our trajectory
-        assert!(active_list.iter().any(|t| t.trajectory_id == active_traj.trajectory_id));
+        assert!(active_list
+            .iter()
+            .any(|t| t.trajectory_id == active_traj.trajectory_id));
 
         // Update to completed
         let update_req = UpdateTrajectoryRequest {
@@ -698,7 +708,9 @@ mod edge_cases {
             .map_err(|e| e.to_string())?;
 
         // Should contain our trajectory
-        assert!(completed_list.iter().any(|t| t.trajectory_id == active_traj.trajectory_id));
+        assert!(completed_list
+            .iter()
+            .any(|t| t.trajectory_id == active_traj.trajectory_id));
         Ok(())
     }
 }

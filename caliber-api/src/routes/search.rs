@@ -55,8 +55,7 @@ pub async fn search(
 
 /// Create the search routes router.
 pub fn create_router() -> axum::Router<AppState> {
-    axum::Router::new()
-        .route("/", axum::routing::post(search))
+    axum::Router::new().route("/", axum::routing::post(search))
 }
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
 //! Trajectory-related API types
 
-use caliber_core::{AgentId, ArtifactId, NoteId, OutcomeStatus, TenantId, Timestamp, TrajectoryId, TrajectoryStatus};
+use caliber_core::{
+    AgentId, ArtifactId, NoteId, OutcomeStatus, TenantId, Timestamp, TrajectoryId, TrajectoryStatus,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{Linkable, Links, LINK_REGISTRY};
@@ -110,7 +112,10 @@ impl Linkable for TrajectoryResponse {
 
     fn check_condition(&self, condition: &str) -> bool {
         match condition {
-            "mutable" => matches!(self.status, TrajectoryStatus::Active | TrajectoryStatus::Suspended),
+            "mutable" => matches!(
+                self.status,
+                TrajectoryStatus::Active | TrajectoryStatus::Suspended
+            ),
             "has_parent" => self.parent_trajectory_id.is_some(),
             _ => true,
         }

@@ -1,6 +1,6 @@
 use caliber_core::{
-    CaliberConfig, ContextAssembler, ContextPackage, ContextPersistence, EntityIdType,
-    RetryConfig, ScopeId, SectionPriorities, TrajectoryId, ValidationMode,
+    CaliberConfig, ContextAssembler, ContextPackage, ContextPersistence, EntityIdType, RetryConfig,
+    ScopeId, SectionPriorities, TrajectoryId, ValidationMode,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::time::Duration;

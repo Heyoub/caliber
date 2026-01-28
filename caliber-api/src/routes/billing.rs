@@ -17,13 +17,13 @@ use sha2::Sha256;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use caliber_core::{EntityIdType, TenantId};
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
     middleware::AuthExtractor,
     state::AppState,
 };
+use caliber_core::{EntityIdType, TenantId};
 
 // ============================================================================
 // TYPES
@@ -201,7 +201,9 @@ pub async fn get_billing_status(
                 error = %e,
                 "Failed to fetch billing status"
             );
-            return Err(ApiError::database_error("Unable to retrieve billing status"));
+            return Err(ApiError::database_error(
+                "Unable to retrieve billing status",
+            ));
         }
     };
 
@@ -231,9 +233,13 @@ pub async fn create_checkout(
     Json(req): Json<CreateCheckoutRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // Check if LemonSqueezy is configured
-    let store_id = state.store_id.as_ref()
+    let store_id = state
+        .store_id
+        .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Billing service not configured"))?;
-    let api_key = state.api_key.as_ref()
+    let api_key = state
+        .api_key
+        .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Billing service not configured"))?;
 
     // Get variant ID from request or default based on plan
@@ -281,7 +287,8 @@ pub async fn create_checkout(
     });
 
     // Call LemonSqueezy API to create checkout
-    let response = state.http_client
+    let response = state
+        .http_client
         .post("https://api.lemonsqueezy.com/v1/checkouts")
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/vnd.api+json")
@@ -293,10 +300,14 @@ pub async fn create_checkout(
     if !response.status().is_success() {
         let error_text = response.text().await.unwrap_or_default();
         tracing::error!(error = %error_text, "LemonSqueezy checkout creation failed");
-        return Err(ApiError::service_unavailable("Failed to create checkout session"));
+        return Err(ApiError::service_unavailable(
+            "Failed to create checkout session",
+        ));
     }
 
-    let checkout_response: serde_json::Value = response.json().await
+    let checkout_response: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| ApiError::internal_error(format!("Invalid checkout response: {}", e)))?;
 
     let checkout_url = checkout_response
@@ -336,25 +347,38 @@ pub async fn get_portal_url(
     State(state): State<Arc<BillingState>>,
 ) -> ApiResult<impl IntoResponse> {
     // Get customer ID for tenant from database
-    let customer_id = state.db.billing_get_customer_id(auth.tenant_id).await
+    let customer_id = state
+        .db
+        .billing_get_customer_id(auth.tenant_id)
+        .await
         .map_err(|_| ApiError::not_found("No subscription found for this tenant"))?;
 
-    let api_key = state.api_key.as_ref()
+    let api_key = state
+        .api_key
+        .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Billing service not configured"))?;
 
     // Get customer portal URL from LemonSqueezy
-    let response = state.http_client
-        .get(format!("https://api.lemonsqueezy.com/v1/customers/{}", customer_id))
+    let response = state
+        .http_client
+        .get(format!(
+            "https://api.lemonsqueezy.com/v1/customers/{}",
+            customer_id
+        ))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
         .map_err(|e| ApiError::service_unavailable(format!("Failed to get portal URL: {}", e)))?;
 
     if !response.status().is_success() {
-        return Err(ApiError::service_unavailable("Failed to get customer portal"));
+        return Err(ApiError::service_unavailable(
+            "Failed to get customer portal",
+        ));
     }
 
-    let customer_data: serde_json::Value = response.json().await
+    let customer_data: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| ApiError::internal_error(format!("Invalid customer response: {}", e)))?;
 
     let portal_url = customer_data
@@ -442,7 +466,10 @@ async fn handle_subscription_event(
     webhook: &LemonSqueezyWebhook,
 ) -> ApiResult<()> {
     // Extract tenant ID from custom data
-    let tenant_uuid = webhook.data.attributes.custom_data
+    let tenant_uuid = webhook
+        .data
+        .attributes
+        .custom_data
         .as_ref()
         .and_then(|d| d.get("tenant_id"))
         .and_then(|t| t.as_str())
@@ -460,7 +487,10 @@ async fn handle_subscription_event(
     state.db.billing_update_plan(tenant_id, plan).await?;
 
     // Store LemonSqueezy customer ID for future portal access
-    state.db.billing_set_customer_id(tenant_id, &webhook.data.id).await?;
+    state
+        .db
+        .billing_set_customer_id(tenant_id, &webhook.data.id)
+        .await?;
 
     tracing::info!(
         tenant_id = %tenant_id,
@@ -477,7 +507,10 @@ async fn handle_subscription_cancelled(
     webhook: &LemonSqueezyWebhook,
 ) -> ApiResult<()> {
     // Extract tenant ID from custom data
-    let tenant_uuid = webhook.data.attributes.custom_data
+    let tenant_uuid = webhook
+        .data
+        .attributes
+        .custom_data
         .as_ref()
         .and_then(|d| d.get("tenant_id"))
         .and_then(|t| t.as_str())
@@ -486,7 +519,10 @@ async fn handle_subscription_cancelled(
     let tenant_id = TenantId::new(tenant_uuid);
 
     // Downgrade to trial (or free tier)
-    state.db.billing_update_plan(tenant_id, BillingPlan::Trial).await?;
+    state
+        .db
+        .billing_update_plan(tenant_id, BillingPlan::Trial)
+        .await?;
 
     tracing::info!(
         tenant_id = %tenant_id,
@@ -553,7 +589,10 @@ mod tests {
 
         let req: CreateCheckoutRequest = serde_json::from_str(json)?;
         assert_eq!(req.plan, "pro");
-        assert_eq!(req.success_url, Some("https://example.com/success".to_string()));
+        assert_eq!(
+            req.success_url,
+            Some("https://example.com/success".to_string())
+        );
         assert!(req.variant_id.is_none());
         Ok(())
     }

@@ -11,7 +11,6 @@ use axum::{
 };
 use std::sync::Arc;
 
-use caliber_core::MessageId;
 use crate::{
     auth::validate_tenant_ownership,
     db::{DbClient, MessageListParams},
@@ -23,6 +22,7 @@ use crate::{
     types::{ListMessagesRequest, ListMessagesResponse, MessageResponse, SendMessageRequest},
     ws::WsState,
 };
+use caliber_core::MessageId;
 // ============================================================================
 // ROUTE HANDLERS
 // ============================================================================
@@ -63,9 +63,7 @@ pub async fn send_message(
 
     // Validate payload is valid JSON
     if serde_json::from_str::<serde_json::Value>(&req.payload).is_err() {
-        return Err(ApiError::invalid_input(
-            "payload must be valid JSON string",
-        ));
+        return Err(ApiError::invalid_input("payload must be valid JSON string"));
     }
 
     // Send message via database client with tenant_id for isolation
@@ -115,25 +113,27 @@ pub async fn list_messages(
     let offset = params.offset.unwrap_or(0);
 
     // List messages filtered by tenant for isolation
-    let messages = db.message_list_by_tenant(MessageListParams {
-        from_agent_id: params.from_agent_id,
-        to_agent_id: params.to_agent_id,
-        to_agent_type: params.to_agent_type.as_deref(),
-        trajectory_id: params.trajectory_id,
-        message_type: params.message_type.as_ref().map(|t| t.as_db_str()),
-        priority: params.priority.as_ref().map(|p| p.as_db_str()),
-        undelivered_only: params.undelivered_only.unwrap_or(false),
-        unacknowledged_only: params.unacknowledged_only.unwrap_or(false),
-        limit,
-        offset,
-    }, auth.tenant_id).await?;
+    let messages = db
+        .message_list_by_tenant(
+            MessageListParams {
+                from_agent_id: params.from_agent_id,
+                to_agent_id: params.to_agent_id,
+                to_agent_type: params.to_agent_type.as_deref(),
+                trajectory_id: params.trajectory_id,
+                message_type: params.message_type.as_ref().map(|t| t.as_db_str()),
+                priority: params.priority.as_ref().map(|p| p.as_db_str()),
+                undelivered_only: params.undelivered_only.unwrap_or(false),
+                unacknowledged_only: params.unacknowledged_only.unwrap_or(false),
+                limit,
+                offset,
+            },
+            auth.tenant_id,
+        )
+        .await?;
 
     let total = messages.len() as i32;
 
-    Ok(Json(ListMessagesResponse {
-        messages,
-        total,
-    }))
+    Ok(Json(ListMessagesResponse { messages, total }))
 }
 
 /// GET /api/v1/messages/{id} - Get message by ID
@@ -272,13 +272,15 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::extractors::PathId;
     use crate::routes::agent::register_agent;
-    use crate::types::{AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest};
+    use crate::types::{
+        AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest,
+    };
     use crate::ws::WsState;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use caliber_core::{AgentId, EntityIdType, MessagePriority, MessageType};
     use std::sync::Arc;
 
@@ -318,7 +320,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -429,7 +433,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_list_deliver_ack_message_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let from_agent = register_test_agent(&ctx, "sender").await;
         let to_agent = register_test_agent(&ctx, "receiver").await;
@@ -480,7 +486,10 @@ mod tests {
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListMessagesResponse = response_json(list_response).await;
-        assert!(list.messages.iter().any(|m| m.message_id == message.message_id));
+        assert!(list
+            .messages
+            .iter()
+            .any(|m| m.message_id == message.message_id));
 
         let deliver_status = deliver_message(
             State(ctx.db.clone()),

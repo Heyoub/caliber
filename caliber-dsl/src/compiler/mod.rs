@@ -169,12 +169,26 @@ pub enum CompiledTrigger {
 /// Compiled lifecycle actions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CompiledAction {
-    Summarize { target: String },
-    ExtractArtifacts { target: String },
-    Checkpoint { target: String },
-    Prune { target: String, criteria: CompiledFilter },
-    Notify { target: String },
-    Inject { target: String, mode: CompiledInjectionMode },
+    Summarize {
+        target: String,
+    },
+    ExtractArtifacts {
+        target: String,
+    },
+    Checkpoint {
+        target: String,
+    },
+    Prune {
+        target: String,
+        criteria: CompiledFilter,
+    },
+    Notify {
+        target: String,
+    },
+    Inject {
+        target: String,
+        mode: CompiledInjectionMode,
+    },
     AutoSummarize {
         source_level: CompiledAbstractionLevel,
         target_level: CompiledAbstractionLevel,
@@ -988,20 +1002,13 @@ impl DslCompiler {
             .iter()
             .map(Self::compile_action)
             .collect::<CompileResult<Vec<_>>>()?;
-        Ok(CompiledPolicyRule {
-            trigger,
-            actions,
-        })
+        Ok(CompiledPolicyRule { trigger, actions })
     }
 
     /// Compile an injection definition.
     fn compile_injection(def: &InjectionDef) -> CompileResult<InjectionConfig> {
         let mode = Self::compile_injection_mode(&def.mode)?;
-        let filter = def
-            .filter
-            .as_ref()
-            .map(Self::compile_filter)
-            .transpose()?;
+        let filter = def.filter.as_ref().map(Self::compile_filter).transpose()?;
 
         Ok(InjectionConfig {
             source: def.source.clone(),
@@ -1252,7 +1259,9 @@ impl DslCompiler {
                 }
             }
             SummarizationTriggerDsl::ScopeClose => CompiledTrigger::ScopeClose,
-            SummarizationTriggerDsl::TurnCount { count } => CompiledTrigger::TurnCount { count: *count },
+            SummarizationTriggerDsl::TurnCount { count } => {
+                CompiledTrigger::TurnCount { count: *count }
+            }
             SummarizationTriggerDsl::ArtifactCount { count } => {
                 CompiledTrigger::ArtifactCount { count: *count }
             }

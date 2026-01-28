@@ -174,10 +174,7 @@ impl<'a> LinksPanel<'a> {
 
                 let line = if self.show_methods {
                     Line::from(vec![
-                        Span::styled(
-                            format!("[{}] ", method),
-                            Style::default().fg(method_color),
-                        ),
+                        Span::styled(format!("[{}] ", method), Style::default().fg(method_color)),
                         Span::styled(action.title(), self.style.normal),
                     ])
                 } else {
@@ -298,10 +295,7 @@ mod tests {
 
     #[test]
     fn test_link_action_methods() {
-        let action = LinkAction::new(
-            "delete",
-            Link::delete("/api/v1/thing").with_title("Remove"),
-        );
+        let action = LinkAction::new("delete", Link::delete("/api/v1/thing").with_title("Remove"));
 
         assert_eq!(action.method(), "DELETE");
         assert_eq!(action.title(), "Remove");

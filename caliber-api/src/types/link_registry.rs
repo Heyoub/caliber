@@ -34,19 +34,43 @@ pub struct LinkDef {
 
 impl LinkDef {
     pub const fn get(rel: &'static str, path: &'static str) -> Self {
-        Self { rel, path, method: Method::Get, title: None, when: None }
+        Self {
+            rel,
+            path,
+            method: Method::Get,
+            title: None,
+            when: None,
+        }
     }
 
     pub const fn post(rel: &'static str, path: &'static str) -> Self {
-        Self { rel, path, method: Method::Post, title: None, when: None }
+        Self {
+            rel,
+            path,
+            method: Method::Post,
+            title: None,
+            when: None,
+        }
     }
 
     pub const fn patch(rel: &'static str, path: &'static str) -> Self {
-        Self { rel, path, method: Method::Patch, title: None, when: None }
+        Self {
+            rel,
+            path,
+            method: Method::Patch,
+            title: None,
+            when: None,
+        }
     }
 
     pub const fn delete(rel: &'static str, path: &'static str) -> Self {
-        Self { rel, path, method: Method::Delete, title: None, when: None }
+        Self {
+            rel,
+            path,
+            method: Method::Delete,
+            title: None,
+            when: None,
+        }
     }
 
     pub const fn titled(mut self, title: &'static str) -> Self {
@@ -102,9 +126,15 @@ const TRAJECTORY_LINKS: &[LinkDef] = &[
     LinkDef::get("artifacts", "{base}/{id}/artifacts").titled("List artifacts"),
     LinkDef::get("notes", "{base}/{id}/notes").titled("List notes"),
     LinkDef::get("children", "{base}/{id}/children").titled("Child trajectories"),
-    LinkDef::patch("update", "{base}/{id}").titled("Update").when("mutable"),
-    LinkDef::post("close", "{base}/{id}/close").titled("Close").when("mutable"),
-    LinkDef::get("parent", "/api/v1/trajectories/{parent_id}").titled("Parent").when("has_parent"),
+    LinkDef::patch("update", "{base}/{id}")
+        .titled("Update")
+        .when("mutable"),
+    LinkDef::post("close", "{base}/{id}/close")
+        .titled("Close")
+        .when("mutable"),
+    LinkDef::get("parent", "/api/v1/trajectories/{parent_id}")
+        .titled("Parent")
+        .when("has_parent"),
 ];
 
 /// Scope links
@@ -113,10 +143,18 @@ const SCOPE_LINKS: &[LinkDef] = &[
     LinkDef::get("turns", "{base}/{id}/turns").titled("List turns"),
     LinkDef::get("artifacts", "{base}/{id}/artifacts").titled("List artifacts"),
     LinkDef::get("trajectory", "/api/v1/trajectories/{trajectory_id}").titled("Parent trajectory"),
-    LinkDef::patch("update", "{base}/{id}").titled("Update").when("active"),
-    LinkDef::post("close", "{base}/{id}/close").titled("Close").when("active"),
-    LinkDef::post("checkpoint", "{base}/{id}/checkpoint").titled("Checkpoint").when("active"),
-    LinkDef::get("parent", "/api/v1/scopes/{parent_id}").titled("Parent scope").when("has_parent"),
+    LinkDef::patch("update", "{base}/{id}")
+        .titled("Update")
+        .when("active"),
+    LinkDef::post("close", "{base}/{id}/close")
+        .titled("Close")
+        .when("active"),
+    LinkDef::post("checkpoint", "{base}/{id}/checkpoint")
+        .titled("Checkpoint")
+        .when("active"),
+    LinkDef::get("parent", "/api/v1/scopes/{parent_id}")
+        .titled("Parent scope")
+        .when("has_parent"),
 ];
 
 /// Artifact links
@@ -126,7 +164,9 @@ const ARTIFACT_LINKS: &[LinkDef] = &[
     LinkDef::delete("delete", "{base}/{id}").titled("Delete"),
     LinkDef::get("trajectory", "/api/v1/trajectories/{trajectory_id}").titled("Parent trajectory"),
     LinkDef::get("scope", "/api/v1/scopes/{scope_id}").titled("Parent scope"),
-    LinkDef::get("superseded_by", "/api/v1/artifacts/{superseded_by}").titled("Superseding").when("has_superseded"),
+    LinkDef::get("superseded_by", "/api/v1/artifacts/{superseded_by}")
+        .titled("Superseding")
+        .when("has_superseded"),
 ];
 
 /// Note links
@@ -134,28 +174,42 @@ const NOTE_LINKS: &[LinkDef] = &[
     LinkDef::get("self", "{base}/{id}"),
     LinkDef::patch("update", "{base}/{id}").titled("Update"),
     LinkDef::delete("delete", "{base}/{id}").titled("Delete"),
-    LinkDef::get("superseded_by", "/api/v1/notes/{superseded_by}").titled("Superseding").when("has_superseded"),
+    LinkDef::get("superseded_by", "/api/v1/notes/{superseded_by}")
+        .titled("Superseding")
+        .when("has_superseded"),
 ];
 
 /// The global link registry.
 pub static LINK_REGISTRY: LazyLock<LinkRegistry> = LazyLock::new(|| {
     let mut registry = LinkRegistry::new();
-    registry.register("trajectory", EntityDef {
-        base: "/api/v1/trajectories",
-        links: TRAJECTORY_LINKS,
-    });
-    registry.register("scope", EntityDef {
-        base: "/api/v1/scopes",
-        links: SCOPE_LINKS,
-    });
-    registry.register("artifact", EntityDef {
-        base: "/api/v1/artifacts",
-        links: ARTIFACT_LINKS,
-    });
-    registry.register("note", EntityDef {
-        base: "/api/v1/notes",
-        links: NOTE_LINKS,
-    });
+    registry.register(
+        "trajectory",
+        EntityDef {
+            base: "/api/v1/trajectories",
+            links: TRAJECTORY_LINKS,
+        },
+    );
+    registry.register(
+        "scope",
+        EntityDef {
+            base: "/api/v1/scopes",
+            links: SCOPE_LINKS,
+        },
+    );
+    registry.register(
+        "artifact",
+        EntityDef {
+            base: "/api/v1/artifacts",
+            links: ARTIFACT_LINKS,
+        },
+    );
+    registry.register(
+        "note",
+        EntityDef {
+            base: "/api/v1/notes",
+            links: NOTE_LINKS,
+        },
+    );
     registry
 });
 
@@ -170,7 +224,9 @@ pub struct LinkRegistry {
 
 impl LinkRegistry {
     pub fn new() -> Self {
-        Self { entities: HashMap::new() }
+        Self {
+            entities: HashMap::new(),
+        }
     }
 
     pub fn register(&mut self, entity_type: &'static str, def: EntityDef) {
@@ -297,10 +353,13 @@ mod tests {
     #[test]
     fn test_registry_generation() {
         let mut registry = LinkRegistry::new();
-        registry.register("test", EntityDef {
-            base: "/api/v1/tests",
-            links: TEST_LINKS,
-        });
+        registry.register(
+            "test",
+            EntityDef {
+                base: "/api/v1/tests",
+                links: TEST_LINKS,
+            },
+        );
 
         // Active entity with parent
         let entity = TestEntity {

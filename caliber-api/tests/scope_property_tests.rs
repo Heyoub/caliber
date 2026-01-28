@@ -54,7 +54,9 @@ async fn create_test_trajectory(db: &DbClient, tenant_id: TenantId) -> Trajector
         metadata: None,
     };
 
-    let trajectory = db.trajectory_create(&req, tenant_id).await
+    let trajectory = db
+        .trajectory_create(&req, tenant_id)
+        .await
         .expect("Failed to create test trajectory");
 
     trajectory.trajectory_id
@@ -125,25 +127,30 @@ fn create_scope_request_strategy() -> impl Strategy<Value = CreateScopeRequest> 
         token_budget_strategy(),
         optional_metadata_strategy(),
     )
-        .prop_map(move |(name, purpose, token_budget, metadata)| {
-            CreateScopeRequest {
+        .prop_map(
+            move |(name, purpose, token_budget, metadata)| CreateScopeRequest {
                 trajectory_id: TrajectoryId::nil(),
                 parent_scope_id: None,
                 name,
                 purpose,
                 token_budget,
                 metadata,
-            }
-        })
+            },
+        )
 }
 
 /// Strategy for generating an UpdateScopeRequest.
 fn update_scope_request_strategy() -> impl Strategy<Value = UpdateScopeRequest> {
     (
         prop::option::of(scope_name_strategy()),
-        prop::option::of(purpose_strategy().prop_map(|opt| opt.unwrap_or_else(|| "Updated purpose".to_string()))),
+        prop::option::of(
+            purpose_strategy().prop_map(|opt| opt.unwrap_or_else(|| "Updated purpose".to_string())),
+        ),
         prop::option::of(token_budget_strategy()),
-        prop::option::of(optional_metadata_strategy().prop_map(|opt| opt.unwrap_or_else(|| serde_json::json!({"updated": true})))),
+        prop::option::of(
+            optional_metadata_strategy()
+                .prop_map(|opt| opt.unwrap_or_else(|| serde_json::json!({"updated": true}))),
+        ),
     )
         .prop_filter(
             "At least one field must be updated",
@@ -151,12 +158,14 @@ fn update_scope_request_strategy() -> impl Strategy<Value = UpdateScopeRequest> 
                 name.is_some() || purpose.is_some() || token_budget.is_some() || metadata.is_some()
             },
         )
-        .prop_map(|(name, purpose, token_budget, metadata)| UpdateScopeRequest {
-            name,
-            purpose,
-            token_budget,
-            metadata,
-        })
+        .prop_map(
+            |(name, purpose, token_budget, metadata)| UpdateScopeRequest {
+                name,
+                purpose,
+                token_budget,
+                metadata,
+            },
+        )
 }
 
 // ============================================================================
@@ -207,7 +216,7 @@ proptest! {
             prop_assert_eq!(&created.purpose, &create_req.purpose);
             prop_assert_eq!(created.token_budget, create_req.token_budget);
             prop_assert_eq!(created.trajectory_id, trajectory_id);
-            
+
             // Should be active by default
             prop_assert!(created.is_active);
 
@@ -576,7 +585,9 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Either it fails, or it succeeds with an empty name
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -599,7 +610,9 @@ mod edge_cases {
         };
 
         // This should fail validation at the route handler level
-        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Either it fails, or it succeeds with zero budget
         // Both are acceptable at the DB layer - validation is at the API layer
@@ -622,7 +635,9 @@ mod edge_cases {
         };
 
         // This should fail validation
-        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Should fail
         assert!(result.is_err());
@@ -646,7 +661,9 @@ mod edge_cases {
             metadata: None,
         };
 
-        let result = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await;
+        let result = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await;
 
         // Should either succeed or fail gracefully
         match result {
@@ -676,13 +693,17 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
+        let created = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await
             .expect("Should handle Unicode names");
 
         assert_eq!(created.name, unicode_name);
 
         // Verify persistence
-        let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await
+        let retrieved = db
+            .scope_get(created.scope_id, auth.tenant_id)
+            .await
             .expect("Should retrieve scope")
             .expect("Scope should exist");
 
@@ -705,7 +726,9 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
+        let created = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await
             .expect("Should create scope");
 
         // Update with the same values
@@ -742,14 +765,18 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
+        let created = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await
             .expect("Should create scope");
 
         // Property: tokens_used should start at 0
         assert_eq!(created.tokens_used, 0);
 
         // Verify persistence
-        let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await
+        let retrieved = db
+            .scope_get(created.scope_id, auth.tenant_id)
+            .await
             .expect("Should retrieve scope")
             .expect("Scope should exist");
 
@@ -771,14 +798,18 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
+        let created = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await
             .expect("Should create scope");
 
         // Property: scope should belong to the trajectory
         assert_eq!(created.trajectory_id, trajectory_id);
 
         // Verify persistence
-        let retrieved = db.scope_get(created.scope_id, auth.tenant_id).await
+        let retrieved = db
+            .scope_get(created.scope_id, auth.tenant_id)
+            .await
             .expect("Should retrieve scope")
             .expect("Scope should exist");
 
@@ -800,7 +831,9 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
+        let created = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await
             .expect("Should create scope");
 
         // Property: scope should be active by default
@@ -823,14 +856,15 @@ mod edge_cases {
             metadata: None,
         };
 
-        let created = db.create::<ScopeResponse>(&create_req, auth.tenant_id).await
+        let created = db
+            .create::<ScopeResponse>(&create_req, auth.tenant_id)
+            .await
             .expect("Should create scope");
 
         assert!(created.closed_at.is_none());
 
         // Close the scope
-        let closed = created.close(&db).await
-            .expect("Should close scope");
+        let closed = created.close(&db).await.expect("Should close scope");
 
         // Property: closed_at should be set
         assert!(closed.closed_at.is_some());

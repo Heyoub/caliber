@@ -3,8 +3,8 @@
 //! This module provides hot-path operations for conflict detection and resolution
 //! that bypass SQL parsing entirely by using direct heap access via pgrx.
 
-use pgrx::prelude::*;
 use pgrx::pg_sys;
+use pgrx::prelude::*;
 
 use caliber_core::{
     AgentId, CaliberError, CaliberResult, Conflict, ConflictId, ConflictResolutionRecord,
@@ -13,18 +13,16 @@ use caliber_core::{
 
 use crate::column_maps::conflict;
 use crate::heap_ops::{
-    current_timestamp, form_tuple, insert_tuple, open_relation, update_tuple,
-    PgLockMode as HeapLockMode, HeapRelation, get_active_snapshot,
-    timestamp_to_pgrx,
+    current_timestamp, form_tuple, get_active_snapshot, insert_tuple, open_relation,
+    timestamp_to_pgrx, update_tuple, HeapRelation, PgLockMode as HeapLockMode,
 };
 use crate::index_ops::{
-    init_scan_key, open_index, update_indexes_for_insert,
-    BTreeStrategy, IndexScanner, operator_oids,
+    init_scan_key, open_index, operator_oids, update_indexes_for_insert, BTreeStrategy,
+    IndexScanner,
 };
 use crate::tuple_extract::{
-    extract_uuid, extract_text, extract_timestamp, extract_jsonb,
-    extract_values_and_nulls, uuid_to_datum, string_to_datum,
-    timestamp_to_chrono, json_to_datum, option_uuid_to_datum,
+    extract_jsonb, extract_text, extract_timestamp, extract_uuid, extract_values_and_nulls,
+    json_to_datum, option_uuid_to_datum, string_to_datum, timestamp_to_chrono, uuid_to_datum,
 };
 
 /// Conflict row with tenant ownership metadata.
@@ -70,18 +68,20 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<C
     validate_conflict_relation(&rel)?;
 
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now)?.into_datum()
-        .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
+    let now_datum = timestamp_to_pgrx(now)?.into_datum().ok_or_else(|| {
+        CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Conflict,
             reason: "Failed to convert timestamp to datum".to_string(),
-        }))?;
-    
-    let mut values: [pg_sys::Datum; conflict::NUM_COLS] = [pg_sys::Datum::from(0); conflict::NUM_COLS];
+        })
+    })?;
+
+    let mut values: [pg_sys::Datum; conflict::NUM_COLS] =
+        [pg_sys::Datum::from(0); conflict::NUM_COLS];
     let mut nulls: [bool; conflict::NUM_COLS] = [false; conflict::NUM_COLS];
-    
+
     // Set required fields
     values[conflict::CONFLICT_ID as usize - 1] = uuid_to_datum(conflict_id.as_uuid());
-    
+
     // Set conflict_type
     let conflict_type_str = match conflict_type {
         ConflictType::ConcurrentWrite => "concurrent_write",
@@ -91,7 +91,7 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<C
         ConflictType::GoalConflict => "goal_conflict",
     };
     values[conflict::CONFLICT_TYPE as usize - 1] = string_to_datum(conflict_type_str);
-    
+
     // Set item A
     values[conflict::ITEM_A_TYPE as usize - 1] = string_to_datum(item_a_type);
     values[conflict::ITEM_A_ID as usize - 1] = uuid_to_datum(item_a_id);
@@ -115,32 +115,35 @@ pub fn conflict_create_heap(params: ConflictCreateParams<'_>) -> CaliberResult<C
     // Set optional trajectory_id
     values[conflict::TRAJECTORY_ID as usize - 1] = traj_datum;
     nulls[conflict::TRAJECTORY_ID as usize - 1] = traj_null;
-    
+
     // Set status - default to "detected"
     values[conflict::STATUS as usize - 1] = string_to_datum("detected");
-    
+
     // Set resolution to NULL initially
     nulls[conflict::RESOLUTION as usize - 1] = true;
-    
+
     // Set timestamps
     values[conflict::DETECTED_AT as usize - 1] = now_datum;
     nulls[conflict::RESOLVED_AT as usize - 1] = true;
 
     values[conflict::TENANT_ID as usize - 1] = uuid_to_datum(tenant_id.as_uuid());
-    
+
     let tuple = form_tuple(&rel, &values, &nulls)?;
     let _tid = unsafe { insert_tuple(&rel, tuple)? };
     unsafe { update_indexes_for_insert(&rel, tuple, &values, &nulls)? };
-    
+
     Ok(conflict_id)
 }
 
 /// Get a conflict by ID using direct heap operations.
-pub fn conflict_get_heap(conflict_id: ConflictId, tenant_id: TenantId) -> CaliberResult<Option<ConflictRow>> {
+pub fn conflict_get_heap(
+    conflict_id: ConflictId,
+    tenant_id: TenantId,
+) -> CaliberResult<Option<ConflictRow>> {
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
     let snapshot = get_active_snapshot();
-    
+
     let mut scan_key = pg_sys::ScanKeyData::default();
     init_scan_key(
         &mut scan_key,
@@ -149,9 +152,9 @@ pub fn conflict_get_heap(conflict_id: ConflictId, tenant_id: TenantId) -> Calibe
         operator_oids::UUID_EQ,
         uuid_to_datum(conflict_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let row = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
@@ -174,7 +177,7 @@ pub fn conflict_resolve_heap(
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::RowExclusive)?;
     let index_rel = open_index(conflict::PK_INDEX)?;
     let snapshot = get_active_snapshot();
-    
+
     let mut scan_key = pg_sys::ScanKeyData::default();
     init_scan_key(
         &mut scan_key,
@@ -183,9 +186,9 @@ pub fn conflict_resolve_heap(
         operator_oids::UUID_EQ,
         uuid_to_datum(conflict_id.as_uuid()),
     );
-    
+
     let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
-    
+
     if let Some(old_tuple) = scanner.next() {
         let tuple_desc = rel.tuple_desc();
         let existing_tenant = unsafe { extract_uuid(old_tuple, tuple_desc, conflict::TENANT_ID)? };
@@ -193,39 +196,42 @@ pub fn conflict_resolve_heap(
             return Ok(false);
         }
         let (mut values, mut nulls) = unsafe { extract_values_and_nulls(old_tuple, tuple_desc) }?;
-        
+
         // Update status to "resolved"
         values[conflict::STATUS as usize - 1] = string_to_datum("resolved");
-        
+
         // Serialize resolution to JSON
-        let resolution_json = serde_json::to_value(resolution)
-            .map_err(|e| CaliberError::Storage(StorageError::UpdateFailed {
+        let resolution_json = serde_json::to_value(resolution).map_err(|e| {
+            CaliberError::Storage(StorageError::UpdateFailed {
                 entity_type: EntityType::Conflict,
                 id: conflict_id.as_uuid(),
                 reason: format!("Failed to serialize resolution: {}", e),
-            }))?;
-        
+            })
+        })?;
+
         values[conflict::RESOLUTION as usize - 1] = json_to_datum(&resolution_json);
         nulls[conflict::RESOLUTION as usize - 1] = false;
-        
+
         // Update resolved_at to current timestamp
         let now = current_timestamp();
-        let now_datum = timestamp_to_pgrx(now)?.into_datum()
-            .ok_or_else(|| CaliberError::Storage(StorageError::UpdateFailed {
-            entity_type: EntityType::Conflict,
-            id: conflict_id.as_uuid(),
+        let now_datum = timestamp_to_pgrx(now)?.into_datum().ok_or_else(|| {
+            CaliberError::Storage(StorageError::UpdateFailed {
+                entity_type: EntityType::Conflict,
+                id: conflict_id.as_uuid(),
                 reason: "Failed to convert timestamp to datum".to_string(),
-            }))?;
-        
+            })
+        })?;
+
         values[conflict::RESOLVED_AT as usize - 1] = now_datum;
         nulls[conflict::RESOLVED_AT as usize - 1] = false;
-        
+
         let new_tuple = form_tuple(&rel, &values, &nulls)?;
-        let old_tid = scanner.current_tid()
-            .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+        let old_tid = scanner.current_tid().ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
                 reason: "Failed to get TID of conflict tuple".to_string(),
-            }))?;
-        
+            })
+        })?;
+
         unsafe { update_tuple(&rel, &old_tid, new_tuple)? };
         Ok(true)
     } else {
@@ -238,10 +244,10 @@ pub fn conflict_list_pending_heap(tenant_id: TenantId) -> CaliberResult<Vec<Conf
     let rel = open_relation(conflict::TABLE_NAME, HeapLockMode::AccessShare)?;
     let index_rel = open_index(conflict::STATUS_INDEX)?;
     let snapshot = get_active_snapshot();
-    
+
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
-    
+
     // Scan for "detected" status
     let mut scan_key_detected = pg_sys::ScanKeyData::default();
     init_scan_key(
@@ -251,9 +257,10 @@ pub fn conflict_list_pending_heap(tenant_id: TenantId) -> CaliberResult<Vec<Conf
         operator_oids::TEXT_EQ,
         string_to_datum("detected"),
     );
-    
-    let mut scanner_detected = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_detected) };
-    
+
+    let mut scanner_detected =
+        unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_detected) };
+
     for tuple in &mut scanner_detected {
         let row = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
         if row.tenant_id.map(|t| t.as_uuid()) == Some(tenant_id.as_uuid()) {
@@ -271,7 +278,8 @@ pub fn conflict_list_pending_heap(tenant_id: TenantId) -> CaliberResult<Vec<Conf
         string_to_datum("resolving"),
     );
 
-    let mut scanner_resolving = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_resolving) };
+    let mut scanner_resolving =
+        unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key_resolving) };
 
     for tuple in &mut scanner_resolving {
         let conflict = unsafe { tuple_to_conflict(tuple, tuple_desc) }?;
@@ -279,7 +287,7 @@ pub fn conflict_list_pending_heap(tenant_id: TenantId) -> CaliberResult<Vec<Conf
             results.push(conflict);
         }
     }
-    
+
     Ok(results)
 }
 
@@ -303,7 +311,11 @@ fn build_optional_conflict_agents(
     agent_a_id: Option<AgentId>,
     agent_b_id: Option<AgentId>,
     trajectory_id: Option<TrajectoryId>,
-) -> ((pg_sys::Datum, bool), (pg_sys::Datum, bool), (pg_sys::Datum, bool)) {
+) -> (
+    (pg_sys::Datum, bool),
+    (pg_sys::Datum, bool),
+    (pg_sys::Datum, bool),
+) {
     let a = match agent_a_id {
         Some(id) => (option_uuid_to_datum(Some(id.as_uuid())), false),
         None => (pg_sys::Datum::from(0), true),
@@ -323,16 +335,19 @@ unsafe fn tuple_to_conflict(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<ConflictRow> {
-    let conflict_id = extract_uuid(tuple, tuple_desc, conflict::CONFLICT_ID)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let conflict_id = extract_uuid(tuple, tuple_desc, conflict::CONFLICT_ID)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "conflict_id is NULL".to_string(),
-        }))?;
+        })
+    })?;
     let conflict_id = ConflictId::new(conflict_id);
-    
-    let conflict_type_str = extract_text(tuple, tuple_desc, conflict::CONFLICT_TYPE)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: "conflict_type is NULL".to_string(),
-        }))?;
+
+    let conflict_type_str =
+        extract_text(tuple, tuple_desc, conflict::CONFLICT_TYPE)?.ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "conflict_type is NULL".to_string(),
+            })
+        })?;
     let conflict_type = match conflict_type_str.as_str() {
         "concurrent_write" => ConflictType::ConcurrentWrite,
         "contradicting_fact" => ConflictType::ContradictingFact,
@@ -340,64 +355,78 @@ unsafe fn tuple_to_conflict(
         "resource_contention" => ConflictType::ResourceContention,
         "goal_conflict" => ConflictType::GoalConflict,
         _ => {
-            pgrx::warning!("CALIBER: Unknown conflict type '{}', defaulting to ConcurrentWrite", conflict_type_str);
+            pgrx::warning!(
+                "CALIBER: Unknown conflict type '{}', defaulting to ConcurrentWrite",
+                conflict_type_str
+            );
             ConflictType::ConcurrentWrite
         }
     };
-    
-    let item_a_type = extract_text(tuple, tuple_desc, conflict::ITEM_A_TYPE)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+
+    let item_a_type = extract_text(tuple, tuple_desc, conflict::ITEM_A_TYPE)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "item_a_type is NULL".to_string(),
-        }))?;
-    
-    let item_a_id = extract_uuid(tuple, tuple_desc, conflict::ITEM_A_ID)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+        })
+    })?;
+
+    let item_a_id = extract_uuid(tuple, tuple_desc, conflict::ITEM_A_ID)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "item_a_id is NULL".to_string(),
-        }))?;
-    
-    let item_b_type = extract_text(tuple, tuple_desc, conflict::ITEM_B_TYPE)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+        })
+    })?;
+
+    let item_b_type = extract_text(tuple, tuple_desc, conflict::ITEM_B_TYPE)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "item_b_type is NULL".to_string(),
-        }))?;
-    
-    let item_b_id = extract_uuid(tuple, tuple_desc, conflict::ITEM_B_ID)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+        })
+    })?;
+
+    let item_b_id = extract_uuid(tuple, tuple_desc, conflict::ITEM_B_ID)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "item_b_id is NULL".to_string(),
-        }))?;
-    
+        })
+    })?;
+
     let agent_a_id = extract_uuid(tuple, tuple_desc, conflict::AGENT_A_ID)?.map(AgentId::new);
     let agent_b_id = extract_uuid(tuple, tuple_desc, conflict::AGENT_B_ID)?.map(AgentId::new);
-    let trajectory_id = extract_uuid(tuple, tuple_desc, conflict::TRAJECTORY_ID)?.map(TrajectoryId::new);
-    
-    let status_str = extract_text(tuple, tuple_desc, conflict::STATUS)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let trajectory_id =
+        extract_uuid(tuple, tuple_desc, conflict::TRAJECTORY_ID)?.map(TrajectoryId::new);
+
+    let status_str = extract_text(tuple, tuple_desc, conflict::STATUS)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "status is NULL".to_string(),
-        }))?;
+        })
+    })?;
     let status = match status_str.as_str() {
         "detected" => ConflictStatus::Detected,
         "resolving" => ConflictStatus::Resolving,
         "resolved" => ConflictStatus::Resolved,
         "escalated" => ConflictStatus::Escalated,
         _ => {
-            pgrx::warning!("CALIBER: Unknown conflict status '{}', defaulting to Detected", status_str);
+            pgrx::warning!(
+                "CALIBER: Unknown conflict status '{}', defaulting to Detected",
+                status_str
+            );
             ConflictStatus::Detected
         }
     };
-    
+
     let resolution = extract_jsonb(tuple, tuple_desc, conflict::RESOLUTION)?
         .and_then(|json| serde_json::from_value::<ConflictResolutionRecord>(json).ok());
-    
-    let detected_at_ts = extract_timestamp(tuple, tuple_desc, conflict::DETECTED_AT)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: "detected_at is NULL".to_string(),
-        }))?;
+
+    let detected_at_ts =
+        extract_timestamp(tuple, tuple_desc, conflict::DETECTED_AT)?.ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "detected_at is NULL".to_string(),
+            })
+        })?;
     let detected_at = timestamp_to_chrono(detected_at_ts);
-    
-    let resolved_at = extract_timestamp(tuple, tuple_desc, conflict::RESOLVED_AT)?
-        .map(timestamp_to_chrono);
+
+    let resolved_at =
+        extract_timestamp(tuple, tuple_desc, conflict::RESOLVED_AT)?.map(timestamp_to_chrono);
 
     let tenant_id = extract_uuid(tuple, tuple_desc, conflict::TENANT_ID)?.map(TenantId::new);
-    
+
     Ok(ConflictRow {
         conflict: Conflict {
             conflict_id,
@@ -418,7 +447,6 @@ unsafe fn tuple_to_conflict(
     })
 }
 
-
 // ============================================================================
 // PROPERTY-BASED TESTS
 // ============================================================================
@@ -426,8 +454,8 @@ unsafe fn tuple_to_conflict(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
     use caliber_core::ResolutionStrategy;
+    use proptest::prelude::*;
 
     // ========================================================================
     // Test Helpers - Generators for Conflict data
@@ -501,15 +529,14 @@ mod tests {
                 Just("Manual intervention required".to_string()),
                 Just("Merged conflicting items".to_string()),
             ],
-        ).prop_map(|(strategy, winner, reason)| {
-            ConflictResolutionRecord {
+        )
+            .prop_map(|(strategy, winner, reason)| ConflictResolutionRecord {
                 strategy,
                 winner,
                 merged_result_id: None,
                 reason,
                 resolved_by: None,
-            }
-        })
+            })
     }
 
     // ========================================================================
@@ -524,14 +551,14 @@ mod tests {
         use crate::pg_test;
 
         /// Property 1: Insert-Get Round Trip (Conflict)
-        /// 
+        ///
         /// *For any* valid conflict data, inserting via direct heap then getting
         /// via direct heap SHALL return an equivalent conflict.
         ///
         /// **Validates: Requirements 11.1, 11.2**
         #[pg_test]
         fn prop_conflict_insert_get_roundtrip() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(100);
             let mut runner = TestRunner::new(config);
@@ -547,64 +574,79 @@ mod tests {
                 arb_optional_trajectory_id(),
             );
 
-            runner.run(&strategy, |(
-                conflict_type,
-                item_a_type,
-                item_a_id,
-                item_b_type,
-                item_b_id,
-                agent_a_id,
-                agent_b_id,
-                trajectory_id,
-            )| {
-                // Generate a new conflict ID
-                let conflict_id = ConflictId::now_v7();
-                let tenant_id = TenantId::now_v7();
+            runner
+                .run(
+                    &strategy,
+                    |(
+                        conflict_type,
+                        item_a_type,
+                        item_a_id,
+                        item_b_type,
+                        item_b_id,
+                        agent_a_id,
+                        agent_b_id,
+                        trajectory_id,
+                    )| {
+                        // Generate a new conflict ID
+                        let conflict_id = ConflictId::now_v7();
+                        let tenant_id = TenantId::now_v7();
 
-                // Insert via heap
-                let result = conflict_create_heap(ConflictCreateParams {
-                    conflict_id,
-                    conflict_type,
-                    item_a_type: &item_a_type,
-                    item_a_id,
-                    item_b_type: &item_b_type,
-                    item_b_id,
-                    agent_a_id,
-                    agent_b_id,
-                    trajectory_id,
-                    tenant_id,
-                });
-                prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
-                prop_assert_eq!(result.unwrap(), conflict_id);
+                        // Insert via heap
+                        let result = conflict_create_heap(ConflictCreateParams {
+                            conflict_id,
+                            conflict_type,
+                            item_a_type: &item_a_type,
+                            item_a_id,
+                            item_b_type: &item_b_type,
+                            item_b_id,
+                            agent_a_id,
+                            agent_b_id,
+                            trajectory_id,
+                            tenant_id,
+                        });
+                        prop_assert!(result.is_ok(), "Insert should succeed: {:?}", result.err());
+                        prop_assert_eq!(result.unwrap(), conflict_id);
 
-                // Get via heap
-                let get_result = conflict_get_heap(conflict_id, tenant_id);
-                prop_assert!(get_result.is_ok(), "Get should succeed: {:?}", get_result.err());
-                
-                let conflict = get_result.unwrap();
-                prop_assert!(conflict.is_some(), "Conflict should be found");
-                
-                let c = conflict.unwrap().conflict;
-                
-                // Verify round-trip preserves data
-                prop_assert_eq!(c.conflict_id, conflict_id);
-                prop_assert_eq!(c.conflict_type, conflict_type);
-                prop_assert_eq!(c.item_a_type, item_a_type);
-                prop_assert_eq!(c.item_a_id, item_a_id);
-                prop_assert_eq!(c.item_b_type, item_b_type);
-                prop_assert_eq!(c.item_b_id, item_b_id);
-                prop_assert_eq!(c.agent_a_id, agent_a_id);
-                prop_assert_eq!(c.agent_b_id, agent_b_id);
-                prop_assert_eq!(c.trajectory_id, trajectory_id);
-                prop_assert_eq!(c.status, ConflictStatus::Detected);
-                
-                // Timestamps should be set
-                prop_assert!(c.detected_at <= chrono::Utc::now());
-                prop_assert!(c.resolved_at.is_none(), "resolved_at should be None initially");
-                prop_assert!(c.resolution.is_none(), "resolution should be None initially");
+                        // Get via heap
+                        let get_result = conflict_get_heap(conflict_id, tenant_id);
+                        prop_assert!(
+                            get_result.is_ok(),
+                            "Get should succeed: {:?}",
+                            get_result.err()
+                        );
 
-                Ok(())
-            }).unwrap();
+                        let conflict = get_result.unwrap();
+                        prop_assert!(conflict.is_some(), "Conflict should be found");
+
+                        let c = conflict.unwrap().conflict;
+
+                        // Verify round-trip preserves data
+                        prop_assert_eq!(c.conflict_id, conflict_id);
+                        prop_assert_eq!(c.conflict_type, conflict_type);
+                        prop_assert_eq!(c.item_a_type, item_a_type);
+                        prop_assert_eq!(c.item_a_id, item_a_id);
+                        prop_assert_eq!(c.item_b_type, item_b_type);
+                        prop_assert_eq!(c.item_b_id, item_b_id);
+                        prop_assert_eq!(c.agent_a_id, agent_a_id);
+                        prop_assert_eq!(c.agent_b_id, agent_b_id);
+                        prop_assert_eq!(c.trajectory_id, trajectory_id);
+                        prop_assert_eq!(c.status, ConflictStatus::Detected);
+
+                        // Timestamps should be set
+                        prop_assert!(c.detected_at <= chrono::Utc::now());
+                        prop_assert!(
+                            c.resolved_at.is_none(),
+                            "resolved_at should be None initially"
+                        );
+                        prop_assert!(
+                            c.resolution.is_none(),
+                            "resolution should be None initially"
+                        );
+
+                        Ok(())
+                    },
+                )
+                .unwrap();
         }
 
         /// Property 1 (edge case): Get non-existent conflict returns None
@@ -615,21 +657,26 @@ mod tests {
         /// **Validates: Requirements 11.2**
         #[pg_test]
         fn prop_conflict_get_nonexistent_returns_none() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(100);
             let mut runner = TestRunner::new(config);
 
-            runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = ConflictId::new(uuid::Uuid::from_bytes(bytes));
+            runner
+                .run(&any::<[u8; 16]>(), |bytes| {
+                    let random_id = ConflictId::new(uuid::Uuid::from_bytes(bytes));
 
-                let tenant_id = TenantId::now_v7();
-                let result = conflict_get_heap(random_id, tenant_id);
-                prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
-                prop_assert!(result.unwrap().is_none(), "Non-existent conflict should return None");
+                    let tenant_id = TenantId::now_v7();
+                    let result = conflict_get_heap(random_id, tenant_id);
+                    prop_assert!(result.is_ok(), "Get should not error: {:?}", result.err());
+                    prop_assert!(
+                        result.unwrap().is_none(),
+                        "Non-existent conflict should return None"
+                    );
 
-                Ok(())
-            }).unwrap();
+                    Ok(())
+                })
+                .unwrap();
         }
 
         /// Property 2: Update Persistence (Conflict - resolve)
@@ -640,7 +687,7 @@ mod tests {
         /// **Validates: Requirements 11.3**
         #[pg_test]
         fn prop_conflict_resolve_persistence() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(100);
             let mut runner = TestRunner::new(config);
@@ -657,68 +704,99 @@ mod tests {
                 arb_resolution(),
             );
 
-            runner.run(&strategy, |(
-                conflict_type,
-                item_a_type,
-                item_a_id,
-                item_b_type,
-                item_b_id,
-                agent_a_id,
-                agent_b_id,
-                trajectory_id,
-                resolution,
-            )| {
-                // Generate a new conflict ID
-                let conflict_id = ConflictId::now_v7();
-                let tenant_id = TenantId::now_v7();
+            runner
+                .run(
+                    &strategy,
+                    |(
+                        conflict_type,
+                        item_a_type,
+                        item_a_id,
+                        item_b_type,
+                        item_b_id,
+                        agent_a_id,
+                        agent_b_id,
+                        trajectory_id,
+                        resolution,
+                    )| {
+                        // Generate a new conflict ID
+                        let conflict_id = ConflictId::now_v7();
+                        let tenant_id = TenantId::now_v7();
 
-                // Insert via heap
-                let insert_result = conflict_create_heap(ConflictCreateParams {
-                    conflict_id,
-                    conflict_type,
-                    item_a_type: &item_a_type,
-                    item_a_id,
-                    item_b_type: &item_b_type,
-                    item_b_id,
-                    agent_a_id,
-                    agent_b_id,
-                    trajectory_id,
-                    tenant_id,
-                });
-                prop_assert!(insert_result.is_ok(), "Insert should succeed");
+                        // Insert via heap
+                        let insert_result = conflict_create_heap(ConflictCreateParams {
+                            conflict_id,
+                            conflict_type,
+                            item_a_type: &item_a_type,
+                            item_a_id,
+                            item_b_type: &item_b_type,
+                            item_b_id,
+                            agent_a_id,
+                            agent_b_id,
+                            trajectory_id,
+                            tenant_id,
+                        });
+                        prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
-                // Verify initial status is Detected
-                let get_before = conflict_get_heap(conflict_id, tenant_id);
-                prop_assert!(get_before.is_ok(), "Get before resolve should succeed");
-                let conflict_before = get_before.unwrap().unwrap().conflict;
-                prop_assert_eq!(conflict_before.status, ConflictStatus::Detected);
-                prop_assert!(conflict_before.resolved_at.is_none(), "resolved_at should be None before resolve");
-                prop_assert!(conflict_before.resolution.is_none(), "resolution should be None before resolve");
+                        // Verify initial status is Detected
+                        let get_before = conflict_get_heap(conflict_id, tenant_id);
+                        prop_assert!(get_before.is_ok(), "Get before resolve should succeed");
+                        let conflict_before = get_before.unwrap().unwrap().conflict;
+                        prop_assert_eq!(conflict_before.status, ConflictStatus::Detected);
+                        prop_assert!(
+                            conflict_before.resolved_at.is_none(),
+                            "resolved_at should be None before resolve"
+                        );
+                        prop_assert!(
+                            conflict_before.resolution.is_none(),
+                            "resolution should be None before resolve"
+                        );
 
-                // Resolve the conflict
-                let resolve_result = conflict_resolve_heap(conflict_id, &resolution, tenant_id);
-                prop_assert!(resolve_result.is_ok(), "Resolve should succeed: {:?}", resolve_result.err());
-                prop_assert!(resolve_result.unwrap(), "Resolve should return true for existing conflict");
+                        // Resolve the conflict
+                        let resolve_result =
+                            conflict_resolve_heap(conflict_id, &resolution, tenant_id);
+                        prop_assert!(
+                            resolve_result.is_ok(),
+                            "Resolve should succeed: {:?}",
+                            resolve_result.err()
+                        );
+                        prop_assert!(
+                            resolve_result.unwrap(),
+                            "Resolve should return true for existing conflict"
+                        );
 
-                // Verify status, resolution, and resolved_at were updated
-                let get_after = conflict_get_heap(conflict_id, tenant_id);
-                prop_assert!(get_after.is_ok(), "Get after resolve should succeed");
-                let conflict_after = get_after.unwrap().unwrap().conflict;
-                prop_assert_eq!(conflict_after.status, ConflictStatus::Resolved, "Status should be Resolved");
-                prop_assert!(conflict_after.resolved_at.is_some(), "resolved_at should be set after resolve");
-                prop_assert!(conflict_after.resolved_at.unwrap() <= chrono::Utc::now(), "resolved_at should be <= now");
-                prop_assert!(conflict_after.resolution.is_some(), "resolution should be set after resolve");
-                
-                // Verify resolution data
-                let res = conflict_after.resolution.unwrap();
-                prop_assert_eq!(res.strategy, resolution.strategy);
-                prop_assert_eq!(res.winner, resolution.winner);
-                prop_assert_eq!(res.reason, resolution.reason);
+                        // Verify status, resolution, and resolved_at were updated
+                        let get_after = conflict_get_heap(conflict_id, tenant_id);
+                        prop_assert!(get_after.is_ok(), "Get after resolve should succeed");
+                        let conflict_after = get_after.unwrap().unwrap().conflict;
+                        prop_assert_eq!(
+                            conflict_after.status,
+                            ConflictStatus::Resolved,
+                            "Status should be Resolved"
+                        );
+                        prop_assert!(
+                            conflict_after.resolved_at.is_some(),
+                            "resolved_at should be set after resolve"
+                        );
+                        prop_assert!(
+                            conflict_after.resolved_at.unwrap() <= chrono::Utc::now(),
+                            "resolved_at should be <= now"
+                        );
+                        prop_assert!(
+                            conflict_after.resolution.is_some(),
+                            "resolution should be set after resolve"
+                        );
 
-                Ok(())
-            }).unwrap();
+                        // Verify resolution data
+                        let res = conflict_after.resolution.unwrap();
+                        prop_assert_eq!(res.strategy, resolution.strategy);
+                        prop_assert_eq!(res.winner, resolution.winner);
+                        prop_assert_eq!(res.reason, resolution.reason);
+
+                        Ok(())
+                    },
+                )
+                .unwrap();
         }
-
 
         /// Property 2 (edge case): Resolve non-existent conflict returns false
         ///
@@ -728,23 +806,32 @@ mod tests {
         /// **Validates: Requirements 11.3**
         #[pg_test]
         fn prop_conflict_resolve_nonexistent_returns_false() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(100);
             let mut runner = TestRunner::new(config);
 
             let strategy = (any::<[u8; 16]>(), arb_resolution());
 
-            runner.run(&strategy, |(bytes, resolution)| {
-                let random_id = ConflictId::new(uuid::Uuid::from_bytes(bytes));
+            runner
+                .run(&strategy, |(bytes, resolution)| {
+                    let random_id = ConflictId::new(uuid::Uuid::from_bytes(bytes));
 
-                let tenant_id = TenantId::now_v7();
-                let result = conflict_resolve_heap(random_id, &resolution, tenant_id);
-                prop_assert!(result.is_ok(), "Resolve should not error: {:?}", result.err());
-                prop_assert!(!result.unwrap(), "Resolve of non-existent conflict should return false");
+                    let tenant_id = TenantId::now_v7();
+                    let result = conflict_resolve_heap(random_id, &resolution, tenant_id);
+                    prop_assert!(
+                        result.is_ok(),
+                        "Resolve should not error: {:?}",
+                        result.err()
+                    );
+                    prop_assert!(
+                        !result.unwrap(),
+                        "Resolve of non-existent conflict should return false"
+                    );
 
-                Ok(())
-            }).unwrap();
+                    Ok(())
+                })
+                .unwrap();
         }
 
         /// Property 3: Index Consistency - List Pending
@@ -755,7 +842,7 @@ mod tests {
         /// **Validates: Requirements 11.4, 13.1, 13.2, 13.4, 13.5**
         #[pg_test]
         fn prop_conflict_list_pending_consistency() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(100);
             let mut runner = TestRunner::new(config);
@@ -771,61 +858,72 @@ mod tests {
                 arb_optional_trajectory_id(),
             );
 
-            runner.run(&strategy, |(
-                conflict_type,
-                item_a_type,
-                item_a_id,
-                item_b_type,
-                item_b_id,
-                agent_a_id,
-                agent_b_id,
-                trajectory_id,
-            )| {
-                // Generate a new conflict ID
-                let conflict_id = ConflictId::now_v7();
-                let tenant_id = TenantId::now_v7();
+            runner
+                .run(
+                    &strategy,
+                    |(
+                        conflict_type,
+                        item_a_type,
+                        item_a_id,
+                        item_b_type,
+                        item_b_id,
+                        agent_a_id,
+                        agent_b_id,
+                        trajectory_id,
+                    )| {
+                        // Generate a new conflict ID
+                        let conflict_id = ConflictId::now_v7();
+                        let tenant_id = TenantId::now_v7();
 
-                // Insert via heap
-                let insert_result = conflict_create_heap(ConflictCreateParams {
-                    conflict_id,
-                    conflict_type,
-                    item_a_type: &item_a_type,
-                    item_a_id,
-                    item_b_type: &item_b_type,
-                    item_b_id,
-                    agent_a_id,
-                    agent_b_id,
-                    trajectory_id,
-                    tenant_id,
-                });
-                prop_assert!(insert_result.is_ok(), "Insert should succeed");
+                        // Insert via heap
+                        let insert_result = conflict_create_heap(ConflictCreateParams {
+                            conflict_id,
+                            conflict_type,
+                            item_a_type: &item_a_type,
+                            item_a_id,
+                            item_b_type: &item_b_type,
+                            item_b_id,
+                            agent_a_id,
+                            agent_b_id,
+                            trajectory_id,
+                            tenant_id,
+                        });
+                        prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
-                // Query via list_pending
-                let list_result = conflict_list_pending_heap(tenant_id);
-                prop_assert!(list_result.is_ok(), "List pending should succeed: {:?}", list_result.err());
-                
-                let conflicts = list_result.unwrap();
-                prop_assert!(
-                    conflicts.iter().any(|c| c.conflict.conflict_id == conflict_id),
-                    "Inserted conflict should be found via list_pending"
-                );
+                        // Query via list_pending
+                        let list_result = conflict_list_pending_heap(tenant_id);
+                        prop_assert!(
+                            list_result.is_ok(),
+                            "List pending should succeed: {:?}",
+                            list_result.err()
+                        );
 
-                // Verify the found conflict has correct data
-                let found_conflict = conflicts
-                    .iter()
-                    .find(|c| c.conflict.conflict_id == conflict_id)
-                    .unwrap()
-                    .conflict
-                    .clone();
-                prop_assert_eq!(found_conflict.conflict_type, conflict_type);
-                prop_assert_eq!(found_conflict.item_a_type, item_a_type);
-                prop_assert_eq!(found_conflict.item_a_id, item_a_id);
-                prop_assert_eq!(found_conflict.item_b_type, item_b_type);
-                prop_assert_eq!(found_conflict.item_b_id, item_b_id);
-                prop_assert_eq!(found_conflict.status, ConflictStatus::Detected);
+                        let conflicts = list_result.unwrap();
+                        prop_assert!(
+                            conflicts
+                                .iter()
+                                .any(|c| c.conflict.conflict_id == conflict_id),
+                            "Inserted conflict should be found via list_pending"
+                        );
 
-                Ok(())
-            }).unwrap();
+                        // Verify the found conflict has correct data
+                        let found_conflict = conflicts
+                            .iter()
+                            .find(|c| c.conflict.conflict_id == conflict_id)
+                            .unwrap()
+                            .conflict
+                            .clone();
+                        prop_assert_eq!(found_conflict.conflict_type, conflict_type);
+                        prop_assert_eq!(found_conflict.item_a_type, item_a_type);
+                        prop_assert_eq!(found_conflict.item_a_id, item_a_id);
+                        prop_assert_eq!(found_conflict.item_b_type, item_b_type);
+                        prop_assert_eq!(found_conflict.item_b_id, item_b_id);
+                        prop_assert_eq!(found_conflict.status, ConflictStatus::Detected);
+
+                        Ok(())
+                    },
+                )
+                .unwrap();
         }
 
         /// Property 3 (edge case): Resolved conflicts not in pending list
@@ -836,7 +934,7 @@ mod tests {
         /// **Validates: Requirements 11.4**
         #[pg_test]
         fn prop_conflict_resolved_not_in_pending() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(100);
             let mut runner = TestRunner::new(config);
@@ -853,64 +951,76 @@ mod tests {
                 arb_resolution(),
             );
 
-            runner.run(&strategy, |(
-                conflict_type,
-                item_a_type,
-                item_a_id,
-                item_b_type,
-                item_b_id,
-                agent_a_id,
-                agent_b_id,
-                trajectory_id,
-                resolution,
-            )| {
-                // Generate a new conflict ID
-                let conflict_id = ConflictId::now_v7();
-                let tenant_id = TenantId::now_v7();
+            runner
+                .run(
+                    &strategy,
+                    |(
+                        conflict_type,
+                        item_a_type,
+                        item_a_id,
+                        item_b_type,
+                        item_b_id,
+                        agent_a_id,
+                        agent_b_id,
+                        trajectory_id,
+                        resolution,
+                    )| {
+                        // Generate a new conflict ID
+                        let conflict_id = ConflictId::now_v7();
+                        let tenant_id = TenantId::now_v7();
 
-                // Insert via heap
-                let insert_result = conflict_create_heap(ConflictCreateParams {
-                    conflict_id,
-                    conflict_type,
-                    item_a_type: &item_a_type,
-                    item_a_id,
-                    item_b_type: &item_b_type,
-                    item_b_id,
-                    agent_a_id,
-                    agent_b_id,
-                    trajectory_id,
-                    tenant_id,
-                });
-                prop_assert!(insert_result.is_ok(), "Insert should succeed");
+                        // Insert via heap
+                        let insert_result = conflict_create_heap(ConflictCreateParams {
+                            conflict_id,
+                            conflict_type,
+                            item_a_type: &item_a_type,
+                            item_a_id,
+                            item_b_type: &item_b_type,
+                            item_b_id,
+                            agent_a_id,
+                            agent_b_id,
+                            trajectory_id,
+                            tenant_id,
+                        });
+                        prop_assert!(insert_result.is_ok(), "Insert should succeed");
 
-                // Verify it appears in pending list
-                let list_before = conflict_list_pending_heap(tenant_id);
-                prop_assert!(list_before.is_ok(), "List pending before resolve should succeed");
-                prop_assert!(
-                    list_before
-                        .unwrap()
-                        .iter()
-                        .any(|c| c.conflict.conflict_id == conflict_id),
-                    "Conflict should be in pending list before resolve"
-                );
+                        // Verify it appears in pending list
+                        let list_before = conflict_list_pending_heap(tenant_id);
+                        prop_assert!(
+                            list_before.is_ok(),
+                            "List pending before resolve should succeed"
+                        );
+                        prop_assert!(
+                            list_before
+                                .unwrap()
+                                .iter()
+                                .any(|c| c.conflict.conflict_id == conflict_id),
+                            "Conflict should be in pending list before resolve"
+                        );
 
-                // Resolve the conflict
-                let resolve_result = conflict_resolve_heap(conflict_id, &resolution, tenant_id);
-                prop_assert!(resolve_result.is_ok(), "Resolve should succeed");
+                        // Resolve the conflict
+                        let resolve_result =
+                            conflict_resolve_heap(conflict_id, &resolution, tenant_id);
+                        prop_assert!(resolve_result.is_ok(), "Resolve should succeed");
 
-                // Verify it no longer appears in pending list
-                let list_after = conflict_list_pending_heap(tenant_id);
-                prop_assert!(list_after.is_ok(), "List pending after resolve should succeed");
-                prop_assert!(
-                    !list_after
-                        .unwrap()
-                        .iter()
-                        .any(|c| c.conflict.conflict_id == conflict_id),
-                    "Resolved conflict should NOT be in pending list"
-                );
+                        // Verify it no longer appears in pending list
+                        let list_after = conflict_list_pending_heap(tenant_id);
+                        prop_assert!(
+                            list_after.is_ok(),
+                            "List pending after resolve should succeed"
+                        );
+                        prop_assert!(
+                            !list_after
+                                .unwrap()
+                                .iter()
+                                .any(|c| c.conflict.conflict_id == conflict_id),
+                            "Resolved conflict should NOT be in pending list"
+                        );
 
-                Ok(())
-            }).unwrap();
+                        Ok(())
+                    },
+                )
+                .unwrap();
         }
     }
 }

@@ -12,25 +12,25 @@ use axum::extract::State;
 use axum::Json;
 use caliber_api::grpc::{proto, TrajectoryServiceImpl};
 use caliber_api::middleware::AuthExtractor;
+use caliber_api::proto::trajectory_service_server::TrajectoryService;
 use caliber_api::routes::trajectory;
 use caliber_api::types::CreateTrajectoryRequest;
 use caliber_api::ws::WsState;
-use caliber_api::proto::trajectory_service_server::TrajectoryService;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::sync::Arc;
-use tonic::Request;
 use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
+use tonic::Request;
 
-#[path = "support/db.rs"]
-mod test_db_support;
-#[path = "support/ws.rs"]
-mod test_ws_support;
 #[path = "support/auth.rs"]
 mod test_auth_support;
+#[path = "support/db.rs"]
+mod test_db_support;
 #[path = "support/event_dag.rs"]
 mod test_event_dag_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
 use test_auth_support::test_auth_context;
 
 async fn recv_trajectory_event(

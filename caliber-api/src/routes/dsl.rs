@@ -11,15 +11,14 @@ use axum::{
 };
 
 use crate::{
-    middleware::AuthExtractor,
     db::DbClient,
     error::{ApiError, ApiResult},
+    middleware::AuthExtractor,
     state::AppState,
     types::{
-        CompileDslRequest, CompileDslResponse, CompileErrorResponse,
-        DeployDslRequest, DeployDslResponse, DslConfigStatus,
+        CompileDslRequest, CompileDslResponse, CompileErrorResponse, ComposePackMultipart,
+        ComposePackResponse, DeployDslRequest, DeployDslResponse, DslConfigStatus, PackDiagnostic,
         ParseErrorResponse, ValidateDslRequest, ValidateDslResponse,
-        ComposePackMultipart, ComposePackResponse, PackDiagnostic,
     },
 };
 use caliber_dsl::pack::{compose_pack as compose_pack_internal, PackInput, PackMarkdownFile};
@@ -188,8 +187,9 @@ pub async fn compile_dsl(
     // Step 2: Compile the AST
     match caliber_dsl::DslCompiler::compile(&ast) {
         Ok(config) => {
-            let compiled_json = serde_json::to_value(&config)
-                .map_err(|e| ApiError::internal_error(format!("Failed to serialize compiled config: {}", e)))?;
+            let compiled_json = serde_json::to_value(&config).map_err(|e| {
+                ApiError::internal_error(format!("Failed to serialize compiled config: {}", e))
+            })?;
 
             let response = CompileDslResponse {
                 success: true,
@@ -275,8 +275,9 @@ pub async fn compose_pack(
         Ok(result) => {
             let ast_json = serde_json::to_value(&result.ast)
                 .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
-            let compiled_json = serde_json::to_value(&result.compiled)
-                .map_err(|e| ApiError::internal_error(format!("Failed to serialize compiled config: {}", e)))?;
+            let compiled_json = serde_json::to_value(&result.compiled).map_err(|e| {
+                ApiError::internal_error(format!("Failed to serialize compiled config: {}", e))
+            })?;
             let dsl_source = pretty_print(&result.ast);
             Ok(Json(ComposePackResponse {
                 success: true,
@@ -394,19 +395,19 @@ pub async fn deploy_dsl(
             contracts: std::collections::HashMap::new(),
         };
 
-        let output = compose_pack_internal(input).map_err(|err| {
-            ApiError::invalid_input(format!("Pack composition error: {}", err))
-        })?;
+        let output = compose_pack_internal(input)
+            .map_err(|err| ApiError::invalid_input(format!("Pack composition error: {}", err)))?;
 
         // Store canonical DSL source for audit/debug.
         let dsl_source = pretty_print(&output.ast);
         (dsl_source, output.ast, output.compiled)
     } else {
-        let ast = caliber_dsl::parse(&req.source)
-            .map_err(|err| ApiError::invalid_input(format!(
+        let ast = caliber_dsl::parse(&req.source).map_err(|err| {
+            ApiError::invalid_input(format!(
                 "Parse error at line {}, column {}: {}",
                 err.line, err.column, err.message
-            )))?;
+            ))
+        })?;
 
         let compiled = caliber_dsl::DslCompiler::compile(&ast)
             .map_err(|err| ApiError::invalid_input(format!("Compilation error: {}", err)))?;
@@ -417,40 +418,50 @@ pub async fn deploy_dsl(
     // Step 3: Serialize for storage
     let ast_json = serde_json::to_value(&ast)
         .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
-    let compiled_json = serde_json::to_value(&compiled)
-        .map_err(|e| ApiError::internal_error(format!("Failed to serialize compiled config: {}", e)))?;
+    let compiled_json = serde_json::to_value(&compiled).map_err(|e| {
+        ApiError::internal_error(format!("Failed to serialize compiled config: {}", e))
+    })?;
 
     // Step 4: Get next version number for this config name
-    let version = db.dsl_config_next_version(auth.tenant_id, &req.name).await?;
+    let version = db
+        .dsl_config_next_version(auth.tenant_id, &req.name)
+        .await?;
 
     // Step 5: Insert the config
-    let config_id = db.dsl_config_create(
-        auth.tenant_id,
-        &req.name,
-        version,
-        &dsl_source,
-        ast_json,
-        compiled_json,
-    ).await?;
+    let config_id = db
+        .dsl_config_create(
+            auth.tenant_id,
+            &req.name,
+            version,
+            &dsl_source,
+            ast_json,
+            compiled_json,
+        )
+        .await?;
 
     // Step 5b: Store pack source if provided
     if let Some(pack) = &req.pack {
         let pack_json = serde_json::to_value(pack)
             .map_err(|e| ApiError::internal_error(format!("Failed to serialize pack: {}", e)))?;
-        db.dsl_pack_create(config_id, auth.tenant_id, pack_json).await?;
+        db.dsl_pack_create(config_id, auth.tenant_id, pack_json)
+            .await?;
     }
 
     // Step 6: If activate is true, deploy it
     // Note: We pass None for agent_id since deployment is user-initiated
     let status = if req.activate {
-        db.dsl_config_deploy(config_id, None, req.notes.as_deref()).await?;
+        db.dsl_config_deploy(config_id, None, req.notes.as_deref())
+            .await?;
         DslConfigStatus::Deployed
     } else {
         DslConfigStatus::Draft
     };
 
     let message = if req.activate {
-        format!("Configuration '{}' v{} deployed successfully", req.name, version)
+        format!(
+            "Configuration '{}' v{} deployed successfully",
+            req.name, version
+        )
     } else {
         format!("Configuration '{}' v{} saved as draft", req.name, version)
     };

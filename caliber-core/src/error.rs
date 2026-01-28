@@ -12,7 +12,10 @@ pub enum StorageError {
     NotFound { entity_type: EntityType, id: Uuid },
 
     #[error("Insert failed for {entity_type:?}: {reason}")]
-    InsertFailed { entity_type: EntityType, reason: String },
+    InsertFailed {
+        entity_type: EntityType,
+        reason: String,
+    },
 
     #[error("Update failed for {entity_type:?} with id {id}: {reason}")]
     UpdateFailed {
@@ -89,10 +92,7 @@ pub enum ValidationError {
     },
 
     #[error("Contradiction detected between artifacts {artifact_a} and {artifact_b}")]
-    Contradiction {
-        artifact_a: Uuid,
-        artifact_b: Uuid,
-    },
+    Contradiction { artifact_a: Uuid, artifact_b: Uuid },
 }
 
 /// Configuration errors.

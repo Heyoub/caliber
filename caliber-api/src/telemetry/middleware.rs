@@ -5,8 +5,8 @@
 //! - Prometheus metrics collection
 //! - Trace context propagation (traceparent header)
 
-use axum::{body::Body, middleware::Next, response::Response};
 use axum::http::HeaderMap;
+use axum::{body::Body, middleware::Next, response::Response};
 use opentelemetry::{
     global,
     propagation::Extractor,
@@ -24,9 +24,7 @@ use super::metrics::METRICS;
 ///
 /// Looks for W3C traceparent header for distributed tracing.
 fn extract_trace_context(headers: &HeaderMap) -> Context {
-    global::get_text_map_propagator(|propagator| {
-        propagator.extract(&HeaderMapExtractor(headers))
-    })
+    global::get_text_map_propagator(|propagator| propagator.extract(&HeaderMapExtractor(headers)))
 }
 
 struct HeaderMapExtractor<'a>(&'a HeaderMap);
@@ -83,10 +81,7 @@ fn normalize_path(path: &str) -> String {
 /// 1. OpenTelemetry span (with trace context propagation)
 /// 2. Prometheus metrics recording
 /// 3. Request/response logging
-pub async fn observability_middleware(
-    request: axum::http::Request<Body>,
-    next: Next,
-) -> Response {
+pub async fn observability_middleware(request: axum::http::Request<Body>, next: Next) -> Response {
     let start = Instant::now();
 
     // Extract request metadata
@@ -119,16 +114,24 @@ pub async fn observability_middleware(
 
     // Record Prometheus metrics
     if let Ok(metrics) = METRICS.as_ref() {
-        metrics.record_http_request(method.as_str(), &normalized_path, status.as_u16(), duration_secs);
+        metrics.record_http_request(
+            method.as_str(),
+            &normalized_path,
+            status.as_u16(),
+            duration_secs,
+        );
     } else {
         tracing::error!("Metrics registry unavailable; skipping HTTP request metrics");
     }
 
     // Update span with response status
     let cx = span.context();
-    cx.span().set_attribute(KeyValue::new("http.method", method.to_string()));
-    cx.span().set_attribute(KeyValue::new("http.target", path.clone()));
-    cx.span().set_attribute(KeyValue::new("http.route", normalized_path.clone()));
+    cx.span()
+        .set_attribute(KeyValue::new("http.method", method.to_string()));
+    cx.span()
+        .set_attribute(KeyValue::new("http.target", path.clone()));
+    cx.span()
+        .set_attribute(KeyValue::new("http.route", normalized_path.clone()));
     cx.span()
         .set_attribute(KeyValue::new("http.status_code", status.as_u16() as i64));
 

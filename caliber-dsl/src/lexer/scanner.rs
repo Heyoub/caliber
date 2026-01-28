@@ -141,7 +141,11 @@ impl<'a> Lexer<'a> {
                     if self.peek_char() == Some('>') {
                         self.advance();
                         TokenKind::Arrow
-                    } else if self.peek_char().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                    } else if self
+                        .peek_char()
+                        .map(|c| c.is_ascii_digit())
+                        .unwrap_or(false)
+                    {
                         self.scan_number_from_pos(start_pos)
                     } else {
                         TokenKind::Error("Unexpected character: -".to_string())
@@ -547,4 +551,3 @@ impl<'a> Lexer<'a> {
         }
     }
 }
-

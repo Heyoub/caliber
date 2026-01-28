@@ -41,7 +41,8 @@ pub async fn accept_delegation(
         "accepted_at": chrono::Utc::now().to_rfc3339()
     });
 
-    db.update_raw::<DelegationResponse>(delegation.delegation_id, updates, delegation.tenant_id).await
+    db.update_raw::<DelegationResponse>(delegation.delegation_id, updates, delegation.tenant_id)
+        .await
 }
 
 /// Reject a delegation (Pending -> Rejected transition).
@@ -79,7 +80,8 @@ pub async fn reject_delegation(
         "rejection_reason": reason
     });
 
-    db.update_raw::<DelegationResponse>(delegation.delegation_id, updates, delegation.tenant_id).await
+    db.update_raw::<DelegationResponse>(delegation.delegation_id, updates, delegation.tenant_id)
+        .await
 }
 
 /// Complete a delegation (Accepted/InProgress -> Completed transition).
@@ -116,7 +118,8 @@ pub async fn complete_delegation(
         "result": result_json
     });
 
-    db.update_raw::<DelegationResponse>(delegation.delegation_id, updates, delegation.tenant_id).await
+    db.update_raw::<DelegationResponse>(delegation.delegation_id, updates, delegation.tenant_id)
+        .await
 }
 
 // =============================================================================
@@ -167,7 +170,9 @@ mod tests {
         let db = dummy_db();
         let delegatee = AgentId::now_v7();
         let delegation = sample_delegation(DelegationStatus::Accepted, delegatee);
-        let err = accept_delegation(&db, &delegation, delegatee).await.unwrap_err();
+        let err = accept_delegation(&db, &delegation, delegatee)
+            .await
+            .unwrap_err();
         assert_eq!(err.code, ErrorCode::StateConflict);
     }
 
@@ -246,7 +251,10 @@ mod tests {
             return None;
         }
 
-        let tenant_id = db.tenant_create("test-delegation-service", None, None).await.ok()?;
+        let tenant_id = db
+            .tenant_create("test-delegation-service", None, None)
+            .await
+            .ok()?;
         Some(DbTestContext { db, tenant_id })
     }
 
@@ -333,7 +341,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_accept_complete_delegation_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let trajectory = create_trajectory(&ctx.db, ctx.tenant_id).await;
         let scope = create_scope(&ctx.db, ctx.tenant_id, trajectory.trajectory_id).await;

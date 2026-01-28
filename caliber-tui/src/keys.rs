@@ -35,7 +35,9 @@ pub enum KeyAction {
 }
 
 pub fn map_key(event: KeyEvent) -> Option<KeyAction> {
-    let KeyEvent { code, modifiers, .. } = event;
+    let KeyEvent {
+        code, modifiers, ..
+    } = event;
 
     if modifiers.contains(KeyModifiers::CONTROL) {
         return match code {

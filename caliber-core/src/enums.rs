@@ -1094,7 +1094,9 @@ mod tests {
 
     #[test]
     fn test_field_type_embedding_serde_roundtrip() {
-        let original = FieldType::Embedding { dimensions: Some(1536) };
+        let original = FieldType::Embedding {
+            dimensions: Some(1536),
+        };
         let json = serde_json::to_string(&original).unwrap();
         let restored: FieldType = serde_json::from_str(&json).unwrap();
         assert_eq!(original, restored);
@@ -1344,32 +1346,74 @@ mod tests {
     #[test]
     fn test_abstraction_level_aliases() {
         // "raw" and "l0" should both parse to Raw
-        assert_eq!("raw".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Raw);
-        assert_eq!("l0".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Raw);
+        assert_eq!(
+            "raw".parse::<AbstractionLevel>().unwrap(),
+            AbstractionLevel::Raw
+        );
+        assert_eq!(
+            "l0".parse::<AbstractionLevel>().unwrap(),
+            AbstractionLevel::Raw
+        );
 
         // "summary" and "l1" should both parse to Summary
-        assert_eq!("summary".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Summary);
-        assert_eq!("l1".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Summary);
+        assert_eq!(
+            "summary".parse::<AbstractionLevel>().unwrap(),
+            AbstractionLevel::Summary
+        );
+        assert_eq!(
+            "l1".parse::<AbstractionLevel>().unwrap(),
+            AbstractionLevel::Summary
+        );
 
         // "principle" and "l2" should both parse to Principle
-        assert_eq!("principle".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Principle);
-        assert_eq!("l2".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Principle);
+        assert_eq!(
+            "principle".parse::<AbstractionLevel>().unwrap(),
+            AbstractionLevel::Principle
+        );
+        assert_eq!(
+            "l2".parse::<AbstractionLevel>().unwrap(),
+            AbstractionLevel::Principle
+        );
     }
 
     #[test]
     fn test_trajectory_status_aliases() {
-        assert_eq!("completed".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Completed);
-        assert_eq!("complete".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Completed);
-        assert_eq!("failed".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Failed);
-        assert_eq!("failure".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Failed);
+        assert_eq!(
+            "completed".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Completed
+        );
+        assert_eq!(
+            "complete".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Completed
+        );
+        assert_eq!(
+            "failed".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Failed
+        );
+        assert_eq!(
+            "failure".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Failed
+        );
     }
 
     #[test]
     fn test_evolution_phase_aliases() {
-        assert_eq!("frozen".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Frozen);
-        assert_eq!("freeze".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Frozen);
-        assert_eq!("evolving".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Evolving);
-        assert_eq!("evolve".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Evolving);
+        assert_eq!(
+            "frozen".parse::<EvolutionPhase>().unwrap(),
+            EvolutionPhase::Frozen
+        );
+        assert_eq!(
+            "freeze".parse::<EvolutionPhase>().unwrap(),
+            EvolutionPhase::Frozen
+        );
+        assert_eq!(
+            "evolving".parse::<EvolutionPhase>().unwrap(),
+            EvolutionPhase::Evolving
+        );
+        assert_eq!(
+            "evolve".parse::<EvolutionPhase>().unwrap(),
+            EvolutionPhase::Evolving
+        );
     }
 
     // ========================================================================
@@ -1421,8 +1465,14 @@ mod tests {
     #[test]
     fn test_agent_status_from_db_str() {
         assert_eq!(AgentStatus::from_db_str("idle").unwrap(), AgentStatus::Idle);
-        assert_eq!(AgentStatus::from_db_str("ACTIVE").unwrap(), AgentStatus::Active);
-        assert_eq!(AgentStatus::from_db_str("Blocked").unwrap(), AgentStatus::Blocked);
+        assert_eq!(
+            AgentStatus::from_db_str("ACTIVE").unwrap(),
+            AgentStatus::Active
+        );
+        assert_eq!(
+            AgentStatus::from_db_str("Blocked").unwrap(),
+            AgentStatus::Blocked
+        );
         assert!(AgentStatus::from_db_str("invalid").is_err());
     }
 
@@ -1462,11 +1512,26 @@ mod tests {
 
     #[test]
     fn test_parse_case_insensitive() {
-        assert_eq!("ACTIVE".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Active);
-        assert_eq!("active".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Active);
-        assert_eq!("Active".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Active);
-        assert_eq!("TRAJECTORY".parse::<EntityType>().unwrap(), EntityType::Trajectory);
-        assert_eq!("trajectory".parse::<EntityType>().unwrap(), EntityType::Trajectory);
+        assert_eq!(
+            "ACTIVE".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Active
+        );
+        assert_eq!(
+            "active".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Active
+        );
+        assert_eq!(
+            "Active".parse::<TrajectoryStatus>().unwrap(),
+            TrajectoryStatus::Active
+        );
+        assert_eq!(
+            "TRAJECTORY".parse::<EntityType>().unwrap(),
+            EntityType::Trajectory
+        );
+        assert_eq!(
+            "trajectory".parse::<EntityType>().unwrap(),
+            EntityType::Trajectory
+        );
     }
 
     // ========================================================================

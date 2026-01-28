@@ -2,22 +2,25 @@
 //!
 //! Implements the MCP specification for tool-based agent interaction.
 
-use axum::{routing::{get, post}, Router};
 use crate::state::AppState;
+use axum::{
+    routing::{get, post},
+    Router,
+};
 
 // Sub-modules
-pub mod types;
-pub mod tools;
 pub mod handlers;
-pub mod resources;
 pub mod prompts;
+pub mod resources;
+pub mod tools;
+pub mod types;
 
 // Re-export key types
-pub use types::*;
-pub use tools::*;
 pub use handlers::*;
-pub use resources::*;
 pub use prompts::*;
+pub use resources::*;
+pub use tools::*;
+pub use types::*;
 
 /// MCP protocol version
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";

@@ -10,7 +10,9 @@
 //!                      └── timeout() ─→ Failed (terminal)
 //! ```
 
-use crate::{AgentId, ArtifactId, DelegationId, NoteId, ScopeId, TenantId, Timestamp, TrajectoryId};
+use crate::{
+    AgentId, ArtifactId, DelegationId, NoteId, ScopeId, TenantId, Timestamp, TrajectoryId,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
@@ -438,7 +440,9 @@ impl Delegation<Pending> {
 impl Delegation<DelegationAccepted> {
     /// Get when the delegation was accepted.
     pub fn accepted_at(&self) -> Timestamp {
-        self.data.accepted_at.expect("Accepted delegation must have accepted_at")
+        self.data
+            .accepted_at
+            .expect("Accepted delegation must have accepted_at")
     }
 
     /// Start working on the delegation.
@@ -469,12 +473,16 @@ impl Delegation<DelegationAccepted> {
 impl Delegation<InProgress> {
     /// Get when the delegation was accepted.
     pub fn accepted_at(&self) -> Timestamp {
-        self.data.accepted_at.expect("In-progress delegation must have accepted_at")
+        self.data
+            .accepted_at
+            .expect("In-progress delegation must have accepted_at")
     }
 
     /// Get when work started.
     pub fn started_at(&self) -> Timestamp {
-        self.data.started_at.expect("In-progress delegation must have started_at")
+        self.data
+            .started_at
+            .expect("In-progress delegation must have started_at")
     }
 
     /// Complete the delegation with a result.
@@ -510,36 +518,51 @@ impl Delegation<InProgress> {
 impl Delegation<DelegationCompleted> {
     /// Get when the delegation was accepted.
     pub fn accepted_at(&self) -> Timestamp {
-        self.data.accepted_at.expect("Completed delegation must have accepted_at")
+        self.data
+            .accepted_at
+            .expect("Completed delegation must have accepted_at")
     }
 
     /// Get when work started.
     pub fn started_at(&self) -> Timestamp {
-        self.data.started_at.expect("Completed delegation must have started_at")
+        self.data
+            .started_at
+            .expect("Completed delegation must have started_at")
     }
 
     /// Get when the delegation was completed.
     pub fn completed_at(&self) -> Timestamp {
-        self.data.completed_at.expect("Completed delegation must have completed_at")
+        self.data
+            .completed_at
+            .expect("Completed delegation must have completed_at")
     }
 
     /// Get the delegation result.
     pub fn result(&self) -> &DelegationResult {
-        self.data.result.as_ref().expect("Completed delegation must have result")
+        self.data
+            .result
+            .as_ref()
+            .expect("Completed delegation must have result")
     }
 }
 
 impl Delegation<DelegationRejected> {
     /// Get the rejection reason.
     pub fn rejection_reason(&self) -> &str {
-        self.data.rejection_reason.as_deref().unwrap_or("No reason provided")
+        self.data
+            .rejection_reason
+            .as_deref()
+            .unwrap_or("No reason provided")
     }
 }
 
 impl Delegation<DelegationFailed> {
     /// Get the failure reason.
     pub fn failure_reason(&self) -> &str {
-        self.data.failure_reason.as_deref().unwrap_or("No reason provided")
+        self.data
+            .failure_reason
+            .as_deref()
+            .unwrap_or("No reason provided")
     }
 }
 

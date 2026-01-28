@@ -16,26 +16,26 @@
 //! - **Effects**: Error-as-effects pattern (Effect<T>, ErrorEffect)
 
 // Core modules
-mod identity;
-mod enums;
+mod agent;
+mod battle_intel;
+mod config;
 mod embedding;
 mod entities;
-mod battle_intel;
+mod enums;
 mod error;
-mod config;
 mod filter;
 mod health;
-mod agent;
+mod identity;
 mod llm;
 
 // Typestate modules (compile-time safety for critical paths)
-mod lock;
-mod handoff;
 mod delegation;
+mod handoff;
+mod lock;
 
 // Event DAG modules
-mod event;
 mod effect;
+mod event;
 
 // Context assembly module
 mod context;
@@ -68,9 +68,9 @@ pub use filter::*;
 pub use health::*;
 
 // Re-export typestate types (Lock, Handoff, Delegation)
-pub use lock::*;
-pub use handoff::*;
 pub use delegation::*;
+pub use handoff::*;
+pub use lock::*;
 
 // Re-export event DAG types
 pub use event::*;

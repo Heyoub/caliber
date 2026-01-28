@@ -67,9 +67,7 @@ pub async fn create_note(
     let note = db.create::<NoteResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast NoteCreated event
-    ws.broadcast(WsEvent::NoteCreated {
-        note: note.clone(),
-    });
+    ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
 
     Ok((StatusCode::CREATED, Json(note.linked())))
 }
@@ -300,10 +298,7 @@ pub async fn search_notes(
     }
 
     // Validate entity types include Note
-    if !req
-        .entity_types
-        .contains(&caliber_core::EntityType::Note)
-    {
+    if !req.entity_types.contains(&caliber_core::EntityType::Note) {
         return Err(ApiError::invalid_input(
             "entity_types must include Note for note search",
         ));
@@ -333,13 +328,13 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::routes::trajectory::create_trajectory;
     use crate::state::ApiEventDag;
     use crate::types::{CreateTrajectoryRequest, TrajectoryResponse};
     use crate::ws::WsState;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use caliber_core::{EntityIdType, NoteType, TrajectoryId, TTL};
     use std::sync::Arc;
     use uuid::Uuid;
@@ -382,7 +377,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -452,9 +449,7 @@ mod tests {
         };
 
         assert!(req.query.trim().is_empty());
-        assert!(req
-            .entity_types
-            .contains(&caliber_core::EntityType::Note));
+        assert!(req.entity_types.contains(&caliber_core::EntityType::Note));
     }
 
     #[test]
@@ -494,7 +489,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_list_notes_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let trajectory_req = CreateTrajectoryRequest {
             name: format!("note-traj-{}", Uuid::now_v7()),

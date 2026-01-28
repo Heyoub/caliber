@@ -29,7 +29,10 @@ pub fn split_with_links(app: &App, area: Rect) -> (Rect, Option<Rect>) {
 pub fn render_links_panel(f: &mut Frame<'_>, app: &App, area: Rect) {
     let panel = LinksPanel::new("Actions [a]", &app.links_state.actions)
         .with_selected(app.links_state.selected)
-        .with_style(LinksStyle::with_theme(app.theme.primary, app.theme.secondary));
+        .with_style(LinksStyle::with_theme(
+            app.theme.primary,
+            app.theme.secondary,
+        ));
     panel.render(f, area);
 }
 

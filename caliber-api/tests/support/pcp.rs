@@ -39,6 +39,8 @@ fn make_test_pcp_config() -> PCPConfig {
             max_artifact_size: 1024 * 1024,
             min_confidence_threshold: 0.3,
         },
-        staleness: StalenessConfig { stale_hours: 24 * 30 },
+        staleness: StalenessConfig {
+            stale_hours: 24 * 30,
+        },
     }
 }

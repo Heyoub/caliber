@@ -78,10 +78,7 @@ pub trait Component: Sized + Send + Sync + Clone + DeserializeOwned + Serialize 
     ///
     /// Returns a vector of parameter values in the order expected by
     /// the stored procedure.
-    fn create_params(
-        req: &Self::Create,
-        tenant_id: TenantId,
-    ) -> Vec<SqlParam>;
+    fn create_params(req: &Self::Create, tenant_id: TenantId) -> Vec<SqlParam>;
 
     /// Get the number of parameters for create (excluding tenant_id).
     fn create_param_count() -> usize;
@@ -98,8 +95,9 @@ pub trait Component: Sized + Send + Sync + Clone + DeserializeOwned + Serialize 
     ///
     /// Default implementation uses serde_json::from_value.
     fn from_json(json: &JsonValue) -> ApiResult<Self> {
-        serde_json::from_value(json.clone())
-            .map_err(|e| ApiError::internal_error(format!("Failed to parse {}: {}", Self::ENTITY_NAME, e)))
+        serde_json::from_value(json.clone()).map_err(|e| {
+            ApiError::internal_error(format!("Failed to parse {}: {}", Self::ENTITY_NAME, e))
+        })
     }
 }
 

@@ -1,13 +1,5 @@
 //! CALIBER TUI entry point.
 
-use caliber_tui::api_client::ApiClient;
-use caliber_tui::config::TuiConfig;
-use caliber_tui::error::TuiError;
-use caliber_tui::events::TuiEvent;
-use caliber_tui::keys::{map_key, KeyAction};
-use caliber_tui::persistence::{self, PersistedState};
-use caliber_tui::state::App;
-use caliber_tui::views::render_view;
 use caliber_api::types::{
     CompileDslRequest, DeployDslRequest, ListAgentsRequest, ListArtifactsRequest,
     ListMessagesRequest, ListNotesRequest, ListTrajectoriesRequest, PackSource, PackSourceFile,
@@ -16,6 +8,14 @@ use caliber_api::types::{
 use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
 use caliber_dsl::parser::CaliberAst;
 use caliber_dsl::pretty_printer::pretty_print;
+use caliber_tui::api_client::ApiClient;
+use caliber_tui::config::TuiConfig;
+use caliber_tui::error::TuiError;
+use caliber_tui::events::TuiEvent;
+use caliber_tui::keys::{map_key, KeyAction};
+use caliber_tui::persistence::{self, PersistedState};
+use caliber_tui::state::App;
+use caliber_tui::views::render_view;
 use crossterm::{
     event::{self, Event as CrosstermEvent},
     execute,
@@ -160,7 +160,10 @@ async fn handle_event(app: &mut App, event: TuiEvent) -> Result<bool, TuiError> 
             app.enqueue_event(*ws_event);
         }
         TuiEvent::ApiError(message) => {
-            app.notify(caliber_tui::notifications::NotificationLevel::Error, message);
+            app.notify(
+                caliber_tui::notifications::NotificationLevel::Error,
+                message,
+            );
         }
         TuiEvent::Resize { .. } | TuiEvent::Tick => {}
     }
@@ -193,34 +196,52 @@ async fn handle_action(app: &mut App, action: KeyAction) -> Result<bool, TuiErro
                 refresh_view(app).await?;
             }
         }
-        KeyAction::OpenHelp => app.modal = Some(caliber_tui::state::Modal {
-            title: "Keybindings".to_string(),
-            message: "Use h/j/k/l or arrows to move, Tab to switch views, q to quit.".to_string(),
-        }),
-        KeyAction::OpenSearch => app.search = Some(caliber_tui::state::GlobalSearch { query: String::new() }),
-        KeyAction::OpenCommand => app.command_palette = Some(caliber_tui::state::CommandPalette {
-            input: String::new(),
-            suggestions: Vec::new(),
-        }),
+        KeyAction::OpenHelp => {
+            app.modal = Some(caliber_tui::state::Modal {
+                title: "Keybindings".to_string(),
+                message: "Use h/j/k/l or arrows to move, Tab to switch views, q to quit."
+                    .to_string(),
+            })
+        }
+        KeyAction::OpenSearch => {
+            app.search = Some(caliber_tui::state::GlobalSearch {
+                query: String::new(),
+            })
+        }
+        KeyAction::OpenCommand => {
+            app.command_palette = Some(caliber_tui::state::CommandPalette {
+                input: String::new(),
+                suggestions: Vec::new(),
+            })
+        }
         KeyAction::NewItem => {
             if app.active_view == caliber_tui::nav::View::DslEditor {
                 compose_pack_action(app).await?;
             } else {
-                app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+                app.notify(
+                    caliber_tui::notifications::NotificationLevel::Info,
+                    "KeyAction queued.",
+                );
             }
         }
         KeyAction::EditItem => {
             if app.active_view == caliber_tui::nav::View::DslEditor {
                 compile_dsl_action(app).await?;
             } else {
-                app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+                app.notify(
+                    caliber_tui::notifications::NotificationLevel::Info,
+                    "KeyAction queued.",
+                );
             }
         }
         KeyAction::DeleteItem => {
             if app.active_view == caliber_tui::nav::View::DslEditor {
                 deploy_dsl_action(app).await?;
             } else {
-                app.notify(caliber_tui::notifications::NotificationLevel::Info, "KeyAction queued.");
+                app.notify(
+                    caliber_tui::notifications::NotificationLevel::Info,
+                    "KeyAction queued.",
+                );
             }
         }
         KeyAction::Confirm => {
@@ -302,26 +323,40 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
             }
         }
         caliber_tui::nav::View::ArtifactBrowser => {
-            let response = app.api.rest().list_artifacts(tenant_id, &ListArtifactsRequest {
-                artifact_type: app.artifact_view.filter.artifact_type,
-                trajectory_id: app.artifact_view.filter.trajectory_id,
-                scope_id: app.artifact_view.filter.scope_id,
-                created_after: app.artifact_view.filter.date_from,
-                created_before: app.artifact_view.filter.date_to,
-                limit: None,
-                offset: None,
-            }).await?;
+            let response = app
+                .api
+                .rest()
+                .list_artifacts(
+                    tenant_id,
+                    &ListArtifactsRequest {
+                        artifact_type: app.artifact_view.filter.artifact_type,
+                        trajectory_id: app.artifact_view.filter.trajectory_id,
+                        scope_id: app.artifact_view.filter.scope_id,
+                        created_after: app.artifact_view.filter.date_from,
+                        created_before: app.artifact_view.filter.date_to,
+                        limit: None,
+                        offset: None,
+                    },
+                )
+                .await?;
             app.artifact_view.artifacts = response.artifacts;
         }
         caliber_tui::nav::View::NoteLibrary => {
-            let response = app.api.rest().list_notes(tenant_id, &ListNotesRequest {
-                note_type: app.note_view.filter.note_type,
-                source_trajectory_id: app.note_view.filter.source_trajectory_id,
-                created_after: app.note_view.filter.date_from,
-                created_before: app.note_view.filter.date_to,
-                limit: None,
-                offset: None,
-            }).await?;
+            let response = app
+                .api
+                .rest()
+                .list_notes(
+                    tenant_id,
+                    &ListNotesRequest {
+                        note_type: app.note_view.filter.note_type,
+                        source_trajectory_id: app.note_view.filter.source_trajectory_id,
+                        created_after: app.note_view.filter.date_from,
+                        created_before: app.note_view.filter.date_to,
+                        limit: None,
+                        offset: None,
+                    },
+                )
+                .await?;
             app.note_view.notes = response.notes;
         }
         caliber_tui::nav::View::TurnHistory => {
@@ -335,12 +370,19 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
             }
         }
         caliber_tui::nav::View::AgentDashboard => {
-            let response = app.api.rest().list_agents(tenant_id, &ListAgentsRequest {
-                agent_type: app.agent_view.filter.agent_type.clone(),
-                status: app.agent_view.filter.status.clone(),
-                trajectory_id: None,
-                active_only: None,
-            }).await?;
+            let response = app
+                .api
+                .rest()
+                .list_agents(
+                    tenant_id,
+                    &ListAgentsRequest {
+                        agent_type: app.agent_view.filter.agent_type.clone(),
+                        status: app.agent_view.filter.status.clone(),
+                        trajectory_id: None,
+                        active_only: None,
+                    },
+                )
+                .await?;
             app.agent_view.agents = response.agents;
         }
         caliber_tui::nav::View::LockMonitor => {
@@ -348,18 +390,25 @@ async fn refresh_view(app: &mut App) -> Result<(), TuiError> {
             app.lock_view.locks = response.locks;
         }
         caliber_tui::nav::View::MessageQueue => {
-            let response = app.api.rest().list_messages(tenant_id, &ListMessagesRequest {
-                message_type: app.message_view.filter.message_type,
-                from_agent_id: app.message_view.filter.from_agent_id,
-                to_agent_id: app.message_view.filter.to_agent_id,
-                to_agent_type: None,
-                trajectory_id: None,
-                priority: app.message_view.filter.priority,
-                undelivered_only: None,
-                unacknowledged_only: None,
-                limit: None,
-                offset: None,
-            }).await?;
+            let response = app
+                .api
+                .rest()
+                .list_messages(
+                    tenant_id,
+                    &ListMessagesRequest {
+                        message_type: app.message_view.filter.message_type,
+                        from_agent_id: app.message_view.filter.from_agent_id,
+                        to_agent_id: app.message_view.filter.to_agent_id,
+                        to_agent_type: None,
+                        trajectory_id: None,
+                        priority: app.message_view.filter.priority,
+                        undelivered_only: None,
+                        unacknowledged_only: None,
+                        limit: None,
+                        offset: None,
+                    },
+                )
+                .await?;
             app.message_view.messages = response.messages;
         }
         caliber_tui::nav::View::TenantManagement => {
@@ -591,7 +640,10 @@ fn pack_source_from_root(root: &Path) -> Result<PackSource, TuiError> {
     let manifest_path = root.join("cal.toml");
     let manifest = fs::read_to_string(&manifest_path)?;
     let markdowns = collect_markdowns(root)?;
-    Ok(PackSource { manifest, markdowns })
+    Ok(PackSource {
+        manifest,
+        markdowns,
+    })
 }
 
 fn collect_markdowns(root: &Path) -> Result<Vec<PackSourceFile>, TuiError> {
@@ -600,7 +652,11 @@ fn collect_markdowns(root: &Path) -> Result<Vec<PackSourceFile>, TuiError> {
     Ok(out)
 }
 
-fn collect_markdowns_recursive(root: &Path, dir: &Path, out: &mut Vec<PackSourceFile>) -> Result<(), TuiError> {
+fn collect_markdowns_recursive(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<PackSourceFile>,
+) -> Result<(), TuiError> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();

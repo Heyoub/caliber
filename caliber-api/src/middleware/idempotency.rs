@@ -30,7 +30,6 @@
 use crate::auth::AuthContext;
 use crate::db::DbClient;
 use crate::error::{ApiError, ErrorCode};
-use caliber_core::{EntityIdType, TenantId};
 use axum::{
     body::{Body, Bytes},
     extract::{Request, State},
@@ -38,6 +37,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use caliber_core::{EntityIdType, TenantId};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration;
@@ -167,7 +167,9 @@ pub async fn idempotency_middleware(
         .get::<AuthContext>()
         .map(|ctx| ctx.tenant_id)
         .ok_or_else(|| {
-            IdempotencyError::Internal("Auth context missing, ensure auth middleware runs first".to_string())
+            IdempotencyError::Internal(
+                "Auth context missing, ensure auth middleware runs first".to_string(),
+            )
         })?;
 
     // Extract operation name from path
@@ -203,25 +205,33 @@ pub async fn idempotency_middleware(
                 "Returning cached response for idempotency key"
             );
 
-            let status_code = StatusCode::from_u16(status as u16)
-                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            let status_code =
+                StatusCode::from_u16(status as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
             let response = if let Some(body_json) = body {
-                let body_str = serde_json::to_string(&body_json)
-                    .map_err(|e| IdempotencyError::Internal(format!("Failed to serialize cached response: {}", e)))?;
+                let body_str = serde_json::to_string(&body_json).map_err(|e| {
+                    IdempotencyError::Internal(format!(
+                        "Failed to serialize cached response: {}",
+                        e
+                    ))
+                })?;
 
                 Response::builder()
                     .status(status_code)
                     .header("content-type", "application/json")
                     .header("x-idempotency-replay", "true")
                     .body(Body::from(body_str))
-                    .map_err(|e| IdempotencyError::Internal(format!("Failed to build response: {}", e)))?
+                    .map_err(|e| {
+                        IdempotencyError::Internal(format!("Failed to build response: {}", e))
+                    })?
             } else {
                 Response::builder()
                     .status(status_code)
                     .header("x-idempotency-replay", "true")
                     .body(Body::empty())
-                    .map_err(|e| IdempotencyError::Internal(format!("Failed to build response: {}", e)))?
+                    .map_err(|e| {
+                        IdempotencyError::Internal(format!("Failed to build response: {}", e))
+                    })?
             };
 
             Ok(response)
@@ -319,10 +329,9 @@ async fn check_idempotency_key(
     request_hash: &[u8],
     ttl_interval: &str,
 ) -> Result<IdempotencyCheckResult, IdempotencyError> {
-    let client = db
-        .get_conn()
-        .await
-        .map_err(|e| IdempotencyError::Internal(format!("Failed to get database connection: {}", e)))?;
+    let client = db.get_conn().await.map_err(|e| {
+        IdempotencyError::Internal(format!("Failed to get database connection: {}", e))
+    })?;
     let tenant_uuid = tenant_id.as_uuid();
 
     // Note: Using raw SQL here because the function has special error handling
@@ -382,10 +391,9 @@ async fn store_idempotency_response(
     status: i32,
     body: Option<&serde_json::Value>,
 ) -> Result<(), IdempotencyError> {
-    let client = db
-        .get_conn()
-        .await
-        .map_err(|e| IdempotencyError::Internal(format!("Failed to get database connection: {}", e)))?;
+    let client = db.get_conn().await.map_err(|e| {
+        IdempotencyError::Internal(format!("Failed to get database connection: {}", e))
+    })?;
     let tenant_uuid = tenant_id.as_uuid();
 
     let params: [&(dyn ToSql + Sync); 4] = [&idempotency_key, &tenant_uuid, &status, &body];
@@ -440,7 +448,10 @@ impl IntoResponse for IdempotencyError {
                 StatusCode::BAD_REQUEST,
                 ApiError::new(
                     ErrorCode::MissingField,
-                    format!("Header '{}' is required for this operation", IDEMPOTENCY_KEY_HEADER),
+                    format!(
+                        "Header '{}' is required for this operation",
+                        IDEMPOTENCY_KEY_HEADER
+                    ),
                 ),
             ),
             IdempotencyError::InvalidKey(msg) => (

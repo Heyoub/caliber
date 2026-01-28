@@ -2,7 +2,7 @@
 //!
 //! Types for managing webhook configurations for event notifications.
 
-use caliber_core::{WebhookId, TenantId};
+use caliber_core::{TenantId, WebhookId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

@@ -1,8 +1,8 @@
 //! Search-related API types
 
 use caliber_core::EntityType;
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // Re-export FilterExpr from core for unified filtering
 pub use caliber_core::FilterExpr;

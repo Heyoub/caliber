@@ -1,10 +1,10 @@
 //! Agent dashboard view.
 
 use crate::state::App;
-use crate::views::two_column_with_links;
-use caliber_core::EntityIdType;
 use crate::theme::agent_status_color;
+use crate::views::two_column_with_links;
 use crate::widgets::DetailPanel;
+use caliber_core::EntityIdType;
 use ratatui::{
     style::Style,
     text::{Line, Span},
@@ -20,7 +20,8 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .agents
         .iter()
         .map(|agent| {
-            let style = Style::default().fg(agent_status_color(agent.status.as_db_str(), &app.theme));
+            let style =
+                Style::default().fg(agent_status_color(agent.status.as_db_str(), &app.theme));
             ListItem::new(Line::from(Span::styled(
                 format!("{} ({})", agent.agent_type, agent.status),
                 style,
@@ -80,4 +81,3 @@ fn render_detail_panel(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect
     };
     detail.render(f, area);
 }
-

@@ -2,9 +2,7 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::{
-    AgentResponse, ListAgentsRequest, RegisterAgentRequest, UpdateAgentRequest,
-};
+use crate::types::{AgentResponse, ListAgentsRequest, RegisterAgentRequest, UpdateAgentRequest};
 use caliber_core::{AgentId, EntityIdType, TenantId, TrajectoryId};
 use serde_json::Value as JsonValue;
 

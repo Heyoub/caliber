@@ -174,7 +174,9 @@ fn agent_status_strategy() -> impl Strategy<Value = AgentStatus> {
 fn update_agent_request_strategy() -> impl Strategy<Value = UpdateAgentRequest> {
     (
         prop::option::of(agent_status_strategy()),
-        prop::option::of(any::<[u8; 16]>().prop_map(|bytes| TrajectoryId::new(Uuid::from_bytes(bytes)))),
+        prop::option::of(
+            any::<[u8; 16]>().prop_map(|bytes| TrajectoryId::new(Uuid::from_bytes(bytes))),
+        ),
         prop::option::of(any::<[u8; 16]>().prop_map(|bytes| ScopeId::new(Uuid::from_bytes(bytes)))),
         prop::option::of(capabilities_strategy()),
         prop::option::of(memory_access_strategy()),

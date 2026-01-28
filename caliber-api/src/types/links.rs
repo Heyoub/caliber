@@ -118,7 +118,10 @@ mod tests {
         let links = LinksBuilder::new()
             .self_link("/api/v1/things/123")
             .add("children", Link::get("/api/v1/things/123/children"))
-            .add("delete", Link::delete("/api/v1/things/123").with_title("Delete"))
+            .add(
+                "delete",
+                Link::delete("/api/v1/things/123").with_title("Delete"),
+            )
             .build();
 
         assert_eq!(links.len(), 3);

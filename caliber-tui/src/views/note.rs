@@ -1,8 +1,8 @@
 //! Note library view.
 
 use crate::state::App;
-use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
+use caliber_core::EntityIdType;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Style,
@@ -20,9 +20,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .note_view
         .notes
         .iter()
-        .map(|note| {
-            ListItem::new(format!("{} [{}]", note.title, note.note_type))
-        })
+        .map(|note| ListItem::new(format!("{} [{}]", note.title, note.note_type)))
         .collect();
 
     let mut state = ListState::default();
@@ -43,7 +41,12 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     f.render_stateful_widget(list, chunks[0], &mut state);
 
     if let Some(selected) = app.note_view.selected {
-        if let Some(note) = app.note_view.notes.iter().find(|n| n.note_id.as_uuid() == selected) {
+        if let Some(note) = app
+            .note_view
+            .notes
+            .iter()
+            .find(|n| n.note_id.as_uuid() == selected)
+        {
             let right = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Length(8), Constraint::Min(0)])

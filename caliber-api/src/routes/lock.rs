@@ -3,15 +3,9 @@
 //! This module implements Axum route handlers for distributed lock operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use std::sync::Arc;
 
-use caliber_core::LockId;
 use crate::{
     auth::validate_tenant_ownership,
     db::DbClient,
@@ -20,9 +14,12 @@ use crate::{
     extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
-    types::{AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse, ReleaseLockRequest},
+    types::{
+        AcquireLockRequest, ExtendLockRequest, ListLocksResponse, LockResponse, ReleaseLockRequest,
+    },
     ws::WsState,
 };
+use caliber_core::LockId;
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -190,10 +187,7 @@ pub async fn list_locks(
     let locks = db.lock_list_active_by_tenant(auth.tenant_id).await?;
     let total = locks.len() as i32;
 
-    Ok(Json(ListLocksResponse {
-        locks,
-        total,
-    }))
+    Ok(Json(ListLocksResponse { locks, total }))
 }
 
 /// GET /api/v1/locks/{id} - Get lock by ID
@@ -247,13 +241,15 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::extractors::PathId;
     use crate::routes::agent::register_agent;
-    use crate::types::{AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest};
+    use crate::types::{
+        AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest,
+    };
     use crate::ws::WsState;
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use caliber_core::{AgentId, EntityIdType};
     use std::sync::Arc;
     use uuid::Uuid;
@@ -294,7 +290,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -369,7 +367,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_list_extend_release_lock_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let agent = register_test_agent(&ctx, "locker").await;
         let resource_id = Uuid::now_v7();
@@ -395,13 +395,10 @@ mod tests {
         let lock: LockResponse = response_json(acquire_response).await;
         assert_eq!(lock.resource_id, resource_id);
 
-        let list_response = list_locks(
-            State(ctx.db.clone()),
-            AuthExtractor(ctx.auth.clone()),
-        )
-        .await
-        .unwrap()
-        .into_response();
+        let list_response = list_locks(State(ctx.db.clone()), AuthExtractor(ctx.auth.clone()))
+            .await
+            .unwrap()
+            .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListLocksResponse = response_json(list_response).await;
         assert!(list.locks.iter().any(|l| l.lock_id == lock.lock_id));
@@ -410,7 +407,9 @@ mod tests {
             State(ctx.db.clone()),
             AuthExtractor(ctx.auth.clone()),
             PathId(lock.lock_id),
-            Json(ExtendLockRequest { additional_ms: 1_000 }),
+            Json(ExtendLockRequest {
+                additional_ms: 1_000,
+            }),
         )
         .await
         .unwrap()

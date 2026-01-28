@@ -13,8 +13,7 @@ use axum::{
     http::{Request, StatusCode},
     middleware,
     routing::get,
-    Json,
-    Router,
+    Json, Router,
 };
 use caliber_api::{
     auth::{generate_jwt_token, AuthConfig, JwtSecret},
@@ -22,8 +21,8 @@ use caliber_api::{
 };
 use caliber_core::{EntityIdType, TenantId};
 use proptest::prelude::*;
-use tower::ServiceExt;
 use tokio::runtime::Runtime;
+use tower::ServiceExt;
 use uuid::Uuid;
 
 // ============================================================================

@@ -3,15 +3,9 @@
 //! This module implements Axum route handlers for agent handoff operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use std::sync::Arc;
 
-use caliber_core::HandoffId;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
@@ -22,6 +16,7 @@ use crate::{
     types::{CreateHandoffRequest, HandoffResponse},
     ws::WsState,
 };
+use caliber_core::HandoffId;
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -56,16 +51,12 @@ pub async fn create_handoff(
 
     // Validate that from and to agents are different
     if req.from_agent_id == req.to_agent_id {
-        return Err(ApiError::invalid_input(
-            "Cannot handoff to the same agent",
-        ));
+        return Err(ApiError::invalid_input("Cannot handoff to the same agent"));
     }
 
     // Validate context snapshot is not empty
     if req.context_snapshot.is_empty() {
-        return Err(ApiError::invalid_input(
-            "context_snapshot cannot be empty",
-        ));
+        return Err(ApiError::invalid_input("context_snapshot cannot be empty"));
     }
 
     // Validate reason is one of the valid handoff reasons

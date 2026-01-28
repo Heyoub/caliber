@@ -9,13 +9,13 @@ use crate::widgets::LinksState;
 use caliber_api::events::WsEvent;
 use caliber_api::types::*;
 use caliber_core::{
-    AgentId, AgentStatus, ArtifactId, ArtifactType, EntityIdType, LockId, MessageId, MessagePriority,
-    MessageType, NoteId, NoteType, ScopeId, TenantId, Timestamp, TrajectoryId, TrajectoryStatus,
-    TurnRole,
+    AgentId, AgentStatus, ArtifactId, ArtifactType, EntityIdType, LockId, MessageId,
+    MessagePriority, MessageType, NoteId, NoteType, ScopeId, TenantId, Timestamp, TrajectoryId,
+    TrajectoryStatus, TurnRole,
 };
-use uuid::Uuid;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct TenantContext {
@@ -107,34 +107,34 @@ impl App {
     /// Update the links state based on currently selected entity.
     pub fn update_links_for_selected(&mut self) {
         let links = match self.active_view {
-            View::TrajectoryTree => {
-                self.trajectory_view.selected.and_then(|id| {
-                    self.trajectory_view.trajectories.iter()
-                        .find(|t| t.trajectory_id.as_uuid() == id)
-                        .and_then(|t| t.links.as_ref())
-                })
-            }
-            View::ScopeExplorer => {
-                self.scope_view.selected.and_then(|id| {
-                    self.scope_view.scopes.iter()
-                        .find(|s| s.scope_id.as_uuid() == id)
-                        .and_then(|s| s.links.as_ref())
-                })
-            }
-            View::ArtifactBrowser => {
-                self.artifact_view.selected.and_then(|id| {
-                    self.artifact_view.artifacts.iter()
-                        .find(|a| a.artifact_id.as_uuid() == id)
-                        .and_then(|a| a.links.as_ref())
-                })
-            }
-            View::NoteLibrary => {
-                self.note_view.selected.and_then(|id| {
-                    self.note_view.notes.iter()
-                        .find(|n| n.note_id.as_uuid() == id)
-                        .and_then(|n| n.links.as_ref())
-                })
-            }
+            View::TrajectoryTree => self.trajectory_view.selected.and_then(|id| {
+                self.trajectory_view
+                    .trajectories
+                    .iter()
+                    .find(|t| t.trajectory_id.as_uuid() == id)
+                    .and_then(|t| t.links.as_ref())
+            }),
+            View::ScopeExplorer => self.scope_view.selected.and_then(|id| {
+                self.scope_view
+                    .scopes
+                    .iter()
+                    .find(|s| s.scope_id.as_uuid() == id)
+                    .and_then(|s| s.links.as_ref())
+            }),
+            View::ArtifactBrowser => self.artifact_view.selected.and_then(|id| {
+                self.artifact_view
+                    .artifacts
+                    .iter()
+                    .find(|a| a.artifact_id.as_uuid() == id)
+                    .and_then(|a| a.links.as_ref())
+            }),
+            View::NoteLibrary => self.note_view.selected.and_then(|id| {
+                self.note_view
+                    .notes
+                    .iter()
+                    .find(|n| n.note_id.as_uuid() == id)
+                    .and_then(|n| n.links.as_ref())
+            }),
             _ => None,
         };
         self.links_state.update(links);
@@ -188,15 +188,35 @@ impl App {
 
     pub fn select_next(&mut self) {
         match self.active_view {
-            View::TrajectoryTree => select_next_id(&self.trajectory_view.trajectories, &mut self.trajectory_view.selected),
-            View::ScopeExplorer => select_next_id(&self.scope_view.scopes, &mut self.scope_view.selected),
-            View::ArtifactBrowser => select_next_id(&self.artifact_view.artifacts, &mut self.artifact_view.selected),
-            View::NoteLibrary => select_next_id(&self.note_view.notes, &mut self.note_view.selected),
-            View::TurnHistory => select_next_id(&self.turn_view.turns, &mut self.turn_view.selected),
-            View::AgentDashboard => select_next_id(&self.agent_view.agents, &mut self.agent_view.selected),
-            View::LockMonitor => select_next_id(&self.lock_view.locks, &mut self.lock_view.selected),
-            View::MessageQueue => select_next_id(&self.message_view.messages, &mut self.message_view.selected),
-            View::TenantManagement => select_next_id(&self.tenant_view.tenants, &mut self.tenant_view.selected),
+            View::TrajectoryTree => select_next_id(
+                &self.trajectory_view.trajectories,
+                &mut self.trajectory_view.selected,
+            ),
+            View::ScopeExplorer => {
+                select_next_id(&self.scope_view.scopes, &mut self.scope_view.selected)
+            }
+            View::ArtifactBrowser => select_next_id(
+                &self.artifact_view.artifacts,
+                &mut self.artifact_view.selected,
+            ),
+            View::NoteLibrary => {
+                select_next_id(&self.note_view.notes, &mut self.note_view.selected)
+            }
+            View::TurnHistory => {
+                select_next_id(&self.turn_view.turns, &mut self.turn_view.selected)
+            }
+            View::AgentDashboard => {
+                select_next_id(&self.agent_view.agents, &mut self.agent_view.selected)
+            }
+            View::LockMonitor => {
+                select_next_id(&self.lock_view.locks, &mut self.lock_view.selected)
+            }
+            View::MessageQueue => {
+                select_next_id(&self.message_view.messages, &mut self.message_view.selected)
+            }
+            View::TenantManagement => {
+                select_next_id(&self.tenant_view.tenants, &mut self.tenant_view.selected)
+            }
             View::DslEditor | View::ConfigViewer => {}
         }
         // Update links panel when selection changes
@@ -207,15 +227,35 @@ impl App {
 
     pub fn select_previous(&mut self) {
         match self.active_view {
-            View::TrajectoryTree => select_prev_id(&self.trajectory_view.trajectories, &mut self.trajectory_view.selected),
-            View::ScopeExplorer => select_prev_id(&self.scope_view.scopes, &mut self.scope_view.selected),
-            View::ArtifactBrowser => select_prev_id(&self.artifact_view.artifacts, &mut self.artifact_view.selected),
-            View::NoteLibrary => select_prev_id(&self.note_view.notes, &mut self.note_view.selected),
-            View::TurnHistory => select_prev_id(&self.turn_view.turns, &mut self.turn_view.selected),
-            View::AgentDashboard => select_prev_id(&self.agent_view.agents, &mut self.agent_view.selected),
-            View::LockMonitor => select_prev_id(&self.lock_view.locks, &mut self.lock_view.selected),
-            View::MessageQueue => select_prev_id(&self.message_view.messages, &mut self.message_view.selected),
-            View::TenantManagement => select_prev_id(&self.tenant_view.tenants, &mut self.tenant_view.selected),
+            View::TrajectoryTree => select_prev_id(
+                &self.trajectory_view.trajectories,
+                &mut self.trajectory_view.selected,
+            ),
+            View::ScopeExplorer => {
+                select_prev_id(&self.scope_view.scopes, &mut self.scope_view.selected)
+            }
+            View::ArtifactBrowser => select_prev_id(
+                &self.artifact_view.artifacts,
+                &mut self.artifact_view.selected,
+            ),
+            View::NoteLibrary => {
+                select_prev_id(&self.note_view.notes, &mut self.note_view.selected)
+            }
+            View::TurnHistory => {
+                select_prev_id(&self.turn_view.turns, &mut self.turn_view.selected)
+            }
+            View::AgentDashboard => {
+                select_prev_id(&self.agent_view.agents, &mut self.agent_view.selected)
+            }
+            View::LockMonitor => {
+                select_prev_id(&self.lock_view.locks, &mut self.lock_view.selected)
+            }
+            View::MessageQueue => {
+                select_prev_id(&self.message_view.messages, &mut self.message_view.selected)
+            }
+            View::TenantManagement => {
+                select_prev_id(&self.tenant_view.tenants, &mut self.tenant_view.selected)
+            }
             View::DslEditor | View::ConfigViewer => {}
         }
         // Update links panel when selection changes
@@ -280,10 +320,16 @@ impl App {
             WsEvent::AgentRegistered { agent } => {
                 self.agent_view.upsert(agent);
             }
-            WsEvent::AgentStatusChanged { agent_id, status, .. } => {
+            WsEvent::AgentStatusChanged {
+                agent_id, status, ..
+            } => {
                 self.agent_view.update_status(agent_id, status);
             }
-            WsEvent::AgentHeartbeat { agent_id, timestamp, .. } => {
+            WsEvent::AgentHeartbeat {
+                agent_id,
+                timestamp,
+                ..
+            } => {
                 self.agent_view.update_heartbeat(agent_id, timestamp);
             }
             WsEvent::AgentUnregistered { id, .. } => {
@@ -349,7 +395,11 @@ fn select_next_id<T: HasEntityId>(items: &[T], selected: &mut Option<Uuid>) {
     let index = selected
         .and_then(|id| items.iter().position(|item| item.entity_id() == id))
         .unwrap_or(usize::MAX);
-    let next = if index == usize::MAX { 0 } else { (index + 1) % items.len() };
+    let next = if index == usize::MAX {
+        0
+    } else {
+        (index + 1) % items.len()
+    };
     *selected = Some(items[next].entity_id());
 }
 
@@ -361,7 +411,11 @@ fn select_prev_id<T: HasEntityId>(items: &[T], selected: &mut Option<Uuid>) {
     let index = selected
         .and_then(|id| items.iter().position(|item| item.entity_id() == id))
         .unwrap_or(0);
-    let prev = if index == 0 { items.len() - 1 } else { index - 1 };
+    let prev = if index == 0 {
+        items.len() - 1
+    } else {
+        index - 1
+    };
     *selected = Some(items[prev].entity_id());
 }
 
@@ -641,11 +695,7 @@ impl NoteViewState {
     }
 
     pub fn upsert(&mut self, note: NoteResponse) {
-        if let Some(existing) = self
-            .notes
-            .iter_mut()
-            .find(|n| n.note_id == note.note_id)
-        {
+        if let Some(existing) = self.notes.iter_mut().find(|n| n.note_id == note.note_id) {
             *existing = note;
         } else {
             self.notes.push(note);
@@ -791,11 +841,7 @@ impl LockViewState {
     }
 
     pub fn upsert(&mut self, lock: LockResponse) {
-        if let Some(existing) = self
-            .locks
-            .iter_mut()
-            .find(|l| l.lock_id == lock.lock_id)
-        {
+        if let Some(existing) = self.locks.iter_mut().find(|l| l.lock_id == lock.lock_id) {
             *existing = lock;
         } else {
             self.locks.push(lock);

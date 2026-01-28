@@ -34,9 +34,9 @@
 //! let nulls = extract_all_nulls(tuple, tuple_desc)?;
 //! ```
 
-use pgrx::prelude::*;
-use pgrx::pg_sys;
 use pgrx::datum::TimestampWithTimeZone;
+use pgrx::pg_sys;
+use pgrx::prelude::*;
 
 use caliber_core::{CaliberError, CaliberResult, StorageError};
 use chrono::{Datelike, Timelike};
@@ -84,12 +84,7 @@ pub unsafe fn extract_datum(
 
     let mut is_null: bool = false;
 
-    let datum = pg_sys::heap_getattr(
-        tuple,
-        attnum as i32,
-        tuple_desc,
-        &mut is_null,
-    );
+    let datum = pg_sys::heap_getattr(tuple, attnum as i32, tuple_desc, &mut is_null);
 
     Ok((datum, is_null))
 }
@@ -162,7 +157,6 @@ pub unsafe fn extract_all_nulls(
     Ok(nulls)
 }
 
-
 /// Extract both datum values and null flags from a heap tuple.
 ///
 /// This is more efficient than calling `extract_all_datums` and `extract_all_nulls`
@@ -230,10 +224,11 @@ pub unsafe fn extract_uuid(
     }
 
     // Convert datum to pgrx::Uuid, then to uuid::Uuid
-    let pg_uuid: pgrx::Uuid = unsafe { pgrx::Uuid::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let pg_uuid: pgrx::Uuid = unsafe { pgrx::Uuid::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to UUID at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     // Convert pgrx::Uuid bytes to uuid::Uuid
     let uuid = uuid::Uuid::from_bytes(*pg_uuid.as_bytes());
@@ -266,14 +261,14 @@ pub unsafe fn extract_text(
     }
 
     // Convert datum to String
-    let text: String = unsafe { String::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let text: String = unsafe { String::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to text at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(text))
 }
-
 
 /// Extract an i32 (INT4) value from a heap tuple.
 ///
@@ -301,10 +296,11 @@ pub unsafe fn extract_i32(
     }
 
     // i32 is passed by value in PostgreSQL, so we can directly cast
-    let value: i32 = unsafe { i32::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let value: i32 = unsafe { i32::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to i32 at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(value))
 }
@@ -334,10 +330,11 @@ pub unsafe fn extract_i64(
         return Ok(None);
     }
 
-    let value: i64 = unsafe { i64::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let value: i64 = unsafe { i64::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to i64 at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(value))
 }
@@ -367,10 +364,11 @@ pub unsafe fn extract_bool(
         return Ok(None);
     }
 
-    let value: bool = unsafe { bool::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let value: bool = unsafe { bool::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to bool at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(value))
 }
@@ -400,10 +398,11 @@ pub unsafe fn extract_float4(
         return Ok(None);
     }
 
-    let value: f32 = unsafe { f32::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let value: f32 = unsafe { f32::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to float4 at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(value))
 }
@@ -433,15 +432,15 @@ pub unsafe fn extract_timestamp(
         return Ok(None);
     }
 
-    let value: TimestampWithTimeZone = unsafe { 
-        TimestampWithTimeZone::from_datum(datum, false) 
-    }.ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-        reason: format!("Failed to convert datum to timestamp at column {}", attnum),
-    }))?;
+    let value: TimestampWithTimeZone = unsafe { TimestampWithTimeZone::from_datum(datum, false) }
+        .ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
+            reason: format!("Failed to convert datum to timestamp at column {}", attnum),
+        })
+    })?;
 
     Ok(Some(value))
 }
-
 
 /// Extract a JSONB value from a heap tuple.
 ///
@@ -468,10 +467,11 @@ pub unsafe fn extract_jsonb(
         return Ok(None);
     }
 
-    let jsonb: pgrx::JsonB = unsafe { pgrx::JsonB::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let jsonb: pgrx::JsonB = unsafe { pgrx::JsonB::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to JSONB at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(jsonb.0))
 }
@@ -501,10 +501,11 @@ pub unsafe fn extract_bytea(
         return Ok(None);
     }
 
-    let bytes: Vec<u8> = unsafe { Vec::<u8>::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let bytes: Vec<u8> = unsafe { Vec::<u8>::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to BYTEA at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(bytes))
 }
@@ -535,10 +536,11 @@ pub unsafe fn extract_float4_array(
         return Ok(None);
     }
 
-    let array: Vec<f32> = unsafe { Vec::<f32>::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let array: Vec<f32> = unsafe { Vec::<f32>::from_datum(datum, false) }.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to convert datum to float4[] at column {}", attnum),
-        }))?;
+        })
+    })?;
 
     Ok(Some(array))
 }
@@ -570,9 +572,11 @@ pub unsafe fn extract_uuid_array(
     }
 
     let pg_uuids: Vec<pgrx::Uuid> = unsafe { Vec::<pgrx::Uuid>::from_datum(datum, false) }
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: format!("Failed to convert datum to uuid[] at column {}", attnum),
-        }))?;
+        .ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: format!("Failed to convert datum to uuid[] at column {}", attnum),
+            })
+        })?;
 
     // Convert pgrx::Uuid to uuid::Uuid
     let uuids: Vec<uuid::Uuid> = pg_uuids
@@ -582,7 +586,6 @@ pub unsafe fn extract_uuid_array(
 
     Ok(Some(uuids))
 }
-
 
 // ============================================================================
 // CONTENT HASH EXTRACTION
@@ -642,21 +645,20 @@ pub unsafe fn extract_content_hash(
 pub fn timestamp_to_chrono(ts: TimestampWithTimeZone) -> chrono::DateTime<chrono::Utc> {
     // TimestampWithTimeZone stores microseconds since 2000-01-01 00:00:00 UTC
     // We need to convert to chrono's epoch (1970-01-01)
-    
+
     // PostgreSQL epoch is 2000-01-01 00:00:00 UTC
     // Unix epoch is 1970-01-01 00:00:00 UTC
     // Difference is 30 years = 946684800 seconds
     const PG_EPOCH_OFFSET_SECS: i64 = 946_684_800;
-    
+
     // Get the raw microseconds value from pgrx timestamp
     let pg_micros = ts.into_inner();
-    
+
     // Convert to Unix timestamp (seconds + nanoseconds)
     let unix_secs = (pg_micros / 1_000_000) + PG_EPOCH_OFFSET_SECS;
     let nanos = ((pg_micros % 1_000_000) * 1000) as u32;
-    
-    chrono::DateTime::from_timestamp(unix_secs, nanos)
-        .unwrap_or_else(chrono::Utc::now)
+
+    chrono::DateTime::from_timestamp(unix_secs, nanos).unwrap_or_else(chrono::Utc::now)
 }
 
 /// Convert a chrono DateTime<Utc> to a pgrx TimestampWithTimeZone.
@@ -666,7 +668,9 @@ pub fn timestamp_to_chrono(ts: TimestampWithTimeZone) -> chrono::DateTime<chrono
 ///
 /// # Returns
 /// A pgrx TimestampWithTimeZone
-pub fn chrono_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> CaliberResult<TimestampWithTimeZone> {
+pub fn chrono_to_timestamp(
+    dt: chrono::DateTime<chrono::Utc>,
+) -> CaliberResult<TimestampWithTimeZone> {
     // Convert chrono timestamp to PostgreSQL timestamp
     const PG_EPOCH_OFFSET_SECS: i64 = 946_684_800;
 
@@ -752,7 +756,6 @@ pub fn option_string_to_datum(s: Option<&str>) -> pg_sys::Datum {
     }
 }
 
-
 /// Convert an i32 to a pgrx Datum.
 ///
 /// # Arguments
@@ -805,7 +808,9 @@ pub fn float4_to_datum(f: f32) -> pg_sys::Datum {
 /// # Returns
 /// The datum representation
 pub fn json_to_datum(json: &serde_json::Value) -> pg_sys::Datum {
-    pgrx::JsonB(json.clone()).into_datum().unwrap_or(pg_sys::Datum::from(0))
+    pgrx::JsonB(json.clone())
+        .into_datum()
+        .unwrap_or(pg_sys::Datum::from(0))
 }
 
 /// Convert an optional serde_json::Value to a pgrx JSONB Datum.
@@ -830,7 +835,10 @@ pub fn option_json_to_datum(json: Option<&serde_json::Value>) -> pg_sys::Datum {
 /// # Returns
 /// The datum representation
 pub fn bytea_to_datum(bytes: &[u8]) -> pg_sys::Datum {
-    bytes.to_vec().into_datum().unwrap_or(pg_sys::Datum::from(0))
+    bytes
+        .to_vec()
+        .into_datum()
+        .unwrap_or(pg_sys::Datum::from(0))
 }
 
 /// Convert a content hash ([u8; 32]) to a pgrx BYTEA Datum.
@@ -852,7 +860,10 @@ pub fn content_hash_to_datum(hash: &caliber_core::ContentHash) -> pg_sys::Datum 
 /// # Returns
 /// The datum representation
 pub fn float4_array_to_datum(floats: &[f32]) -> pg_sys::Datum {
-    floats.to_vec().into_datum().unwrap_or(pg_sys::Datum::from(0))
+    floats
+        .to_vec()
+        .into_datum()
+        .unwrap_or(pg_sys::Datum::from(0))
 }
 
 /// Convert a Vec<uuid::Uuid> to a pgrx UUID ARRAY Datum.
@@ -878,14 +889,12 @@ pub fn uuid_array_to_datum(uuids: &[uuid::Uuid]) -> pg_sys::Datum {
 /// # Returns
 /// The datum representation
 pub fn datetime_to_datum(dt: chrono::DateTime<chrono::Utc>) -> CaliberResult<pg_sys::Datum> {
-    chrono_to_timestamp(dt)?
-        .into_datum()
-        .ok_or_else(|| {
-            StorageError::TransactionFailed {
-                reason: "Failed to convert datetime to datum".to_string(),
-            }
-            .into()
-        })
+    chrono_to_timestamp(dt)?.into_datum().ok_or_else(|| {
+        StorageError::TransactionFailed {
+            reason: "Failed to convert datetime to datum".to_string(),
+        }
+        .into()
+    })
 }
 
 /// Convert an optional chrono DateTime<Utc> to a pgrx Datum.
@@ -936,16 +945,14 @@ pub unsafe fn extract_text_array(
     attnum: i16,
 ) -> CaliberResult<Option<Vec<String>>> {
     let (datum, is_null) = unsafe { extract_datum(tuple, tuple_desc, attnum) }?;
-    
+
     if is_null {
         return Ok(None);
     }
-    
+
     // Convert datum to Vec<String>
-    let array: Option<Vec<String>> = unsafe {
-        FromDatum::from_datum(datum, false)
-    };
-    
+    let array: Option<Vec<String>> = unsafe { FromDatum::from_datum(datum, false) };
+
     Ok(array)
 }
 
@@ -962,21 +969,24 @@ mod tests {
         let now = chrono::Utc::now();
         let pg_ts = chrono_to_timestamp(now).expect("Failed to convert chrono timestamp");
         let back = timestamp_to_chrono(pg_ts);
-        
+
         // Allow for microsecond precision loss
         let diff = (now.timestamp_micros() - back.timestamp_micros()).abs();
-        assert!(diff < 2, "Timestamp roundtrip should preserve microsecond precision");
+        assert!(
+            diff < 2,
+            "Timestamp roundtrip should preserve microsecond precision"
+        );
     }
 
     #[test]
     fn test_uuid_to_datum_roundtrip() {
         let original = uuid::Uuid::new_v4();
         let datum = uuid_to_datum(original);
-        
+
         // Convert back
         let pg_uuid: pgrx::Uuid = unsafe { pgrx::Uuid::from_datum(datum, false) }.unwrap();
         let back = uuid::Uuid::from_bytes(*pg_uuid.as_bytes());
-        
+
         assert_eq!(original, back);
     }
 }

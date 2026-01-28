@@ -1,8 +1,8 @@
 //! Lock monitor view.
 
 use crate::state::App;
-use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
+use caliber_core::EntityIdType;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Style,
@@ -42,7 +42,12 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
 
     let mut fields = Vec::new();
     if let Some(selected) = app.lock_view.selected {
-        if let Some(lock) = app.lock_view.locks.iter().find(|l| l.lock_id.as_uuid() == selected) {
+        if let Some(lock) = app
+            .lock_view
+            .locks
+            .iter()
+            .find(|l| l.lock_id.as_uuid() == selected)
+        {
             fields.push(("Lock ID", lock.lock_id.to_string()));
             fields.push(("Resource", lock.resource_type.clone()));
             fields.push(("Mode", lock.mode.clone()));

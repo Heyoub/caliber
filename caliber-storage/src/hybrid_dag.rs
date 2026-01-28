@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use heed::{Database, Env, EnvOpenOptions, types::SerdeBincode};
+use heed::{types::SerdeBincode, Database, Env, EnvOpenOptions};
 
 use caliber_core::{
     DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag, EventId,
@@ -34,7 +34,10 @@ pub trait ColdEventStorage: Send + Sync {
     async fn store(&self, event: &Event<Self::Payload>) -> Result<(), ColdStorageError>;
 
     /// Retrieve an event by ID from cold storage.
-    async fn get(&self, event_id: EventId) -> Result<Option<Event<Self::Payload>>, ColdStorageError>;
+    async fn get(
+        &self,
+        event_id: EventId,
+    ) -> Result<Option<Event<Self::Payload>>, ColdStorageError>;
 
     /// Walk ancestors from a given event.
     async fn walk_ancestors(
@@ -105,11 +108,12 @@ pub struct LmdbEventCache<P: Clone + Send + Sync + serde::Serialize + serde::de:
     acknowledged: Database<SerdeBincode<EventId>, SerdeBincode<bool>>,
 }
 
-impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static> LmdbEventCache<P> {
+impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static>
+    LmdbEventCache<P>
+{
     /// Open or create an LMDB event cache at the given path.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, HybridDagError> {
-        std::fs::create_dir_all(path.as_ref())
-            .map_err(|e| HybridDagError::Io(e.to_string()))?;
+        std::fs::create_dir_all(path.as_ref()).map_err(|e| HybridDagError::Io(e.to_string()))?;
 
         let env = unsafe {
             EnvOpenOptions::new()
@@ -119,7 +123,8 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
                 .map_err(|e| HybridDagError::Lmdb(e.to_string()))?
         };
 
-        let mut wtxn = env.write_txn()
+        let mut wtxn = env
+            .write_txn()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         let events = env
@@ -133,12 +138,18 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
         wtxn.commit()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
-        Ok(Self { env, events, acknowledged })
+        Ok(Self {
+            env,
+            events,
+            acknowledged,
+        })
     }
 
     /// Get an event from the hot cache.
     pub fn get(&self, event_id: EventId) -> Result<Option<Event<P>>, HybridDagError> {
-        let rtxn = self.env.read_txn()
+        let rtxn = self
+            .env
+            .read_txn()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         self.events
@@ -148,7 +159,9 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
 
     /// Store an event in the hot cache.
     pub fn put(&self, event: &Event<P>) -> Result<(), HybridDagError> {
-        let mut wtxn = self.env.write_txn()
+        let mut wtxn = self
+            .env
+            .write_txn()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         self.events
@@ -161,10 +174,13 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
 
     /// Check if an event is acknowledged in the hot cache.
     pub fn is_acknowledged(&self, event_id: EventId) -> Result<bool, HybridDagError> {
-        let rtxn = self.env.read_txn()
+        let rtxn = self
+            .env
+            .read_txn()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
-        Ok(self.acknowledged
+        Ok(self
+            .acknowledged
             .get(&rtxn, &event_id)
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?
             .unwrap_or(false))
@@ -172,7 +188,9 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
 
     /// Mark an event as acknowledged in the hot cache.
     pub fn set_acknowledged(&self, event_id: EventId) -> Result<(), HybridDagError> {
-        let mut wtxn = self.env.write_txn()
+        let mut wtxn = self
+            .env
+            .write_txn()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         self.acknowledged
@@ -185,10 +203,14 @@ impl<P: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + '
 
     /// Get statistics about the cache.
     pub fn stats(&self) -> Result<LmdbCacheStats, HybridDagError> {
-        let rtxn = self.env.read_txn()
+        let rtxn = self
+            .env
+            .read_txn()
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
-        let event_count = self.events.len(&rtxn)
+        let event_count = self
+            .events
+            .len(&rtxn)
             .map_err(|e| HybridDagError::Lmdb(e.to_string()))?;
 
         Ok(LmdbCacheStats { event_count })
@@ -254,10 +276,7 @@ pub struct HybridDag<C: ColdEventStorage> {
 
 impl<C: ColdEventStorage> HybridDag<C> {
     /// Create a new HybridDag with the given hot cache path and cold storage.
-    pub fn new(
-        hot_path: impl AsRef<Path>,
-        cold: Arc<C>,
-    ) -> Result<Self, HybridDagError> {
+    pub fn new(hot_path: impl AsRef<Path>, cold: Arc<C>) -> Result<Self, HybridDagError> {
         let hot = LmdbEventCache::open(hot_path)?;
         Ok(Self {
             hot,
@@ -383,27 +402,26 @@ impl<C: ColdEventStorage + 'static> EventDag for HybridDag<C> {
 
     async fn next_position(&self, parent: Option<EventId>, lane: u32) -> Effect<DagPosition> {
         let depth = match parent {
-            Some(parent_id) => {
-                match self.read(parent_id).await {
-                    Effect::Ok(parent_event) => parent_event.header.position.depth + 1,
-                    Effect::Err(e) => return Effect::Err(e),
-                    other => return other.map(|_| unreachable!()),
-                }
-            }
+            Some(parent_id) => match self.read(parent_id).await {
+                Effect::Ok(parent_event) => parent_event.header.position.depth + 1,
+                Effect::Err(e) => return Effect::Err(e),
+                other => return other.map(|_| unreachable!()),
+            },
             None => 0,
         };
 
         let sequence = match self.cold.next_sequence().await {
             Ok(seq) => seq as u32,
             Err(e) => {
-                return Effect::Err(Self::to_effect_error(
-                    uuid::Uuid::nil(),
-                    e.into(),
-                ));
+                return Effect::Err(Self::to_effect_error(uuid::Uuid::nil(), e.into()));
             }
         };
 
-        Effect::Ok(DagPosition { depth, lane, sequence })
+        Effect::Ok(DagPosition {
+            depth,
+            lane,
+            sequence,
+        })
     }
 
     async fn find_by_kind(
@@ -413,7 +431,11 @@ impl<C: ColdEventStorage + 'static> EventDag for HybridDag<C> {
         max_depth: u32,
         limit: usize,
     ) -> Effect<Vec<Event<Self::Payload>>> {
-        match self.cold.find_by_kind(kind, min_depth, max_depth, limit).await {
+        match self
+            .cold
+            .find_by_kind(kind, min_depth, max_depth, limit)
+            .await
+        {
             Ok(events) => Effect::Ok(events),
             Err(e) => Effect::Err(Self::to_effect_error(uuid::Uuid::nil(), e.into())),
         }
@@ -422,7 +444,10 @@ impl<C: ColdEventStorage + 'static> EventDag for HybridDag<C> {
     async fn acknowledge(&self, event_id: EventId, send_upstream: bool) -> Effect<()> {
         // Mark acknowledged in hot cache
         if let Err(e) = self.hot.set_acknowledged(event_id) {
-            eprintln!("Failed to mark event {} acknowledged in hot cache: {}", event_id, e);
+            eprintln!(
+                "Failed to mark event {} acknowledged in hot cache: {}",
+                event_id, e
+            );
         }
 
         // Mark acknowledged in cold storage
@@ -479,42 +504,72 @@ mod tests {
         type Payload = String;
 
         async fn store(&self, event: &Event<Self::Payload>) -> Result<(), ColdStorageError> {
-            self.events.write().unwrap().insert(event.header.event_id, event.clone());
+            self.events
+                .write()
+                .unwrap()
+                .insert(event.header.event_id, event.clone());
             Ok(())
         }
 
-        async fn get(&self, event_id: EventId) -> Result<Option<Event<Self::Payload>>, ColdStorageError> {
+        async fn get(
+            &self,
+            event_id: EventId,
+        ) -> Result<Option<Event<Self::Payload>>, ColdStorageError> {
             Ok(self.events.read().unwrap().get(&event_id).cloned())
         }
 
-        async fn walk_ancestors(&self, _from: EventId, _limit: usize) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
+        async fn walk_ancestors(
+            &self,
+            _from: EventId,
+            _limit: usize,
+        ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
             Ok(vec![])
         }
 
-        async fn walk_descendants(&self, _from: EventId, _limit: usize) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
+        async fn walk_descendants(
+            &self,
+            _from: EventId,
+            _limit: usize,
+        ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
             Ok(vec![])
         }
 
-        async fn find_by_correlation(&self, correlation_id: EventId) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
+        async fn find_by_correlation(
+            &self,
+            correlation_id: EventId,
+        ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
             let events = self.events.read().unwrap();
-            Ok(events.values()
+            Ok(events
+                .values()
                 .filter(|e| e.header.correlation_id == correlation_id)
                 .cloned()
                 .collect())
         }
 
-        async fn find_by_kind(&self, kind: EventKind, min_depth: u32, max_depth: u32, limit: usize) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
+        async fn find_by_kind(
+            &self,
+            kind: EventKind,
+            min_depth: u32,
+            max_depth: u32,
+            limit: usize,
+        ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
             let events = self.events.read().unwrap();
-            Ok(events.values()
-                .filter(|e| e.header.event_kind == kind
-                    && e.header.position.depth >= min_depth
-                    && e.header.position.depth <= max_depth)
+            Ok(events
+                .values()
+                .filter(|e| {
+                    e.header.event_kind == kind
+                        && e.header.position.depth >= min_depth
+                        && e.header.position.depth <= max_depth
+                })
                 .take(limit)
                 .cloned()
                 .collect())
         }
 
-        async fn unacknowledged(&self, _limit: usize) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
+        async fn unacknowledged(
+            &self,
+            _limit: usize,
+        ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
             Ok(vec![])
         }
 

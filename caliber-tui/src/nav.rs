@@ -51,10 +51,7 @@ impl View {
     }
 
     pub fn index(&self) -> usize {
-        Self::all()
-            .iter()
-            .position(|v| v == self)
-            .unwrap_or(0)
+        Self::all().iter().position(|v| v == self).unwrap_or(0)
     }
 
     pub fn from_index(index: usize) -> Option<View> {

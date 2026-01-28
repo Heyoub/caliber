@@ -142,9 +142,7 @@ impl ScopeResponse {
     /// Returns error if the scope is already closed.
     pub async fn close(&self, db: &DbClient) -> ApiResult<Self> {
         if !self.is_active {
-            return Err(ApiError::state_conflict(
-                "Scope is already closed",
-            ));
+            return Err(ApiError::state_conflict("Scope is already closed"));
         }
 
         let tenant_id = self.tenant_id;
@@ -154,7 +152,8 @@ impl ScopeResponse {
             "closed_at": chrono::Utc::now().to_rfc3339()
         });
 
-        db.update_raw::<Self>(self.scope_id, updates, tenant_id).await
+        db.update_raw::<Self>(self.scope_id, updates, tenant_id)
+            .await
     }
 
     /// Create a checkpoint for this scope.
@@ -165,7 +164,11 @@ impl ScopeResponse {
     ///
     /// # Errors
     /// Returns error if the scope is inactive.
-    pub async fn create_checkpoint(&self, db: &DbClient, req: &CreateCheckpointRequest) -> ApiResult<Self> {
+    pub async fn create_checkpoint(
+        &self,
+        db: &DbClient,
+        req: &CreateCheckpointRequest,
+    ) -> ApiResult<Self> {
         if !self.is_active {
             return Err(ApiError::state_conflict(
                 "Cannot create checkpoint for inactive scope",
@@ -185,6 +188,7 @@ impl ScopeResponse {
             "checkpoint": checkpoint_json
         });
 
-        db.update_raw::<Self>(self.scope_id, updates, tenant_id).await
+        db.update_raw::<Self>(self.scope_id, updates, tenant_id)
+            .await
     }
 }

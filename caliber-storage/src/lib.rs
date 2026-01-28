@@ -24,15 +24,13 @@ pub use cache::{
 };
 
 use caliber_core::{
-    AbstractionLevel, Artifact, ArtifactType, CaliberError, CaliberResult, Checkpoint, Edge,
-    EdgeType, EmbeddingVector, EntityType, Note, Scope, StorageError, Trajectory,
-    ArtifactId, NoteId,
-    TrajectoryStatus, Turn,
-    EntityIdType,
+    AbstractionLevel, Artifact, ArtifactId, ArtifactType, CaliberError, CaliberResult, Checkpoint,
+    Edge, EdgeType, EmbeddingVector, EntityIdType, EntityType, Note, NoteId, Scope, StorageError,
+    Trajectory, TrajectoryStatus, Turn,
 };
-use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use uuid::Uuid;
 
 // ============================================================================
 // UPDATE TYPES
@@ -82,7 +80,6 @@ pub struct NoteUpdate {
     pub superseded_by: Option<Uuid>,
 }
 
-
 // ============================================================================
 // STORAGE TRAIT (Task 11.1, 11.2)
 // ============================================================================
@@ -102,7 +99,8 @@ pub trait StorageTrait: Send + Sync {
     fn trajectory_update(&self, id: Uuid, update: TrajectoryUpdate) -> CaliberResult<()>;
 
     /// List trajectories by status.
-    fn trajectory_list_by_status(&self, status: TrajectoryStatus) -> CaliberResult<Vec<Trajectory>>;
+    fn trajectory_list_by_status(&self, status: TrajectoryStatus)
+        -> CaliberResult<Vec<Trajectory>>;
 
     // === Scope Operations ===
 
@@ -168,11 +166,8 @@ pub trait StorageTrait: Send + Sync {
 
     /// Search for similar vectors.
     /// Returns (entity_id, similarity_score) pairs.
-    fn vector_search(
-        &self,
-        query: &EmbeddingVector,
-        limit: i32,
-    ) -> CaliberResult<Vec<(Uuid, f32)>>;
+    fn vector_search(&self, query: &EmbeddingVector, limit: i32)
+        -> CaliberResult<Vec<(Uuid, f32)>>;
 
     // === Edge Operations (Battle Intel Feature 1) ===
 
@@ -194,15 +189,11 @@ pub trait StorageTrait: Send + Sync {
     // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
 
     /// Query notes by abstraction level.
-    fn note_query_by_abstraction_level(
-        &self,
-        level: AbstractionLevel,
-    ) -> CaliberResult<Vec<Note>>;
+    fn note_query_by_abstraction_level(&self, level: AbstractionLevel) -> CaliberResult<Vec<Note>>;
 
     /// Query notes derived from a source note (derivation chain).
     fn note_query_by_source_note(&self, source_note_id: Uuid) -> CaliberResult<Vec<Note>>;
 }
-
 
 // ============================================================================
 // MOCK STORAGE (Task 11.4)
@@ -284,12 +275,13 @@ impl StorageTrait for MockStorage {
 
     fn trajectory_update(&self, id: Uuid, update: TrajectoryUpdate) -> CaliberResult<()> {
         let mut trajectories = self.trajectories.write().unwrap();
-        let trajectory = trajectories.get_mut(&id).ok_or(
-            CaliberError::Storage(StorageError::NotFound {
-                entity_type: EntityType::Trajectory,
-                id,
-            })
-        )?;
+        let trajectory =
+            trajectories
+                .get_mut(&id)
+                .ok_or(CaliberError::Storage(StorageError::NotFound {
+                    entity_type: EntityType::Trajectory,
+                    id,
+                }))?;
 
         if let Some(status) = update.status {
             trajectory.status = status;
@@ -302,7 +294,10 @@ impl StorageTrait for MockStorage {
         Ok(())
     }
 
-    fn trajectory_list_by_status(&self, status: TrajectoryStatus) -> CaliberResult<Vec<Trajectory>> {
+    fn trajectory_list_by_status(
+        &self,
+        status: TrajectoryStatus,
+    ) -> CaliberResult<Vec<Trajectory>> {
         let trajectories = self.trajectories.read().unwrap();
         Ok(trajectories
             .values()
@@ -341,12 +336,12 @@ impl StorageTrait for MockStorage {
 
     fn scope_update(&self, id: Uuid, update: ScopeUpdate) -> CaliberResult<()> {
         let mut scopes = self.scopes.write().unwrap();
-        let scope = scopes.get_mut(&id).ok_or(
-            CaliberError::Storage(StorageError::NotFound {
+        let scope = scopes
+            .get_mut(&id)
+            .ok_or(CaliberError::Storage(StorageError::NotFound {
                 entity_type: EntityType::Scope,
                 id,
-            })
-        )?;
+            }))?;
 
         if let Some(is_active) = update.is_active {
             scope.is_active = is_active;
@@ -372,7 +367,6 @@ impl StorageTrait for MockStorage {
             .cloned()
             .collect())
     }
-
 
     // === Artifact Operations ===
 
@@ -401,7 +395,9 @@ impl StorageTrait for MockStorage {
         let artifacts = self.artifacts.read().unwrap();
         Ok(artifacts
             .values()
-            .filter(|a| a.trajectory_id.as_uuid() == trajectory_id && a.artifact_type == artifact_type)
+            .filter(|a| {
+                a.trajectory_id.as_uuid() == trajectory_id && a.artifact_type == artifact_type
+            })
             .cloned()
             .collect())
     }
@@ -417,12 +413,13 @@ impl StorageTrait for MockStorage {
 
     fn artifact_update(&self, id: Uuid, update: ArtifactUpdate) -> CaliberResult<()> {
         let mut artifacts = self.artifacts.write().unwrap();
-        let artifact = artifacts.get_mut(&id).ok_or(
-            CaliberError::Storage(StorageError::NotFound {
-                entity_type: EntityType::Artifact,
-                id,
-            })
-        )?;
+        let artifact =
+            artifacts
+                .get_mut(&id)
+                .ok_or(CaliberError::Storage(StorageError::NotFound {
+                    entity_type: EntityType::Artifact,
+                    id,
+                }))?;
 
         if let Some(content) = update.content {
             artifact.content = content;
@@ -462,19 +459,23 @@ impl StorageTrait for MockStorage {
         let notes = self.notes.read().unwrap();
         Ok(notes
             .values()
-            .filter(|n| n.source_trajectory_ids.iter().any(|id| id.as_uuid() == trajectory_id))
+            .filter(|n| {
+                n.source_trajectory_ids
+                    .iter()
+                    .any(|id| id.as_uuid() == trajectory_id)
+            })
             .cloned()
             .collect())
     }
 
     fn note_update(&self, id: Uuid, update: NoteUpdate) -> CaliberResult<()> {
         let mut notes = self.notes.write().unwrap();
-        let note = notes.get_mut(&id).ok_or(
-            CaliberError::Storage(StorageError::NotFound {
+        let note = notes
+            .get_mut(&id)
+            .ok_or(CaliberError::Storage(StorageError::NotFound {
                 entity_type: EntityType::Note,
                 id,
-            })
-        )?;
+            }))?;
 
         if let Some(content) = update.content {
             note.content = content;
@@ -595,21 +596,14 @@ impl StorageTrait for MockStorage {
         let edges = self.edges.read().unwrap();
         Ok(edges
             .values()
-            .filter(|e| {
-                e.participants
-                    .iter()
-                    .any(|p| p.entity_ref.id == entity_id)
-            })
+            .filter(|e| e.participants.iter().any(|p| p.entity_ref.id == entity_id))
             .cloned()
             .collect())
     }
 
     // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
 
-    fn note_query_by_abstraction_level(
-        &self,
-        level: AbstractionLevel,
-    ) -> CaliberResult<Vec<Note>> {
+    fn note_query_by_abstraction_level(&self, level: AbstractionLevel) -> CaliberResult<Vec<Note>> {
         let notes = self.notes.read().unwrap();
         Ok(notes
             .values()
@@ -622,12 +616,15 @@ impl StorageTrait for MockStorage {
         let notes = self.notes.read().unwrap();
         Ok(notes
             .values()
-            .filter(|n| n.source_note_ids.iter().any(|id| id.as_uuid() == source_note_id))
+            .filter(|n| {
+                n.source_note_ids
+                    .iter()
+                    .any(|id| id.as_uuid() == source_note_id)
+            })
             .cloned()
             .collect())
     }
 }
-
 
 // ============================================================================
 // TESTS
@@ -637,8 +634,8 @@ impl StorageTrait for MockStorage {
 mod tests {
     use super::*;
     use caliber_core::{
-        AgentId, ArtifactType, ExtractionMethod, NoteType, Provenance, ScopeId, TTL, TrajectoryId,
-        TurnId, TurnRole,
+        AgentId, ArtifactType, ExtractionMethod, NoteType, Provenance, ScopeId, TrajectoryId,
+        TurnId, TurnRole, TTL,
     };
     use chrono::Utc;
 
@@ -748,7 +745,9 @@ mod tests {
         let trajectory = make_test_trajectory();
 
         storage.trajectory_insert(&trajectory).unwrap();
-        let retrieved = storage.trajectory_get(trajectory.trajectory_id.as_uuid()).unwrap();
+        let retrieved = storage
+            .trajectory_get(trajectory.trajectory_id.as_uuid())
+            .unwrap();
 
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().trajectory_id, trajectory.trajectory_id);
@@ -781,7 +780,10 @@ mod tests {
             )
             .unwrap();
 
-        let retrieved = storage.trajectory_get(trajectory.trajectory_id.as_uuid()).unwrap().unwrap();
+        let retrieved = storage
+            .trajectory_get(trajectory.trajectory_id.as_uuid())
+            .unwrap()
+            .unwrap();
         assert_eq!(retrieved.status, TrajectoryStatus::Completed);
     }
 
@@ -800,13 +802,16 @@ mod tests {
         storage.trajectory_insert(&t2).unwrap();
         storage.trajectory_insert(&t3).unwrap();
 
-        let active = storage.trajectory_list_by_status(TrajectoryStatus::Active).unwrap();
+        let active = storage
+            .trajectory_list_by_status(TrajectoryStatus::Active)
+            .unwrap();
         assert_eq!(active.len(), 2);
 
-        let completed = storage.trajectory_list_by_status(TrajectoryStatus::Completed).unwrap();
+        let completed = storage
+            .trajectory_list_by_status(TrajectoryStatus::Completed)
+            .unwrap();
         assert_eq!(completed.len(), 1);
     }
-
 
     // ========================================================================
     // Scope Tests
@@ -839,7 +844,9 @@ mod tests {
         storage.scope_insert(&scope1).unwrap();
         storage.scope_insert(&scope2).unwrap();
 
-        let current = storage.scope_get_current(trajectory.trajectory_id.as_uuid()).unwrap();
+        let current = storage
+            .scope_get_current(trajectory.trajectory_id.as_uuid())
+            .unwrap();
         assert!(current.is_some());
         assert!(current.unwrap().is_active);
     }
@@ -859,7 +866,9 @@ mod tests {
         storage.scope_insert(&scope).unwrap();
         storage.artifact_insert(&artifact).unwrap();
 
-        let retrieved = storage.artifact_get(artifact.artifact_id.as_uuid()).unwrap();
+        let retrieved = storage
+            .artifact_get(artifact.artifact_id.as_uuid())
+            .unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().artifact_id, artifact.artifact_id);
     }
@@ -921,7 +930,9 @@ mod tests {
         storage.note_insert(&n1).unwrap();
         storage.note_insert(&n2).unwrap();
 
-        let notes = storage.note_query_by_trajectory(t1.trajectory_id.as_uuid()).unwrap();
+        let notes = storage
+            .note_query_by_trajectory(t1.trajectory_id.as_uuid())
+            .unwrap();
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].note_id, n1.note_id);
     }
@@ -963,11 +974,20 @@ mod tests {
         let scope = make_test_scope(trajectory.trajectory_id);
 
         let mut a1 = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
-        a1.embedding = Some(EmbeddingVector::new(vec![1.0, 0.0, 0.0], "test".to_string()));
+        a1.embedding = Some(EmbeddingVector::new(
+            vec![1.0, 0.0, 0.0],
+            "test".to_string(),
+        ));
         let mut a2 = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
-        a2.embedding = Some(EmbeddingVector::new(vec![0.9, 0.1, 0.0], "test".to_string()));
+        a2.embedding = Some(EmbeddingVector::new(
+            vec![0.9, 0.1, 0.0],
+            "test".to_string(),
+        ));
         let mut a3 = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
-        a3.embedding = Some(EmbeddingVector::new(vec![0.0, 1.0, 0.0], "test".to_string()));
+        a3.embedding = Some(EmbeddingVector::new(
+            vec![0.0, 1.0, 0.0],
+            "test".to_string(),
+        ));
 
         storage.trajectory_insert(&trajectory).unwrap();
         storage.scope_insert(&scope).unwrap();
@@ -984,7 +1004,6 @@ mod tests {
         assert!((results[0].1 - 1.0).abs() < 0.001);
     }
 }
-
 
 // ============================================================================
 // PROPERTY-BASED TESTS (Task 11.5)

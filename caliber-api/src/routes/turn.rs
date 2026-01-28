@@ -6,12 +6,7 @@
 //! Includes Battle Intel Feature 4: Auto-summarization trigger checking
 //! after turn creation to enable L0→L1→L2 abstraction transitions.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use caliber_core::TurnId;
 use caliber_pcp::PCPRuntime;
 use std::sync::Arc;
@@ -80,9 +75,7 @@ pub async fn create_turn(
     let turn = db.create::<TurnResponse>(&req, auth.tenant_id).await?;
 
     // Broadcast TurnCreated event
-    ws.broadcast(WsEvent::TurnCreated {
-        turn: turn.clone(),
-    });
+    ws.broadcast(WsEvent::TurnCreated { turn: turn.clone() });
 
     // =========================================================================
     // BATTLE INTEL: Check summarization triggers after turn creation
@@ -93,7 +86,10 @@ pub async fn create_turn(
         let trajectory_id = scope.trajectory_id;
 
         // Fetch summarization policies for this trajectory (custom function)
-        if let Ok(policies) = db.summarization_policies_for_trajectory(trajectory_id).await {
+        if let Ok(policies) = db
+            .summarization_policies_for_trajectory(trajectory_id)
+            .await
+        {
             if !policies.is_empty() {
                 // Get turn count for this scope using generic list
                 let turn_filter = TurnListFilter {
@@ -159,7 +155,9 @@ pub async fn create_turn(
                     // Broadcast SummarizationTriggered event for each fired trigger
                     for (policy_id, trigger) in triggered {
                         // Find the policy to get its details
-                        if let Some(policy) = core_policies.iter().find(|p| p.policy_id == policy_id) {
+                        if let Some(policy) =
+                            core_policies.iter().find(|p| p.policy_id == policy_id)
+                        {
                             ws.broadcast(WsEvent::SummarizationTriggered {
                                 tenant_id: auth.tenant_id,
                                 policy_id,

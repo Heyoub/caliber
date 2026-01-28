@@ -27,5 +27,5 @@ pub mod pretty_printer;
 // Re-export key types for convenience
 pub use compiler::*;
 pub use lexer::*;
-pub use pack::{compose_pack, PackInput, PackMarkdownFile, PackOutput, PackError};
+pub use pack::{compose_pack, PackError, PackInput, PackMarkdownFile, PackOutput};
 pub use parser::*;

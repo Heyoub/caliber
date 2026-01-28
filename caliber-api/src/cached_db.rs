@@ -11,15 +11,15 @@
 
 use async_trait::async_trait;
 use caliber_core::{
-    CaliberResult, EntityIdType, EntityType, StorageError, TenantId, TrajectoryId, ScopeId,
-    ArtifactId, NoteId, AgentId,
+    AgentId, ArtifactId, CaliberResult, EntityIdType, EntityType, NoteId, ScopeId, StorageError,
+    TenantId, TrajectoryId,
 };
-use uuid::Uuid;
 use caliber_storage::{
     CacheableEntity, ChangeJournal, Freshness, InMemoryChangeJournal, LmdbCacheBackend,
     ReadThroughCache, StorageFetcher,
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
@@ -166,7 +166,12 @@ impl CachedDbClient {
         let fetcher = TrajectoryFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<TrajectoryResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
+            .get::<TrajectoryResponse, _>(
+                id.as_uuid(),
+                tenant_id.as_uuid(),
+                Freshness::default(),
+                &fetcher,
+            )
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -185,7 +190,11 @@ impl CachedDbClient {
         // Record change in journal for cache invalidation
         self.cache
             .journal()
-            .record_change(tenant_id, EntityType::Trajectory, response.trajectory_id.as_uuid())
+            .record_change(
+                tenant_id,
+                EntityType::Trajectory,
+                response.trajectory_id.as_uuid(),
+            )
             .await
             .map_err(|e| ApiError::internal_error(format!("Journal error: {}", e)))?;
 
@@ -246,7 +255,12 @@ impl CachedDbClient {
         let fetcher = ScopeFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<ScopeResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
+            .get::<ScopeResponse, _>(
+                id.as_uuid(),
+                tenant_id.as_uuid(),
+                Freshness::default(),
+                &fetcher,
+            )
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -266,7 +280,12 @@ impl CachedDbClient {
         let fetcher = ArtifactFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<ArtifactResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
+            .get::<ArtifactResponse, _>(
+                id.as_uuid(),
+                tenant_id.as_uuid(),
+                Freshness::default(),
+                &fetcher,
+            )
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -306,7 +325,12 @@ impl CachedDbClient {
         let fetcher = NoteFetcher { db: &self.db };
         let result = self
             .cache
-            .get::<NoteResponse, _>(id.as_uuid(), tenant_id.as_uuid(), Freshness::default(), &fetcher)
+            .get::<NoteResponse, _>(
+                id.as_uuid(),
+                tenant_id.as_uuid(),
+                Freshness::default(),
+                &fetcher,
+            )
             .await
             .map_err(|e| ApiError::internal_error(format!("Cache error: {}", e)))?;
 
@@ -389,7 +413,11 @@ impl StorageFetcher<TrajectoryResponse> for TrajectoryFetcher<'_> {
         self.db
             .trajectory_get(TrajectoryId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
+            .map_err(|e| {
+                caliber_core::CaliberError::Storage(StorageError::TransactionFailed {
+                    reason: e.to_string(),
+                })
+            })
     }
 }
 
@@ -408,7 +436,11 @@ impl StorageFetcher<ScopeResponse> for ScopeFetcher<'_> {
         self.db
             .scope_get(ScopeId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
+            .map_err(|e| {
+                caliber_core::CaliberError::Storage(StorageError::TransactionFailed {
+                    reason: e.to_string(),
+                })
+            })
     }
 }
 
@@ -427,7 +459,11 @@ impl StorageFetcher<ArtifactResponse> for ArtifactFetcher<'_> {
         self.db
             .artifact_get(ArtifactId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
+            .map_err(|e| {
+                caliber_core::CaliberError::Storage(StorageError::TransactionFailed {
+                    reason: e.to_string(),
+                })
+            })
     }
 }
 
@@ -438,15 +474,15 @@ struct NoteFetcher<'a> {
 
 #[async_trait]
 impl StorageFetcher<NoteResponse> for NoteFetcher<'_> {
-    async fn fetch(
-        &self,
-        entity_id: Uuid,
-        tenant_id: Uuid,
-    ) -> CaliberResult<Option<NoteResponse>> {
+    async fn fetch(&self, entity_id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<NoteResponse>> {
         self.db
             .note_get(NoteId::new(entity_id), TenantId::new(tenant_id))
             .await
-            .map_err(|e| caliber_core::CaliberError::Storage(StorageError::TransactionFailed { reason: e.to_string() }))
+            .map_err(|e| {
+                caliber_core::CaliberError::Storage(StorageError::TransactionFailed {
+                    reason: e.to_string(),
+                })
+            })
     }
 }
 

@@ -5,19 +5,17 @@ use crate::views::two_column_with_links;
 use crate::widgets::{DetailPanel, TreeItem, TreeStyle, TreeWidget};
 use caliber_api::types::TrajectoryResponse;
 use caliber_core::{EntityIdType, TrajectoryId};
-use ratatui::{
-    style::Style,
-    Frame,
-};
+use ratatui::{style::Style, Frame};
 use std::collections::HashMap;
 
 pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
     let (tree_area, detail_area) = two_column_with_links(f, app, area, 60);
 
     let items = build_tree(app);
-    let selected_index = app.trajectory_view.selected.and_then(|id| {
-        items.iter().position(|item| item.id == id)
-    });
+    let selected_index = app
+        .trajectory_view
+        .selected
+        .and_then(|id| items.iter().position(|item| item.id == id));
 
     let tree = TreeWidget {
         title: "Trajectories",
@@ -61,7 +59,6 @@ fn render_detail_panel(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect
     detail.render(f, area);
 }
 
-
 fn build_tree(app: &App) -> Vec<TreeItem> {
     let mut grouped: HashMap<Option<_>, Vec<_>> = HashMap::new();
     for traj in &app.trajectory_view.trajectories {
@@ -76,13 +73,7 @@ fn build_tree(app: &App) -> Vec<TreeItem> {
     }
 
     let mut items = Vec::new();
-    walk_tree(
-        None,
-        0,
-        &grouped,
-        &app.trajectory_view.expanded,
-        &mut items,
-    );
+    walk_tree(None, 0, &grouped, &app.trajectory_view.expanded, &mut items);
     items
 }
 

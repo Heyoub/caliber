@@ -1,8 +1,8 @@
 //! Artifact browser view.
 
 use crate::state::App;
-use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
+use caliber_core::EntityIdType;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Style,
@@ -20,9 +20,7 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .artifact_view
         .artifacts
         .iter()
-        .map(|artifact| {
-            ListItem::new(format!("{} [{}]", artifact.name, artifact.artifact_type))
-        })
+        .map(|artifact| ListItem::new(format!("{} [{}]", artifact.name, artifact.artifact_type)))
         .collect();
 
     let mut state = ListState::default();

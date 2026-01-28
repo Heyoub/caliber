@@ -1,6 +1,9 @@
 //! Delegation-related API types
 
-use caliber_core::{AgentId, ArtifactId, DelegationId, DelegationResultStatus, DelegationStatus, ScopeId, TenantId, Timestamp, TrajectoryId};
+use caliber_core::{
+    AgentId, ArtifactId, DelegationId, DelegationResultStatus, DelegationStatus, ScopeId, TenantId,
+    Timestamp, TrajectoryId,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbClient;
@@ -79,14 +82,23 @@ impl DelegationResponse {
     /// Reject this delegation (Pending -> Rejected transition).
     ///
     /// Delegates to `services::reject_delegation()`.
-    pub async fn reject(&self, db: &DbClient, rejecting_agent_id: AgentId, reason: &str) -> ApiResult<Self> {
+    pub async fn reject(
+        &self,
+        db: &DbClient,
+        rejecting_agent_id: AgentId,
+        reason: &str,
+    ) -> ApiResult<Self> {
         crate::services::reject_delegation(db, self, rejecting_agent_id, reason).await
     }
 
     /// Complete this delegation (Accepted/InProgress -> Completed transition).
     ///
     /// Delegates to `services::complete_delegation()`.
-    pub async fn complete(&self, db: &DbClient, result: &DelegationResultResponse) -> ApiResult<Self> {
+    pub async fn complete(
+        &self,
+        db: &DbClient,
+        result: &DelegationResultResponse,
+    ) -> ApiResult<Self> {
         crate::services::complete_delegation(db, self, result).await
     }
 }

@@ -23,10 +23,10 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use caliber_core::{CaliberResult, EntityType};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
+use uuid::Uuid;
 
 use super::tenant_key::TenantScopedKey;
 use super::traits::{CacheBackend, CacheStats, CacheableEntity};
@@ -293,8 +293,8 @@ impl CacheBackend for LmdbCacheBackend {
 
         // Serialize timestamp + value
         let timestamp_bytes = cached_at.timestamp_millis().to_le_bytes();
-        let value_bytes = serde_json::to_vec(entity)
-            .map_err(|e| LmdbCacheError::Serialization(e.to_string()))?;
+        let value_bytes =
+            serde_json::to_vec(entity).map_err(|e| LmdbCacheError::Serialization(e.to_string()))?;
 
         let mut full_bytes = Vec::with_capacity(8 + value_bytes.len());
         full_bytes.extend_from_slice(&timestamp_bytes);
@@ -459,8 +459,8 @@ impl CacheBackend for LmdbCacheBackend {
 mod tests {
     use super::*;
     use caliber_core::{
-        AbstractionLevel, ArtifactType, ExtractionMethod, NoteType, Provenance, TTL,
-        TrajectoryStatus,
+        AbstractionLevel, ArtifactType, ExtractionMethod, NoteType, Provenance, TrajectoryStatus,
+        TTL,
     };
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -472,7 +472,7 @@ mod tests {
     }
 
     fn make_test_trajectory(tenant_id: Uuid) -> caliber_core::Trajectory {
-        use caliber_core::{TrajectoryId, EntityIdType};
+        use caliber_core::{EntityIdType, TrajectoryId};
         caliber_core::Trajectory {
             trajectory_id: TrajectoryId::new(tenant_id), // Using trajectory_id as tenant_id for this entity type
             name: "Test Trajectory".to_string(),
@@ -490,7 +490,7 @@ mod tests {
     }
 
     fn make_test_note(trajectory_id: Uuid) -> caliber_core::Note {
-        use caliber_core::{TrajectoryId, NoteId, EntityIdType};
+        use caliber_core::{EntityIdType, NoteId, TrajectoryId};
         caliber_core::Note {
             note_id: NoteId::now_v7(),
             note_type: NoteType::Fact,
@@ -512,11 +512,8 @@ mod tests {
         }
     }
 
-    fn make_test_artifact(
-        trajectory_id: Uuid,
-        scope_id: Uuid,
-    ) -> caliber_core::Artifact {
-        use caliber_core::{TrajectoryId, ScopeId, ArtifactId, EntityIdType};
+    fn make_test_artifact(trajectory_id: Uuid, scope_id: Uuid) -> caliber_core::Artifact {
+        use caliber_core::{ArtifactId, EntityIdType, ScopeId, TrajectoryId};
         caliber_core::Artifact {
             artifact_id: ArtifactId::now_v7(),
             trajectory_id: TrajectoryId::new(trajectory_id),

@@ -51,7 +51,11 @@ pub struct FilterExpr {
 
 impl FilterExpr {
     /// Create a new filter expression.
-    pub fn new(field: impl Into<String>, operator: FilterOperator, value: serde_json::Value) -> Self {
+    pub fn new(
+        field: impl Into<String>,
+        operator: FilterOperator,
+        value: serde_json::Value,
+    ) -> Self {
         Self {
             field: field.into(),
             operator,

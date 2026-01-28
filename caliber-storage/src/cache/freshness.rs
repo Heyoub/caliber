@@ -144,9 +144,7 @@ impl<T> CacheRead<T> {
     pub fn staleness(&self) -> Duration {
         let now = Utc::now();
         if now > self.cached_at {
-            (now - self.cached_at)
-                .to_std()
-                .unwrap_or(Duration::ZERO)
+            (now - self.cached_at).to_std().unwrap_or(Duration::ZERO)
         } else {
             Duration::ZERO
         }

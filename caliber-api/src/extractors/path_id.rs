@@ -77,13 +77,14 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // Extract the raw path parameter as Uuid
-        let Path(uuid): Path<Uuid> = Path::from_request_parts(parts, state)
-            .await
-            .map_err(|e| PathIdError {
-                entity_name: T::ENTITY_NAME,
-                path_param: parts.uri.path().to_string(),
-                message: format!("Failed to extract UUID from path: {}", e),
-            })?;
+        let Path(uuid): Path<Uuid> =
+            Path::from_request_parts(parts, state)
+                .await
+                .map_err(|e| PathIdError {
+                    entity_name: T::ENTITY_NAME,
+                    path_param: parts.uri.path().to_string(),
+                    message: format!("Failed to extract UUID from path: {}", e),
+                })?;
 
         // Convert to the specific ID type
         Ok(PathId(T::new(uuid)))

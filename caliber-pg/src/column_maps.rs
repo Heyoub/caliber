@@ -84,7 +84,6 @@ pub mod trajectory {
     pub const STATUS_INDEX: &str = "idx_trajectory_status";
 }
 
-
 // ============================================================================
 // SCOPE TABLE COLUMNS
 // ============================================================================
@@ -220,7 +219,6 @@ pub mod artifact {
     /// Type index name
     pub const TYPE_INDEX: &str = "idx_artifact_type";
 }
-
 
 // ============================================================================
 // NOTE TABLE COLUMNS
@@ -365,7 +363,6 @@ pub mod turn {
     pub const SCOPE_SEQ_INDEX: &str = "idx_turn_scope_seq";
 }
 
-
 // ============================================================================
 // AGENT TABLE COLUMNS
 // ============================================================================
@@ -480,7 +477,6 @@ pub mod lock {
     /// Holder index name
     pub const HOLDER_INDEX: &str = "idx_lock_holder";
 }
-
 
 // ============================================================================
 // MESSAGE TABLE COLUMNS
@@ -647,7 +643,6 @@ pub mod delegation {
     /// Progress index name (V3)
     pub const PROGRESS_INDEX: &str = "idx_delegation_progress";
 }
-
 
 // ============================================================================
 // HANDOFF TABLE COLUMNS

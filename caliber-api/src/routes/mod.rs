@@ -42,6 +42,8 @@ pub mod webhooks;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(any(not(feature = "swagger-ui"), test))]
+use axum::Json;
 use axum::{
     http::{header, header::HeaderName, HeaderValue, Method},
     middleware::from_fn_with_state,
@@ -49,8 +51,6 @@ use axum::{
     routing::get,
     Router,
 };
-#[cfg(any(not(feature = "swagger-ui"), test))]
-use axum::Json;
 use caliber_pcp::PCPRuntime;
 use caliber_storage::{CacheConfig, InMemoryChangeJournal, LmdbCacheBackend, ReadThroughCache};
 use tower_http::cors::{Any, CorsLayer};
@@ -61,7 +61,9 @@ use crate::cached_db::CachedDbClient;
 use crate::config::ApiConfig;
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
-use crate::middleware::{auth_middleware, rate_limit_middleware, AuthMiddlewareState, RateLimitState};
+use crate::middleware::{
+    auth_middleware, rate_limit_middleware, AuthMiddlewareState, RateLimitState,
+};
 use crate::openapi::ApiDoc;
 use crate::state::AppState;
 use crate::ws::{ws_handler, WsState};
@@ -78,7 +80,8 @@ const DEFAULT_CACHE_SIZE_MB: usize = 256;
 /// - `CALIBER_CACHE_PATH`: Directory for LMDB files (default: /tmp/caliber-cache)
 /// - `CALIBER_CACHE_SIZE_MB`: Maximum cache size in MB (default: 256)
 fn initialize_cache() -> ApiResult<Arc<crate::state::ApiCache>> {
-    let cache_path = std::env::var("CALIBER_CACHE_PATH").unwrap_or_else(|_| DEFAULT_CACHE_PATH.to_string());
+    let cache_path =
+        std::env::var("CALIBER_CACHE_PATH").unwrap_or_else(|_| DEFAULT_CACHE_PATH.to_string());
     let cache_size_mb: usize = std::env::var("CALIBER_CACHE_SIZE_MB")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -165,11 +168,7 @@ async fn openapi_yaml() -> impl IntoResponse {
     use axum::http::{header, StatusCode};
 
     match ApiDoc::to_yaml() {
-        Ok(yaml) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/yaml")],
-            yaml,
-        ),
+        Ok(yaml) => (StatusCode::OK, [(header::CONTENT_TYPE, "text/yaml")], yaml),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             [(header::CONTENT_TYPE, "text/plain")],
@@ -283,7 +282,10 @@ impl SecureRouterBuilder {
             .nest("/webhooks", webhooks::create_router())
             .nest("/graphql", graphql::create_router())
             .nest("/edges", edge::create_router())
-            .nest("/summarization-policies", summarization_policy::create_router())
+            .nest(
+                "/summarization-policies",
+                summarization_policy::create_router(),
+            )
             // Context assembly (caliber-core::context module)
             .nest("/context", context::context_router()))
     }
@@ -296,12 +298,13 @@ impl SecureRouterBuilder {
     /// 3. Rate Limiting - rejects floods before expensive auth
     /// 4. Auth (innermost, only on /api/v1/*) - validates credentials
     pub fn build(self) -> ApiResult<Router> {
-        use crate::telemetry::{middleware::observability_middleware, metrics_handler};
+        use crate::telemetry::{metrics_handler, middleware::observability_middleware};
         use axum::middleware::from_fn;
 
         let webhook_state = Arc::new(
-            webhooks::WebhookState::new(self.db.clone(), self.ws.clone())
-                .map_err(|e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)))?,
+            webhooks::WebhookState::new(self.db.clone(), self.ws.clone()).map_err(|e| {
+                ApiError::internal_error(format!("Failed to initialize webhook state: {}", e))
+            })?,
         );
         webhooks::start_webhook_delivery_task(webhook_state.clone());
 
@@ -369,10 +372,8 @@ impl SecureRouterBuilder {
         #[cfg(feature = "swagger-ui")]
         {
             use utoipa_swagger_ui::SwaggerUi;
-            router = router.merge(
-                SwaggerUi::new("/swagger-ui")
-                    .url("/openapi.json", ApiDoc::openapi()),
-            );
+            router =
+                router.merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()));
         }
 
         // Add OpenAPI JSON endpoint only when swagger-ui is NOT enabled
@@ -388,7 +389,10 @@ impl SecureRouterBuilder {
         // Apply security layers (order matters: outer to inner in code = inner to outer in execution)
         // Execution order: CORS -> Observability -> Rate Limiting -> Handler
         Ok(router
-            .layer(from_fn_with_state(self.rate_limit_state, rate_limit_middleware))
+            .layer(from_fn_with_state(
+                self.rate_limit_state,
+                rate_limit_middleware,
+            ))
             .layer(from_fn(observability_middleware))
             .layer(cors)
             .with_state(app_state))
@@ -431,7 +435,9 @@ fn build_cors_layer(config: &ApiConfig) -> CorsLayer {
     if config.cors_origins.is_empty() {
         // Development mode: allow all origins
         tracing::info!("CORS: Development mode - allowing all origins");
-        cors.allow_origin(Any).allow_headers(Any).expose_headers(Any)
+        cors.allow_origin(Any)
+            .allow_headers(Any)
+            .expose_headers(Any)
     } else {
         // Production mode: only allow configured origins
         tracing::info!(
@@ -506,13 +512,12 @@ pub fn create_api_router_unauthenticated(
     pcp: Arc<PCPRuntime>,
     api_config: &ApiConfig,
 ) -> ApiResult<Router> {
-    use crate::telemetry::{middleware::observability_middleware, metrics_handler};
+    use crate::telemetry::{metrics_handler, middleware::observability_middleware};
     use axum::middleware::from_fn;
 
-    let webhook_state = Arc::new(
-        webhooks::WebhookState::new(db.clone(), ws.clone())
-            .map_err(|e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)))?,
-    );
+    let webhook_state = Arc::new(webhooks::WebhookState::new(db.clone(), ws.clone()).map_err(
+        |e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)),
+    )?);
     webhooks::start_webhook_delivery_task(webhook_state.clone());
 
     let graphql_schema = graphql::create_schema(db.clone(), ws.clone());
@@ -567,7 +572,10 @@ pub fn create_api_router_unauthenticated(
         .nest("/webhooks", webhooks::create_router())
         .nest("/graphql", graphql::create_router())
         .nest("/edges", edge::create_router())
-        .nest("/summarization-policies", summarization_policy::create_router());
+        .nest(
+            "/summarization-policies",
+            summarization_policy::create_router(),
+        );
 
     let mut router: Router<AppState> = Router::new()
         .nest("/api/v1", api_routes)
@@ -590,10 +598,8 @@ pub fn create_api_router_unauthenticated(
     #[cfg(feature = "swagger-ui")]
     {
         use utoipa_swagger_ui::SwaggerUi;
-        router = router.merge(
-            SwaggerUi::new("/swagger-ui")
-                .url("/openapi.json", ApiDoc::openapi()),
-        );
+        router =
+            router.merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()));
     }
 
     #[cfg(not(feature = "swagger-ui"))]
@@ -612,8 +618,7 @@ pub fn create_api_router_unauthenticated(
 /// Create a minimal router for testing without WebSocket support.
 #[cfg(test)]
 pub fn create_test_router(_db: DbClient) -> Router {
-    Router::new()
-        .route("/openapi.json", get(openapi_json))
+    Router::new().route("/openapi.json", get(openapi_json))
 }
 
 #[cfg(test)]

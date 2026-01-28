@@ -41,7 +41,8 @@ pub async fn accept_handoff(
         "accepted_at": chrono::Utc::now().to_rfc3339()
     });
 
-    db.update_raw::<HandoffResponse>(handoff.handoff_id, updates, handoff.tenant_id).await
+    db.update_raw::<HandoffResponse>(handoff.handoff_id, updates, handoff.tenant_id)
+        .await
 }
 
 /// Complete a handoff (Accepted -> Completed transition).
@@ -68,7 +69,8 @@ pub async fn complete_handoff(
         "completed_at": chrono::Utc::now().to_rfc3339()
     });
 
-    db.update_raw::<HandoffResponse>(handoff.handoff_id, updates, handoff.tenant_id).await
+    db.update_raw::<HandoffResponse>(handoff.handoff_id, updates, handoff.tenant_id)
+        .await
 }
 
 // =============================================================================
@@ -85,7 +87,9 @@ mod tests {
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, ScopeResponse,
         TrajectoryResponse,
     };
-    use caliber_core::{AgentId, EntityIdType, HandoffId, HandoffStatus, ScopeId, TenantId, TrajectoryId};
+    use caliber_core::{
+        AgentId, EntityIdType, HandoffId, HandoffStatus, ScopeId, TenantId, TrajectoryId,
+    };
     use chrono::Utc;
 
     fn dummy_db() -> DbClient {
@@ -163,7 +167,10 @@ mod tests {
             return None;
         }
 
-        let tenant_id = db.tenant_create("test-handoff-service", None, None).await.ok()?;
+        let tenant_id = db
+            .tenant_create("test-handoff-service", None, None)
+            .await
+            .ok()?;
         Some(DbTestContext { db, tenant_id })
     }
 
@@ -249,7 +256,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_accept_complete_handoff_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let trajectory = create_trajectory(&ctx.db, ctx.tenant_id).await;
         let scope = create_scope(&ctx.db, ctx.tenant_id, trajectory.trajectory_id).await;

@@ -3,11 +3,7 @@
 //! This module implements Axum route handlers for tenant operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use caliber_core::TenantId;
 
 use crate::{
@@ -36,9 +32,7 @@ use crate::{
         ("bearer_auth" = [])
     )
 )]
-pub async fn list_tenants(
-    State(db): State<DbClient>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn list_tenants(State(db): State<DbClient>) -> ApiResult<impl IntoResponse> {
     let tenants = db.tenant_list().await?;
     let response = ListTenantsResponse { tenants };
     Ok(Json(response))
@@ -87,9 +81,9 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TenantStatus;
     use caliber_core::EntityIdType;
     use uuid::Uuid;
-    use crate::types::TenantStatus;
 
     #[test]
     fn test_tenant_info_structure() {
@@ -147,9 +141,7 @@ mod tests {
 
     #[test]
     fn test_empty_tenant_list() {
-        let response = ListTenantsResponse {
-            tenants: vec![],
-        };
+        let response = ListTenantsResponse { tenants: vec![] };
 
         assert!(response.tenants.is_empty());
     }

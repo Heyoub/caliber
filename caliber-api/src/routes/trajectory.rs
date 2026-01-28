@@ -11,7 +11,6 @@ use axum::{
 };
 use std::sync::Arc;
 
-use caliber_core::TrajectoryId;
 use crate::{
     auth::validate_tenant_ownership,
     components::{ScopeListFilter, TrajectoryListFilter},
@@ -22,11 +21,12 @@ use crate::{
     middleware::AuthExtractor,
     state::{ApiEventDag, AppState},
     types::{
-        CreateTrajectoryRequest, ListTrajectoriesRequest, ListTrajectoriesResponse,
-        ScopeResponse, TrajectoryResponse, UpdateTrajectoryRequest,
+        CreateTrajectoryRequest, ListTrajectoriesRequest, ListTrajectoriesResponse, ScopeResponse,
+        TrajectoryResponse, UpdateTrajectoryRequest,
     },
     ws::WsState,
 };
+use caliber_core::TrajectoryId;
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -61,7 +61,9 @@ pub async fn create_trajectory(
     }
 
     // Create trajectory via database client with event emission for audit trail
-    let trajectory = db.create_with_event::<TrajectoryResponse>(&req, auth.tenant_id, &event_dag).await?;
+    let trajectory = db
+        .create_with_event::<TrajectoryResponse>(&req, auth.tenant_id, &event_dag)
+        .await?;
 
     // Broadcast TrajectoryCreated event via WebSocket
     ws.broadcast(WsEvent::TrajectoryCreated {
@@ -107,7 +109,9 @@ pub async fn list_trajectories(
         offset: params.offset,
     };
 
-    let trajectories = db.list::<TrajectoryResponse>(&filter, auth.tenant_id).await?;
+    let trajectories = db
+        .list::<TrajectoryResponse>(&filter, auth.tenant_id)
+        .await?;
     let total = trajectories.len() as i32;
 
     let response = ListTrajectoriesResponse {
@@ -199,7 +203,9 @@ pub async fn update_trajectory(
     validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
     // Update trajectory via database client with event emission for audit trail
-    let trajectory = db.update_with_event::<TrajectoryResponse>(id, &req, auth.tenant_id, &event_dag).await?;
+    let trajectory = db
+        .update_with_event::<TrajectoryResponse>(id, &req, auth.tenant_id, &event_dag)
+        .await?;
 
     // Broadcast TrajectoryUpdated event via WebSocket
     ws.broadcast(WsEvent::TrajectoryUpdated {
@@ -242,7 +248,8 @@ pub async fn delete_trajectory(
     validate_tenant_ownership(&auth, Some(trajectory.tenant_id))?;
 
     // Delete trajectory via database client with event emission for audit trail
-    db.delete_with_event::<TrajectoryResponse>(id, auth.tenant_id, &event_dag).await?;
+    db.delete_with_event::<TrajectoryResponse>(id, auth.tenant_id, &event_dag)
+        .await?;
 
     // Broadcast TrajectoryDeleted event with tenant_id for filtering
     ws.broadcast(WsEvent::TrajectoryDeleted {
@@ -290,7 +297,9 @@ pub async fn list_trajectory_scopes(
     };
     let scopes = db.list::<ScopeResponse>(&filter, auth.tenant_id).await?;
 
-    Ok(Json(scopes.into_iter().map(|s| s.linked()).collect::<Vec<_>>()))
+    Ok(Json(
+        scopes.into_iter().map(|s| s.linked()).collect::<Vec<_>>(),
+    ))
 }
 
 /// GET /api/v1/trajectories/{id}/children - List child trajectories
@@ -328,9 +337,13 @@ pub async fn list_trajectory_children(
         parent_id: Some(id),
         ..Default::default()
     };
-    let children = db.list::<TrajectoryResponse>(&filter, auth.tenant_id).await?;
+    let children = db
+        .list::<TrajectoryResponse>(&filter, auth.tenant_id)
+        .await?;
 
-    Ok(Json(children.into_iter().map(|c| c.linked()).collect::<Vec<_>>()))
+    Ok(Json(
+        children.into_iter().map(|c| c.linked()).collect::<Vec<_>>(),
+    ))
 }
 
 // ============================================================================
@@ -346,17 +359,20 @@ pub fn create_router() -> axum::Router<AppState> {
         .route("/:id", axum::routing::patch(update_trajectory))
         .route("/:id", axum::routing::delete(delete_trajectory))
         .route("/:id/scopes", axum::routing::get(list_trajectory_scopes))
-        .route("/:id/children", axum::routing::get(list_trajectory_children))
+        .route(
+            "/:id/children",
+            axum::routing::get(list_trajectory_children),
+        )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::state::ApiEventDag;
     use crate::ws::WsState;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use caliber_core::TrajectoryStatus;
     use std::sync::Arc;
     use uuid::Uuid;
@@ -399,7 +415,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -452,7 +470,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_list_trajectory_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let req = CreateTrajectoryRequest {
             name: format!("db-test-{}", Uuid::now_v7()),

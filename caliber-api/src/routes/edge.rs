@@ -62,7 +62,9 @@ pub async fn create_edge(
     // Validate weight if provided
     if let Some(weight) = req.weight {
         if !(0.0..=1.0).contains(&weight) {
-            return Err(ApiError::invalid_input("Weight must be between 0.0 and 1.0"));
+            return Err(ApiError::invalid_input(
+                "Weight must be between 0.0 and 1.0",
+            ));
         }
     }
 
@@ -116,7 +118,10 @@ pub async fn create_edges_batch(
     }
 
     // Broadcast batch event
-    ws.broadcast(WsEvent::EdgesBatchCreated { tenant_id: auth.tenant_id, count: edges.len() });
+    ws.broadcast(WsEvent::EdgesBatchCreated {
+        tenant_id: auth.tenant_id,
+        count: edges.len(),
+    });
 
     Ok((StatusCode::CREATED, Json(ListEdgesResponse { edges })))
 }
@@ -212,13 +217,15 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::State, http::StatusCode, response::IntoResponse, Json};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::extractors::PathId;
-    use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
-    use crate::ws::WsState;
+    use crate::types::{
+        CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse,
+    };
     use crate::types::{EdgeParticipantRequest, ProvenanceRequest};
+    use crate::ws::WsState;
+    use axum::{body::to_bytes, extract::State, http::StatusCode, response::IntoResponse, Json};
     use caliber_core::{EdgeType, EntityIdType, EntityType, ExtractionMethod};
     use std::sync::Arc;
     use uuid::Uuid;
@@ -297,7 +304,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -306,7 +315,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_get_list_edges_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let traj_req = CreateTrajectoryRequest {
             name: format!("edge-traj-{}", Uuid::now_v7()),

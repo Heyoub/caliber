@@ -13,28 +13,27 @@
 //! - `edge_query_by_type_heap` - Query edges by type
 //! - `edge_query_by_trajectory_heap` - Query edges by trajectory
 
-use pgrx::prelude::*;
 use pgrx::pg_sys;
+use pgrx::prelude::*;
 
 use caliber_core::{
-    CaliberError, CaliberResult, Edge, EdgeId, EdgeParticipant, EdgeType,
-    EntityIdType, EntityType, ExtractionMethod, Provenance, StorageError,
-    TenantId, TrajectoryId,
+    CaliberError, CaliberResult, Edge, EdgeId, EdgeParticipant, EdgeType, EntityIdType, EntityType,
+    ExtractionMethod, Provenance, StorageError, TenantId, TrajectoryId,
 };
 
 use crate::column_maps::edge;
 use crate::heap_ops::{
-    current_timestamp, form_tuple, insert_tuple, open_relation,
-    PgLockMode as LockMode, HeapRelation, get_active_snapshot, timestamp_to_pgrx,
+    current_timestamp, form_tuple, get_active_snapshot, insert_tuple, open_relation,
+    timestamp_to_pgrx, HeapRelation, PgLockMode as LockMode,
 };
 use crate::index_ops::{
-    init_scan_key, open_index, update_indexes_for_insert,
-    BTreeStrategy, IndexScanner, operator_oids,
+    init_scan_key, open_index, operator_oids, update_indexes_for_insert, BTreeStrategy,
+    IndexScanner,
 };
 use crate::tuple_extract::{
-    extract_uuid, extract_text, extract_timestamp, extract_jsonb,
-    extract_float4, extract_i32, uuid_to_datum, string_to_datum,
-    json_to_datum, float4_to_datum, i32_to_datum, timestamp_to_chrono,
+    extract_float4, extract_i32, extract_jsonb, extract_text, extract_timestamp, extract_uuid,
+    float4_to_datum, i32_to_datum, json_to_datum, string_to_datum, timestamp_to_chrono,
+    uuid_to_datum,
 };
 
 /// Edge row with tenant ownership metadata.
@@ -64,11 +63,12 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: TenantId) -> CaliberResult<EdgeI
 
     // Get current transaction timestamp
     let now = current_timestamp();
-    let now_datum = timestamp_to_pgrx(now)?.into_datum()
-        .ok_or_else(|| CaliberError::Storage(StorageError::InsertFailed {
+    let now_datum = timestamp_to_pgrx(now)?.into_datum().ok_or_else(|| {
+        CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Edge,
             reason: "Failed to convert timestamp to datum".to_string(),
-        }))?;
+        })
+    })?;
 
     // Build datum array - must match column order in caliber_edge table
     let mut values: [pg_sys::Datum; edge::NUM_COLS] = [pg_sys::Datum::from(0); edge::NUM_COLS];
@@ -81,11 +81,12 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: TenantId) -> CaliberResult<EdgeI
     values[edge::EDGE_TYPE as usize - 1] = string_to_datum(edge_type_to_str(edge.edge_type));
 
     // Column 3: participants (JSONB, NOT NULL)
-    let participants_json = serde_json::to_value(&edge.participants)
-        .map_err(|e| CaliberError::Storage(StorageError::InsertFailed {
+    let participants_json = serde_json::to_value(&edge.participants).map_err(|e| {
+        CaliberError::Storage(StorageError::InsertFailed {
             entity_type: EntityType::Edge,
             reason: format!("Failed to serialize participants: {}", e),
-        }))?;
+        })
+    })?;
     values[edge::PARTICIPANTS as usize - 1] = json_to_datum(&participants_json);
 
     // Column 4: weight (REAL, nullable)
@@ -106,9 +107,8 @@ pub fn edge_create_heap(edge: &Edge, tenant_id: TenantId) -> CaliberResult<EdgeI
     values[edge::SOURCE_TURN as usize - 1] = i32_to_datum(edge.provenance.source_turn);
 
     // Column 7: extraction_method (TEXT, NOT NULL) - from provenance
-    values[edge::EXTRACTION_METHOD as usize - 1] = string_to_datum(
-        extraction_method_to_str(&edge.provenance.extraction_method)
-    );
+    values[edge::EXTRACTION_METHOD as usize - 1] =
+        string_to_datum(extraction_method_to_str(&edge.provenance.extraction_method));
 
     // Column 8: confidence (REAL, nullable) - from provenance
     if let Some(conf) = edge.provenance.confidence {
@@ -172,13 +172,7 @@ pub fn edge_get_heap(id: EdgeId, tenant_id: TenantId) -> CaliberResult<Option<Ed
     );
 
     // Create index scanner
-    let mut scanner = unsafe { IndexScanner::new(
-        &rel,
-        &index_rel,
-        snapshot,
-        1,
-        &mut scan_key,
-    ) };
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     // Get the first (and should be only) matching tuple
     if let Some(tuple) = scanner.next() {
@@ -202,7 +196,10 @@ pub fn edge_get_heap(id: EdgeId, tenant_id: TenantId) -> CaliberResult<Option<Ed
 /// # Returns
 /// * `Ok(Vec<Edge>)` - List of matching edges
 /// * `Err(CaliberError)` - On failure
-pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: TenantId) -> CaliberResult<Vec<EdgeRow>> {
+pub fn edge_query_by_type_heap(
+    edge_type: EdgeType,
+    tenant_id: TenantId,
+) -> CaliberResult<Vec<EdgeRow>> {
     // Open relation with AccessShare lock for reads
     let rel = open_relation(edge::TABLE_NAME, LockMode::AccessShare)?;
 
@@ -223,13 +220,7 @@ pub fn edge_query_by_type_heap(edge_type: EdgeType, tenant_id: TenantId) -> Cali
     );
 
     // Create index scanner
-    let mut scanner = unsafe { IndexScanner::new(
-        &rel,
-        &index_rel,
-        snapshot,
-        1,
-        &mut scan_key,
-    ) };
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
@@ -277,13 +268,7 @@ pub fn edge_query_by_trajectory_heap(
     );
 
     // Create index scanner
-    let mut scanner = unsafe { IndexScanner::new(
-        &rel,
-        &index_rel,
-        snapshot,
-        1,
-        &mut scan_key,
-    ) };
+    let mut scanner = unsafe { IndexScanner::new(&rel, &index_rel, snapshot, 1, &mut scan_key) };
 
     let tuple_desc = rel.tuple_desc();
     let mut results = Vec::new();
@@ -349,7 +334,10 @@ fn str_to_edge_type(s: &str) -> EdgeType {
         "compared" => EdgeType::Compared,
         _ => {
             if s != "relatesto" {
-                pgrx::warning!("CALIBER: Unknown edge type '{}', defaulting to RelatesTo", s);
+                pgrx::warning!(
+                    "CALIBER: Unknown edge type '{}', defaulting to RelatesTo",
+                    s
+                );
             }
             EdgeType::RelatesTo
         }
@@ -382,7 +370,10 @@ fn str_to_extraction_method(s: &str) -> ExtractionMethod {
         "external_api" => ExtractionMethod::ExternalApi,
         "unknown" => ExtractionMethod::Unknown,
         _ => {
-            pgrx::warning!("CALIBER: Unknown extraction method '{}', defaulting to Unknown", s);
+            pgrx::warning!(
+                "CALIBER: Unknown extraction method '{}', defaulting to Unknown",
+                s
+            );
             ExtractionMethod::Unknown
         }
     }
@@ -393,42 +384,52 @@ unsafe fn tuple_to_edge(
     tuple: *mut pg_sys::HeapTupleData,
     tuple_desc: pg_sys::TupleDesc,
 ) -> CaliberResult<EdgeRow> {
-    let edge_id = extract_uuid(tuple, tuple_desc, edge::EDGE_ID)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let edge_id = extract_uuid(tuple, tuple_desc, edge::EDGE_ID)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "edge_id is NULL".to_string(),
-        }))?;
+        })
+    })?;
     let edge_id = EdgeId::new(edge_id);
 
-    let edge_type_str = extract_text(tuple, tuple_desc, edge::EDGE_TYPE)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let edge_type_str = extract_text(tuple, tuple_desc, edge::EDGE_TYPE)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "edge_type is NULL".to_string(),
-        }))?;
+        })
+    })?;
     let edge_type = str_to_edge_type(&edge_type_str);
 
     // Parse participants from JSONB
-    let participants_json = extract_jsonb(tuple, tuple_desc, edge::PARTICIPANTS)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: "participants is NULL".to_string(),
-        }))?;
-    let participants: Vec<EdgeParticipant> = serde_json::from_value(participants_json)
-        .map_err(|e| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: format!("Failed to deserialize participants: {}", e),
-        }))?;
+    let participants_json =
+        extract_jsonb(tuple, tuple_desc, edge::PARTICIPANTS)?.ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "participants is NULL".to_string(),
+            })
+        })?;
+    let participants: Vec<EdgeParticipant> =
+        serde_json::from_value(participants_json).map_err(|e| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: format!("Failed to deserialize participants: {}", e),
+            })
+        })?;
 
     let weight = extract_float4(tuple, tuple_desc, edge::WEIGHT)?;
 
-    let trajectory_id = extract_uuid(tuple, tuple_desc, edge::TRAJECTORY_ID)?.map(TrajectoryId::new);
+    let trajectory_id =
+        extract_uuid(tuple, tuple_desc, edge::TRAJECTORY_ID)?.map(TrajectoryId::new);
 
     // Build provenance from individual columns
-    let source_turn = extract_i32(tuple, tuple_desc, edge::SOURCE_TURN)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
+    let source_turn = extract_i32(tuple, tuple_desc, edge::SOURCE_TURN)?.ok_or_else(|| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: "source_turn is NULL".to_string(),
-        }))?;
+        })
+    })?;
 
     let extraction_method_str = extract_text(tuple, tuple_desc, edge::EXTRACTION_METHOD)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: "extraction_method is NULL".to_string(),
-        }))?;
+        .ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "extraction_method is NULL".to_string(),
+            })
+        })?;
     let extraction_method = str_to_extraction_method(&extraction_method_str);
 
     let confidence = extract_float4(tuple, tuple_desc, edge::CONFIDENCE)?;
@@ -439,10 +440,12 @@ unsafe fn tuple_to_edge(
         confidence,
     };
 
-    let created_at_ts = extract_timestamp(tuple, tuple_desc, edge::CREATED_AT)?
-        .ok_or_else(|| CaliberError::Storage(StorageError::TransactionFailed {
-            reason: "created_at is NULL".to_string(),
-        }))?;
+    let created_at_ts =
+        extract_timestamp(tuple, tuple_desc, edge::CREATED_AT)?.ok_or_else(|| {
+            CaliberError::Storage(StorageError::TransactionFailed {
+                reason: "created_at is NULL".to_string(),
+            })
+        })?;
     let created_at = timestamp_to_chrono(created_at_ts);
 
     let metadata = extract_jsonb(tuple, tuple_desc, edge::METADATA)?;
@@ -559,13 +562,13 @@ mod tests {
     #[cfg(feature = "pg_test")]
     mod pg_tests {
         use super::*;
-        use caliber_core::EntityRef;
         use crate::pg_test;
+        use caliber_core::EntityRef;
 
         /// Property 1: Insert-Get Round Trip (Edge)
         #[pg_test]
         fn prop_edge_insert_get_roundtrip() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(30);
             let mut runner = TestRunner::new(config);
@@ -576,83 +579,90 @@ mod tests {
                 proptest::option::of(0.0f32..1.0f32),
             );
 
-            runner.run(&strategy, |(edge_type, provenance, weight)| {
-                let edge_id = EdgeId::now_v7();
-                let tenant_id = TenantId::now_v7();
+            runner
+                .run(&strategy, |(edge_type, provenance, weight)| {
+                    let edge_id = EdgeId::now_v7();
+                    let tenant_id = TenantId::now_v7();
 
-                // Create two participants for a binary edge
-                let participant_a = EdgeParticipant {
-                    entity_ref: EntityRef {
-                        entity_type: EntityType::Note,
-                        id: caliber_core::NoteId::now_v7().as_uuid(),
-                    },
-                    role: Some("source".to_string()),
-                };
-                let participant_b = EdgeParticipant {
-                    entity_ref: EntityRef {
-                        entity_type: EntityType::Note,
-                        id: caliber_core::NoteId::now_v7().as_uuid(),
-                    },
-                    role: Some("target".to_string()),
-                };
+                    // Create two participants for a binary edge
+                    let participant_a = EdgeParticipant {
+                        entity_ref: EntityRef {
+                            entity_type: EntityType::Note,
+                            id: caliber_core::NoteId::now_v7().as_uuid(),
+                        },
+                        role: Some("source".to_string()),
+                    };
+                    let participant_b = EdgeParticipant {
+                        entity_ref: EntityRef {
+                            entity_type: EntityType::Note,
+                            id: caliber_core::NoteId::now_v7().as_uuid(),
+                        },
+                        role: Some("target".to_string()),
+                    };
 
-                let edge = Edge {
-                    edge_id,
-                    edge_type,
-                    participants: vec![participant_a.clone(), participant_b.clone()],
-                    weight,
-                    trajectory_id: None,
-                    provenance: provenance.clone(),
-                    created_at: chrono::Utc::now(),
-                    metadata: None,
-                };
+                    let edge = Edge {
+                        edge_id,
+                        edge_type,
+                        participants: vec![participant_a.clone(), participant_b.clone()],
+                        weight,
+                        trajectory_id: None,
+                        provenance: provenance.clone(),
+                        created_at: chrono::Utc::now(),
+                        metadata: None,
+                    };
 
-                // Insert via heap
-                let result = edge_create_heap(&edge, tenant_id);
-                prop_assert!(result.is_ok(), "Insert should succeed");
-                prop_assert_eq!(result.unwrap(), edge_id);
+                    // Insert via heap
+                    let result = edge_create_heap(&edge, tenant_id);
+                    prop_assert!(result.is_ok(), "Insert should succeed");
+                    prop_assert_eq!(result.unwrap(), edge_id);
 
-                // Get via heap
-                let get_result = edge_get_heap(edge_id, tenant_id);
-                prop_assert!(get_result.is_ok(), "Get should succeed");
+                    // Get via heap
+                    let get_result = edge_get_heap(edge_id, tenant_id);
+                    prop_assert!(get_result.is_ok(), "Get should succeed");
 
-                let retrieved = get_result.unwrap();
-                prop_assert!(retrieved.is_some(), "Edge should be found");
+                    let retrieved = get_result.unwrap();
+                    prop_assert!(retrieved.is_some(), "Edge should be found");
 
-                let e = retrieved.unwrap().edge;
+                    let e = retrieved.unwrap().edge;
 
-                // Verify round-trip preserves data
-                prop_assert_eq!(e.edge_id, edge_id);
-                prop_assert_eq!(e.edge_type, edge_type);
-                prop_assert_eq!(e.participants.len(), 2);
-                prop_assert_eq!(e.weight, weight);
-                prop_assert_eq!(e.trajectory_id, None);
-                prop_assert_eq!(e.provenance.source_turn, provenance.source_turn);
-                prop_assert_eq!(e.provenance.extraction_method, provenance.extraction_method);
-                prop_assert!(e.metadata.is_none());
+                    // Verify round-trip preserves data
+                    prop_assert_eq!(e.edge_id, edge_id);
+                    prop_assert_eq!(e.edge_type, edge_type);
+                    prop_assert_eq!(e.participants.len(), 2);
+                    prop_assert_eq!(e.weight, weight);
+                    prop_assert_eq!(e.trajectory_id, None);
+                    prop_assert_eq!(e.provenance.source_turn, provenance.source_turn);
+                    prop_assert_eq!(e.provenance.extraction_method, provenance.extraction_method);
+                    prop_assert!(e.metadata.is_none());
 
-                Ok(())
-            }).unwrap();
+                    Ok(())
+                })
+                .unwrap();
         }
 
         /// Get non-existent edge returns None
         #[pg_test]
         fn prop_edge_get_nonexistent_returns_none() {
-            use proptest::test_runner::{TestRunner, Config};
+            use proptest::test_runner::{Config, TestRunner};
 
             let config = Config::with_cases(50);
             let mut runner = TestRunner::new(config);
 
-            runner.run(&any::<[u8; 16]>(), |bytes| {
-                let random_id = EdgeId::new(uuid::Uuid::from_bytes(bytes));
+            runner
+                .run(&any::<[u8; 16]>(), |bytes| {
+                    let random_id = EdgeId::new(uuid::Uuid::from_bytes(bytes));
 
-                let tenant_id = TenantId::now_v7();
-                let result = edge_get_heap(random_id, tenant_id);
-                prop_assert!(result.is_ok(), "Get should not error");
-                prop_assert!(result.unwrap().is_none(), "Non-existent edge should return None");
+                    let tenant_id = TenantId::now_v7();
+                    let result = edge_get_heap(random_id, tenant_id);
+                    prop_assert!(result.is_ok(), "Get should not error");
+                    prop_assert!(
+                        result.unwrap().is_none(),
+                        "Non-existent edge should return None"
+                    );
 
-                Ok(())
-            }).unwrap();
+                    Ok(())
+                })
+                .unwrap();
         }
     }
 }

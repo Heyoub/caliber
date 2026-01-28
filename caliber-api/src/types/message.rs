@@ -135,7 +135,8 @@ impl MessageResponse {
             "delivered_at": chrono::Utc::now().to_rfc3339()
         });
 
-        db.update_raw::<Self>(self.message_id, updates, self.tenant_id).await
+        db.update_raw::<Self>(self.message_id, updates, self.tenant_id)
+            .await
     }
 
     /// Mark this message as acknowledged.
@@ -156,6 +157,7 @@ impl MessageResponse {
             "acknowledged_at": chrono::Utc::now().to_rfc3339()
         });
 
-        db.update_raw::<Self>(self.message_id, updates, self.tenant_id).await
+        db.update_raw::<Self>(self.message_id, updates, self.tenant_id)
+            .await
     }
 }

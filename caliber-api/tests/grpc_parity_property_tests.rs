@@ -11,31 +11,31 @@
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
+use caliber_api::proto::scope_service_server::ScopeService;
+use caliber_api::proto::trajectory_service_server::TrajectoryService;
 use caliber_api::{
-    grpc::{self, proto},
     extractors::PathId,
+    grpc::{self, proto},
     middleware::AuthExtractor,
     routes::{scope, trajectory},
     types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse},
 };
-use caliber_api::proto::scope_service_server::ScopeService;
-use caliber_api::proto::trajectory_service_server::TrajectoryService;
+use caliber_core::{EntityIdType, ScopeId, TenantId, TrajectoryId};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
 use tokio::runtime::Runtime;
 use tonic::metadata::MetadataValue;
 use tonic::Request;
-use caliber_core::{EntityIdType, TenantId, TrajectoryId, ScopeId};
 use uuid::Uuid;
 #[path = "support/auth.rs"]
 mod test_auth_support;
 #[path = "support/db.rs"]
 mod test_db_support;
-#[path = "support/ws.rs"]
-mod test_ws_support;
 #[path = "support/event_dag.rs"]
 mod test_event_dag_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
 use test_auth_support::test_auth_context;
 
 // ============================================================================
@@ -53,13 +53,11 @@ async fn extract_json<T: DeserializeOwned>(
         .map_err(|e| TestCaseError::fail(format!("Failed to parse JSON response: {}", e)))
 }
 
-fn request_with_tenant<T>(
-    payload: T,
-    tenant_id: TenantId,
-) -> Result<Request<T>, TestCaseError> {
+fn request_with_tenant<T>(payload: T, tenant_id: TenantId) -> Result<Request<T>, TestCaseError> {
     let mut request = Request::new(payload);
-    let tenant_header = MetadataValue::try_from(tenant_id.to_string())
-        .map_err(|e| TestCaseError::fail(format!("Failed to build tenant metadata header: {}", e)))?;
+    let tenant_header = MetadataValue::try_from(tenant_id.to_string()).map_err(|e| {
+        TestCaseError::fail(format!("Failed to build tenant metadata header: {}", e))
+    })?;
     request.metadata_mut().insert("x-tenant-id", tenant_header);
     Ok(request)
 }
@@ -87,7 +85,10 @@ fn assert_trajectory_parity(
     prop_assert_eq!(grpc.agent_id.as_deref(), rest_agent.as_deref());
     prop_assert_eq!(grpc.created_at, rest.created_at.timestamp_millis());
     prop_assert_eq!(grpc.updated_at, rest.updated_at.timestamp_millis());
-    prop_assert_eq!(grpc.completed_at, rest.completed_at.map(|t| t.timestamp_millis()));
+    prop_assert_eq!(
+        grpc.completed_at,
+        rest.completed_at.map(|t| t.timestamp_millis())
+    );
     Ok(())
 }
 
@@ -123,10 +124,7 @@ fn name_strategy() -> impl Strategy<Value = String> {
 }
 
 fn description_strategy() -> impl Strategy<Value = Option<String>> {
-    prop_oneof![
-        Just(None),
-        "[A-Za-z0-9 _-]{5,50}".prop_map(Some),
-    ]
+    prop_oneof![Just(None), "[A-Za-z0-9 _-]{5,50}".prop_map(Some),]
 }
 
 // ============================================================================

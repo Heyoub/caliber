@@ -6,8 +6,7 @@
 
 use ::async_trait::async_trait;
 use caliber_core::{
-    Artifact, CaliberResult, EntityType, Note, NoteType, Scope, Trajectory,
-    TrajectoryStatus, Turn,
+    Artifact, CaliberResult, EntityType, Note, NoteType, Scope, Trajectory, TrajectoryStatus, Turn,
 };
 use uuid::Uuid;
 
@@ -25,11 +24,7 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn trajectory_insert(&self, t: &Trajectory) -> CaliberResult<()>;
 
     /// Get a trajectory by ID.
-    async fn trajectory_get(
-        &self,
-        id: Uuid,
-        tenant_id: Uuid,
-    ) -> CaliberResult<Option<Trajectory>>;
+    async fn trajectory_get(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<Trajectory>>;
 
     /// Update a trajectory.
     async fn trajectory_update(&self, t: &Trajectory) -> CaliberResult<()>;
@@ -79,11 +74,7 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn artifact_insert(&self, a: &Artifact) -> CaliberResult<()>;
 
     /// Get an artifact by ID.
-    async fn artifact_get(
-        &self,
-        id: Uuid,
-        tenant_id: Uuid,
-    ) -> CaliberResult<Option<Artifact>>;
+    async fn artifact_get(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<Artifact>>;
 
     /// List artifacts by trajectory.
     async fn artifact_list_by_trajectory(
@@ -169,18 +160,12 @@ pub trait AsyncStorageTrait: Send + Sync {
     async fn turn_get(&self, id: Uuid, tenant_id: Uuid) -> CaliberResult<Option<Turn>>;
 
     /// List turns by scope.
-    async fn turn_list_by_scope(
-        &self,
-        scope_id: Uuid,
-        tenant_id: Uuid,
-    ) -> CaliberResult<Vec<Turn>>;
+    async fn turn_list_by_scope(&self, scope_id: Uuid, tenant_id: Uuid)
+        -> CaliberResult<Vec<Turn>>;
 
     /// Get the latest turn in a scope.
-    async fn turn_get_latest(
-        &self,
-        scope_id: Uuid,
-        tenant_id: Uuid,
-    ) -> CaliberResult<Option<Turn>>;
+    async fn turn_get_latest(&self, scope_id: Uuid, tenant_id: Uuid)
+        -> CaliberResult<Option<Turn>>;
 
     // ========================================================================
     // VECTOR SEARCH OPERATIONS

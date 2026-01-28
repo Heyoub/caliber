@@ -5,7 +5,7 @@
 //! in the mutation history.
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, TenantId, EntityType};
+use caliber_core::{CaliberResult, EntityType, TenantId};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -184,10 +184,7 @@ impl InMemoryChangeJournal {
 impl ChangeJournal for InMemoryChangeJournal {
     async fn current_watermark(&self, tenant_id: TenantId) -> CaliberResult<Watermark> {
         let changes = self.changes.read().await;
-        let sequence = changes
-            .get(&tenant_id)
-            .map(|tc| tc.sequence)
-            .unwrap_or(0);
+        let sequence = changes.get(&tenant_id).map(|tc| tc.sequence).unwrap_or(0);
         Ok(Watermark::new(sequence))
     }
 
@@ -318,17 +315,11 @@ mod tests {
         assert_eq!(w1.sequence, 1);
 
         // Changes since w0 should be true
-        let has_changes = journal
-            .changes_since(tenant_id, &w0, &[])
-            .await
-            .unwrap();
+        let has_changes = journal.changes_since(tenant_id, &w0, &[]).await.unwrap();
         assert!(has_changes);
 
         // Changes since w1 should be false
-        let has_changes = journal
-            .changes_since(tenant_id, &w1, &[])
-            .await
-            .unwrap();
+        let has_changes = journal.changes_since(tenant_id, &w1, &[]).await.unwrap();
         assert!(!has_changes);
     }
 
@@ -378,17 +369,11 @@ mod tests {
             .unwrap();
 
         // Tenant A should see changes
-        let has_changes_a = journal
-            .changes_since(tenant_a, &w0_a, &[])
-            .await
-            .unwrap();
+        let has_changes_a = journal.changes_since(tenant_a, &w0_a, &[]).await.unwrap();
         assert!(has_changes_a);
 
         // Tenant B should not see changes
-        let has_changes_b = journal
-            .changes_since(tenant_b, &w0_b, &[])
-            .await
-            .unwrap();
+        let has_changes_b = journal.changes_since(tenant_b, &w0_b, &[]).await.unwrap();
         assert!(!has_changes_b);
     }
 }

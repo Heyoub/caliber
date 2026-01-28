@@ -10,9 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 /// POST /mcp/prompts/list - List available prompts
-pub async fn list_prompts(
-    State(_state): State<Arc<McpState>>,
-) -> impl IntoResponse {
+pub async fn list_prompts(State(_state): State<Arc<McpState>>) -> impl IntoResponse {
     Json(ListPromptsResponse {
         prompts: get_available_prompts(),
         next_cursor: None,
@@ -95,7 +93,10 @@ async fn execute_prompt(
                 Created: {}\n\n\
                 Please provide a concise summary of the trajectory's purpose and current state.",
                 trajectory.name,
-                trajectory.description.as_deref().unwrap_or("No description"),
+                trajectory
+                    .description
+                    .as_deref()
+                    .unwrap_or("No description"),
                 trajectory.status,
                 trajectory.created_at
             );
@@ -157,10 +158,7 @@ async fn execute_prompt(
             );
 
             Ok(GetPromptResponse {
-                description: Some(format!(
-                    "Analyze contradictions in '{}'",
-                    trajectory.name
-                )),
+                description: Some(format!("Analyze contradictions in '{}'", trajectory.name)),
                 messages: vec![PromptMessage {
                     role: "user".to_string(),
                     content: PromptContent::Text { text: prompt_text },
@@ -201,9 +199,7 @@ async fn execute_prompt(
 
 /// Helper to parse UUID from args.
 fn parse_uuid(args: &HashMap<String, String>, key: &str) -> ApiResult<Uuid> {
-    let value = args
-        .get(key)
-        .ok_or_else(|| ApiError::missing_field(key))?;
+    let value = args.get(key).ok_or_else(|| ApiError::missing_field(key))?;
     Uuid::parse_str(value).map_err(|_| ApiError::invalid_input(format!("Invalid UUID for {}", key)))
 }
 

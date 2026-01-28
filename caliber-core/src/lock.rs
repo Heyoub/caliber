@@ -12,12 +12,12 @@
 //! ```
 
 use crate::{AgentId, LockId, TenantId, Timestamp};
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::time::Duration;
+use uuid::Uuid;
 
 // ============================================================================
 // LOCK MODE ENUM (replaces String)
@@ -320,7 +320,10 @@ pub enum LockStateError {
     /// Lock is not in the active state.
     NotActive { lock_id: LockId },
     /// Lock has expired.
-    Expired { lock_id: LockId, expired_at: Timestamp },
+    Expired {
+        lock_id: LockId,
+        expired_at: Timestamp,
+    },
 }
 
 impl fmt::Display for LockStateError {
@@ -329,7 +332,10 @@ impl fmt::Display for LockStateError {
             LockStateError::NotActive { lock_id } => {
                 write!(f, "Lock {} is not active", lock_id)
             }
-            LockStateError::Expired { lock_id, expired_at } => {
+            LockStateError::Expired {
+                lock_id,
+                expired_at,
+            } => {
                 write!(f, "Lock {} expired at {}", lock_id, expired_at)
             }
         }
@@ -489,11 +495,17 @@ mod tests {
         // Same type, different IDs
         let key1 = compute_lock_key(resource_type1, resource_id1);
         let key2 = compute_lock_key(resource_type1, resource_id2);
-        assert_ne!(key1, key2, "Different resource IDs should produce different keys");
+        assert_ne!(
+            key1, key2,
+            "Different resource IDs should produce different keys"
+        );
 
         // Different type, same ID
         let key3 = compute_lock_key(resource_type1, resource_id1);
         let key4 = compute_lock_key(resource_type2, resource_id1);
-        assert_ne!(key3, key4, "Different resource types should produce different keys");
+        assert_ne!(
+            key3, key4,
+            "Different resource types should produce different keys"
+        );
     }
 }

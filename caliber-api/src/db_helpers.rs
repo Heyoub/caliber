@@ -32,11 +32,7 @@ use crate::error::{ApiError, ApiResult};
 /// let note = get_owned::<NoteResponse>(&db, note_id, &auth).await?;
 /// // note is guaranteed to exist and belong to auth.tenant_id
 /// ```
-pub async fn get_owned<T>(
-    db: &DbClient,
-    id: T::Id,
-    auth: &AuthContext,
-) -> ApiResult<T>
+pub async fn get_owned<T>(db: &DbClient, id: T::Id, auth: &AuthContext) -> ApiResult<T>
 where
     T: Component + TenantScoped,
     T::Id: Copy + std::fmt::Display,
@@ -64,11 +60,7 @@ where
 /// ```ignore
 /// let note = get_or_not_found::<NoteResponse>(&db, note_id, tenant_id).await?;
 /// ```
-pub async fn get_or_not_found<T>(
-    db: &DbClient,
-    id: T::Id,
-    tenant_id: TenantId,
-) -> ApiResult<T>
+pub async fn get_or_not_found<T>(db: &DbClient, id: T::Id, tenant_id: TenantId) -> ApiResult<T>
 where
     T: Component + TenantScoped,
     T::Id: Copy + std::fmt::Display,

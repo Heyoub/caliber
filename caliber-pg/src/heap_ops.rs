@@ -33,11 +33,11 @@
 //! ```
 
 // Prelude provides common pgrx types and traits used throughout
+use pgrx::datum::TimestampWithTimeZone;
+use pgrx::pg_sys;
 #[allow(unused_imports)]
 use pgrx::prelude::*;
-use pgrx::pg_sys;
 use pgrx::PgRelation;
-use pgrx::datum::TimestampWithTimeZone;
 
 use caliber_core::{CaliberError, CaliberResult, EntityType, StorageError};
 
@@ -71,7 +71,9 @@ impl PgLockMode {
             PgLockMode::AccessShare => pg_sys::AccessShareLock as pg_sys::LOCKMODE,
             PgLockMode::RowShare => pg_sys::RowShareLock as pg_sys::LOCKMODE,
             PgLockMode::RowExclusive => pg_sys::RowExclusiveLock as pg_sys::LOCKMODE,
-            PgLockMode::ShareUpdateExclusive => pg_sys::ShareUpdateExclusiveLock as pg_sys::LOCKMODE,
+            PgLockMode::ShareUpdateExclusive => {
+                pg_sys::ShareUpdateExclusiveLock as pg_sys::LOCKMODE
+            }
             PgLockMode::Share => pg_sys::ShareLock as pg_sys::LOCKMODE,
             PgLockMode::ShareRowExclusive => pg_sys::ShareRowExclusiveLock as pg_sys::LOCKMODE,
             PgLockMode::Exclusive => pg_sys::ExclusiveLock as pg_sys::LOCKMODE,
@@ -132,10 +134,11 @@ impl HeapRelation {
 pub fn open_relation(name: &str, lock_mode: PgLockMode) -> CaliberResult<HeapRelation> {
     // Use PgRelation's safe wrapper which handles the lock acquisition
     // In pgrx 0.16+, this returns Result<PgRelation, &str>
-    let rel = PgRelation::open_with_name_and_share_lock(name)
-        .map_err(|e| CaliberError::Storage(StorageError::TransactionFailed {
+    let rel = PgRelation::open_with_name_and_share_lock(name).map_err(|e| {
+        CaliberError::Storage(StorageError::TransactionFailed {
             reason: format!("Failed to open relation '{}': {}", name, e),
-        }))?;
+        })
+    })?;
 
     // Verify the relation was opened successfully
     if rel.as_ptr().is_null() {
@@ -159,10 +162,11 @@ pub fn open_relation(name: &str, lock_mode: PgLockMode) -> CaliberResult<HeapRel
 /// # Returns
 /// * `Ok(HeapRelation)` - The opened relation
 /// * `Err(CaliberError)` - If the relation cannot be opened
-pub fn open_relation_by_oid(oid: pg_sys::Oid, lock_mode: PgLockMode) -> CaliberResult<HeapRelation> {
-    let rel = unsafe {
-        PgRelation::with_lock(oid, lock_mode.to_pg_lockmode())
-    };
+pub fn open_relation_by_oid(
+    oid: pg_sys::Oid,
+    lock_mode: PgLockMode,
+) -> CaliberResult<HeapRelation> {
+    let rel = unsafe { PgRelation::with_lock(oid, lock_mode.to_pg_lockmode()) };
 
     if rel.as_ptr().is_null() {
         return Err(CaliberError::Storage(StorageError::TransactionFailed {
@@ -341,10 +345,7 @@ pub unsafe fn update_tuple(
 /// # Safety
 /// The TID pointer must be valid for the target relation. The relation must be
 /// opened with an appropriate lock mode for writes.
-pub unsafe fn delete_tuple(
-    rel: &HeapRelation,
-    tid: &pg_sys::ItemPointerData,
-) -> CaliberResult<()> {
+pub unsafe fn delete_tuple(rel: &HeapRelation, tid: &pg_sys::ItemPointerData) -> CaliberResult<()> {
     pg_sys::simple_heap_delete(
         rel.inner.as_ptr(),
         tid as *const pg_sys::ItemPointerData as *mut pg_sys::ItemPointerData,
@@ -424,7 +425,7 @@ pub unsafe fn begin_heap_scan(
         nkeys,
         keys,
         std::ptr::null_mut(), // parallel_scan
-        0,                     // flags
+        0,                    // flags
     )
 }
 

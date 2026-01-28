@@ -1,24 +1,15 @@
 use crate::{
-    agent_heap::AgentRow,
-    artifact_heap::ArtifactRow,
-    conflict_heap::ConflictRow,
-    delegation_heap::DelegationRow,
-    edge_heap::EdgeRow,
-    handoff_heap::HandoffRow,
-    lock_heap::LockRow,
-    message_heap::MessageRow,
-    note_heap::NoteRow,
-    scope_heap::ScopeRow,
-    trajectory_heap::TrajectoryRow,
-    turn_heap::TurnRow,
+    agent_heap::AgentRow, artifact_heap::ArtifactRow, conflict_heap::ConflictRow,
+    delegation_heap::DelegationRow, edge_heap::EdgeRow, handoff_heap::HandoffRow,
+    lock_heap::LockRow, message_heap::MessageRow, note_heap::NoteRow, scope_heap::ScopeRow,
+    trajectory_heap::TrajectoryRow, turn_heap::TurnRow,
 };
 use caliber_core::{
-    AbstractionLevel, Agent, AgentHandoff, AgentId, AgentMessage, Artifact, ArtifactType,
-    Conflict, ConflictType, DelegatedTask, Edge, EdgeParticipant, EdgeType, EntityRef,
-    EntityType, ExtractionMethod, HandoffReason, LockData, LockId, LockMode, MessageType,
-    Note, NoteType, Provenance, Scope, TTL, TenantId, Trajectory, TrajectoryOutcome,
-    TrajectoryStatus, Turn, TurnRole, compute_content_hash, EntityIdType,
-    TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, EdgeId,
+    compute_content_hash, AbstractionLevel, Agent, AgentHandoff, AgentId, AgentMessage, Artifact,
+    ArtifactId, ArtifactType, Conflict, ConflictType, DelegatedTask, Edge, EdgeId, EdgeParticipant,
+    EdgeType, EntityIdType, EntityRef, EntityType, ExtractionMethod, HandoffReason, LockData,
+    LockId, LockMode, MessageType, Note, NoteId, NoteType, Provenance, Scope, ScopeId, TenantId,
+    Trajectory, TrajectoryId, TrajectoryOutcome, TrajectoryStatus, Turn, TurnId, TurnRole, TTL,
 };
 use chrono::Utc;
 use uuid::Uuid;
@@ -291,9 +282,7 @@ fn lock_row_into_lock() {
         expires_at: now + chrono::Duration::seconds(1000),
         mode: LockMode::Exclusive,
     };
-    let row = LockRow {
-        lock: lock.clone(),
-    };
+    let row = LockRow { lock: lock.clone() };
     let converted: LockData = row.into();
     assert_eq!(converted, lock);
 }

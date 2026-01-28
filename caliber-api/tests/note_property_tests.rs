@@ -163,16 +163,14 @@ fn create_note_request_strategy(
         optional_metadata_strategy(),
     )
         .prop_map(
-            move |(note_type, title, content, ttl, metadata)| {
-                CreateNoteRequest {
-                    note_type,
-                    title,
-                    content,
-                    source_trajectory_ids: vec![trajectory_id],
-                    source_artifact_ids: vec![],
-                    ttl,
-                    metadata,
-                }
+            move |(note_type, title, content, ttl, metadata)| CreateNoteRequest {
+                note_type,
+                title,
+                content,
+                source_trajectory_ids: vec![trajectory_id],
+                source_artifact_ids: vec![],
+                ttl,
+                metadata,
             },
         )
 }
@@ -1049,7 +1047,7 @@ mod edge_cases {
 
         // Content hash should be SHA-256 (32 bytes)
         assert_eq!(created.content_hash.len(), 32);
-        
+
         // Hash should not be all zeros
         assert_ne!(created.content_hash, [0u8; 32]);
         Ok(())

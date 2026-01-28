@@ -2,7 +2,9 @@
 
 use crate::component::{impl_component, ListFilter, Listable, SqlParam, TenantScoped};
 use crate::error::ApiError;
-use crate::types::{CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse};
+use crate::types::{
+    CreateWebhookRequest, ListWebhooksRequest, UpdateWebhookRequest, WebhookResponse,
+};
 use caliber_core::{EntityIdType, TenantId, WebhookId};
 use serde_json::Value as JsonValue;
 

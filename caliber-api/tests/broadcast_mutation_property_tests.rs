@@ -16,7 +16,7 @@ use caliber_api::types::{
     CreateArtifactRequest, CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest,
     CreateTurnRequest,
 };
-use caliber_core::{ArtifactType, ExtractionMethod, NoteType, TTL, TurnRole};
+use caliber_core::{ArtifactType, ExtractionMethod, NoteType, TurnRole, TTL};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use tokio::sync::broadcast;
@@ -26,12 +26,12 @@ use tokio::time::{timeout, Duration};
 mod test_auth_support;
 #[path = "support/db.rs"]
 mod test_db_support;
-#[path = "support/ws.rs"]
-mod test_ws_support;
-#[path = "support/pcp.rs"]
-mod test_pcp_support;
 #[path = "support/event_dag.rs"]
 mod test_event_dag_support;
+#[path = "support/pcp.rs"]
+mod test_pcp_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
 use test_auth_support::test_auth_context;
 
 async fn recv_event(rx: &mut broadcast::Receiver<WsEvent>, label: &str) -> WsEvent {

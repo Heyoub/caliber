@@ -127,37 +127,28 @@ pub async fn auth_middleware(
     // Route to appropriate auth handler based on provider
     let auth_context = match state.auth_config.auth_provider {
         // Standard JWT/API key authentication
-        AuthProvider::Jwt => {
-            authenticate(
-                &state.auth_config,
-                api_key_header,
-                auth_header,
-                tenant_id_header,
-            )
-            .map_err(AuthMiddlewareError)?
-        }
+        AuthProvider::Jwt => authenticate(
+            &state.auth_config,
+            api_key_header,
+            auth_header,
+            tenant_id_header,
+        )
+        .map_err(AuthMiddlewareError)?,
 
         // WorkOS SSO authentication
         #[cfg(feature = "workos")]
         AuthProvider::WorkOs => {
             // API key auth still works as fallback even in WorkOS mode
             if let Some(api_key) = api_key_header {
-                authenticate(
-                    &state.auth_config,
-                    Some(api_key),
-                    None,
-                    tenant_id_header,
-                )
-                .map_err(AuthMiddlewareError)?
+                authenticate(&state.auth_config, Some(api_key), None, tenant_id_header)
+                    .map_err(AuthMiddlewareError)?
             } else if let Some(auth_value) = auth_header {
                 // Extract Bearer token for WorkOS validation
-                let token = auth_value
-                    .strip_prefix("Bearer ")
-                    .ok_or_else(|| {
-                        AuthMiddlewareError(ApiError::invalid_token(
-                            "Authorization header must use Bearer scheme",
-                        ))
-                    })?;
+                let token = auth_value.strip_prefix("Bearer ").ok_or_else(|| {
+                    AuthMiddlewareError(ApiError::invalid_token(
+                        "Authorization header must use Bearer scheme",
+                    ))
+                })?;
 
                 // Get WorkOS config
                 let workos_config = state.workos_config.as_ref().ok_or_else(|| {
@@ -208,7 +199,7 @@ pub struct AuthMiddlewareError(pub ApiError);
 impl IntoResponse for AuthMiddlewareError {
     fn into_response(self) -> Response {
         let api_error = self.0;
-        
+
         // Map error codes to HTTP status codes
         let status = match api_error.code {
             crate::error::ErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
@@ -221,7 +212,7 @@ impl IntoResponse for AuthMiddlewareError {
             crate::error::ErrorCode::InvalidInput => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        
+
         // Return JSON error response
         (status, axum::Json(api_error)).into_response()
     }
@@ -286,7 +277,7 @@ where
             .ok_or_else(|| {
                 AuthMiddlewareError(ApiError::internal_error(
                     "AuthContext not found in request extensions. \
-                     Ensure auth_middleware is applied to this route."
+                     Ensure auth_middleware is applied to this route.",
                 ))
             })
     }
@@ -372,22 +363,22 @@ pub async fn tenant_access_middleware(
 ) -> Result<Response, AuthMiddlewareError> {
     // Extract AuthContext from extensions (injected by auth_middleware)
     let auth_context = extract_auth_context(&request).map_err(AuthMiddlewareError)?;
-    
+
     // Extract tenant_id from path parameters if present
     // Note: This is a simplified version. In practice, you might want to
     // extract the tenant_id from the path using axum::extract::Path
     // or from query parameters, depending on your route structure.
-    
+
     // For now, we just verify that the auth context has a valid tenant
     // The actual tenant-specific validation happens in route handlers
     // where they can compare against path/query parameters
-    
+
     if auth_context.tenant_id.to_string().is_empty() {
         return Err(AuthMiddlewareError(ApiError::forbidden(
             "Tenant context required",
         )));
     }
-    
+
     Ok(next.run(request).await)
 }
 
@@ -402,11 +393,8 @@ use std::net::IpAddr;
 use std::num::NonZeroU32;
 
 /// Type alias for the rate limiter we use.
-type DirectRateLimiter = RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    DefaultClock,
->;
+type DirectRateLimiter =
+    RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, DefaultClock>;
 
 /// Key for rate limiting - either IP address or tenant ID.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -438,7 +426,10 @@ impl RateLimitState {
     /// Get or create a rate limiter for the given key.
     ///
     /// DashMap provides lock-free concurrent access, eliminating lock poisoning issues.
-    fn get_or_create_limiter(&self, key: &RateLimitKey) -> Result<Arc<DirectRateLimiter>, RateLimitError> {
+    fn get_or_create_limiter(
+        &self,
+        key: &RateLimitKey,
+    ) -> Result<Arc<DirectRateLimiter>, RateLimitError> {
         // DashMap's entry API handles the get-or-insert atomically
         let limiter = self.limiters.entry(key.clone()).or_insert_with(|| {
             // Determine rate limit based on key type
@@ -587,7 +578,6 @@ pub async fn rate_limit_middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliber_core::{EntityIdType, TenantId};
     use crate::auth::AuthConfig;
     use crate::auth::JwtSecret;
     use axum::{
@@ -597,116 +587,114 @@ mod tests {
         routing::get,
         Router,
     };
+    use caliber_core::{EntityIdType, TenantId};
     use tower::ServiceExt; // for `oneshot`
     use uuid::Uuid;
-    
+
     fn test_auth_config() -> AuthConfig {
         let mut config = AuthConfig::default();
         config.add_api_key("test_key_123".to_string());
-        config.jwt_secret = JwtSecret::new("test_secret".to_string())
-            .expect("test secret should be valid");
+        config.jwt_secret =
+            JwtSecret::new("test_secret".to_string()).expect("test secret should be valid");
         config.require_tenant_header = true;
         config
     }
-    
+
     fn test_app() -> Router {
         let auth_config = test_auth_config();
         let auth_state = AuthMiddlewareState::new(auth_config);
-        
+
         Router::new()
             .route("/protected", get(|| async { "Protected resource" }))
-            .layer(middleware::from_fn_with_state(
-                auth_state,
-                auth_middleware,
-            ))
+            .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
     }
-    
+
     #[tokio::test]
     async fn test_middleware_with_valid_api_key() -> Result<(), String> {
         let app = test_app();
         let tenant_id = TenantId::new(Uuid::now_v7());
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("x-api-key", "test_key_123")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         assert_eq!(response.status(), StatusCode::OK);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_middleware_with_invalid_api_key() -> Result<(), String> {
         let app = test_app();
         let tenant_id = TenantId::new(Uuid::now_v7());
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("x-api-key", "invalid_key")
             .header("x-tenant-id", tenant_id.to_string())
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_middleware_without_authentication() -> Result<(), String> {
         let app = test_app();
-        
+
         let request = Request::builder()
             .uri("/protected")
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_middleware_without_tenant_header() -> Result<(), String> {
         let app = test_app();
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("x-api-key", "test_key_123")
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         // Should fail because tenant header is required
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_middleware_with_valid_jwt() -> Result<(), String> {
         let auth_config = test_auth_config();
         let user_id = "user123".to_string();
         let tenant_id = TenantId::new(Uuid::now_v7());
-        
+
         // Generate a valid JWT token
         let token = crate::auth::generate_jwt_token(
             &auth_config,
@@ -715,65 +703,65 @@ mod tests {
             vec!["admin".to_string()],
         )
         .map_err(|e| e.message)?;
-        
+
         let auth_state = AuthMiddlewareState::new(auth_config);
         let app = Router::new()
             .route("/protected", get(|| async { "Protected resource" }))
             .layer(middleware::from_fn_with_state(auth_state, auth_middleware));
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("authorization", format!("Bearer {}", token))
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         assert_eq!(response.status(), StatusCode::OK);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_middleware_with_invalid_jwt() -> Result<(), String> {
         let app = test_app();
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("authorization", "Bearer invalid.jwt.token")
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_middleware_with_malformed_auth_header() -> Result<(), String> {
         let app = test_app();
-        
+
         let request = Request::builder()
             .uri("/protected")
             .header("authorization", "NotBearer token")
             .body(Body::empty())
             .map_err(|e| e.to_string())?;
-        
+
         let response = app
             .oneshot(request)
             .await
             .map_err(|e| format!("Request failed: {:?}", e))?;
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_auth_context_injection() -> Result<(), String> {
         let auth_config = test_auth_config();
@@ -811,8 +799,8 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .map_err(|e| format!("Failed to read body: {:?}", e))?;
-        let body_str = String::from_utf8(body.to_vec())
-            .map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
+        let body_str =
+            String::from_utf8(body.to_vec()).map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
 
         assert!(body_str.contains("User: api_key_"));
         assert!(body_str.contains(&format!("Tenant: {}", tenant_id)));
@@ -855,8 +843,8 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .map_err(|e| format!("Failed to read body: {:?}", e))?;
-        let body_str = String::from_utf8(body.to_vec())
-            .map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
+        let body_str =
+            String::from_utf8(body.to_vec()).map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
 
         assert!(body_str.contains("User: api_key_"));
         assert!(body_str.contains(&format!("Tenant: {}", tenant_id)));
@@ -926,8 +914,8 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .map_err(|e| format!("Failed to read body: {:?}", e))?;
-        let body_str = String::from_utf8(body.to_vec())
-            .map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
+        let body_str =
+            String::from_utf8(body.to_vec()).map_err(|e| format!("Invalid UTF-8 body: {}", e))?;
 
         assert!(body_str.contains("has api_user role"));
         Ok(())

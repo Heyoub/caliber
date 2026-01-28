@@ -1,8 +1,8 @@
 //! Identity types for CALIBER entities
 
 use chrono::{DateTime, Utc};
-use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::hash::Hash;
 use std::str::FromStr;
@@ -17,11 +17,19 @@ use uuid::Uuid;
 /// This trait provides compile-time safety by ensuring entity IDs cannot be
 /// accidentally mixed up. Each entity type has its own strongly-typed ID.
 pub trait EntityIdType:
-    Copy + Clone + Eq + PartialEq + Hash +
-    fmt::Debug + fmt::Display +
-    FromStr +
-    Serialize + serde::de::DeserializeOwned +
-    Send + Sync + 'static
+    Copy
+    + Clone
+    + Eq
+    + PartialEq
+    + Hash
+    + fmt::Debug
+    + fmt::Display
+    + FromStr
+    + Serialize
+    + serde::de::DeserializeOwned
+    + Send
+    + Sync
+    + 'static
 {
     /// The name of the entity type (e.g., "tenant", "trajectory").
     const ENTITY_NAME: &'static str;
@@ -154,31 +162,71 @@ macro_rules! define_entity_id {
 // ============================================================================
 
 define_entity_id!(TenantId, "tenant", "Type-safe ID for tenant entities.");
-define_entity_id!(TrajectoryId, "trajectory", "Type-safe ID for trajectory entities.");
+define_entity_id!(
+    TrajectoryId,
+    "trajectory",
+    "Type-safe ID for trajectory entities."
+);
 define_entity_id!(ScopeId, "scope", "Type-safe ID for scope entities.");
-define_entity_id!(ArtifactId, "artifact", "Type-safe ID for artifact entities.");
+define_entity_id!(
+    ArtifactId,
+    "artifact",
+    "Type-safe ID for artifact entities."
+);
 define_entity_id!(NoteId, "note", "Type-safe ID for note entities.");
 define_entity_id!(TurnId, "turn", "Type-safe ID for turn entities.");
 define_entity_id!(AgentId, "agent", "Type-safe ID for agent entities.");
 define_entity_id!(EdgeId, "edge", "Type-safe ID for edge entities.");
 define_entity_id!(LockId, "lock", "Type-safe ID for lock entities.");
 define_entity_id!(MessageId, "message", "Type-safe ID for message entities.");
-define_entity_id!(DelegationId, "delegation", "Type-safe ID for delegation entities.");
+define_entity_id!(
+    DelegationId,
+    "delegation",
+    "Type-safe ID for delegation entities."
+);
 define_entity_id!(HandoffId, "handoff", "Type-safe ID for handoff entities.");
 define_entity_id!(ApiKeyId, "api_key", "Type-safe ID for API key entities.");
 define_entity_id!(WebhookId, "webhook", "Type-safe ID for webhook entities.");
-define_entity_id!(SummarizationPolicyId, "summarization_policy", "Type-safe ID for summarization policy entities.");
-define_entity_id!(ConflictId, "conflict", "Type-safe ID for conflict entities.");
-define_entity_id!(DslConfigId, "dsl_config", "Type-safe ID for DSL configuration entities.");
+define_entity_id!(
+    SummarizationPolicyId,
+    "summarization_policy",
+    "Type-safe ID for summarization policy entities."
+);
+define_entity_id!(
+    ConflictId,
+    "conflict",
+    "Type-safe ID for conflict entities."
+);
+define_entity_id!(
+    DslConfigId,
+    "dsl_config",
+    "Type-safe ID for DSL configuration entities."
+);
 
 // BDI (Belief-Desire-Intention) Agent Primitives (Phase 2)
 define_entity_id!(GoalId, "goal", "Type-safe ID for agent goal entities.");
 define_entity_id!(PlanId, "plan", "Type-safe ID for agent plan entities.");
-define_entity_id!(ActionId, "action", "Type-safe ID for agent action entities.");
+define_entity_id!(
+    ActionId,
+    "action",
+    "Type-safe ID for agent action entities."
+);
 define_entity_id!(StepId, "step", "Type-safe ID for plan step entities.");
-define_entity_id!(ObservationId, "observation", "Type-safe ID for agent observation entities.");
-define_entity_id!(BeliefId, "belief", "Type-safe ID for agent belief entities.");
-define_entity_id!(LearningId, "learning", "Type-safe ID for agent learning entities.");
+define_entity_id!(
+    ObservationId,
+    "observation",
+    "Type-safe ID for agent observation entities."
+);
+define_entity_id!(
+    BeliefId,
+    "belief",
+    "Type-safe ID for agent belief entities."
+);
+define_entity_id!(
+    LearningId,
+    "learning",
+    "Type-safe ID for agent learning entities."
+);
 
 // ============================================================================
 // OTHER IDENTITY TYPES
@@ -233,7 +281,10 @@ mod tests {
     #[test]
     fn test_entity_id_display() {
         let id = TenantId::new(Uuid::nil());
-        assert_eq!(format!("{:?}", id), "TenantId(00000000-0000-0000-0000-000000000000)");
+        assert_eq!(
+            format!("{:?}", id),
+            "TenantId(00000000-0000-0000-0000-000000000000)"
+        );
         assert_eq!(format!("{}", id), "00000000-0000-0000-0000-000000000000");
     }
 

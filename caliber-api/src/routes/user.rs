@@ -10,9 +10,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use caliber_core::EntityIdType;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use caliber_core::EntityIdType;
 
 use crate::{
     db::DbClient,

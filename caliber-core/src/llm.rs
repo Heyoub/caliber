@@ -403,7 +403,11 @@ mod tests {
 
     #[test]
     fn test_summarize_style_roundtrip() {
-        for style in [SummarizeStyle::Brief, SummarizeStyle::Detailed, SummarizeStyle::Structured] {
+        for style in [
+            SummarizeStyle::Brief,
+            SummarizeStyle::Detailed,
+            SummarizeStyle::Structured,
+        ] {
             let s = style.as_db_str();
             let parsed = SummarizeStyle::from_db_str(s).unwrap();
             assert_eq!(style, parsed);
@@ -434,7 +438,11 @@ mod tests {
 
     #[test]
     fn test_circuit_state_roundtrip() {
-        for state in [CircuitState::Closed, CircuitState::Open, CircuitState::HalfOpen] {
+        for state in [
+            CircuitState::Closed,
+            CircuitState::Open,
+            CircuitState::HalfOpen,
+        ] {
             let s = state.as_db_str();
             let parsed = CircuitState::from_db_str(s).unwrap();
             assert_eq!(state, parsed);

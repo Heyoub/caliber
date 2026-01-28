@@ -1,8 +1,8 @@
 //! Abstract Syntax Tree types
 
-use serde::{Deserialize, Serialize};
 use crate::lexer::{Token, TokenKind};
 use crate::parser::parser::escape_string;
+use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // AST TYPES (Task 4.1)
@@ -246,7 +246,6 @@ pub enum FilterValue {
     Array(Vec<FilterValue>),
 }
 
-
 // ============================================================================
 // BATTLE INTEL FEATURE 2: ABSTRACTION LEVELS
 // ============================================================================
@@ -258,7 +257,6 @@ pub enum AbstractionLevelDsl {
     Summary,   // L1: Synthesized from L0s
     Principle, // L2: High-level abstraction
 }
-
 
 // ============================================================================
 // BATTLE INTEL FEATURE 3: EVOLUTION MODE (MemEvolve-inspired)
@@ -287,7 +285,6 @@ pub struct EvolutionDef {
     /// Metrics to track
     pub metrics: Vec<String>,
 }
-
 
 // ============================================================================
 // BATTLE INTEL FEATURE 4: SUMMARIZATION POLICIES
@@ -330,7 +327,6 @@ pub struct SummarizationPolicyDef {
     pub create_edges: bool,
 }
 
-
 // ============================================================================
 // DSL-FIRST ARCHITECTURE: TRAJECTORY DEFINITIONS
 // ============================================================================
@@ -355,7 +351,6 @@ pub struct TrajectoryDef {
     pub memory_refs: Vec<String>,
     pub metadata: Option<serde_json::Value>,
 }
-
 
 // ============================================================================
 // DSL-FIRST ARCHITECTURE: AGENT DEFINITIONS
@@ -410,7 +405,6 @@ pub struct PermissionMatrix {
     pub lock: Vec<String>,
 }
 
-
 // ============================================================================
 // DSL-FIRST ARCHITECTURE: CACHE CONFIGURATION
 // ============================================================================
@@ -460,7 +454,6 @@ impl Default for FreshnessDef {
     }
 }
 
-
 // ============================================================================
 // DSL-FIRST ARCHITECTURE: PROVIDER DEFINITIONS
 // ============================================================================
@@ -501,7 +494,6 @@ pub enum EnvValue {
     Literal(String),
 }
 
-
 // ============================================================================
 // DSL-FIRST ARCHITECTURE: MEMORY MODIFIERS
 // ============================================================================
@@ -520,18 +512,14 @@ pub enum EnvValue {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ModifierDef {
     /// Embeddable modifier - enables vector embeddings
-    Embeddable {
-        provider: String,
-    },
+    Embeddable { provider: String },
     /// Summarizable modifier - enables auto-summarization
     Summarizable {
         style: SummaryStyle,
         on_triggers: Vec<Trigger>,
     },
     /// Lockable modifier - enables distributed locking
-    Lockable {
-        mode: LockMode,
-    },
+    Lockable { mode: LockMode },
 }
 
 /// Summary style for summarizable modifier.
@@ -547,7 +535,6 @@ pub enum LockMode {
     Exclusive,
     Shared,
 }
-
 
 // ============================================================================
 // PII & SECURITY AST TYPES (Phase 3)
@@ -671,7 +658,6 @@ pub struct SecureFieldDef {
     pub default: Option<String>,
 }
 
-
 // ============================================================================
 // PARSE ERROR (Task 4.8)
 // ============================================================================
@@ -714,7 +700,11 @@ impl Parser {
 
     /// Parse the tokens into a CaliberAst.
     pub fn parse(&mut self) -> Result<CaliberAst, ParseError> {
-        if let Some(token) = self.tokens.iter().find(|t| matches!(t.kind, TokenKind::Error(_))) {
+        if let Some(token) = self
+            .tokens
+            .iter()
+            .find(|t| matches!(t.kind, TokenKind::Error(_)))
+        {
             let message = match &token.kind {
                 TokenKind::Error(msg) => format!("Lexer error: {}", msg),
                 _ => "Lexer error".to_string(),
@@ -801,7 +791,11 @@ impl Parser {
                         TokenKind::Identifier(s) if s == "memory" => AdapterType::Memory,
                         // Also handle keywords that match adapter types
                         TokenKind::Memory => AdapterType::Memory,
-                        _ => return Err(self.error("Expected adapter type (postgres, redis, memory)")),
+                        _ => {
+                            return Err(
+                                self.error("Expected adapter type (postgres, redis, memory)")
+                            )
+                        }
                     });
                     self.advance();
                 }
@@ -830,8 +824,10 @@ impl Parser {
         self.expect(TokenKind::RBrace)?;
 
         // Validate required fields - no defaults allowed
-        let adapter_type = adapter_type.ok_or_else(|| self.error("missing required field: type"))?;
-        let connection = connection.ok_or_else(|| self.error("missing required field: connection"))?;
+        let adapter_type =
+            adapter_type.ok_or_else(|| self.error("missing required field: type"))?;
+        let connection =
+            connection.ok_or_else(|| self.error("missing required field: connection"))?;
 
         Ok(AdapterDef {
             name,

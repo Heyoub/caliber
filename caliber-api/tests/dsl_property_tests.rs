@@ -31,8 +31,7 @@ async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> Resul
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .map_err(|e| format!("Failed to read response body: {:?}", e))?;
-    serde_json::from_slice(&body)
-        .map_err(|e| format!("Failed to parse JSON response: {}", e))
+    serde_json::from_slice(&body).map_err(|e| format!("Failed to parse JSON response: {}", e))
 }
 
 // ============================================================================
@@ -138,4 +137,3 @@ proptest! {
         })?;
     }
 }
-

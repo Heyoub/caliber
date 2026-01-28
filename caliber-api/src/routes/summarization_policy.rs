@@ -3,12 +3,7 @@
 //! This module implements Axum route handlers for summarization policy operations.
 //! Policies define when and how L0→L1→L2 abstraction transitions occur.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use caliber_core::{SummarizationPolicyId, TrajectoryId};
 
 use crate::{
@@ -52,9 +47,7 @@ pub async fn create_policy(
     }
 
     if req.triggers.is_empty() {
-        return Err(ApiError::invalid_input(
-            "At least one trigger is required",
-        ));
+        return Err(ApiError::invalid_input("At least one trigger is required"));
     }
 
     if req.max_sources <= 0 {
@@ -183,8 +176,7 @@ pub fn create_router() -> axum::Router<AppState> {
 /// Create the trajectory-scoped summarization policy router.
 /// This is nested under /api/v1/trajectories/{id}/summarization-policies
 pub fn create_trajectory_router() -> axum::Router<AppState> {
-    axum::Router::new()
-        .route("/", axum::routing::get(list_policies_by_trajectory))
+    axum::Router::new().route("/", axum::routing::get(list_policies_by_trajectory))
 }
 
 // =============================================================================
@@ -194,11 +186,11 @@ pub fn create_trajectory_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::State, http::StatusCode, response::IntoResponse, Json};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::extractors::PathId;
     use crate::types::{CreateTrajectoryRequest, TrajectoryResponse};
+    use axum::{body::to_bytes, extract::State, http::StatusCode, response::IntoResponse, Json};
     use caliber_core::{AbstractionLevel, SummarizationTrigger};
     use uuid::Uuid;
 
@@ -231,10 +223,22 @@ mod tests {
             )
         }
 
-        assert!(valid_transition(AbstractionLevel::Raw, AbstractionLevel::Summary));
-        assert!(valid_transition(AbstractionLevel::Summary, AbstractionLevel::Principle));
-        assert!(valid_transition(AbstractionLevel::Raw, AbstractionLevel::Principle));
-        assert!(!valid_transition(AbstractionLevel::Summary, AbstractionLevel::Raw));
+        assert!(valid_transition(
+            AbstractionLevel::Raw,
+            AbstractionLevel::Summary
+        ));
+        assert!(valid_transition(
+            AbstractionLevel::Summary,
+            AbstractionLevel::Principle
+        ));
+        assert!(valid_transition(
+            AbstractionLevel::Raw,
+            AbstractionLevel::Principle
+        ));
+        assert!(!valid_transition(
+            AbstractionLevel::Summary,
+            AbstractionLevel::Raw
+        ));
     }
 
     #[test]
@@ -270,7 +274,9 @@ mod tests {
         Some(DbTestContext { db })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -279,7 +285,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_list_delete_policy_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let tenant_id = ctx
             .db
@@ -312,43 +320,35 @@ mod tests {
             metadata: None,
         };
 
-        let create_response = create_policy(
-            State(ctx.db.clone()),
-            Json(req),
-        )
-        .await
-        .unwrap()
-        .into_response();
+        let create_response = create_policy(State(ctx.db.clone()), Json(req))
+            .await
+            .unwrap()
+            .into_response();
         assert_eq!(create_response.status(), StatusCode::CREATED);
         let policy: SummarizationPolicyResponse = response_json(create_response).await;
 
-        let get_response = get_policy(
-            State(ctx.db.clone()),
-            PathId(policy.policy_id),
-        )
-        .await
-        .unwrap()
-        .into_response();
+        let get_response = get_policy(State(ctx.db.clone()), PathId(policy.policy_id))
+            .await
+            .unwrap()
+            .into_response();
         assert_eq!(get_response.status(), StatusCode::OK);
 
-        let list_response = list_policies_by_trajectory(
-            State(ctx.db.clone()),
-            PathId(trajectory.trajectory_id),
-        )
-        .await
-        .unwrap()
-        .into_response();
+        let list_response =
+            list_policies_by_trajectory(State(ctx.db.clone()), PathId(trajectory.trajectory_id))
+                .await
+                .unwrap()
+                .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListSummarizationPoliciesResponse = response_json(list_response).await;
-        assert!(list.policies.iter().any(|p| p.policy_id == policy.policy_id));
+        assert!(list
+            .policies
+            .iter()
+            .any(|p| p.policy_id == policy.policy_id));
 
-        let delete_response = delete_policy(
-            State(ctx.db.clone()),
-            PathId(policy.policy_id),
-        )
-        .await
-        .unwrap()
-        .into_response();
+        let delete_response = delete_policy(State(ctx.db.clone()), PathId(policy.policy_id))
+            .await
+            .unwrap()
+            .into_response();
         assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
 
         ctx.db

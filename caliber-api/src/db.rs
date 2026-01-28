@@ -12,11 +12,9 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::ApiEventDag;
 use crate::types::*;
 use caliber_core::{
-    EntityIdType, Timestamp,
-    TenantId, TrajectoryId, ScopeId, ArtifactId, NoteId,
-    AgentId, LockId, MessageId, DelegationId, HandoffId,
-    EdgeId, SummarizationPolicyId,
-    DagPosition, Event, EventFlags, EventHeader, EventKind,
+    AgentId, ArtifactId, DagPosition, DelegationId, EdgeId, EntityIdType, Event, EventFlags,
+    EventHeader, EventKind, HandoffId, LockId, MessageId, NoteId, ScopeId, SummarizationPolicyId,
+    TenantId, Timestamp, TrajectoryId,
 };
 use caliber_dsl::compiler::CompiledConfig as DslCompiledConfig;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
@@ -158,7 +156,7 @@ impl DbClient {
     }
 
     /// Get a connection with tenant context set for RLS.
-    /// 
+    ///
     /// This sets the `app.tenant_id` session variable that RLS policies use
     /// to filter rows. The setting is transaction-local and will be cleared
     /// when the connection is returned to the pool.
@@ -167,26 +165,23 @@ impl DbClient {
         tenant_id: TenantId,
     ) -> ApiResult<deadpool_postgres::Object> {
         let conn = self.get_conn().await?;
-        
+
         // Set tenant context for RLS policies
         conn.execute(
             "SELECT caliber_set_tenant_context($1)",
             &[&tenant_id.as_uuid()],
-        ).await?;
-        
+        )
+        .await?;
+
         Ok(conn)
     }
 
     /// Execute a function with tenant context set.
-    /// 
+    ///
     /// This is useful for operations that need multiple queries within
     /// the same tenant context. The tenant context is automatically
     /// cleared when the closure completes.
-    pub async fn with_tenant<T, F, Fut>(
-        &self,
-        tenant_id: TenantId,
-        f: F,
-    ) -> ApiResult<T>
+    pub async fn with_tenant<T, F, Fut>(&self, tenant_id: TenantId, f: F) -> ApiResult<T>
     where
         F: FnOnce(deadpool_postgres::Object) -> Fut,
         Fut: std::future::Future<Output = ApiResult<T>>,
@@ -218,14 +213,20 @@ impl DbClient {
         let row = conn
             .query_one(
                 "SELECT caliber_trajectory_create($1, $2, $3, $4)",
-                &[&req.name, &req.description, &agent_uuid, &tenant_id.as_uuid()],
+                &[
+                    &req.name,
+                    &req.description,
+                    &agent_uuid,
+                    &tenant_id.as_uuid(),
+                ],
             )
             .await?;
 
         let trajectory_id: Uuid = row.get(0);
 
         // Get the full trajectory details
-        self.trajectory_get(TrajectoryId::new(trajectory_id), tenant_id).await?
+        self.trajectory_get(TrajectoryId::new(trajectory_id), tenant_id)
+            .await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created trajectory"))
     }
 
@@ -270,7 +271,10 @@ impl DbClient {
             updates.insert("name".to_string(), JsonValue::String(name.clone()));
         }
         if let Some(description) = &req.description {
-            updates.insert("description".to_string(), JsonValue::String(description.clone()));
+            updates.insert(
+                "description".to_string(),
+                JsonValue::String(description.clone()),
+            );
         }
         if let Some(status) = &req.status {
             let status_str = match status {
@@ -279,7 +283,10 @@ impl DbClient {
                 caliber_core::TrajectoryStatus::Failed => "failed",
                 caliber_core::TrajectoryStatus::Suspended => "suspended",
             };
-            updates.insert("status".to_string(), JsonValue::String(status_str.to_string()));
+            updates.insert(
+                "status".to_string(),
+                JsonValue::String(status_str.to_string()),
+            );
         }
         if let Some(metadata) = &req.metadata {
             updates.insert("metadata".to_string(), metadata.clone());
@@ -299,7 +306,8 @@ impl DbClient {
             return Err(ApiError::trajectory_not_found(id));
         }
 
-        self.trajectory_get(id, tenant_id).await?
+        self.trajectory_get(id, tenant_id)
+            .await?
             .ok_or_else(|| ApiError::trajectory_not_found(id))
     }
 
@@ -326,7 +334,8 @@ impl DbClient {
             .await?;
 
         let json: JsonValue = row.get(0);
-        let trajectories_json = json.as_array()
+        let trajectories_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from trajectory list"))?;
 
         let mut trajectories = Vec::new();
@@ -352,7 +361,13 @@ impl DbClient {
             updated_at: self.parse_timestamp(json, "updated_at")?,
             completed_at: self.parse_optional_timestamp(json, "completed_at"),
             outcome: self.parse_optional_outcome(json, "outcome"),
-            metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            metadata: json.get("metadata").and_then(|v| {
+                if v.is_null() {
+                    None
+                } else {
+                    Some(v.clone())
+                }
+            }),
             links: None,
         })
     }
@@ -370,7 +385,10 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_scope_get($1, $2)", &[&id.as_uuid(), &tenant_id.as_uuid()])
+            .query_one(
+                "SELECT caliber_scope_get($1, $2)",
+                &[&id.as_uuid(), &tenant_id.as_uuid()],
+            )
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -399,7 +417,13 @@ impl DbClient {
             checkpoint: self.parse_optional_checkpoint(json, "checkpoint"),
             token_budget: self.parse_i32(json, "token_budget")?,
             tokens_used: self.parse_i32(json, "tokens_used")?,
-            metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            metadata: json.get("metadata").and_then(|v| {
+                if v.is_null() {
+                    None
+                } else {
+                    Some(v.clone())
+                }
+            }),
             links: None,
         })
     }
@@ -417,7 +441,10 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_artifact_get($1, $2)", &[&id.as_uuid(), &tenant_id.as_uuid()])
+            .query_one(
+                "SELECT caliber_artifact_get($1, $2)",
+                &[&id.as_uuid(), &tenant_id.as_uuid()],
+            )
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -476,7 +503,8 @@ impl DbClient {
             .await?;
 
         let json: JsonValue = row.get(0);
-        let artifacts_json = json.as_array()
+        let artifacts_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from artifact list"))?;
 
         let mut artifacts = Vec::new();
@@ -504,7 +532,13 @@ impl DbClient {
             created_at: self.parse_timestamp(json, "created_at")?,
             updated_at: self.parse_timestamp(json, "updated_at")?,
             superseded_by: self.parse_optional_entity_id(json, "superseded_by"),
-            metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            metadata: json.get("metadata").and_then(|v| {
+                if v.is_null() {
+                    None
+                } else {
+                    Some(v.clone())
+                }
+            }),
             links: None,
         })
     }
@@ -522,7 +556,10 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_note_get($1, $2)", &[&id.as_uuid(), &tenant_id.as_uuid()])
+            .query_one(
+                "SELECT caliber_note_get($1, $2)",
+                &[&id.as_uuid(), &tenant_id.as_uuid()],
+            )
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -541,14 +578,12 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one(
-                "SELECT caliber_note_search($1, $2)",
-                &[&query, &limit],
-            )
+            .query_one("SELECT caliber_note_search($1, $2)", &[&query, &limit])
             .await?;
 
         let json: JsonValue = row.get(0);
-        let notes_json = json.as_array()
+        let notes_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from note search"))?;
 
         let mut notes = Vec::new();
@@ -577,7 +612,13 @@ impl DbClient {
             accessed_at: self.parse_timestamp(json, "accessed_at")?,
             access_count: self.parse_i32(json, "access_count")?,
             superseded_by: self.parse_optional_entity_id(json, "superseded_by"),
-            metadata: json.get("metadata").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            metadata: json.get("metadata").and_then(|v| {
+                if v.is_null() {
+                    None
+                } else {
+                    Some(v.clone())
+                }
+            }),
             links: None,
         })
     }
@@ -594,7 +635,11 @@ impl DbClient {
     ///
     /// The `tenant_id` parameter ensures tenant isolation by associating
     /// the agent with the authenticated user's tenant.
-    pub async fn agent_register(&self, req: &RegisterAgentRequest, tenant_id: TenantId) -> ApiResult<AgentResponse> {
+    pub async fn agent_register(
+        &self,
+        req: &RegisterAgentRequest,
+        tenant_id: TenantId,
+    ) -> ApiResult<AgentResponse> {
         let conn = self.get_conn().await?;
 
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
@@ -617,7 +662,8 @@ impl DbClient {
 
         let agent_id: Uuid = row.get(0);
 
-        self.agent_get(AgentId::new(agent_id)).await?
+        self.agent_get(AgentId::new(agent_id))
+            .await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve registered agent"))
     }
 
@@ -654,16 +700,28 @@ impl DbClient {
             updates.insert("status".to_string(), JsonValue::String(status.to_string()));
         }
         if let Some(trajectory_id) = req.current_trajectory_id {
-            updates.insert("current_trajectory_id".to_string(), JsonValue::String(trajectory_id.to_string()));
+            updates.insert(
+                "current_trajectory_id".to_string(),
+                JsonValue::String(trajectory_id.to_string()),
+            );
         }
         if let Some(scope_id) = req.current_scope_id {
-            updates.insert("current_scope_id".to_string(), JsonValue::String(scope_id.to_string()));
+            updates.insert(
+                "current_scope_id".to_string(),
+                JsonValue::String(scope_id.to_string()),
+            );
         }
         if let Some(capabilities) = &req.capabilities {
-            updates.insert("capabilities".to_string(), serde_json::to_value(capabilities)?);
+            updates.insert(
+                "capabilities".to_string(),
+                serde_json::to_value(capabilities)?,
+            );
         }
         if let Some(memory_access) = &req.memory_access {
-            updates.insert("memory_access".to_string(), serde_json::to_value(memory_access)?);
+            updates.insert(
+                "memory_access".to_string(),
+                serde_json::to_value(memory_access)?,
+            );
         }
 
         let updates_json = JsonValue::Object(updates);
@@ -680,7 +738,8 @@ impl DbClient {
             return Err(ApiError::agent_not_found(id));
         }
 
-        self.agent_get(id).await?
+        self.agent_get(id)
+            .await?
             .ok_or_else(|| ApiError::agent_not_found(id))
     }
 
@@ -689,14 +748,12 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one(
-                "SELECT caliber_agent_list_by_type($1)",
-                &[&agent_type],
-            )
+            .query_one("SELECT caliber_agent_list_by_type($1)", &[&agent_type])
             .await?;
 
         let json: JsonValue = row.get(0);
-        let agents_json = json.as_array()
+        let agents_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
 
         let mut agents = Vec::new();
@@ -716,7 +773,8 @@ impl DbClient {
             .await?;
 
         let json: JsonValue = row.get(0);
-        let agents_json = json.as_array()
+        let agents_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
 
         let mut agents = Vec::new();
@@ -736,7 +794,8 @@ impl DbClient {
             .await?;
 
         let json: JsonValue = row.get(0);
-        let agents_json = json.as_array()
+        let agents_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from agent list"))?;
 
         let mut agents = Vec::new();
@@ -757,7 +816,7 @@ impl DbClient {
             memory_access: serde_json::from_value(
                 json.get("memory_access")
                     .ok_or_else(|| ApiError::internal_error("Missing memory_access"))?
-                    .clone()
+                    .clone(),
             )?,
             status: self.parse_agent_status(json, "status")?,
             current_trajectory_id: self.parse_optional_entity_id(json, "current_trajectory_id"),
@@ -778,7 +837,11 @@ impl DbClient {
     /// This uses transaction-scoped advisory locks for proper shared lock semantics:
     /// - Exclusive locks block all other lock attempts
     /// - Shared locks allow multiple holders but block exclusive locks
-    pub async fn lock_acquire(&self, req: &AcquireLockRequest, tenant_id: TenantId) -> ApiResult<LockResponse> {
+    pub async fn lock_acquire(
+        &self,
+        req: &AcquireLockRequest,
+        tenant_id: TenantId,
+    ) -> ApiResult<LockResponse> {
         let conn = self.get_conn().await?;
 
         // Choose the appropriate advisory lock function based on mode
@@ -806,12 +869,18 @@ impl DbClient {
         let message: String = row.get(2);
 
         if !acquired {
-            return Err(ApiError::lock_contention(&req.resource_type, req.resource_id, &message));
+            return Err(ApiError::lock_contention(
+                &req.resource_type,
+                req.resource_id,
+                &message,
+            ));
         }
 
-        let lock_id = lock_id.ok_or_else(|| ApiError::internal_error("Lock acquired but no lock_id returned"))?;
+        let lock_id = lock_id
+            .ok_or_else(|| ApiError::internal_error("Lock acquired but no lock_id returned"))?;
 
-        self.lock_get(LockId::new(lock_id)).await?
+        self.lock_get(LockId::new(lock_id))
+            .await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve acquired lock"))
     }
 
@@ -856,7 +925,9 @@ impl DbClient {
     /// List all active locks.
     pub async fn lock_list_active(&self) -> ApiResult<Vec<LockResponse>> {
         let conn = self.get_conn().await?;
-        let row = conn.query_one("SELECT caliber_lock_list_active()", &[]).await?;
+        let row = conn
+            .query_one("SELECT caliber_lock_list_active()", &[])
+            .await?;
         let json: JsonValue = row.get(0);
         let locks_json = json.as_array().ok_or_else(|| {
             ApiError::internal_error("caliber_lock_list_active returned non-array")
@@ -872,9 +943,17 @@ impl DbClient {
     }
 
     /// List all active locks for a specific tenant.
-    pub async fn lock_list_active_by_tenant(&self, tenant_id: TenantId) -> ApiResult<Vec<LockResponse>> {
+    pub async fn lock_list_active_by_tenant(
+        &self,
+        tenant_id: TenantId,
+    ) -> ApiResult<Vec<LockResponse>> {
         let conn = self.get_conn().await?;
-        let row = conn.query_one("SELECT caliber_lock_list_active_by_tenant($1)", &[&tenant_id.as_uuid()]).await?;
+        let row = conn
+            .query_one(
+                "SELECT caliber_lock_list_active_by_tenant($1)",
+                &[&tenant_id.as_uuid()],
+            )
+            .await?;
         let json: JsonValue = row.get(0);
         let locks_json = json.as_array().ok_or_else(|| {
             ApiError::internal_error("caliber_lock_list_active_by_tenant returned non-array")
@@ -908,7 +987,11 @@ impl DbClient {
     // ========================================================================
 
     /// Send a message by calling caliber_message_send.
-    pub async fn message_send(&self, req: &SendMessageRequest, tenant_id: TenantId) -> ApiResult<MessageResponse> {
+    pub async fn message_send(
+        &self,
+        req: &SendMessageRequest,
+        tenant_id: TenantId,
+    ) -> ApiResult<MessageResponse> {
         let conn = self.get_conn().await?;
         let artifact_ids: Vec<Uuid> = req.artifact_ids.iter().map(|id| id.as_uuid()).collect();
 
@@ -933,7 +1016,8 @@ impl DbClient {
 
         let message_id: Uuid = row.get(0);
 
-        self.message_get(MessageId::new(message_id)).await?
+        self.message_get(MessageId::new(message_id))
+            .await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve sent message"))
     }
 
@@ -981,7 +1065,8 @@ impl DbClient {
             .await?;
 
         let json: JsonValue = row.get(0);
-        let messages_json = json.as_array()
+        let messages_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from message list"))?;
 
         let mut messages = Vec::new();
@@ -1019,7 +1104,8 @@ impl DbClient {
             .await?;
 
         let json: JsonValue = row.get(0);
-        let messages_json = json.as_array()
+        let messages_json = json
+            .as_array()
             .ok_or_else(|| ApiError::internal_error("Expected array from message list"))?;
 
         let mut messages = Vec::new();
@@ -1056,7 +1142,11 @@ impl DbClient {
     // ========================================================================
 
     /// Create a delegation by calling caliber_delegation_create.
-    pub async fn delegation_create(&self, req: &CreateDelegationRequest, tenant_id: TenantId) -> ApiResult<DelegationResponse> {
+    pub async fn delegation_create(
+        &self,
+        req: &CreateDelegationRequest,
+        tenant_id: TenantId,
+    ) -> ApiResult<DelegationResponse> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -1077,7 +1167,8 @@ impl DbClient {
 
         let delegation_id: Uuid = row.get(0);
 
-        self.delegation_get(DelegationId::new(delegation_id)).await?
+        self.delegation_get(DelegationId::new(delegation_id))
+            .await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created delegation"))
     }
 
@@ -1120,7 +1211,8 @@ impl DbClient {
             return Err(ApiError::entity_not_found("Delegation", id.as_uuid()));
         }
 
-        self.delegation_get(id).await?
+        self.delegation_get(id)
+            .await?
             .ok_or_else(|| ApiError::entity_not_found("Delegation", id.as_uuid()))
     }
 
@@ -1146,7 +1238,9 @@ impl DbClient {
                     serde_json::from_value(v.clone()).ok()
                 }
             }),
-            context: json.get("context").and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
+            context: json
+                .get("context")
+                .and_then(|v| if v.is_null() { None } else { Some(v.clone()) }),
         })
     }
 
@@ -1155,7 +1249,11 @@ impl DbClient {
     // ========================================================================
 
     /// Create a handoff by calling caliber_handoff_create.
-    pub async fn handoff_create(&self, req: &CreateHandoffRequest, tenant_id: TenantId) -> ApiResult<HandoffResponse> {
+    pub async fn handoff_create(
+        &self,
+        req: &CreateHandoffRequest,
+        tenant_id: TenantId,
+    ) -> ApiResult<HandoffResponse> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -1175,7 +1273,8 @@ impl DbClient {
 
         let handoff_id: Uuid = row.get(0);
 
-        self.handoff_get(HandoffId::new(handoff_id)).await?
+        self.handoff_get(HandoffId::new(handoff_id))
+            .await?
             .ok_or_else(|| ApiError::internal_error("Failed to retrieve created handoff"))
     }
 
@@ -1222,10 +1321,9 @@ impl DbClient {
 
     /// Parse a UUID from JSON field.
     fn parse_uuid(&self, json: &JsonValue, field: &str) -> ApiResult<Uuid> {
-        let uuid_str = json
-            .get(field)
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
+        let uuid_str = json.get(field).and_then(|v| v.as_str()).ok_or_else(|| {
+            ApiError::internal_error(format!("Missing or invalid field: {}", field))
+        })?;
 
         let uuid = Uuid::parse_str(uuid_str)
             .map_err(|_| ApiError::internal_error(format!("Invalid UUID in field: {}", field)))?;
@@ -1244,11 +1342,19 @@ impl DbClient {
         Ok(T::new(self.parse_uuid(json, field)?))
     }
 
-    fn parse_optional_entity_id<T: EntityIdType>(&self, json: &JsonValue, field: &str) -> Option<T> {
+    fn parse_optional_entity_id<T: EntityIdType>(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> Option<T> {
         self.parse_optional_uuid(json, field).map(T::new)
     }
 
-    fn parse_entity_id_array<T: EntityIdType>(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<T>> {
+    fn parse_entity_id_array<T: EntityIdType>(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<Vec<T>> {
         self.parse_uuid_array(json, field)
             .map(|values| values.into_iter().map(T::new).collect())
     }
@@ -1285,11 +1391,10 @@ impl DbClient {
 
     /// Parse a timestamp from JSON field.
     fn parse_timestamp(&self, json: &JsonValue, field: &str) -> ApiResult<Timestamp> {
-        let ts_str = json
-            .get(field)
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
-        
+        let ts_str = json.get(field).and_then(|v| v.as_str()).ok_or_else(|| {
+            ApiError::internal_error(format!("Missing or invalid field: {}", field))
+        })?;
+
         chrono::DateTime::parse_from_rfc3339(ts_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .map_err(|_| ApiError::internal_error(format!("Invalid timestamp in field: {}", field)))
@@ -1304,46 +1409,73 @@ impl DbClient {
     }
 
     /// Parse a trajectory status from JSON field.
-    fn parse_trajectory_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::TrajectoryStatus> {
+    fn parse_trajectory_status(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::TrajectoryStatus> {
         let status_str = self.parse_string(json, field)?;
         match status_str.as_str() {
             "active" => Ok(caliber_core::TrajectoryStatus::Active),
             "completed" => Ok(caliber_core::TrajectoryStatus::Completed),
             "failed" => Ok(caliber_core::TrajectoryStatus::Failed),
             "suspended" => Ok(caliber_core::TrajectoryStatus::Suspended),
-            _ => Err(ApiError::internal_error(format!("Invalid trajectory status: {}", status_str))),
+            _ => Err(ApiError::internal_error(format!(
+                "Invalid trajectory status: {}",
+                status_str
+            ))),
         }
     }
 
-    fn parse_agent_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::AgentStatus> {
+    fn parse_agent_status(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::AgentStatus> {
         let status_str = self.parse_string(json, field)?;
         status_str
             .parse()
             .map_err(|_| ApiError::internal_error(format!("Invalid agent status: {}", status_str)))
     }
 
-    fn parse_delegation_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::DelegationStatus> {
+    fn parse_delegation_status(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::DelegationStatus> {
         let status_str = self.parse_string(json, field)?;
-        status_str
-            .parse()
-            .map_err(|_| ApiError::internal_error(format!("Invalid delegation status: {}", status_str)))
+        status_str.parse().map_err(|_| {
+            ApiError::internal_error(format!("Invalid delegation status: {}", status_str))
+        })
     }
 
-    fn parse_handoff_status(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::HandoffStatus> {
+    fn parse_handoff_status(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::HandoffStatus> {
         let status_str = self.parse_string(json, field)?;
-        status_str
-            .parse()
-            .map_err(|_| ApiError::internal_error(format!("Invalid handoff status: {}", status_str)))
+        status_str.parse().map_err(|_| {
+            ApiError::internal_error(format!("Invalid handoff status: {}", status_str))
+        })
     }
 
-    fn parse_message_type(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::MessageType> {
+    fn parse_message_type(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::MessageType> {
         let value = self.parse_string(json, field)?;
         value
             .parse()
             .map_err(|_| ApiError::internal_error(format!("Invalid message type: {}", value)))
     }
 
-    fn parse_message_priority(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::MessagePriority> {
+    fn parse_message_priority(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::MessagePriority> {
         let value = self.parse_string(json, field)?;
         value
             .parse()
@@ -1351,7 +1483,11 @@ impl DbClient {
     }
 
     /// Parse an artifact type from JSON field.
-    fn parse_artifact_type(&self, json: &JsonValue, field: &str) -> ApiResult<caliber_core::ArtifactType> {
+    fn parse_artifact_type(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> ApiResult<caliber_core::ArtifactType> {
         let type_str = self.parse_string(json, field)?;
         // Parse the Debug format back to enum
         match type_str.as_str() {
@@ -1372,7 +1508,10 @@ impl DbClient {
             "Summary" => Ok(caliber_core::ArtifactType::Summary),
             "Decision" => Ok(caliber_core::ArtifactType::Decision),
             "Plan" => Ok(caliber_core::ArtifactType::Plan),
-            _ => Err(ApiError::internal_error(format!("Invalid artifact type: {}", type_str))),
+            _ => Err(ApiError::internal_error(format!(
+                "Invalid artifact type: {}",
+                type_str
+            ))),
         }
     }
 
@@ -1388,45 +1527,51 @@ impl DbClient {
             "Relationship" => Ok(caliber_core::NoteType::Relationship),
             "Procedure" => Ok(caliber_core::NoteType::Procedure),
             "Meta" => Ok(caliber_core::NoteType::Meta),
-            _ => Err(ApiError::internal_error(format!("Invalid note type: {}", type_str))),
+            _ => Err(ApiError::internal_error(format!(
+                "Invalid note type: {}",
+                type_str
+            ))),
         }
     }
 
     /// Parse a content hash from JSON field.
     fn parse_content_hash(&self, json: &JsonValue, field: &str) -> ApiResult<[u8; 32]> {
-        let hash_array = json
-            .get(field)
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
-        
+        let hash_array = json.get(field).and_then(|v| v.as_array()).ok_or_else(|| {
+            ApiError::internal_error(format!("Missing or invalid field: {}", field))
+        })?;
+
         if hash_array.len() != 32 {
-            return Err(ApiError::internal_error(format!("Invalid hash length in field: {}", field)));
+            return Err(ApiError::internal_error(format!(
+                "Invalid hash length in field: {}",
+                field
+            )));
         }
 
         let mut hash = [0u8; 32];
         for (i, byte_val) in hash_array.iter().enumerate() {
             hash[i] = byte_val.as_u64().unwrap_or(0) as u8;
         }
-        
+
         Ok(hash)
     }
 
     /// Parse bytes from JSON field.
     fn parse_bytes(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<u8>> {
-        let byte_array = json
-            .get(field)
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
-        
-        Ok(byte_array.iter().filter_map(|v| v.as_u64().map(|n| n as u8)).collect())
+        let byte_array = json.get(field).and_then(|v| v.as_array()).ok_or_else(|| {
+            ApiError::internal_error(format!("Missing or invalid field: {}", field))
+        })?;
+
+        Ok(byte_array
+            .iter()
+            .filter_map(|v| v.as_u64().map(|n| n as u8))
+            .collect())
     }
 
     /// Parse a UUID array from JSON field.
     fn parse_uuid_array(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<Uuid>> {
-        let array = json
-            .get(field)
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
+        let array = json.get(field).and_then(|v| v.as_array()).ok_or_else(|| {
+            ApiError::internal_error(format!("Missing or invalid field: {}", field))
+        })?;
 
         let mut uuids = Vec::new();
         for item in array {
@@ -1442,22 +1587,29 @@ impl DbClient {
 
     /// Parse a string array from JSON field.
     fn parse_string_array(&self, json: &JsonValue, field: &str) -> ApiResult<Vec<String>> {
-        let array = json
-            .get(field)
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| ApiError::internal_error(format!("Missing or invalid field: {}", field)))?;
-        
-        Ok(array.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        let array = json.get(field).and_then(|v| v.as_array()).ok_or_else(|| {
+            ApiError::internal_error(format!("Missing or invalid field: {}", field))
+        })?;
+
+        Ok(array
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect())
     }
 
     /// Parse an optional trajectory outcome from JSON field.
-    fn parse_optional_outcome(&self, json: &JsonValue, field: &str) -> Option<TrajectoryOutcomeResponse> {
+    fn parse_optional_outcome(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> Option<TrajectoryOutcomeResponse> {
         json.get(field).and_then(|v| {
             if v.is_null() {
                 None
             } else {
                 Some(TrajectoryOutcomeResponse {
-                    status: v.get("status")
+                    status: v
+                        .get("status")
                         .and_then(|s| s.as_str())
                         .and_then(|s| match s {
                             "success" => Some(caliber_core::OutcomeStatus::Success),
@@ -1466,8 +1618,13 @@ impl DbClient {
                             _ => None,
                         })
                         .unwrap_or(caliber_core::OutcomeStatus::Success),
-                    summary: v.get("summary").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-                    produced_artifacts: v.get("produced_artifacts")
+                    summary: v
+                        .get("summary")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    produced_artifacts: v
+                        .get("produced_artifacts")
                         .and_then(|a| a.as_array())
                         .map(|arr| {
                             arr.iter()
@@ -1476,7 +1633,8 @@ impl DbClient {
                                 .collect()
                         })
                         .unwrap_or_default(),
-                    produced_notes: v.get("produced_notes")
+                    produced_notes: v
+                        .get("produced_notes")
                         .and_then(|a| a.as_array())
                         .map(|arr| {
                             arr.iter()
@@ -1485,24 +1643,39 @@ impl DbClient {
                                 .collect()
                         })
                         .unwrap_or_default(),
-                    error: v.get("error").and_then(|e| e.as_str()).map(|s| s.to_string()),
+                    error: v
+                        .get("error")
+                        .and_then(|e| e.as_str())
+                        .map(|s| s.to_string()),
                 })
             }
         })
     }
 
     /// Parse an optional checkpoint from JSON field.
-    fn parse_optional_checkpoint(&self, json: &JsonValue, field: &str) -> Option<CheckpointResponse> {
+    fn parse_optional_checkpoint(
+        &self,
+        json: &JsonValue,
+        field: &str,
+    ) -> Option<CheckpointResponse> {
         json.get(field).and_then(|v| {
             if v.is_null() {
                 None
             } else {
                 Some(CheckpointResponse {
-                    context_state: v.get("context_state")
+                    context_state: v
+                        .get("context_state")
                         .and_then(|cs| cs.as_array())
-                        .map(|arr| arr.iter().filter_map(|b| b.as_u64().map(|n| n as u8)).collect())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|b| b.as_u64().map(|n| n as u8))
+                                .collect()
+                        })
                         .unwrap_or_default(),
-                    recoverable: v.get("recoverable").and_then(|r| r.as_bool()).unwrap_or(false),
+                    recoverable: v
+                        .get("recoverable")
+                        .and_then(|r| r.as_bool())
+                        .unwrap_or(false),
                 })
             }
         })
@@ -1515,11 +1688,20 @@ impl DbClient {
                 None
             } else {
                 Some(EmbeddingResponse {
-                    data: v.get("data")
+                    data: v
+                        .get("data")
                         .and_then(|d| d.as_array())
-                        .map(|arr| arr.iter().filter_map(|f| f.as_f64().map(|n| n as f32)).collect())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|f| f.as_f64().map(|n| n as f32))
+                                .collect()
+                        })
                         .unwrap_or_default(),
-                    model_id: v.get("model_id").and_then(|m| m.as_str()).unwrap_or("").to_string(),
+                    model_id: v
+                        .get("model_id")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     dimensions: v.get("dimensions").and_then(|d| d.as_i64()).unwrap_or(0) as i32,
                 })
             }
@@ -1531,10 +1713,14 @@ impl DbClient {
         let prov = json
             .get(field)
             .ok_or_else(|| ApiError::internal_error(format!("Missing field: {}", field)))?;
-        
+
         Ok(ProvenanceResponse {
-            source_turn: prov.get("source_turn").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-            extraction_method: prov.get("extraction_method")
+            source_turn: prov
+                .get("source_turn")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+            extraction_method: prov
+                .get("extraction_method")
                 .and_then(|v| v.as_str())
                 .and_then(|s| match s {
                     "explicit" => Some(caliber_core::ExtractionMethod::Explicit),
@@ -1543,7 +1729,10 @@ impl DbClient {
                     _ => None,
                 })
                 .unwrap_or(caliber_core::ExtractionMethod::Explicit),
-            confidence: prov.get("confidence").and_then(|v| v.as_f64()).map(|f| f as f32),
+            confidence: prov
+                .get("confidence")
+                .and_then(|v| v.as_f64())
+                .map(|f| f as f32),
         })
     }
 
@@ -1561,11 +1750,15 @@ impl DbClient {
             "permanent" => Ok(caliber_core::TTL::Permanent),
             s if s.starts_with("duration_") => {
                 let ms_str = s.trim_start_matches("duration_");
-                let ms = ms_str.parse::<i64>()
-                    .map_err(|_| ApiError::internal_error(format!("Invalid TTL duration: {}", s)))?;
+                let ms = ms_str.parse::<i64>().map_err(|_| {
+                    ApiError::internal_error(format!("Invalid TTL duration: {}", s))
+                })?;
                 Ok(caliber_core::TTL::Duration(ms))
             }
-            _ => Err(ApiError::internal_error(format!("Invalid TTL: {}", ttl_str))),
+            _ => Err(ApiError::internal_error(format!(
+                "Invalid TTL: {}",
+                ttl_str
+            ))),
         }
     }
 
@@ -1590,16 +1783,23 @@ impl DbClient {
     }
 
     /// List child trajectories by calling caliber_trajectory_list_children.
-    pub async fn trajectory_list_children(&self, id: TrajectoryId) -> ApiResult<Vec<TrajectoryResponse>> {
+    pub async fn trajectory_list_children(
+        &self,
+        id: TrajectoryId,
+    ) -> ApiResult<Vec<TrajectoryResponse>> {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_trajectory_list_children($1)", &[&id.as_uuid()])
+            .query_one(
+                "SELECT caliber_trajectory_list_children($1)",
+                &[&id.as_uuid()],
+            )
             .await?;
 
         let json: JsonValue = row.get(0);
-        let trajectories_json = json.as_array()
-            .ok_or_else(|| ApiError::internal_error("Expected array from trajectory children list"))?;
+        let trajectories_json = json.as_array().ok_or_else(|| {
+            ApiError::internal_error("Expected array from trajectory children list")
+        })?;
 
         let mut trajectories = Vec::new();
         for traj_json in trajectories_json {
@@ -1674,7 +1874,8 @@ impl DbClient {
             .await?;
 
         let policy_id: Option<Uuid> = row.get(0);
-        let policy_id = policy_id.ok_or_else(|| ApiError::internal_error("Failed to create policy"))?;
+        let policy_id =
+            policy_id.ok_or_else(|| ApiError::internal_error("Failed to create policy"))?;
 
         self.summarization_policy_get(SummarizationPolicyId::new(policy_id))
             .await?
@@ -1689,7 +1890,10 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one("SELECT caliber_summarization_policy_get($1)", &[&id.as_uuid()])
+            .query_one(
+                "SELECT caliber_summarization_policy_get($1)",
+                &[&id.as_uuid()],
+            )
             .await?;
 
         let json_value: Option<JsonValue> = row.get(0);
@@ -1728,12 +1932,18 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let deleted: bool = conn
-            .query_one("SELECT caliber_summarization_policy_delete($1)", &[&id.as_uuid()])
+            .query_one(
+                "SELECT caliber_summarization_policy_delete($1)",
+                &[&id.as_uuid()],
+            )
             .await?
             .get(0);
 
         if !deleted {
-            return Err(ApiError::entity_not_found("SummarizationPolicy", id.as_uuid()));
+            return Err(ApiError::entity_not_found(
+                "SummarizationPolicy",
+                id.as_uuid(),
+            ));
         }
 
         Ok(())
@@ -1757,17 +1967,15 @@ impl DbClient {
                     ast: Some(ast_json),
                 })
             }
-            Err(e) => {
-                Ok(ValidateDslResponse {
-                    valid: false,
-                    errors: vec![ParseErrorResponse {
-                        line: 0,
-                        column: 0,
-                        message: e.to_string(),
-                    }],
-                    ast: None,
-                })
-            }
+            Err(e) => Ok(ValidateDslResponse {
+                valid: false,
+                errors: vec![ParseErrorResponse {
+                    line: 0,
+                    column: 0,
+                    message: e.to_string(),
+                }],
+                ast: None,
+            }),
         }
     }
 
@@ -1785,11 +1993,7 @@ impl DbClient {
     // ========================================================================
 
     /// Get the next version number for a DSL config name.
-    pub async fn dsl_config_next_version(
-        &self,
-        tenant_id: TenantId,
-        name: &str,
-    ) -> ApiResult<i32> {
+    pub async fn dsl_config_next_version(&self, tenant_id: TenantId, name: &str) -> ApiResult<i32> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -1916,8 +2120,9 @@ impl DbClient {
             return Ok(None);
         }
 
-        let parsed: DslCompiledConfig = serde_json::from_value(compiled)
-            .map_err(|e| ApiError::internal_error(format!("Failed to parse compiled config: {}", e)))?;
+        let parsed: DslCompiledConfig = serde_json::from_value(compiled).map_err(|e| {
+            ApiError::internal_error(format!("Failed to parse compiled config: {}", e))
+        })?;
 
         Ok(Some(parsed))
     }
@@ -1957,9 +2162,7 @@ impl DbClient {
     pub async fn config_get(&self) -> ApiResult<ConfigResponse> {
         let conn = self.get_conn().await?;
 
-        let row = conn
-            .query_one("SELECT caliber_config_get()", &[])
-            .await?;
+        let row = conn.query_one("SELECT caliber_config_get()", &[]).await?;
 
         let json: JsonValue = row.get(0);
 
@@ -2007,9 +2210,7 @@ impl DbClient {
     pub async fn tenant_list(&self) -> ApiResult<Vec<TenantInfo>> {
         let conn = self.get_conn().await?;
 
-        let row = conn
-            .query_one("SELECT caliber_tenant_list()", &[])
-            .await?;
+        let row = conn.query_one("SELECT caliber_tenant_list()", &[]).await?;
 
         let json: JsonValue = row.get(0);
         let tenants: Vec<TenantInfo> = serde_json::from_value(json)?;
@@ -2041,13 +2242,20 @@ impl DbClient {
     // ========================================================================
 
     /// Search across entities.
-    pub async fn search(&self, req: &SearchRequest, tenant_id: TenantId) -> ApiResult<SearchResponse> {
+    pub async fn search(
+        &self,
+        req: &SearchRequest,
+        tenant_id: TenantId,
+    ) -> ApiResult<SearchResponse> {
         let conn = self.get_conn().await?;
 
         let query_json = serde_json::to_string(&req)?;
 
         let row = conn
-            .query_one("SELECT caliber_search($1::jsonb, $2)", &[&query_json, &tenant_id.as_uuid()])
+            .query_one(
+                "SELECT caliber_search($1::jsonb, $2)",
+                &[&query_json, &tenant_id.as_uuid()],
+            )
             .await?;
 
         let json: JsonValue = row.get(0);
@@ -2094,7 +2302,10 @@ impl DbClient {
     // ========================================================================
 
     /// Get billing status for a tenant.
-    pub async fn billing_get_status(&self, tenant_id: TenantId) -> ApiResult<crate::routes::billing::BillingStatus> {
+    pub async fn billing_get_status(
+        &self,
+        tenant_id: TenantId,
+    ) -> ApiResult<crate::routes::billing::BillingStatus> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -2184,7 +2395,11 @@ impl DbClient {
     }
 
     /// Set LemonSqueezy customer ID for a tenant.
-    pub async fn billing_set_customer_id(&self, tenant_id: TenantId, customer_id: &str) -> ApiResult<()> {
+    pub async fn billing_set_customer_id(
+        &self,
+        tenant_id: TenantId,
+        customer_id: &str,
+    ) -> ApiResult<()> {
         let conn = self.get_conn().await?;
 
         conn.execute(
@@ -2207,10 +2422,7 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one(
-                "SELECT caliber_is_public_email_domain($1)",
-                &[&domain],
-            )
+            .query_one("SELECT caliber_is_public_email_domain($1)", &[&domain])
             .await?;
 
         Ok(row.get(0))
@@ -2241,10 +2453,7 @@ impl DbClient {
         let conn = self.get_conn().await?;
 
         let row = conn
-            .query_one(
-                "SELECT caliber_tenant_get_by_domain($1)",
-                &[&domain],
-            )
+            .query_one("SELECT caliber_tenant_get_by_domain($1)", &[&domain])
             .await?;
 
         let json_opt: Option<JsonValue> = row.get(0);
@@ -2256,7 +2465,10 @@ impl DbClient {
     }
 
     /// Get a tenant by WorkOS organization ID.
-    pub async fn tenant_get_by_workos_org(&self, workos_org_id: &str) -> ApiResult<Option<TenantInfo>> {
+    pub async fn tenant_get_by_workos_org(
+        &self,
+        workos_org_id: &str,
+    ) -> ApiResult<Option<TenantInfo>> {
         let conn = self.get_conn().await?;
 
         let row = conn
@@ -2289,7 +2501,14 @@ impl DbClient {
         let row = conn
             .query_one(
                 "SELECT caliber_tenant_member_upsert($1, $2, $3, $4, $5, $6)",
-                &[&tenant_id.as_uuid(), &user_id, &email, &role, &first_name, &last_name],
+                &[
+                    &tenant_id.as_uuid(),
+                    &user_id,
+                    &email,
+                    &role,
+                    &first_name,
+                    &last_name,
+                ],
             )
             .await?;
 
@@ -2314,11 +2533,15 @@ impl DbClient {
     /// Parse tenant JSON into TenantInfo struct.
     fn parse_tenant_json(&self, json: &JsonValue) -> ApiResult<crate::types::TenantInfo> {
         let status_str = self.parse_string(json, "status")?;
-        let status = status_str.parse::<crate::types::TenantStatus>()
-            .map_err(|_| ApiError::internal_error(format!("Invalid tenant status: {}", status_str)))?;
+        let status = status_str
+            .parse::<crate::types::TenantStatus>()
+            .map_err(|_| {
+                ApiError::internal_error(format!("Invalid tenant status: {}", status_str))
+            })?;
 
         // Parse created_at, default to now if not present
-        let created_at = json.get("created_at")
+        let created_at = json
+            .get("created_at")
             .and_then(|v| v.as_str())
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -2368,9 +2591,8 @@ impl DbClient {
     ) -> ApiResult<bool> {
         let conn = self.get_conn().await?;
 
-        let entity_types_arr: Option<Vec<String>> = entity_types.map(|types| {
-            types.iter().map(|s| s.to_string()).collect()
-        });
+        let entity_types_arr: Option<Vec<String>> =
+            entity_types.map(|types| types.iter().map(|s| s.to_string()).collect());
 
         let row = conn
             .query_one(
@@ -2411,7 +2633,8 @@ impl DbClient {
             let operation_str: String = row.get(3);
             let changed_at: chrono::DateTime<chrono::Utc> = row.get(4);
 
-            let operation = operation_str.parse::<crate::types::ChangeOperation>()
+            let operation = operation_str
+                .parse::<crate::types::ChangeOperation>()
                 .map_err(|e| ApiError::internal_error(format!("Invalid operation: {}", e)))?;
 
             changes.push(crate::types::ChangeRecord {
@@ -2440,14 +2663,16 @@ impl DbClient {
         let changes = self.changes_since(tenant_id, watermark, limit).await?;
 
         // Calculate new watermark (highest change_id in results, or input watermark)
-        let new_watermark = changes.iter()
+        let new_watermark = changes
+            .iter()
             .map(|c| c.change_id)
             .max()
             .unwrap_or(watermark);
 
         // Check if there are more changes
         let has_more = if changes.len() as i32 >= limit {
-            self.has_changes_since(tenant_id, new_watermark, None).await?
+            self.has_changes_since(tenant_id, new_watermark, None)
+                .await?
         } else {
             false
         };
@@ -2482,7 +2707,7 @@ impl DbClient {
 // GENERIC CRUD OPERATIONS (Component Trait Based)
 // ============================================================================
 
-use crate::component::{Component, Listable, ListFilter, TenantScoped};
+use crate::component::{Component, ListFilter, Listable, TenantScoped};
 
 impl DbClient {
     /// Generic create operation for any Component type.
@@ -2643,7 +2868,12 @@ impl DbClient {
     /// # Returns
     ///
     /// The updated entity on success, or an error if not found or on failure.
-    pub async fn update_raw<C>(&self, id: C::Id, updates: JsonValue, tenant_id: TenantId) -> ApiResult<C>
+    pub async fn update_raw<C>(
+        &self,
+        id: C::Id,
+        updates: JsonValue,
+        tenant_id: TenantId,
+    ) -> ApiResult<C>
     where
         C: Component + TenantScoped,
     {
@@ -2795,10 +3025,7 @@ impl DbClient {
 
 impl DbClient {
     /// Create a helper to construct events.
-    fn make_event(
-        event_kind: EventKind,
-        payload: JsonValue,
-    ) -> Event<JsonValue> {
+    fn make_event(event_kind: EventKind, payload: JsonValue) -> Event<JsonValue> {
         let event_id = Uuid::now_v7();
         let now = chrono::Utc::now();
         let header = EventHeader::new(
@@ -2856,7 +3083,11 @@ impl DbClient {
 
         // Fire-and-forget: log errors but don't fail the operation
         if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
-            tracing::warn!("Failed to emit create event for {}: {:?}", C::ENTITY_NAME, e);
+            tracing::warn!(
+                "Failed to emit create event for {}: {:?}",
+                C::ENTITY_NAME,
+                e
+            );
         }
 
         Ok(entity)
@@ -2891,7 +3122,11 @@ impl DbClient {
         let event = Self::make_event(event_kind, payload);
 
         if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
-            tracing::warn!("Failed to emit update event for {}: {:?}", C::ENTITY_NAME, e);
+            tracing::warn!(
+                "Failed to emit update event for {}: {:?}",
+                C::ENTITY_NAME,
+                e
+            );
         }
 
         Ok(entity)
@@ -2926,7 +3161,11 @@ impl DbClient {
             let event = Self::make_event(event_kind, payload);
 
             if let caliber_core::Effect::Err(e) = event_dag.append(event).await {
-                tracing::warn!("Failed to emit delete event for {}: {:?}", C::ENTITY_NAME, e);
+                tracing::warn!(
+                    "Failed to emit delete event for {}: {:?}",
+                    C::ENTITY_NAME,
+                    e
+                );
             }
         }
 

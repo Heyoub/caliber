@@ -24,7 +24,10 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .iter()
         .map(|err| ListItem::new(err.clone()))
         .collect();
-    let list = List::new(errors)
-        .block(Block::default().title("Validation Errors").borders(Borders::ALL));
+    let list = List::new(errors).block(
+        Block::default()
+            .title("Validation Errors")
+            .borders(Borders::ALL),
+    );
     f.render_widget(list, chunks[1]);
 }

@@ -2,7 +2,7 @@
 
 use ratatui::{
     layout::Rect,
-    style::{Style},
+    style::Style,
     widgets::{Block, Borders, Gauge},
     Frame,
 };
@@ -19,7 +19,11 @@ pub struct ProgressBar {
 
 impl ProgressBar {
     pub fn render(&self, f: &mut Frame<'_>, area: Rect) {
-        let ratio = if self.max <= 0.0 { 0.0 } else { (self.value / self.max).clamp(0.0, 1.0) };
+        let ratio = if self.max <= 0.0 {
+            0.0
+        } else {
+            (self.value / self.max).clamp(0.0, 1.0)
+        };
         let percent = ratio * 100.0;
 
         let style = if percent < self.thresholds.0 {
@@ -31,7 +35,11 @@ impl ProgressBar {
         };
 
         let gauge = Gauge::default()
-            .block(Block::default().title(self.title.as_str()).borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title(self.title.as_str())
+                    .borders(Borders::ALL),
+            )
             .gauge_style(style)
             .ratio(ratio as f64);
         f.render_widget(gauge, area);

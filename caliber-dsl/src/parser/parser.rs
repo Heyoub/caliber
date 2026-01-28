@@ -393,7 +393,9 @@ impl Parser {
     ///     create_edges: true
     /// }
     /// ```
-    pub(crate) fn parse_summarization_policy(&mut self) -> Result<SummarizationPolicyDef, ParseError> {
+    pub(crate) fn parse_summarization_policy(
+        &mut self,
+    ) -> Result<SummarizationPolicyDef, ParseError> {
         self.expect(TokenKind::SummarizationPolicy)?;
 
         // Parse the policy name (string literal)
@@ -474,7 +476,9 @@ impl Parser {
     /// - turn_count(5)       -> TurnCount { count: 5 }
     /// - artifact_count(10)  -> ArtifactCount { count: 10 }
     /// - manual              -> Manual
-    pub(crate) fn parse_summarization_trigger(&mut self) -> Result<SummarizationTriggerDsl, ParseError> {
+    pub(crate) fn parse_summarization_trigger(
+        &mut self,
+    ) -> Result<SummarizationTriggerDsl, ParseError> {
         match &self.current().kind {
             TokenKind::DosageReached => {
                 self.advance();
@@ -765,8 +769,10 @@ impl Parser {
         self.expect(TokenKind::RBrace)?;
 
         // Validate required fields (no defaults per REQ-5)
-        let agent_type = agent_type.ok_or_else(|| self.error("missing required field: agent_type"))?;
-        let token_budget = token_budget.ok_or_else(|| self.error("missing required field: token_budget"))?;
+        let agent_type =
+            agent_type.ok_or_else(|| self.error("missing required field: agent_type"))?;
+        let token_budget =
+            token_budget.ok_or_else(|| self.error("missing required field: token_budget"))?;
 
         Ok(TrajectoryDef {
             name,
@@ -834,7 +840,12 @@ impl Parser {
                             "timeout_ms" => {
                                 constraints.timeout_ms = self.expect_number()? as i64;
                             }
-                            _ => return Err(self.error(&format!("unknown constraint field: {}", constraint_field))),
+                            _ => {
+                                return Err(self.error(&format!(
+                                    "unknown constraint field: {}",
+                                    constraint_field
+                                )))
+                            }
                         }
                     }
                     self.expect(TokenKind::RBrace)?;
@@ -856,7 +867,11 @@ impl Parser {
                             "read" => permissions.read = refs,
                             "write" => permissions.write = refs,
                             "lock" => permissions.lock = refs,
-                            _ => return Err(self.error(&format!("unknown permission type: {}", perm_field))),
+                            _ => {
+                                return Err(
+                                    self.error(&format!("unknown permission type: {}", perm_field))
+                                )
+                            }
                         }
                     }
                     self.expect(TokenKind::RBrace)?;
@@ -977,7 +992,8 @@ impl Parser {
                     }
                 }
                 self.expect(TokenKind::RBrace)?;
-                let max_staleness = max_staleness.ok_or_else(|| self.error("missing max_staleness in best_effort"))?;
+                let max_staleness = max_staleness
+                    .ok_or_else(|| self.error("missing max_staleness in best_effort"))?;
                 Ok(FreshnessDef::BestEffort { max_staleness })
             }
             TokenKind::Strict => {
@@ -1057,7 +1073,8 @@ impl Parser {
         self.expect(TokenKind::RBrace)?;
 
         // Validate required fields (no defaults per REQ-5)
-        let provider_type = provider_type.ok_or_else(|| self.error("missing required field: type"))?;
+        let provider_type =
+            provider_type.ok_or_else(|| self.error("missing required field: type"))?;
         let api_key = api_key.ok_or_else(|| self.error("missing required field: api_key"))?;
         let model = model.ok_or_else(|| self.error("missing required field: model"))?;
 
@@ -1185,11 +1202,14 @@ impl Parser {
                         "provider" => {
                             provider = Some(self.expect_string()?);
                         }
-                        _ => return Err(self.error(&format!("unknown embeddable field: {}", field))),
+                        _ => {
+                            return Err(self.error(&format!("unknown embeddable field: {}", field)))
+                        }
                     }
                 }
                 self.expect(TokenKind::RBrace)?;
-                let provider = provider.ok_or_else(|| self.error("missing provider in embeddable"))?;
+                let provider =
+                    provider.ok_or_else(|| self.error("missing provider in embeddable"))?;
                 Ok(ModifierDef::Embeddable { provider })
             }
             TokenKind::Summarizable => {
@@ -1212,7 +1232,11 @@ impl Parser {
                             }
                             self.expect(TokenKind::RBracket)?;
                         }
-                        _ => return Err(self.error(&format!("unknown summarizable field: {}", field))),
+                        _ => {
+                            return Err(
+                                self.error(&format!("unknown summarizable field: {}", field))
+                            )
+                        }
                     }
                 }
                 self.expect(TokenKind::RBrace)?;
@@ -1523,7 +1547,6 @@ impl Parser {
     }
 }
 
-
 // ============================================================================
 // PRETTY PRINTER (Task 4.9)
 // ============================================================================
@@ -1565,11 +1588,28 @@ fn pretty_print_evolution(e: &EvolutionDef, indent: usize) -> String {
     let inner_ind = indent_str(indent + 1);
     let mut result = format!("{}evolution \"{}\" {{\n", ind, e.name);
     result.push_str(&format!("{}baseline: \"{}\"\n", inner_ind, e.baseline));
-    result.push_str(&format!("{}candidates: [{}]\n", inner_ind,
-        e.candidates.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ")));
-    result.push_str(&format!("{}benchmark_queries: {}\n", inner_ind, e.benchmark_queries));
-    result.push_str(&format!("{}metrics: [{}]\n", inner_ind,
-        e.metrics.iter().map(|m| format!("\"{}\"", m)).collect::<Vec<_>>().join(", ")));
+    result.push_str(&format!(
+        "{}candidates: [{}]\n",
+        inner_ind,
+        e.candidates
+            .iter()
+            .map(|c| format!("\"{}\"", c))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    result.push_str(&format!(
+        "{}benchmark_queries: {}\n",
+        inner_ind, e.benchmark_queries
+    ));
+    result.push_str(&format!(
+        "{}metrics: [{}]\n",
+        inner_ind,
+        e.metrics
+            .iter()
+            .map(|m| format!("\"{}\"", m))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
     result.push_str(&format!("{}}}\n", ind));
     result
 }
@@ -1579,10 +1619,25 @@ fn pretty_print_summarization_policy(s: &SummarizationPolicyDef, indent: usize) 
     let ind = indent_str(indent);
     let inner_ind = indent_str(indent + 1);
     let mut result = format!("{}summarization_policy \"{}\" {{\n", ind, s.name);
-    result.push_str(&format!("{}triggers: [{}]\n", inner_ind,
-        s.triggers.iter().map(pretty_print_summarization_trigger).collect::<Vec<_>>().join(", ")));
-    result.push_str(&format!("{}source_level: {}\n", inner_ind, pretty_print_abstraction_level(s.source_level)));
-    result.push_str(&format!("{}target_level: {}\n", inner_ind, pretty_print_abstraction_level(s.target_level)));
+    result.push_str(&format!(
+        "{}triggers: [{}]\n",
+        inner_ind,
+        s.triggers
+            .iter()
+            .map(pretty_print_summarization_trigger)
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    result.push_str(&format!(
+        "{}source_level: {}\n",
+        inner_ind,
+        pretty_print_abstraction_level(s.source_level)
+    ));
+    result.push_str(&format!(
+        "{}target_level: {}\n",
+        inner_ind,
+        pretty_print_abstraction_level(s.target_level)
+    ));
     result.push_str(&format!("{}max_sources: {}\n", inner_ind, s.max_sources));
     result.push_str(&format!("{}create_edges: {}\n", inner_ind, s.create_edges));
     result.push_str(&format!("{}}}\n", ind));
@@ -1591,7 +1646,9 @@ fn pretty_print_summarization_policy(s: &SummarizationPolicyDef, indent: usize) 
 
 fn pretty_print_summarization_trigger(t: &SummarizationTriggerDsl) -> String {
     match t {
-        SummarizationTriggerDsl::DosageThreshold { percent } => format!("dosage_reached({})", percent),
+        SummarizationTriggerDsl::DosageThreshold { percent } => {
+            format!("dosage_reached({})", percent)
+        }
         SummarizationTriggerDsl::ScopeClose => "scope_close".to_string(),
         SummarizationTriggerDsl::TurnCount { count } => format!("turn_count({})", count),
         SummarizationTriggerDsl::ArtifactCount { count } => format!("artifact_count({})", count),
@@ -1616,13 +1673,26 @@ fn pretty_print_adapter(adapter: &AdapterDef, indent: usize) -> String {
     let ind = indent_str(indent);
 
     output.push_str(&format!("{}adapter {} {{\n", ind, adapter.name));
-    output.push_str(&format!("{}type: {}\n", indent_str(indent + 1), pretty_print_adapter_type(&adapter.adapter_type)));
-    output.push_str(&format!("{}connection: \"{}\"\n", indent_str(indent + 1), escape_string(&adapter.connection)));
+    output.push_str(&format!(
+        "{}type: {}\n",
+        indent_str(indent + 1),
+        pretty_print_adapter_type(&adapter.adapter_type)
+    ));
+    output.push_str(&format!(
+        "{}connection: \"{}\"\n",
+        indent_str(indent + 1),
+        escape_string(&adapter.connection)
+    ));
 
     if !adapter.options.is_empty() {
         output.push_str(&format!("{}options: {{\n", indent_str(indent + 1)));
         for (key, value) in &adapter.options {
-            output.push_str(&format!("{}\"{}\": \"{}\"\n", indent_str(indent + 2), escape_string(key), escape_string(value)));
+            output.push_str(&format!(
+                "{}\"{}\": \"{}\"\n",
+                indent_str(indent + 2),
+                escape_string(key),
+                escape_string(value)
+            ));
         }
         output.push_str(&format!("{}}}\n", indent_str(indent + 1)));
     }
@@ -1644,7 +1714,11 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
     let ind = indent_str(indent);
 
     output.push_str(&format!("{}memory {} {{\n", ind, memory.name));
-    output.push_str(&format!("{}type: {}\n", indent_str(indent + 1), pretty_print_memory_type(&memory.memory_type)));
+    output.push_str(&format!(
+        "{}type: {}\n",
+        indent_str(indent + 1),
+        pretty_print_memory_type(&memory.memory_type)
+    ));
 
     if !memory.schema.is_empty() {
         output.push_str(&format!("{}schema: {{\n", indent_str(indent + 1)));
@@ -1667,8 +1741,16 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
         output.push_str(&format!("{}}}\n", indent_str(indent + 1)));
     }
 
-    output.push_str(&format!("{}retention: {}\n", indent_str(indent + 1), pretty_print_retention(&memory.retention)));
-    output.push_str(&format!("{}lifecycle: {}\n", indent_str(indent + 1), pretty_print_lifecycle(&memory.lifecycle)));
+    output.push_str(&format!(
+        "{}retention: {}\n",
+        indent_str(indent + 1),
+        pretty_print_retention(&memory.retention)
+    ));
+    output.push_str(&format!(
+        "{}lifecycle: {}\n",
+        indent_str(indent + 1),
+        pretty_print_lifecycle(&memory.lifecycle)
+    ));
 
     if let Some(parent) = &memory.parent {
         output.push_str(&format!("{}parent: {}\n", indent_str(indent + 1), parent));
@@ -1714,7 +1796,11 @@ fn pretty_print_memory(memory: &MemoryDef, indent: usize) -> String {
 
     if !memory.artifacts.is_empty() {
         output.push_str(&format!("{}artifacts: [", indent_str(indent + 1)));
-        let arts: Vec<String> = memory.artifacts.iter().map(|a| format!("\"{}\"", escape_string(a))).collect();
+        let arts: Vec<String> = memory
+            .artifacts
+            .iter()
+            .map(|a| format!("\"{}\"", escape_string(a)))
+            .collect();
         output.push_str(&arts.join(", "));
         output.push_str("]\n");
     }
@@ -1753,7 +1839,10 @@ fn pretty_print_field_type(t: &FieldType) -> String {
         FieldType::Embedding(Some(dim)) => format!("embedding({})", dim),
         FieldType::Embedding(None) => "embedding".to_string(),
         FieldType::Enum(variants) => {
-            let vars: Vec<String> = variants.iter().map(|v| format!("\"{}\"", escape_string(v))).collect();
+            let vars: Vec<String> = variants
+                .iter()
+                .map(|v| format!("\"{}\"", escape_string(v)))
+                .collect();
             format!("enum({})", vars.join(", "))
         }
         FieldType::Array(inner) => format!("[{}]", pretty_print_field_type(inner)),
@@ -1805,9 +1894,17 @@ fn pretty_print_policy(policy: &PolicyDef, indent: usize) -> String {
     output.push_str(&format!("{}policy {} {{\n", ind, policy.name));
 
     for rule in &policy.rules {
-        output.push_str(&format!("{}on {}: [\n", indent_str(indent + 1), pretty_print_trigger(&rule.trigger)));
+        output.push_str(&format!(
+            "{}on {}: [\n",
+            indent_str(indent + 1),
+            pretty_print_trigger(&rule.trigger)
+        ));
         for action in &rule.actions {
-            output.push_str(&format!("{}{}\n", indent_str(indent + 2), pretty_print_action(action)));
+            output.push_str(&format!(
+                "{}{}\n",
+                indent_str(indent + 2),
+                pretty_print_action(action)
+            ));
         }
         output.push_str(&format!("{}]\n", indent_str(indent + 1)));
     }
@@ -1821,15 +1918,25 @@ fn pretty_print_action(action: &Action) -> String {
         Action::Summarize(target) => format!("summarize({})", target),
         Action::ExtractArtifacts(target) => format!("extract_artifacts({})", target),
         Action::Checkpoint(target) => format!("checkpoint({})", target),
-        Action::Prune { target, criteria } => format!("prune({}, {})", target, pretty_print_filter_expr(criteria)),
+        Action::Prune { target, criteria } => {
+            format!("prune({}, {})", target, pretty_print_filter_expr(criteria))
+        }
         Action::Notify(channel) => format!("notify(\"{}\")", escape_string(channel)),
-        Action::Inject { target, mode } => format!("inject({}, {})", target, pretty_print_injection_mode(mode)),
+        Action::Inject { target, mode } => {
+            format!("inject({}, {})", target, pretty_print_injection_mode(mode))
+        }
         // Battle Intel Feature 4: Auto-summarization action
-        Action::AutoSummarize { source_level, target_level, create_edges } => {
-            format!("auto_summarize({}, {}, create_edges: {})",
+        Action::AutoSummarize {
+            source_level,
+            target_level,
+            create_edges,
+        } => {
+            format!(
+                "auto_summarize({}, {}, create_edges: {})",
                 pretty_print_abstraction_level(*source_level),
                 pretty_print_abstraction_level(*target_level),
-                create_edges)
+                create_edges
+            )
         }
     }
 }
@@ -1838,16 +1945,35 @@ fn pretty_print_injection(injection: &InjectionDef, indent: usize) -> String {
     let mut output = String::new();
     let ind = indent_str(indent);
 
-    output.push_str(&format!("{}inject {} into {} {{\n", ind, injection.source, injection.target));
-    output.push_str(&format!("{}mode: {}\n", indent_str(indent + 1), pretty_print_injection_mode(&injection.mode)));
-    output.push_str(&format!("{}priority: {}\n", indent_str(indent + 1), injection.priority));
+    output.push_str(&format!(
+        "{}inject {} into {} {{\n",
+        ind, injection.source, injection.target
+    ));
+    output.push_str(&format!(
+        "{}mode: {}\n",
+        indent_str(indent + 1),
+        pretty_print_injection_mode(&injection.mode)
+    ));
+    output.push_str(&format!(
+        "{}priority: {}\n",
+        indent_str(indent + 1),
+        injection.priority
+    ));
 
     if let Some(max_tokens) = injection.max_tokens {
-        output.push_str(&format!("{}max_tokens: {}\n", indent_str(indent + 1), max_tokens));
+        output.push_str(&format!(
+            "{}max_tokens: {}\n",
+            indent_str(indent + 1),
+            max_tokens
+        ));
     }
 
     if let Some(filter) = &injection.filter {
-        output.push_str(&format!("{}filter: {}\n", indent_str(indent + 1), pretty_print_filter_expr(filter)));
+        output.push_str(&format!(
+            "{}filter: {}\n",
+            indent_str(indent + 1),
+            pretty_print_filter_expr(filter)
+        ));
     }
 
     output.push_str(&format!("{}}}\n", ind));
@@ -1866,7 +1992,12 @@ fn pretty_print_injection_mode(mode: &InjectionMode) -> String {
 fn pretty_print_filter_expr(expr: &FilterExpr) -> String {
     match expr {
         FilterExpr::Comparison { field, op, value } => {
-            format!("{} {} {}", field, pretty_print_compare_op(op), pretty_print_filter_value(value))
+            format!(
+                "{} {} {}",
+                field,
+                pretty_print_compare_op(op),
+                pretty_print_filter_value(value)
+            )
         }
         FilterExpr::And(exprs) => {
             let parts: Vec<String> = exprs.iter().map(pretty_print_filter_expr).collect();
@@ -1920,13 +2051,28 @@ fn pretty_print_trajectory(t: &TrajectoryDef, indent: usize) -> String {
     let inner_ind = indent_str(indent + 1);
     let mut result = format!("{}trajectory \"{}\" {{\n", ind, escape_string(&t.name));
     if let Some(desc) = &t.description {
-        result.push_str(&format!("{}description: \"{}\"\n", inner_ind, escape_string(desc)));
+        result.push_str(&format!(
+            "{}description: \"{}\"\n",
+            inner_ind,
+            escape_string(desc)
+        ));
     }
-    result.push_str(&format!("{}agent_type: \"{}\"\n", inner_ind, escape_string(&t.agent_type)));
+    result.push_str(&format!(
+        "{}agent_type: \"{}\"\n",
+        inner_ind,
+        escape_string(&t.agent_type)
+    ));
     result.push_str(&format!("{}token_budget: {}\n", inner_ind, t.token_budget));
     if !t.memory_refs.is_empty() {
-        result.push_str(&format!("{}memory_refs: [{}]\n", inner_ind,
-            t.memory_refs.iter().map(|r| r.as_str()).collect::<Vec<_>>().join(", ")));
+        result.push_str(&format!(
+            "{}memory_refs: [{}]\n",
+            inner_ind,
+            t.memory_refs
+                .iter()
+                .map(|r| r.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
     result.push_str(&format!("{}}}\n", ind));
     result
@@ -1940,27 +2086,49 @@ fn pretty_print_agent(a: &AgentDef, indent: usize) -> String {
     let mut result = format!("{}agent \"{}\" {{\n", ind, escape_string(&a.name));
 
     if !a.capabilities.is_empty() {
-        result.push_str(&format!("{}capabilities: [{}]\n", inner_ind,
-            a.capabilities.iter().map(|c| format!("\"{}\"", escape_string(c))).collect::<Vec<_>>().join(", ")));
+        result.push_str(&format!(
+            "{}capabilities: [{}]\n",
+            inner_ind,
+            a.capabilities
+                .iter()
+                .map(|c| format!("\"{}\"", escape_string(c)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
 
     result.push_str(&format!("{}constraints: {{\n", inner_ind));
-    result.push_str(&format!("{}max_concurrent: {}\n", constraint_ind, a.constraints.max_concurrent));
-    result.push_str(&format!("{}timeout_ms: {}\n", constraint_ind, a.constraints.timeout_ms));
+    result.push_str(&format!(
+        "{}max_concurrent: {}\n",
+        constraint_ind, a.constraints.max_concurrent
+    ));
+    result.push_str(&format!(
+        "{}timeout_ms: {}\n",
+        constraint_ind, a.constraints.timeout_ms
+    ));
     result.push_str(&format!("{}}}\n", inner_ind));
 
     result.push_str(&format!("{}permissions: {{\n", inner_ind));
     if !a.permissions.read.is_empty() {
-        result.push_str(&format!("{}read: [{}]\n", constraint_ind,
-            a.permissions.read.join(", ")));
+        result.push_str(&format!(
+            "{}read: [{}]\n",
+            constraint_ind,
+            a.permissions.read.join(", ")
+        ));
     }
     if !a.permissions.write.is_empty() {
-        result.push_str(&format!("{}write: [{}]\n", constraint_ind,
-            a.permissions.write.join(", ")));
+        result.push_str(&format!(
+            "{}write: [{}]\n",
+            constraint_ind,
+            a.permissions.write.join(", ")
+        ));
     }
     if !a.permissions.lock.is_empty() {
-        result.push_str(&format!("{}lock: [{}]\n", constraint_ind,
-            a.permissions.lock.join(", ")));
+        result.push_str(&format!(
+            "{}lock: [{}]\n",
+            constraint_ind,
+            a.permissions.lock.join(", ")
+        ));
     }
     result.push_str(&format!("{}}}\n", inner_ind));
 
@@ -1975,7 +2143,11 @@ fn pretty_print_cache(c: &CacheDef, indent: usize) -> String {
     let freshness_ind = indent_str(indent + 2);
     let mut result = format!("{}cache {{\n", ind);
 
-    result.push_str(&format!("{}backend: {}\n", inner_ind, pretty_print_cache_backend(&c.backend)));
+    result.push_str(&format!(
+        "{}backend: {}\n",
+        inner_ind,
+        pretty_print_cache_backend(&c.backend)
+    ));
     if let Some(path) = &c.path {
         result.push_str(&format!("{}path: \"{}\"\n", inner_ind, escape_string(path)));
     }
@@ -1984,7 +2156,10 @@ fn pretty_print_cache(c: &CacheDef, indent: usize) -> String {
     match &c.default_freshness {
         FreshnessDef::BestEffort { max_staleness } => {
             result.push_str(&format!("{}default_freshness: best_effort {{\n", inner_ind));
-            result.push_str(&format!("{}max_staleness: {}\n", freshness_ind, max_staleness));
+            result.push_str(&format!(
+                "{}max_staleness: {}\n",
+                freshness_ind, max_staleness
+            ));
             result.push_str(&format!("{}}}\n", inner_ind));
         }
         FreshnessDef::Strict => {
@@ -2016,15 +2191,31 @@ fn pretty_print_provider(p: &ProviderDef, indent: usize) -> String {
     let inner_ind = indent_str(indent + 1);
     let mut result = format!("{}provider \"{}\" {{\n", ind, escape_string(&p.name));
 
-    result.push_str(&format!("{}type: {}\n", inner_ind, pretty_print_provider_type(&p.provider_type)));
-    result.push_str(&format!("{}api_key: {}\n", inner_ind, pretty_print_env_value(&p.api_key)));
-    result.push_str(&format!("{}model: \"{}\"\n", inner_ind, escape_string(&p.model)));
+    result.push_str(&format!(
+        "{}type: {}\n",
+        inner_ind,
+        pretty_print_provider_type(&p.provider_type)
+    ));
+    result.push_str(&format!(
+        "{}api_key: {}\n",
+        inner_ind,
+        pretty_print_env_value(&p.api_key)
+    ));
+    result.push_str(&format!(
+        "{}model: \"{}\"\n",
+        inner_ind,
+        escape_string(&p.model)
+    ));
 
     if !p.options.is_empty() {
         result.push_str(&format!("{}options: {{\n", inner_ind));
         for (key, value) in &p.options {
-            result.push_str(&format!("{}\"{}\": \"{}\"\n", indent_str(indent + 2),
-                escape_string(key), escape_string(value)));
+            result.push_str(&format!(
+                "{}\"{}\": \"{}\"\n",
+                indent_str(indent + 2),
+                escape_string(key),
+                escape_string(value)
+            ));
         }
         result.push_str(&format!("{}}}\n", inner_ind));
     }
@@ -2063,7 +2254,11 @@ fn pretty_print_modifier(m: &ModifierDef) -> String {
                 format!("summarizable {{ style: {} }}", style_str)
             } else {
                 let triggers: Vec<String> = on_triggers.iter().map(pretty_print_trigger).collect();
-                format!("summarizable {{ style: {}, on: [{}] }}", style_str, triggers.join(", "))
+                format!(
+                    "summarizable {{ style: {}, on: [{}] }}",
+                    style_str,
+                    triggers.join(", ")
+                )
             }
         }
         ModifierDef::Lockable { mode } => {
@@ -2101,7 +2296,6 @@ pub fn round_trip(source: &str) -> Result<String, ParseError> {
     let ast = parse(source)?;
     Ok(pretty_print(&ast))
 }
-
 
 // ============================================================================
 // TESTS
@@ -2191,7 +2385,10 @@ mod tests {
 
         assert_eq!(tokens[0].kind, TokenKind::String("hello".to_string()));
         assert_eq!(tokens[1].kind, TokenKind::String("world\ntest".to_string()));
-        assert_eq!(tokens[2].kind, TokenKind::String("escaped\"quote".to_string()));
+        assert_eq!(
+            tokens[2].kind,
+            TokenKind::String("escaped\"quote".to_string())
+        );
     }
 
     #[test]
@@ -2419,7 +2616,10 @@ mod tests {
         let ast = parse(source)?;
 
         if let Definition::Policy(policy) = &ast.definitions[0] {
-            assert_eq!(policy.rules[0].trigger, Trigger::Schedule("0 0 * * *".to_string()));
+            assert_eq!(
+                policy.rules[0].trigger,
+                Trigger::Schedule("0 0 * * *".to_string())
+            );
         } else {
             return Err(test_parse_error("Expected policy definition"));
         }
@@ -2547,7 +2747,9 @@ mod tests {
             }
         "#;
         let err = parse(source).unwrap_err();
-        assert!(err.message.contains("candidates must contain at least one config name"));
+        assert!(err
+            .message
+            .contains("candidates must contain at least one config name"));
     }
 
     // ========================================================================
@@ -2710,7 +2912,10 @@ mod tests {
         let index = &memory.indexes[0];
         assert_eq!(index.options.len(), 2);
         assert!(index.options.iter().any(|(k, v)| k == "m" && v == "16"));
-        assert!(index.options.iter().any(|(k, v)| k == "ef_construction" && v == "64"));
+        assert!(index
+            .options
+            .iter()
+            .any(|(k, v)| k == "ef_construction" && v == "64"));
 
         let printed = pretty_print(&ast);
         assert!(printed.contains("optional"));
@@ -2899,18 +3104,15 @@ mod prop_tests {
     }
 
     fn arb_field_def() -> impl Strategy<Value = FieldDef> {
-        (
-            "[a-z_][a-z0-9_]*",
-            arb_field_type(),
-            any::<bool>(),
-        )
-            .prop_map(|(name, field_type, nullable)| FieldDef {
+        ("[a-z_][a-z0-9_]*", arb_field_type(), any::<bool>()).prop_map(
+            |(name, field_type, nullable)| FieldDef {
                 name,
                 field_type,
                 nullable,
                 default: None,
                 security: None,
-            })
+            },
+        )
     }
 
     fn arb_index_def() -> impl Strategy<Value = IndexDef> {
@@ -2935,18 +3137,20 @@ mod prop_tests {
             Just(Lifecycle::Explicit),
             prop::collection::vec(arb_index_def(), 0..3),
         )
-            .prop_map(|(name, memory_type, schema, retention, lifecycle, indexes)| MemoryDef {
-                name,
-                memory_type,
-                schema,
-                retention,
-                lifecycle,
-                parent: None,
-                indexes,
-                inject_on: vec![],
-                artifacts: vec![],
-                modifiers: vec![],
-            })
+            .prop_map(
+                |(name, memory_type, schema, retention, lifecycle, indexes)| MemoryDef {
+                    name,
+                    memory_type,
+                    schema,
+                    retention,
+                    lifecycle,
+                    parent: None,
+                    indexes,
+                    inject_on: vec![],
+                    artifacts: vec![],
+                    modifiers: vec![],
+                },
+            )
     }
 
     fn arb_adapter_def() -> impl Strategy<Value = AdapterDef> {

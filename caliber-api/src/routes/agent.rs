@@ -12,7 +12,6 @@ use axum::{
 use chrono::Utc;
 use std::sync::Arc;
 
-use caliber_core::AgentId;
 use crate::{
     components::AgentListFilter,
     db::DbClient,
@@ -21,9 +20,13 @@ use crate::{
     extractors::PathId,
     middleware::AuthExtractor,
     state::AppState,
-    types::{AgentResponse, ListAgentsRequest, ListAgentsResponse, RegisterAgentRequest, UpdateAgentRequest},
+    types::{
+        AgentResponse, ListAgentsRequest, ListAgentsResponse, RegisterAgentRequest,
+        UpdateAgentRequest,
+    },
     ws::WsState,
 };
+use caliber_core::AgentId;
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -119,10 +122,7 @@ pub async fn list_agents(
     let agents = db.list::<AgentResponse>(&filter, auth.tenant_id).await?;
     let total = agents.len() as i32;
 
-    let response = ListAgentsResponse {
-        agents,
-        total,
-    };
+    let response = ListAgentsResponse { agents, total };
 
     Ok(Json(response))
 }
@@ -344,12 +344,12 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::state::ApiEventDag;
-    use crate::ws::WsState;
     use crate::types::{MemoryAccessRequest, MemoryPermissionRequest};
+    use crate::ws::WsState;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use std::sync::Arc;
 
     struct DbTestContext {
@@ -390,7 +390,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -475,7 +477,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_list_heartbeat_agent_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let req = RegisterAgentRequest {
             agent_type: "tester".to_string(),

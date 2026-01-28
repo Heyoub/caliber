@@ -9,11 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
-pub fn spawn_ws_manager(
-    ws: WsClient,
-    tenant_id: TenantId,
-    sender: mpsc::Sender<TuiEvent>,
-) {
+pub fn spawn_ws_manager(ws: WsClient, tenant_id: TenantId, sender: mpsc::Sender<TuiEvent>) {
     tokio::spawn(async move {
         let mut backoff = ws.reconnect_config().initial_ms;
         loop {

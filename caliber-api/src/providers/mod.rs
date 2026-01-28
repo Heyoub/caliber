@@ -11,8 +11,8 @@
 
 use async_trait::async_trait;
 use caliber_core::{
-    CaliberError, CaliberResult, EmbeddingVector, HealthStatus, LlmError,
-    ProviderCapability, CircuitState, RoutingStrategy, SummarizeConfig,
+    CaliberError, CaliberResult, CircuitState, EmbeddingVector, HealthStatus, LlmError,
+    ProviderCapability, RoutingStrategy, SummarizeConfig,
 };
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -270,7 +270,8 @@ impl CircuitBreaker {
         if self.state() == CircuitState::HalfOpen {
             let count = self.success_count.fetch_add(1, Ordering::SeqCst) + 1;
             if count >= self.config.success_threshold {
-                self.state.store(CircuitState::Closed as u8, Ordering::SeqCst);
+                self.state
+                    .store(CircuitState::Closed as u8, Ordering::SeqCst);
                 self.success_count.store(0, Ordering::SeqCst);
             }
         }
@@ -290,7 +291,8 @@ impl CircuitBreaker {
     }
 
     pub fn reset(&self) {
-        self.state.store(CircuitState::Closed as u8, Ordering::SeqCst);
+        self.state
+            .store(CircuitState::Closed as u8, Ordering::SeqCst);
         self.failure_count.store(0, Ordering::SeqCst);
         self.success_count.store(0, Ordering::SeqCst);
         if let Ok(mut guard) = self.last_failure.write() {
@@ -425,10 +427,7 @@ impl ProviderRegistry {
             .iter()
             .filter(|(id, adapter)| {
                 adapter.capabilities().contains(&capability)
-                    && breakers
-                        .get(*id)
-                        .map(|cb| cb.is_allowed())
-                        .unwrap_or(true)
+                    && breakers.get(*id).map(|cb| cb.is_allowed()).unwrap_or(true)
             })
             .collect();
 
@@ -440,7 +439,9 @@ impl ProviderRegistry {
             RoutingStrategy::First => available.first().map(|(_, a)| Arc::clone(a)),
             RoutingStrategy::RoundRobin => {
                 let idx = self.round_robin_index.fetch_add(1, Ordering::Relaxed) as usize;
-                available.get(idx % available.len()).map(|(_, a)| Arc::clone(a))
+                available
+                    .get(idx % available.len())
+                    .map(|(_, a)| Arc::clone(a))
             }
             RoutingStrategy::Random => {
                 use std::collections::hash_map::DefaultHasher;
@@ -630,8 +631,10 @@ impl CostTracker {
     }
 
     pub fn record_completion(&self, input_tokens: u64, output_tokens: u64) {
-        self.completion_input.fetch_add(input_tokens, Ordering::Relaxed);
-        self.completion_output.fetch_add(output_tokens, Ordering::Relaxed);
+        self.completion_input
+            .fetch_add(input_tokens, Ordering::Relaxed);
+        self.completion_output
+            .fetch_add(output_tokens, Ordering::Relaxed);
     }
 
     pub fn embedding_tokens(&self) -> u64 {

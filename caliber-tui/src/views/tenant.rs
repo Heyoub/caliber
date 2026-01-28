@@ -1,8 +1,8 @@
 //! Tenant management view.
 
 use crate::state::App;
-use caliber_core::EntityIdType;
 use crate::widgets::DetailPanel;
+use caliber_core::EntityIdType;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Style,

@@ -1,15 +1,13 @@
+use caliber_api::types::{ArtifactResponse, NoteResponse, ProvenanceResponse, TrajectoryResponse};
+use caliber_core::{
+    AgentId, ArtifactId, ArtifactType, EntityIdType, NoteId, NoteType, ScopeId, TenantId,
+    TrajectoryId, TrajectoryStatus, TurnRole,
+};
 use caliber_tui::config::{ClientCredentials, ReconnectConfig, ThemeConfig, TuiConfig};
 use caliber_tui::keys::{map_key, KeyAction};
 use caliber_tui::theme::{
     agent_status_color, message_priority_color, trajectory_status_color, turn_role_color,
     utilization_color, SynthBruteTheme,
-};
-use caliber_api::types::{
-    ArtifactResponse, NoteResponse, ProvenanceResponse, TrajectoryResponse,
-};
-use caliber_core::{
-    AgentId, ArtifactId, ArtifactType, EntityIdType, NoteId, NoteType, ScopeId, TenantId,
-    TrajectoryId, TrajectoryStatus, TurnRole,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use proptest::prelude::*;
@@ -262,14 +260,14 @@ proptest! {
     fn trajectory_hierarchy_preserves_parent_child(parent_count in 1usize..5, children_per_parent in 1usize..3) {
         let mut trajectories = Vec::new();
         let mut parent_ids = Vec::new();
-        
+
         // Create parents
         for _ in 0..parent_count {
             let id = TrajectoryId::now_v7();
             parent_ids.push(id);
             trajectories.push(create_test_trajectory(id, None));
         }
-        
+
         // Create children
         for parent_id in &parent_ids {
             for _ in 0..children_per_parent {
@@ -283,10 +281,10 @@ proptest! {
         for traj in &trajectories {
             grouped.entry(traj.parent_trajectory_id).or_default().push(traj);
         }
-        
+
         // All parents should be in None group
         prop_assert_eq!(grouped.get(&None).map(|v| v.len()).unwrap_or(0), parent_count);
-        
+
         // Each parent should have correct number of children
         for parent_id in &parent_ids {
             let children = grouped.get(&Some(*parent_id)).map(|v| v.len()).unwrap_or(0);
@@ -303,7 +301,7 @@ proptest! {
     fn trajectory_status_filter_correct(total_count in 5usize..20, active_ratio in 0.0f32..1.0f32) {
         let active_count = (total_count as f32 * active_ratio) as usize;
         let mut trajectories = Vec::new();
-        
+
         for i in 0..total_count {
             let id = TrajectoryId::now_v7();
             let status = if i < active_count {
@@ -313,13 +311,13 @@ proptest! {
             };
             trajectories.push(create_test_trajectory_with_status(id, status));
         }
-        
+
         // Filter for active
         let filtered: Vec<_> = trajectories
             .iter()
             .filter(|t| t.status == TrajectoryStatus::Active)
             .collect();
-        
+
         prop_assert_eq!(filtered.len(), active_count);
     }
 
@@ -327,7 +325,7 @@ proptest! {
     fn artifact_type_filter_correct(total_count in 5usize..20, fact_ratio in 0.0f32..1.0f32) {
         let fact_count = (total_count as f32 * fact_ratio) as usize;
         let mut artifacts = Vec::new();
-        
+
         for i in 0..total_count {
             let artifact_type = if i < fact_count {
                 ArtifactType::Fact
@@ -336,13 +334,13 @@ proptest! {
             };
             artifacts.push(create_test_artifact(artifact_type));
         }
-        
+
         // Filter for facts
         let filtered: Vec<_> = artifacts
             .iter()
             .filter(|a| a.artifact_type == ArtifactType::Fact)
             .collect();
-        
+
         prop_assert_eq!(filtered.len(), fact_count);
     }
 
@@ -350,7 +348,7 @@ proptest! {
     fn note_type_filter_correct(total_count in 5usize..20, convention_ratio in 0.0f32..1.0f32) {
         let convention_count = (total_count as f32 * convention_ratio) as usize;
         let mut notes = Vec::new();
-        
+
         for i in 0..total_count {
             let note_type = if i < convention_count {
                 NoteType::Convention
@@ -359,13 +357,13 @@ proptest! {
             };
             notes.push(create_test_note(note_type));
         }
-        
+
         // Filter for conventions
         let filtered: Vec<_> = notes
             .iter()
             .filter(|n| n.note_type == NoteType::Convention)
             .collect();
-        
+
         prop_assert_eq!(filtered.len(), convention_count);
     }
 
@@ -388,13 +386,13 @@ proptest! {
             };
             trajectories.push(create_test_trajectory_full(id, status, traj_agent));
         }
-        
+
         // Filter for active AND has specific agent
         let filtered: Vec<_> = trajectories
             .iter()
             .filter(|t| t.status == TrajectoryStatus::Active && t.agent_id == Some(agent_id))
             .collect();
-        
+
         // Should be approximately active_ratio * has_agent_ratio * total_count
         let expected_approx = (active_ratio * has_agent_ratio * total_count as f32) as usize;
         let tolerance = (total_count as f32 * 0.2) as usize; // 20% tolerance
@@ -416,7 +414,7 @@ proptest! {
             TrajectoryStatus::Active,
             Some(AgentId::now_v7())
         );
-        
+
         // Count non-null fields
         let mut expected_fields = 5; // id, name, status, created_at, updated_at
         if trajectory.description.is_some() {
@@ -434,7 +432,7 @@ proptest! {
         if trajectory.outcome.is_some() {
             expected_fields += 1;
         }
-        
+
         // In real implementation, detail panel would show these fields
         prop_assert!(expected_fields >= 5);
         prop_assert!(expected_fields <= 10);
@@ -482,10 +480,10 @@ proptest! {
             multiplier: 2.0,
             jitter_ms: 0,
         };
-        
+
         let delay = config.initial_ms as f64 * config.multiplier.powi(attempt as i32);
         let capped_delay = delay.min(config.max_ms as f64);
-        
+
         if attempt == 0 {
             prop_assert_eq!(capped_delay as u64, config.initial_ms);
         } else {
@@ -503,10 +501,10 @@ proptest! {
             multiplier: 2.0,
             jitter_ms: 0,
         };
-        
+
         let delay = config.initial_ms as f64 * config.multiplier.powi(attempt as i32);
         let capped_delay = delay.min(config.max_ms as f64);
-        
+
         prop_assert!(capped_delay <= config.max_ms as f64);
     }
 
@@ -576,7 +574,10 @@ fn create_test_trajectory(id: TrajectoryId, parent_id: Option<TrajectoryId>) -> 
     }
 }
 
-fn create_test_trajectory_with_status(id: TrajectoryId, status: TrajectoryStatus) -> TrajectoryResponse {
+fn create_test_trajectory_with_status(
+    id: TrajectoryId,
+    status: TrajectoryStatus,
+) -> TrajectoryResponse {
     TrajectoryResponse {
         trajectory_id: id,
         tenant_id: TenantId::nil(),

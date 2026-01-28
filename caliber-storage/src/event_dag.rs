@@ -230,22 +230,20 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         let seq = self.next_sequence.read().unwrap();
 
         let depth = match parent {
-            Some(parent_id) => {
-                match events.get(&parent_id) {
-                    Some(parent_event) => parent_event.header.position.depth + 1,
-                    None => {
-                        return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
-                            error: DomainError::EntityNotFound {
-                                entity_type: "Event".to_string(),
-                                id: parent_id,
-                            },
-                            source_event: parent_id,
-                            position: DagPosition::root(),
-                            correlation_id: parent_id,
-                        })));
-                    }
+            Some(parent_id) => match events.get(&parent_id) {
+                Some(parent_event) => parent_event.header.position.depth + 1,
+                None => {
+                    return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
+                        error: DomainError::EntityNotFound {
+                            entity_type: "Event".to_string(),
+                            id: parent_id,
+                        },
+                        source_event: parent_id,
+                        position: DagPosition::root(),
+                        correlation_id: parent_id,
+                    })));
                 }
-            }
+            },
             None => 0,
         };
 

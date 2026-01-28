@@ -1,7 +1,7 @@
 //! Common traits for TUI components
 
-use ratatui::{Frame, layout::Rect};
 use crate::state::App;
+use ratatui::{layout::Rect, Frame};
 
 /// A component that can be rendered to a terminal frame with application state.
 ///

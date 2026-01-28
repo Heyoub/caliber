@@ -23,15 +23,13 @@ use caliber_api::{
     middleware::{auth_middleware, extract_auth_context, AuthMiddlewareState},
     types::{CreateTrajectoryRequest, ListTrajectoriesResponse, TrajectoryResponse},
 };
+use caliber_core::{EntityIdType, TenantId, TrajectoryId, TrajectoryStatus};
 use chrono::Utc;
-use caliber_core::{
-    EntityIdType, TenantId, TrajectoryId, TrajectoryStatus,
-};
 use proptest::prelude::*;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use tower::ServiceExt;
 use tokio::runtime::Runtime;
+use tower::ServiceExt;
 use uuid::Uuid;
 
 #[path = "support/auth_with_tenant.rs"]
@@ -239,10 +237,7 @@ fn test_app(storage: TestStorage) -> Router {
     Router::new()
         .route("/api/v1/trajectories", post(create_trajectory_handler))
         .route("/api/v1/trajectories", get(list_trajectories_handler))
-        .route(
-            "/api/v1/trajectories/:id",
-            get(get_trajectory_handler),
-        )
+        .route("/api/v1/trajectories/:id", get(get_trajectory_handler))
         .with_state(storage)
         .layer(middleware::from_fn_with_state(auth_state, auth_middleware))
 }
@@ -618,10 +613,7 @@ proptest! {
 /// Module testing WebSocket event filtering by tenant.
 /// These tests verify that events are only delivered to clients with matching tenant_id.
 mod ws_tenant_isolation {
-    use caliber_api::{
-        events::WsEvent,
-        should_deliver_event, tenant_id_from_event,
-    };
+    use caliber_api::{events::WsEvent, should_deliver_event, tenant_id_from_event};
     use caliber_core::{
         AgentId, ArtifactId, DelegationId, EntityIdType, HandoffId, LockId, MessageId, NoteId,
         TenantId, TrajectoryId,
@@ -933,13 +925,9 @@ mod edge_cases {
         let tenant_id = TenantId::new(Uuid::now_v7());
         let nonexistent_id = Uuid::now_v7();
 
-        let token = generate_jwt_token(
-            &auth_config,
-            "user123".to_string(),
-            Some(tenant_id),
-            vec![],
-        )
-        .map_err(|e| e.message)?;
+        let token =
+            generate_jwt_token(&auth_config, "user123".to_string(), Some(tenant_id), vec![])
+                .map_err(|e| e.message)?;
 
         // Try to get a trajectory that doesn't exist
         let request = Request::builder()

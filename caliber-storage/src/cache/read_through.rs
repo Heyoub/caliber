@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityType, TenantId, EntityIdType};
-use uuid::Uuid;
+use caliber_core::{CaliberResult, EntityIdType, EntityType, TenantId};
 use chrono::Utc;
+use uuid::Uuid;
 
 use super::freshness::{CacheRead, Freshness};
 use super::traits::{CacheBackend, CacheableEntity};
@@ -196,9 +196,7 @@ where
                 self.get_best_effort(entity_id, tenant_id, max_staleness, storage)
                     .await
             }
-            Freshness::Consistent => {
-                self.get_consistent(entity_id, tenant_id, storage).await
-            }
+            Freshness::Consistent => self.get_consistent(entity_id, tenant_id, storage).await,
         }
     }
 
@@ -250,7 +248,11 @@ where
         // Try cache
         if let Some((entity, cached_at)) = self.cache.get::<T>(entity_id, tenant_id).await? {
             // Get watermark at cache time
-            if let Some(cache_watermark) = self.journal.watermark_at(tenant_id_typed, cached_at).await? {
+            if let Some(cache_watermark) = self
+                .journal
+                .watermark_at(tenant_id_typed, cached_at)
+                .await?
+            {
                 // Check if any changes have occurred since caching
                 let has_changes = self
                     .journal
@@ -340,7 +342,9 @@ where
         tenant_id: Uuid,
         entity_type: EntityType,
     ) -> CaliberResult<u64> {
-        self.cache.invalidate_entity_type(tenant_id, entity_type).await
+        self.cache
+            .invalidate_entity_type(tenant_id, entity_type)
+            .await
     }
 }
 
@@ -460,7 +464,7 @@ mod tests {
     }
 
     fn make_test_artifact(trajectory_id: Uuid, scope_id: Uuid) -> Artifact {
-        use caliber_core::{TrajectoryId, ScopeId, ArtifactId};
+        use caliber_core::{ArtifactId, ScopeId, TrajectoryId};
         Artifact {
             artifact_id: ArtifactId::now_v7(),
             trajectory_id: TrajectoryId::new(trajectory_id),
@@ -557,12 +561,7 @@ mod tests {
         let tenant_id = Uuid::now_v7();
 
         let result = read_through
-            .get::<Artifact, _>(
-                non_existent_id,
-                tenant_id,
-                Freshness::Consistent,
-                &storage,
-            )
+            .get::<Artifact, _>(non_existent_id, tenant_id, Freshness::Consistent, &storage)
             .await
             .unwrap();
 

@@ -1,6 +1,8 @@
 //! Artifact-related API types
 
-use caliber_core::{ArtifactId, ArtifactType, ExtractionMethod, ScopeId, TenantId, Timestamp, TrajectoryId, TTL};
+use caliber_core::{
+    ArtifactId, ArtifactType, ExtractionMethod, ScopeId, TenantId, Timestamp, TrajectoryId, TTL,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{Linkable, Links, LINK_REGISTRY};

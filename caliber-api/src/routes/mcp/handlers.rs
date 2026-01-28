@@ -1,6 +1,6 @@
 //! MCP handler functions
 
-use super::{types::*, tools::*};
+use super::{tools::*, types::*};
 use crate::components::TrajectoryListFilter;
 use crate::middleware::AuthExtractor;
 use crate::types::{AgentResponse, ArtifactResponse, PackSource, TrajectoryResponse};
@@ -32,7 +32,9 @@ pub async fn initialize(
     let response = InitializeResponse {
         protocol_version: MCP_PROTOCOL_VERSION.to_string(),
         capabilities: ServerCapabilities {
-            tools: ToolsCapability { list_changed: false },
+            tools: ToolsCapability {
+                list_changed: false,
+            },
             resources: ResourcesCapability {
                 subscribe: false,
                 list_changed: false,
@@ -70,7 +72,11 @@ pub async fn list_tools(
     let mut tools = get_available_tools();
 
     // Add pack tools if a compiled config is active
-    match state.db.dsl_compiled_get_active(auth.tenant_id, "default").await {
+    match state
+        .db
+        .dsl_compiled_get_active(auth.tenant_id, "default")
+        .await
+    {
         Ok(Some(compiled)) if !compiled.tools.is_empty() => {
             tools.extend(tools_from_compiled(&compiled, agent_name.as_deref()));
         }
@@ -252,7 +258,10 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let trajectory = state.db.create::<crate::types::TrajectoryResponse>(&req, tenant_id).await?;
+            let trajectory = state
+                .db
+                .create::<crate::types::TrajectoryResponse>(&req, tenant_id)
+                .await?;
             state.ws.broadcast(WsEvent::TrajectoryCreated {
                 trajectory: trajectory.clone(),
             });
@@ -300,7 +309,10 @@ async fn execute_tool(
                 status: Some(status),
                 ..Default::default()
             };
-            let trajectories = state.db.list::<TrajectoryResponse>(&filter, tenant_id).await?;
+            let trajectories = state
+                .db
+                .list::<TrajectoryResponse>(&filter, tenant_id)
+                .await?;
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&trajectories)
@@ -348,8 +360,13 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let note = state.db.create::<crate::types::NoteResponse>(&req, tenant_id).await?;
-            state.ws.broadcast(WsEvent::NoteCreated { note: note.clone() });
+            let note = state
+                .db
+                .create::<crate::types::NoteResponse>(&req, tenant_id)
+                .await?;
+            state
+                .ws
+                .broadcast(WsEvent::NoteCreated { note: note.clone() });
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&note)
@@ -400,7 +417,8 @@ async fn execute_tool(
                 .ok_or_else(|| ApiError::missing_field("content"))?;
             let source_turn = args["source_turn"]
                 .as_i64()
-                .ok_or_else(|| ApiError::missing_field("source_turn"))? as i32;
+                .ok_or_else(|| ApiError::missing_field("source_turn"))?
+                as i32;
 
             let artifact_type = match artifact_type_str {
                 "Fact" => caliber_core::ArtifactType::Fact,
@@ -428,7 +446,10 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let artifact = state.db.create::<crate::types::ArtifactResponse>(&req, tenant_id).await?;
+            let artifact = state
+                .db
+                .create::<crate::types::ArtifactResponse>(&req, tenant_id)
+                .await?;
             state.ws.broadcast(WsEvent::ArtifactCreated {
                 artifact: artifact.clone(),
             });
@@ -484,8 +505,13 @@ async fn execute_tool(
                 metadata: None,
             };
 
-            let scope = state.db.create::<crate::types::ScopeResponse>(&req, tenant_id).await?;
-            state.ws.broadcast(WsEvent::ScopeCreated { scope: scope.clone() });
+            let scope = state
+                .db
+                .create::<crate::types::ScopeResponse>(&req, tenant_id)
+                .await?;
+            state.ws.broadcast(WsEvent::ScopeCreated {
+                scope: scope.clone(),
+            });
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&scope)
@@ -517,7 +543,9 @@ async fn execute_tool(
             };
 
             let agent = state.db.agent_register(&req, tenant_id).await?;
-            state.ws.broadcast(WsEvent::AgentRegistered { agent: agent.clone() });
+            state.ws.broadcast(WsEvent::AgentRegistered {
+                agent: agent.clone(),
+            });
 
             Ok(vec![ContentBlock::Text {
                 text: serde_json::to_string_pretty(&agent)
@@ -577,7 +605,11 @@ async fn execute_pack_tool(
     if let Some(scope_id_str) = args.get("scope_id").and_then(|v| v.as_str()) {
         if let Ok(uuid) = uuid::Uuid::parse_str(scope_id_str) {
             let scope_id = ScopeId::new(uuid);
-            if let Ok(Some(scope)) = state.db.get::<crate::types::ScopeResponse>(scope_id, tenant_id).await {
+            if let Ok(Some(scope)) = state
+                .db
+                .get::<crate::types::ScopeResponse>(scope_id, tenant_id)
+                .await
+            {
                 if scope.tokens_used >= scope.token_budget {
                     return Err(ApiError::forbidden(format!(
                         "Scope '{}' has exceeded its token budget ({}/{} tokens used)",
@@ -638,7 +670,10 @@ async fn execute_pack_tool(
                 .cmd
                 .as_ref()
                 .ok_or_else(|| ApiError::internal_error("Exec tool missing cmd"))?;
-            let input = args.get("input").and_then(|v| v.as_str()).map(str::to_string);
+            let input = args
+                .get("input")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
 
             // Execute directly - cmd is validated during pack compilation to be an executable path
             let mut command = Command::new(cmd);
@@ -655,16 +690,15 @@ async fn execute_pack_tool(
             let start = Instant::now();
 
             let execution = async {
-                let mut child = command
-                    .spawn()
-                    .map_err(|e| ApiError::internal_error(format!("Failed to spawn tool: {}", e)))?;
+                let mut child = command.spawn().map_err(|e| {
+                    ApiError::internal_error(format!("Failed to spawn tool: {}", e))
+                })?;
 
                 if let Some(input_text) = input {
                     if let Some(stdin) = child.stdin.as_mut() {
-                        stdin
-                            .write_all(input_text.as_bytes())
-                            .await
-                            .map_err(|e| ApiError::internal_error(format!("Failed to write tool stdin: {}", e)))?;
+                        stdin.write_all(input_text.as_bytes()).await.map_err(|e| {
+                            ApiError::internal_error(format!("Failed to write tool stdin: {}", e))
+                        })?;
                     }
                 }
 
@@ -720,7 +754,11 @@ async fn execute_pack_tool(
                 tool_name: name.to_string(),
                 success,
                 duration_ms,
-                error: if success { None } else { Some(format!("Exit code: {}", status)) },
+                error: if success {
+                    None
+                } else {
+                    Some(format!("Exit code: {}", status))
+                },
             });
 
             let mut text = format!("Tool '{}' exited with status {}", name, status);
@@ -778,8 +816,8 @@ fn find_prompt_content(pack: &PackSource, prompt_md: &str) -> Option<String> {
 
 /// Validate tool input against a JSON Schema.
 fn validate_tool_input(input: &JsonValue, schema: &JsonValue) -> Result<(), String> {
-    let compiled = jsonschema::draft202012::new(schema)
-        .map_err(|e| format!("Invalid schema: {}", e))?;
+    let compiled =
+        jsonschema::draft202012::new(schema).map_err(|e| format!("Invalid schema: {}", e))?;
 
     compiled
         .validate(input)
@@ -815,10 +853,7 @@ mod tests {
             find_prompt_content(&pack, "summary.md"),
             Some("summary".to_string())
         );
-        assert_eq!(
-            find_prompt_content(&pack, "missing.md"),
-            None
-        );
+        assert_eq!(find_prompt_content(&pack, "missing.md"), None);
     }
 
     #[test]

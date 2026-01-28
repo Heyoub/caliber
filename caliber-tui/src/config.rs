@@ -284,7 +284,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "api_base_url", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "api_base_url",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -315,7 +321,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "grpc_endpoint", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "grpc_endpoint",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -346,7 +358,10 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "auth", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue { field: "auth", .. }
+        ));
     }
 
     #[test]
@@ -377,7 +392,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "request_timeout_ms", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "request_timeout_ms",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -408,7 +429,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "refresh_interval_ms", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "refresh_interval_ms",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -439,7 +466,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "theme.name", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "theme.name",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -470,7 +503,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "reconnect.multiplier", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "reconnect.multiplier",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -501,7 +540,13 @@ jitter_ms = 50
         let result = config.validate();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { field: "reconnect.max_ms", .. }));
+        assert!(matches!(
+            err,
+            ConfigError::InvalidValue {
+                field: "reconnect.max_ms",
+                ..
+            }
+        ));
     }
 
     // ========================================================================

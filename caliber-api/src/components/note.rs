@@ -95,7 +95,9 @@ impl ListFilter for NoteListFilter {
         if let Some(trajectory_id) = self.source_trajectory_id {
             // Note: source_trajectory_ids is stored as a JSONB array, so we use the contains operator
             conditions.push(format!("source_trajectory_ids @> ${}::jsonb", param_idx));
-            params.push(SqlParam::Json(serde_json::json!([trajectory_id.as_uuid().to_string()])));
+            params.push(SqlParam::Json(serde_json::json!([trajectory_id
+                .as_uuid()
+                .to_string()])));
             // param_idx += 1; // unused after this
         }
 

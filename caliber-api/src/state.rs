@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use caliber_pcp::PCPRuntime;
-use caliber_storage::{InMemoryChangeJournal, InMemoryEventDag, LmdbCacheBackend, ReadThroughCache};
+use caliber_storage::{
+    InMemoryChangeJournal, InMemoryEventDag, LmdbCacheBackend, ReadThroughCache,
+};
 
 use crate::cached_db::CachedDbClient;
 use crate::db::DbClient;

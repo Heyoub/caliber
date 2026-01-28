@@ -40,7 +40,8 @@ pub async fn release_lock(
     }
 
     // Delete the lock record (release = delete for locks)
-    db.delete::<LockResponse>(lock.lock_id, lock.tenant_id).await?;
+    db.delete::<LockResponse>(lock.lock_id, lock.tenant_id)
+        .await?;
     Ok(())
 }
 
@@ -70,7 +71,8 @@ pub async fn extend_lock(
         "expires_at": new_expires.to_rfc3339()
     });
 
-    db.update_raw::<LockResponse>(lock.lock_id, updates, lock.tenant_id).await
+    db.update_raw::<LockResponse>(lock.lock_id, updates, lock.tenant_id)
+        .await
 }
 
 // =============================================================================
@@ -82,7 +84,9 @@ mod tests {
     use super::*;
     use crate::db::{DbClient, DbConfig};
     use crate::error::ErrorCode;
-    use crate::types::{AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest};
+    use crate::types::{
+        AgentResponse, MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest,
+    };
     use caliber_core::{AgentId, EntityIdType, LockId, TenantId};
     use chrono::{Duration as ChronoDuration, Utc};
     use uuid::Uuid;
@@ -169,7 +173,10 @@ mod tests {
             return None;
         }
 
-        let tenant_id = db.tenant_create("test-lock-service", None, None).await.ok()?;
+        let tenant_id = db
+            .tenant_create("test-lock-service", None, None)
+            .await
+            .ok()?;
 
         Some(DbTestContext { db, tenant_id })
     }
@@ -201,7 +208,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_extend_and_release_lock_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let agent = register_agent(&ctx.db, ctx.tenant_id, "lock-service").await;
         let acquire_req = crate::types::AcquireLockRequest {

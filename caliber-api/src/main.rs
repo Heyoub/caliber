@@ -25,11 +25,9 @@ async fn main() -> ApiResult<()> {
 
     let config_response = db.config_get().await?;
     let pcp_config: PCPConfig = serde_json::from_value(config_response.config)?;
-    let pcp = Arc::new(
-        PCPRuntime::new(pcp_config).map_err(|e| {
-            ApiError::internal_error(format!("Failed to initialize PCP runtime: {}", e))
-        })?,
-    );
+    let pcp = Arc::new(PCPRuntime::new(pcp_config).map_err(|e| {
+        ApiError::internal_error(format!("Failed to initialize PCP runtime: {}", e))
+    })?);
 
     let api_config = ApiConfig::from_env();
     let auth_config = AuthConfig::from_env();
@@ -72,12 +70,11 @@ fn resolve_bind_addr() -> ApiResult<SocketAddr> {
         .ok()
         .or_else(|| std::env::var("CALIBER_API_PORT").ok())
         .unwrap_or_else(|| "3000".to_string());
-    let port = port_str.parse::<u16>().map_err(|_| {
-        ApiError::invalid_input(format!("Invalid port value: {}", port_str))
-    })?;
+    let port = port_str
+        .parse::<u16>()
+        .map_err(|_| ApiError::invalid_input(format!("Invalid port value: {}", port_str)))?;
 
     let addr = format!("{}:{}", host, port);
-    addr.parse::<SocketAddr>().map_err(|e| {
-        ApiError::invalid_input(format!("Invalid bind address {}: {}", addr, e))
-    })
+    addr.parse::<SocketAddr>()
+        .map_err(|e| ApiError::invalid_input(format!("Invalid bind address {}: {}", addr, e)))
 }

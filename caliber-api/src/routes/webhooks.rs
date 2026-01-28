@@ -20,15 +20,10 @@ use axum::{
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use caliber_core::{EntityIdType, WebhookId};
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
@@ -37,6 +32,7 @@ use crate::{
     state::AppState,
     ws::WsState,
 };
+use caliber_core::{EntityIdType, WebhookId};
 
 // ============================================================================
 // TYPES
@@ -117,9 +113,15 @@ impl WebhookEventType {
     pub fn matches(&self, event: &WsEvent) -> bool {
         match self {
             WebhookEventType::All => true,
-            WebhookEventType::TrajectoryCreated => matches!(event, WsEvent::TrajectoryCreated { .. }),
-            WebhookEventType::TrajectoryUpdated => matches!(event, WsEvent::TrajectoryUpdated { .. }),
-            WebhookEventType::TrajectoryDeleted => matches!(event, WsEvent::TrajectoryDeleted { .. }),
+            WebhookEventType::TrajectoryCreated => {
+                matches!(event, WsEvent::TrajectoryCreated { .. })
+            }
+            WebhookEventType::TrajectoryUpdated => {
+                matches!(event, WsEvent::TrajectoryUpdated { .. })
+            }
+            WebhookEventType::TrajectoryDeleted => {
+                matches!(event, WsEvent::TrajectoryDeleted { .. })
+            }
             WebhookEventType::ScopeCreated => matches!(event, WsEvent::ScopeCreated { .. }),
             WebhookEventType::ScopeUpdated => matches!(event, WsEvent::ScopeUpdated { .. }),
             WebhookEventType::ScopeClosed => matches!(event, WsEvent::ScopeClosed { .. }),
@@ -131,19 +133,33 @@ impl WebhookEventType {
             WebhookEventType::NoteDeleted => matches!(event, WsEvent::NoteDeleted { .. }),
             WebhookEventType::TurnCreated => matches!(event, WsEvent::TurnCreated { .. }),
             WebhookEventType::AgentRegistered => matches!(event, WsEvent::AgentRegistered { .. }),
-            WebhookEventType::AgentStatusChanged => matches!(event, WsEvent::AgentStatusChanged { .. }),
+            WebhookEventType::AgentStatusChanged => {
+                matches!(event, WsEvent::AgentStatusChanged { .. })
+            }
             WebhookEventType::AgentHeartbeat => matches!(event, WsEvent::AgentHeartbeat { .. }),
-            WebhookEventType::AgentUnregistered => matches!(event, WsEvent::AgentUnregistered { .. }),
+            WebhookEventType::AgentUnregistered => {
+                matches!(event, WsEvent::AgentUnregistered { .. })
+            }
             WebhookEventType::LockAcquired => matches!(event, WsEvent::LockAcquired { .. }),
             WebhookEventType::LockReleased => matches!(event, WsEvent::LockReleased { .. }),
             WebhookEventType::LockExpired => matches!(event, WsEvent::LockExpired { .. }),
             WebhookEventType::MessageSent => matches!(event, WsEvent::MessageSent { .. }),
             WebhookEventType::MessageDelivered => matches!(event, WsEvent::MessageDelivered { .. }),
-            WebhookEventType::MessageAcknowledged => matches!(event, WsEvent::MessageAcknowledged { .. }),
-            WebhookEventType::DelegationCreated => matches!(event, WsEvent::DelegationCreated { .. }),
-            WebhookEventType::DelegationAccepted => matches!(event, WsEvent::DelegationAccepted { .. }),
-            WebhookEventType::DelegationRejected => matches!(event, WsEvent::DelegationRejected { .. }),
-            WebhookEventType::DelegationCompleted => matches!(event, WsEvent::DelegationCompleted { .. }),
+            WebhookEventType::MessageAcknowledged => {
+                matches!(event, WsEvent::MessageAcknowledged { .. })
+            }
+            WebhookEventType::DelegationCreated => {
+                matches!(event, WsEvent::DelegationCreated { .. })
+            }
+            WebhookEventType::DelegationAccepted => {
+                matches!(event, WsEvent::DelegationAccepted { .. })
+            }
+            WebhookEventType::DelegationRejected => {
+                matches!(event, WsEvent::DelegationRejected { .. })
+            }
+            WebhookEventType::DelegationCompleted => {
+                matches!(event, WsEvent::DelegationCompleted { .. })
+            }
             WebhookEventType::HandoffCreated => matches!(event, WsEvent::HandoffCreated { .. }),
             WebhookEventType::HandoffAccepted => matches!(event, WsEvent::HandoffAccepted { .. }),
             WebhookEventType::HandoffCompleted => matches!(event, WsEvent::HandoffCompleted { .. }),
@@ -336,8 +352,8 @@ pub async fn create_webhook(
     }
 
     // Parse URL to validate format
-    let url = reqwest::Url::parse(&req.url)
-        .map_err(|_| ApiError::invalid_input("Invalid URL format"))?;
+    let url =
+        reqwest::Url::parse(&req.url).map_err(|_| ApiError::invalid_input("Invalid URL format"))?;
 
     // Validate events
     if req.events.is_empty() {
@@ -346,7 +362,9 @@ pub async fn create_webhook(
 
     // Validate secret
     if req.secret.len() < 16 {
-        return Err(ApiError::invalid_input("Secret must be at least 16 characters"));
+        return Err(ApiError::invalid_input(
+            "Secret must be at least 16 characters",
+        ));
     }
 
     let webhook = Webhook {
@@ -366,10 +384,7 @@ pub async fn create_webhook(
 
     tracing::info!(webhook_id = %webhook.id, url = %webhook.url, "Webhook registered");
 
-    Ok((
-        StatusCode::CREATED,
-        Json(WebhookResponse { webhook }),
-    ))
+    Ok((StatusCode::CREATED, Json(WebhookResponse { webhook })))
 }
 
 /// GET /api/v1/webhooks - List all webhooks
@@ -386,9 +401,7 @@ pub async fn create_webhook(
         ("bearer_auth" = [])
     )
 )]
-pub async fn list_webhooks(
-    State(state): State<Arc<WebhookState>>,
-) -> impl IntoResponse {
+pub async fn list_webhooks(State(state): State<Arc<WebhookState>>) -> impl IntoResponse {
     let webhooks = state.store.list().await;
     let total = webhooks.len() as i32;
 
@@ -682,44 +695,48 @@ mod tests {
         }));
 
         // Test specific event type
-        assert!(WebhookEventType::TrajectoryCreated.matches(&WsEvent::TrajectoryCreated {
-            trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: TrajectoryId::new(Uuid::new_v4()),
-                tenant_id: TenantId::new(Uuid::new_v4()),
-                name: "test".to_string(),
-                description: None,
-                status: caliber_core::TrajectoryStatus::Active,
-                parent_trajectory_id: None,
-                root_trajectory_id: None,
-                agent_id: None,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-                completed_at: None,
-                outcome: None,
-                metadata: None,
-                links: None,
-            },
-        }));
+        assert!(
+            WebhookEventType::TrajectoryCreated.matches(&WsEvent::TrajectoryCreated {
+                trajectory: crate::types::TrajectoryResponse {
+                    trajectory_id: TrajectoryId::new(Uuid::new_v4()),
+                    tenant_id: TenantId::new(Uuid::new_v4()),
+                    name: "test".to_string(),
+                    description: None,
+                    status: caliber_core::TrajectoryStatus::Active,
+                    parent_trajectory_id: None,
+                    root_trajectory_id: None,
+                    agent_id: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    completed_at: None,
+                    outcome: None,
+                    metadata: None,
+                    links: None,
+                },
+            })
+        );
 
         // Test non-matching event type
-        assert!(!WebhookEventType::NoteCreated.matches(&WsEvent::TrajectoryCreated {
-            trajectory: crate::types::TrajectoryResponse {
-                trajectory_id: TrajectoryId::new(Uuid::new_v4()),
-                tenant_id: TenantId::new(Uuid::new_v4()),
-                name: "test".to_string(),
-                description: None,
-                status: caliber_core::TrajectoryStatus::Active,
-                parent_trajectory_id: None,
-                root_trajectory_id: None,
-                agent_id: None,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-                completed_at: None,
-                outcome: None,
-                metadata: None,
-                links: None,
-            },
-        }));
+        assert!(
+            !WebhookEventType::NoteCreated.matches(&WsEvent::TrajectoryCreated {
+                trajectory: crate::types::TrajectoryResponse {
+                    trajectory_id: TrajectoryId::new(Uuid::new_v4()),
+                    tenant_id: TenantId::new(Uuid::new_v4()),
+                    name: "test".to_string(),
+                    description: None,
+                    status: caliber_core::TrajectoryStatus::Active,
+                    parent_trajectory_id: None,
+                    root_trajectory_id: None,
+                    agent_id: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    completed_at: None,
+                    outcome: None,
+                    metadata: None,
+                    links: None,
+                },
+            })
+        );
     }
 
     #[test]

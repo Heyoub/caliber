@@ -19,8 +19,9 @@ const HTTP_LATENCY_BUCKETS: &[f64] = &[
 ];
 
 /// Database operation latency buckets (seconds)
-const DB_LATENCY_BUCKETS: &[f64] =
-    &[0.001, 0.005, 0.010, 0.025, 0.050, 0.100, 0.250, 0.500, 1.0, 2.5, 5.0];
+const DB_LATENCY_BUCKETS: &[f64] = &[
+    0.001, 0.005, 0.010, 0.025, 0.050, 0.100, 0.250, 0.500, 1.0, 2.5, 5.0,
+];
 
 /// Global metrics instance - initialized once at startup
 pub static METRICS: Lazy<ApiResult<CaliberMetrics>> = Lazy::new(CaliberMetrics::new);
@@ -65,7 +66,9 @@ impl CaliberMetrics {
                 "Total number of HTTP requests",
                 &["method", "path", "status"]
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register http_requests_total: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!("Failed to register http_requests_total: {}", e))
+            })?,
 
             http_request_duration_seconds: register_histogram_vec!(
                 "caliber_http_request_duration_seconds",
@@ -73,14 +76,21 @@ impl CaliberMetrics {
                 &["method", "path"],
                 HTTP_LATENCY_BUCKETS.to_vec()
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register http_request_duration_seconds: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!(
+                    "Failed to register http_request_duration_seconds: {}",
+                    e
+                ))
+            })?,
 
             db_operations_total: register_counter_vec!(
                 "caliber_db_operations_total",
                 "Total number of database operations",
                 &["operation", "entity", "status"]
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register db_operations_total: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!("Failed to register db_operations_total: {}", e))
+            })?,
 
             db_operation_duration_seconds: register_histogram_vec!(
                 "caliber_db_operation_duration_seconds",
@@ -88,39 +98,57 @@ impl CaliberMetrics {
                 &["operation", "entity"],
                 DB_LATENCY_BUCKETS.to_vec()
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register db_operation_duration_seconds: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!(
+                    "Failed to register db_operation_duration_seconds: {}",
+                    e
+                ))
+            })?,
 
             websocket_connections: register_gauge!(
                 "caliber_websocket_connections",
                 "Current number of active WebSocket connections"
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register websocket_connections: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!("Failed to register websocket_connections: {}", e))
+            })?,
 
             webhook_deliveries_total: register_counter_vec!(
                 "caliber_webhook_deliveries_total",
                 "Total webhook deliveries",
                 &["status"]
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register webhook_deliveries_total: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!(
+                    "Failed to register webhook_deliveries_total: {}",
+                    e
+                ))
+            })?,
 
             mcp_tool_calls_total: register_counter_vec!(
                 "caliber_mcp_tool_calls_total",
                 "Total MCP tool invocations",
                 &["tool", "status"]
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register mcp_tool_calls_total: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!("Failed to register mcp_tool_calls_total: {}", e))
+            })?,
 
             active_agents: register_gauge!(
                 "caliber_active_agents",
                 "Current number of active agents"
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register active_agents: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!("Failed to register active_agents: {}", e))
+            })?,
 
             active_trajectories: register_gauge!(
                 "caliber_active_trajectories",
                 "Current number of active trajectories"
             )
-            .map_err(|e| ApiError::internal_error(format!("Failed to register active_trajectories: {}", e)))?,
+            .map_err(|e| {
+                ApiError::internal_error(format!("Failed to register active_trajectories: {}", e))
+            })?,
         })
     }
 

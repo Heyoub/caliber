@@ -1,6 +1,8 @@
 //! Battle Intel: Edge-related API types
 
-use caliber_core::{EdgeId, EdgeType, EntityType, ExtractionMethod, TenantId, Timestamp, TrajectoryId};
+use caliber_core::{
+    EdgeId, EdgeType, EntityType, ExtractionMethod, TenantId, Timestamp, TrajectoryId,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

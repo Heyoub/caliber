@@ -56,9 +56,9 @@ impl Default for ApiConfig {
 
             // Rate limiting defaults: enabled with reasonable limits
             rate_limit_enabled: true,
-            rate_limit_unauthenticated: 100,  // 100 req/min per IP
-            rate_limit_authenticated: 1000,    // 1000 req/min per tenant
-            rate_limit_burst: 10,              // Allow 10 burst requests
+            rate_limit_unauthenticated: 100, // 100 req/min per IP
+            rate_limit_authenticated: 1000,  // 1000 req/min per tenant
+            rate_limit_burst: 10,            // Allow 10 burst requests
             rate_limit_window: Duration::from_secs(60), // 1 minute window
         }
     }

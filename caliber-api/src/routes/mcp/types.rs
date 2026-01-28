@@ -344,6 +344,8 @@ pub enum PromptContent {
     #[serde(rename = "image")]
     Image { data: String, mime_type: String },
     #[serde(rename = "resource")]
-    Resource { uri: String, mime_type: Option<String> },
+    Resource {
+        uri: String,
+        mime_type: Option<String>,
+    },
 }
-

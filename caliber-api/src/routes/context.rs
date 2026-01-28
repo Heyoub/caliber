@@ -28,25 +28,27 @@
 //! }
 //! ```
 
+use crate::auth::AuthContext;
 use crate::components::{ArtifactListFilter, NoteListFilter, ScopeListFilter, TurnListFilter};
 use crate::db::DbClient;
 use crate::error::{ApiError, ApiResult};
-use crate::auth::AuthContext;
-use crate::types::{
-    ArtifactResponse, NoteResponse, ScopeResponse, SearchRequest, TrajectoryResponse, TurnResponse,
-};
 use crate::providers::{
     EmbedRequest, EmbedResponse, PingResponse, ProviderAdapter, ProviderRegistry, SummarizeRequest,
     SummarizeResponse,
 };
-use axum::{extract::State, Extension, Json};
-use async_trait::async_trait;
-use caliber_core::{
-    AgentId, ArtifactId, CaliberConfig, CaliberError, ContextAssembler, ContextPackage, ContextWindow,
-    EntityIdType, EntityType, HealthStatus, KernelConfig, LlmError, NoteId, ProviderCapability,
-    RoutingStrategy, ScopeId, SessionMarkers, TrajectoryId,
+use crate::types::{
+    ArtifactResponse, NoteResponse, ScopeResponse, SearchRequest, TrajectoryResponse, TurnResponse,
 };
-use caliber_dsl::compiler::{CompiledConfig as DslCompiledConfig, CompiledInjectionMode, InjectionConfig};
+use async_trait::async_trait;
+use axum::{extract::State, Extension, Json};
+use caliber_core::{
+    AgentId, ArtifactId, CaliberConfig, CaliberError, ContextAssembler, ContextPackage,
+    ContextWindow, EntityIdType, EntityType, HealthStatus, KernelConfig, LlmError, NoteId,
+    ProviderCapability, RoutingStrategy, ScopeId, SessionMarkers, TrajectoryId,
+};
+use caliber_dsl::compiler::{
+    CompiledConfig as DslCompiledConfig, CompiledInjectionMode, InjectionConfig,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -276,7 +278,11 @@ pub async fn assemble_context(
         .or_else(|| req.user_input.clone());
 
     // Active compiled config (used for providers + injections).
-    let compiled_config = db.dsl_compiled_get_active(tenant_id, "default").await.ok().flatten();
+    let compiled_config = db
+        .dsl_compiled_get_active(tenant_id, "default")
+        .await
+        .ok()
+        .flatten();
 
     // Build the context package
     let mut pkg = ContextPackage::new(req.trajectory_id, scope_id);
@@ -308,23 +314,24 @@ pub async fn assemble_context(
             .as_ref()
             .and_then(|c| select_injection_mode(c, EntityType::Note));
 
-        let notes: Vec<NoteResponse> = if let (Some(query), Some(mode)) =
-            (query_text.as_deref(), note_injection.as_ref())
-        {
-            semantic_notes(&db, tenant_id, query, mode, max_notes).await?
-        } else {
-            let filter = NoteListFilter {
-                source_trajectory_id: Some(req.trajectory_id),
-                ..Default::default()
+        let notes: Vec<NoteResponse> =
+            if let (Some(query), Some(mode)) = (query_text.as_deref(), note_injection.as_ref()) {
+                semantic_notes(&db, tenant_id, query, mode, max_notes).await?
+            } else {
+                let filter = NoteListFilter {
+                    source_trajectory_id: Some(req.trajectory_id),
+                    ..Default::default()
+                };
+                db.list::<NoteResponse>(&filter, tenant_id)
+                    .await?
+                    .into_iter()
+                    .take(max_notes)
+                    .collect()
             };
-            db.list::<NoteResponse>(&filter, tenant_id).await?
-                .into_iter()
-                .take(max_notes)
-                .collect()
-        };
 
         notes_count = notes.len() as i32;
-        let core_notes: Vec<caliber_core::Note> = notes.into_iter().map(note_response_to_core).collect();
+        let core_notes: Vec<caliber_core::Note> =
+            notes.into_iter().map(note_response_to_core).collect();
         pkg = pkg.with_notes(core_notes);
     }
 
@@ -345,15 +352,18 @@ pub async fn assemble_context(
                 scope_id: Some(scope_id),
                 ..Default::default()
             };
-            db.list::<ArtifactResponse>(&filter, tenant_id).await?
+            db.list::<ArtifactResponse>(&filter, tenant_id)
+                .await?
                 .into_iter()
                 .take(max_artifacts)
                 .collect()
         };
 
         artifacts_count = artifacts.len() as i32;
-        let core_artifacts: Vec<caliber_core::Artifact> =
-            artifacts.into_iter().map(artifact_response_to_core).collect();
+        let core_artifacts: Vec<caliber_core::Artifact> = artifacts
+            .into_iter()
+            .map(artifact_response_to_core)
+            .collect();
         pkg = pkg.with_artifacts(core_artifacts);
     }
 
@@ -405,10 +415,14 @@ pub async fn assemble_context(
     let mut config = CaliberConfig::default_context(token_budget);
 
     if let Some(compiled) = compiled_config.as_ref() {
-        if let Some(provider) = select_provider_for_capability(compiled, ProviderCapability::Embedding).await {
+        if let Some(provider) =
+            select_provider_for_capability(compiled, ProviderCapability::Embedding).await
+        {
             config.embedding_provider = Some(provider);
         }
-        if let Some(provider) = select_provider_for_capability(compiled, ProviderCapability::Summarization).await {
+        if let Some(provider) =
+            select_provider_for_capability(compiled, ProviderCapability::Summarization).await
+        {
             config.summarization_provider = Some(provider);
         }
     }
@@ -443,7 +457,10 @@ pub async fn assemble_context(
 // HELPER FUNCTIONS
 // ============================================================================
 
-fn select_injection_mode(compiled: &DslCompiledConfig, entity_type: EntityType) -> Option<CompiledInjectionMode> {
+fn select_injection_mode(
+    compiled: &DslCompiledConfig,
+    entity_type: EntityType,
+) -> Option<CompiledInjectionMode> {
     if !compiled.pack_injections.is_empty() {
         let mut best: Option<&caliber_dsl::compiler::CompiledPackInjectionConfig> = None;
         for injection in &compiled.pack_injections {
@@ -552,7 +569,10 @@ async fn semantic_artifacts(
     max_artifacts: usize,
 ) -> ApiResult<Vec<ArtifactResponse>> {
     let (limit, threshold) = semantic_params(mode, max_artifacts);
-    let filters = vec![caliber_core::FilterExpr::eq("scope_id", json!(scope_id.as_uuid()))];
+    let filters = vec![caliber_core::FilterExpr::eq(
+        "scope_id",
+        json!(scope_id.as_uuid()),
+    )];
     let search = SearchRequest {
         query: query.to_string(),
         entity_types: vec![EntityType::Artifact],
@@ -652,11 +672,14 @@ async fn select_provider_for_capability(
         .collect();
 
     // Respect explicit routing hints first.
-    let preferred = compiled.pack_routing.as_ref().and_then(|routing| match capability {
-        ProviderCapability::Embedding => routing.embedding_provider.as_deref(),
-        ProviderCapability::Summarization => routing.summarization_provider.as_deref(),
-        _ => None,
-    });
+    let preferred = compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|routing| match capability {
+            ProviderCapability::Embedding => routing.embedding_provider.as_deref(),
+            ProviderCapability::Summarization => routing.summarization_provider.as_deref(),
+            _ => None,
+        });
 
     if let Some(name) = preferred {
         if let Some(provider) = providers_by_name.get(name) {
@@ -703,7 +726,10 @@ impl PackProviderAdapter {
     fn new(id: &str) -> Self {
         Self {
             id: id.to_string(),
-            capabilities: vec![ProviderCapability::Embedding, ProviderCapability::Summarization],
+            capabilities: vec![
+                ProviderCapability::Embedding,
+                ProviderCapability::Summarization,
+            ],
         }
     }
 }
@@ -740,7 +766,9 @@ impl ProviderAdapter for PackProviderAdapter {
     }
 }
 
-fn provider_from_compiled(p: &caliber_dsl::compiler::CompiledProviderConfig) -> Option<caliber_core::ProviderConfig> {
+fn provider_from_compiled(
+    p: &caliber_dsl::compiler::CompiledProviderConfig,
+) -> Option<caliber_core::ProviderConfig> {
     let provider_type = match p.provider_type {
         caliber_dsl::compiler::CompiledProviderType::OpenAI => "openai",
         caliber_dsl::compiler::CompiledProviderType::Anthropic => "anthropic",
@@ -769,10 +797,12 @@ fn provider_from_compiled(p: &caliber_dsl::compiler::CompiledProviderConfig) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{extract::State, Extension, Json};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
-    use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
+    use crate::types::{
+        CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse,
+    };
+    use axum::{extract::State, Extension, Json};
     use caliber_dsl::compiler::{CompiledInjectionMode, InjectionConfig};
     use uuid::Uuid;
 
@@ -810,7 +840,10 @@ mod tests {
         assert_eq!(entity_type_from_str("note"), Some(EntityType::Note));
         assert_eq!(entity_type_from_str("notes"), Some(EntityType::Note));
         assert_eq!(entity_type_from_str("artifact"), Some(EntityType::Artifact));
-        assert_eq!(entity_type_from_str("ARTIFACTS"), Some(EntityType::Artifact));
+        assert_eq!(
+            entity_type_from_str("ARTIFACTS"),
+            Some(EntityType::Artifact)
+        );
         assert_eq!(entity_type_from_str("unknown"), None);
     }
 
@@ -824,7 +857,10 @@ mod tests {
             max_tokens: None,
             filter: None,
         };
-        assert_eq!(injection_entity_type(&note_injection), Some(EntityType::Note));
+        assert_eq!(
+            injection_entity_type(&note_injection),
+            Some(EntityType::Note)
+        );
 
         let artifact_injection = InjectionConfig {
             source: "artifacts.recent".to_string(),
@@ -856,10 +892,8 @@ mod tests {
         assert_eq!(limit, 3);
         assert!(threshold.is_none());
 
-        let (limit, threshold) = semantic_params(
-            &CompiledInjectionMode::Relevant { threshold: 0.42 },
-            5,
-        );
+        let (limit, threshold) =
+            semantic_params(&CompiledInjectionMode::Relevant { threshold: 0.42 }, 5);
         assert_eq!(limit, 15);
         assert_eq!(threshold, Some(0.42));
 
@@ -927,7 +961,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_assemble_context_db_backed_minimal() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let traj_req = CreateTrajectoryRequest {
             name: format!("context-traj-{}", Uuid::now_v7()),

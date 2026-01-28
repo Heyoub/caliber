@@ -3,15 +3,9 @@
 //! This module implements Axum route handlers for task delegation operations.
 //! All handlers call caliber_* pg_extern functions via the DbClient.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use std::sync::Arc;
 
-use caliber_core::DelegationId;
 use crate::{
     db::DbClient,
     error::{ApiError, ApiResult},
@@ -22,6 +16,7 @@ use crate::{
     types::{CreateDelegationRequest, DelegationResponse, DelegationResultResponse},
     ws::WsState,
 };
+use caliber_core::DelegationId;
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -56,13 +51,13 @@ pub async fn create_delegation(
 
     // Validate that from and to agents are different
     if req.from_agent_id == req.to_agent_id {
-        return Err(ApiError::invalid_input(
-            "Cannot delegate to the same agent",
-        ));
+        return Err(ApiError::invalid_input("Cannot delegate to the same agent"));
     }
 
     // Create delegation via database client with tenant_id for isolation
-    let delegation = db.create::<DelegationResponse>(&req, auth.tenant_id).await?;
+    let delegation = db
+        .create::<DelegationResponse>(&req, auth.tenant_id)
+        .await?;
 
     // Broadcast DelegationCreated event
     ws.broadcast(WsEvent::DelegationCreated {
@@ -194,7 +189,9 @@ pub async fn reject_delegation(
         .ok_or_else(|| ApiError::entity_not_found("Delegation", id))?;
 
     // Reject via Response method (validates state and permissions)
-    delegation.reject(&db, req.rejecting_agent_id, &req.reason).await?;
+    delegation
+        .reject(&db, req.rejecting_agent_id, &req.reason)
+        .await?;
 
     ws.broadcast(WsEvent::DelegationRejected {
         tenant_id: auth.tenant_id,
@@ -297,7 +294,6 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::extractors::PathId;
@@ -310,6 +306,7 @@ mod tests {
         MemoryPermissionRequest, RegisterAgentRequest, ScopeResponse, TrajectoryResponse,
     };
     use crate::ws::WsState;
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use caliber_core::DelegationResultStatus;
     use caliber_core::{AgentId, EntityIdType, ScopeId, TrajectoryId};
     use std::sync::Arc;
@@ -353,7 +350,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -459,7 +458,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_accept_complete_delegation_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let trajectory_req = CreateTrajectoryRequest {
             name: format!("delegation-traj-{}", Uuid::now_v7()),

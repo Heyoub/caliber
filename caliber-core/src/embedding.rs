@@ -142,7 +142,10 @@ mod tests {
         let err = a.cosine_similarity(&b).unwrap_err();
         assert!(matches!(
             err,
-            CaliberError::Vector(VectorError::DimensionMismatch { expected: 2, got: 3 })
+            CaliberError::Vector(VectorError::DimensionMismatch {
+                expected: 2,
+                got: 3
+            })
         ));
     }
 

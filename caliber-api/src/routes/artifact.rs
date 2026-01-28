@@ -243,8 +243,12 @@ pub async fn update_artifact(
         .ok_or_else(|| ApiError::artifact_not_found(id))?;
     validate_tenant_ownership(&auth, Some(existing.tenant_id))?;
 
-    let artifact = db.update::<ArtifactResponse>(id, &req, auth.tenant_id).await?;
-    ws.broadcast(WsEvent::ArtifactUpdated { artifact: artifact.clone() });
+    let artifact = db
+        .update::<ArtifactResponse>(id, &req, auth.tenant_id)
+        .await?;
+    ws.broadcast(WsEvent::ArtifactUpdated {
+        artifact: artifact.clone(),
+    });
     Ok(Json(artifact.linked()))
 }
 
@@ -314,7 +318,10 @@ pub async fn search_artifacts(
     }
 
     // Validate entity types include Artifact
-    if !req.entity_types.contains(&caliber_core::EntityType::Artifact) {
+    if !req
+        .entity_types
+        .contains(&caliber_core::EntityType::Artifact)
+    {
         return Err(ApiError::invalid_input(
             "entity_types must include Artifact for artifact search",
         ));
@@ -344,14 +351,16 @@ pub fn create_router() -> axum::Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::routes::scope::create_scope;
     use crate::routes::trajectory::create_trajectory;
     use crate::state::ApiEventDag;
-    use crate::types::{CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse};
+    use crate::types::{
+        CreateScopeRequest, CreateTrajectoryRequest, ScopeResponse, TrajectoryResponse,
+    };
     use crate::ws::WsState;
+    use axum::{body::to_bytes, extract::Query, http::StatusCode, response::IntoResponse};
     use caliber_core::{ArtifactType, EntityIdType, ExtractionMethod, ScopeId, TrajectoryId, TTL};
     use std::sync::Arc;
     use uuid::Uuid;
@@ -394,7 +403,9 @@ mod tests {
         })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -467,7 +478,9 @@ mod tests {
         };
 
         assert!(req.query.trim().is_empty());
-        assert!(req.entity_types.contains(&caliber_core::EntityType::Artifact));
+        assert!(req
+            .entity_types
+            .contains(&caliber_core::EntityType::Artifact));
     }
 
     #[test]
@@ -483,7 +496,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_list_artifacts_db_backed() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
         let trajectory_req = CreateTrajectoryRequest {
             name: format!("artifact-traj-{}", Uuid::now_v7()),
@@ -569,7 +584,10 @@ mod tests {
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListArtifactsResponse = response_json(list_response).await;
-        assert!(list.artifacts.iter().any(|a| a.artifact_id == artifact.artifact_id));
+        assert!(list
+            .artifacts
+            .iter()
+            .any(|a| a.artifact_id == artifact.artifact_id));
 
         ctx.db
             .delete::<ArtifactResponse>(artifact.artifact_id, ctx.auth.tenant_id)

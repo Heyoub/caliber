@@ -1,7 +1,7 @@
 //! Lexer module for CALIBER DSL
 
-pub mod token;
 pub mod scanner;
+pub mod token;
 
-pub use token::*;
 pub use scanner::*;
+pub use token::*;

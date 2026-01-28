@@ -12,20 +12,20 @@ use crate::types::*;
 
 // Import route modules for path references
 use crate::routes::{
-    agent, artifact, config, delegation, dsl, handoff, lock, message, note, scope, search,
-    tenant, trajectory, turn,
+    agent, artifact, config, delegation, dsl, handoff, lock, message, note, scope, search, tenant,
+    trajectory, turn,
 };
 
 // Import domain types from caliber-core (includes absorbed caliber-agents types)
 use caliber_core::{
     Agent, AgentHandoff, AgentMessage, AgentStatus, Artifact, ArtifactType, CaliberConfig,
     Checkpoint, Conflict, ConflictResolutionRecord, ConflictStatus, ConflictType,
-    ContextPersistence, DelegatedTask, DelegationResult, DelegationResultStatus,
-    DelegationStatus, EmbeddingVector, EntityRef, EntityType, ExtractionMethod, HandoffReason,
-    HandoffStatus, LockData, LockMode, MemoryAccess, MemoryCategory, MemoryPermission,
-    MemoryRegion, MemoryRegionConfig, MessagePriority, MessageType, Note, NoteType,
-    OutcomeStatus, PermissionScope, ProviderConfig, Provenance, ResolutionStrategy, RetryConfig,
-    Scope, SectionPriorities, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
+    ContextPersistence, DelegatedTask, DelegationResult, DelegationResultStatus, DelegationStatus,
+    EmbeddingVector, EntityRef, EntityType, ExtractionMethod, HandoffReason, HandoffStatus,
+    LockData, LockMode, MemoryAccess, MemoryCategory, MemoryPermission, MemoryRegion,
+    MemoryRegionConfig, MessagePriority, MessageType, Note, NoteType, OutcomeStatus,
+    PermissionScope, Provenance, ProviderConfig, ResolutionStrategy, RetryConfig, Scope,
+    SectionPriorities, Trajectory, TrajectoryOutcome, TrajectoryStatus, Turn, TurnRole,
     ValidationMode, TTL,
 };
 

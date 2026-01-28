@@ -268,7 +268,9 @@ impl Handoff<Initiated> {
 impl Handoff<HandoffAccepted> {
     /// Get when the handoff was accepted.
     pub fn accepted_at(&self) -> Timestamp {
-        self.data.accepted_at.expect("Accepted handoff must have accepted_at")
+        self.data
+            .accepted_at
+            .expect("Accepted handoff must have accepted_at")
     }
 
     /// Complete the handoff.
@@ -287,19 +289,26 @@ impl Handoff<HandoffAccepted> {
 impl Handoff<Rejected> {
     /// Get the rejection reason.
     pub fn rejection_reason(&self) -> &str {
-        self.data.rejection_reason.as_deref().unwrap_or("No reason provided")
+        self.data
+            .rejection_reason
+            .as_deref()
+            .unwrap_or("No reason provided")
     }
 }
 
 impl Handoff<HandoffCompleted> {
     /// Get when the handoff was accepted.
     pub fn accepted_at(&self) -> Timestamp {
-        self.data.accepted_at.expect("Completed handoff must have accepted_at")
+        self.data
+            .accepted_at
+            .expect("Completed handoff must have accepted_at")
     }
 
     /// Get when the handoff was completed.
     pub fn completed_at(&self) -> Timestamp {
-        self.data.completed_at.expect("Completed handoff must have completed_at")
+        self.data
+            .completed_at
+            .expect("Completed handoff must have completed_at")
     }
 }
 

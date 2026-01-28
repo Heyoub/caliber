@@ -10,9 +10,7 @@ use caliber_core::{ArtifactId, EntityIdType, NoteId, TenantId, TrajectoryId};
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub async fn list_resources(
-    State(state): State<Arc<McpState>>,
-) -> impl IntoResponse {
+pub async fn list_resources(State(state): State<Arc<McpState>>) -> impl IntoResponse {
     tracing::debug!(db_pool_size = state.db.pool_size(), "MCP list_resources");
     Json(ListResourcesResponse {
         resources: get_available_resources(),
@@ -59,7 +57,10 @@ async fn read_resource_content(
                 status: Some(caliber_core::TrajectoryStatus::Active),
                 ..Default::default()
             };
-            let trajectories = state.db.list::<TrajectoryResponse>(&filter, tenant_id).await?;
+            let trajectories = state
+                .db
+                .list::<TrajectoryResponse>(&filter, tenant_id)
+                .await?;
 
             Ok(ResourceContent {
                 uri: uri.to_string(),
@@ -213,4 +214,3 @@ async fn read_resource_content(
         _ => Err(ApiError::entity_not_found("Resource", Uuid::nil())),
     }
 }
-

@@ -20,7 +20,7 @@ use crate::notifications::NotificationLevel;
 use crate::state::App;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
-    style::{Style},
+    style::Style,
     text::Span,
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -56,15 +56,18 @@ pub fn render_view(f: &mut Frame<'_>, app: &App) {
 }
 
 fn render_header(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
-    let ws_status = if app.ws_connected { "WS: Connected" } else { "WS: Disconnected" };
+    let ws_status = if app.ws_connected {
+        "WS: Connected"
+    } else {
+        "WS: Disconnected"
+    };
     let title = format!(
         "CALIBER TUI | Tenant: {} | {}",
         app.tenant.tenant_name, ws_status
     );
-    let block = Block::default().borders(Borders::ALL).title(Span::styled(
-        title,
-        Style::default().fg(app.theme.primary),
-    ));
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(title, Style::default().fg(app.theme.primary)));
     f.render_widget(block, area);
 }
 
@@ -87,7 +90,10 @@ fn render_footer(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
             NotificationLevel::Error => app.theme.error,
             NotificationLevel::Success => app.theme.success,
         };
-        (format!("{}: {}", label, note.message), Style::default().fg(color))
+        (
+            format!("{}: {}", label, note.message),
+            Style::default().fg(color),
+        )
     } else {
         (help.to_string(), Style::default().fg(app.theme.text_dim))
     };

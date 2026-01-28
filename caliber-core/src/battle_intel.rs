@@ -1,8 +1,8 @@
 //! Battle Intel features: Edges, Evolution, Summarization
 
 use crate::{
-    AbstractionLevel, ContentHash, EdgeId, EdgeType, EntityRef, Provenance,
-    SummarizationPolicyId, SummarizationTrigger, Timestamp, TrajectoryId, EvolutionPhase,
+    AbstractionLevel, ContentHash, EdgeId, EdgeType, EntityRef, EvolutionPhase, Provenance,
+    SummarizationPolicyId, SummarizationTrigger, Timestamp, TrajectoryId,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -136,4 +136,3 @@ pub struct SummarizationPolicy {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<serde_json::Value>,
 }
-

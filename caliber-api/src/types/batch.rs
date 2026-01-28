@@ -1,8 +1,8 @@
 //! Batch operation types
 
 use caliber_core::{ArtifactId, NoteId, TrajectoryId};
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::{
     ArtifactResponse, CreateArtifactRequest, CreateNoteRequest, CreateTrajectoryRequest,

@@ -149,7 +149,9 @@ async fn authorize(
     })?;
 
     // Generate CSRF token
-    let csrf = params.state.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let csrf = params
+        .state
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     // Encode redirect_uri in state if provided (for web client flow)
     let state_value = if params.redirect_uri.is_some() {
@@ -261,7 +263,9 @@ async fn callback(
         let separator = if redirect_url.contains('?') { "&" } else { "?" };
         redirect_url.push_str(&format!("{}token={}", separator, session_token));
 
-        return Ok(CallbackResponse::Redirect(Redirect::temporary(&redirect_url)));
+        return Ok(CallbackResponse::Redirect(Redirect::temporary(
+            &redirect_url,
+        )));
     }
 
     // Return JSON response for API clients

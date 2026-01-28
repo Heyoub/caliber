@@ -15,16 +15,14 @@ use caliber_api::{
     db::DbClient,
     events::WsEvent,
     middleware::AuthExtractor,
-    PathId,
-    routes::{
-        agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn,
-    },
+    routes::{agent, artifact, delegation, handoff, lock, message, note, scope, trajectory, turn},
     types::{
         AcquireLockRequest, CreateArtifactRequest, CreateDelegationRequest, CreateHandoffRequest,
         CreateNoteRequest, CreateScopeRequest, CreateTrajectoryRequest, CreateTurnRequest,
         MemoryAccessRequest, MemoryPermissionRequest, RegisterAgentRequest, ReleaseLockRequest,
         SendMessageRequest, UpdateAgentRequest, UpdateScopeRequest, UpdateTrajectoryRequest,
     },
+    PathId,
 };
 use caliber_core::{
     AgentId, AgentStatus, ArtifactId, ArtifactType, DelegationId, DelegationResultStatus,
@@ -40,12 +38,12 @@ use uuid::Uuid;
 mod test_auth_support;
 #[path = "support/db.rs"]
 mod test_db_support;
-#[path = "support/ws.rs"]
-mod test_ws_support;
-#[path = "support/pcp.rs"]
-mod test_pcp_support;
 #[path = "support/event_dag.rs"]
 mod test_event_dag_support;
+#[path = "support/pcp.rs"]
+mod test_pcp_support;
+#[path = "support/ws.rs"]
+mod test_ws_support;
 use test_auth_support::test_auth_context;
 use test_event_dag_support::test_event_dag;
 
@@ -311,7 +309,13 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_eq!(trajectory.trajectory_id, id);
             Ok(())
         }
-        (ExpectedEvent::TrajectoryDeleted(id), WsEvent::TrajectoryDeleted { tenant_id: _, id: event_id }) => {
+        (
+            ExpectedEvent::TrajectoryDeleted(id),
+            WsEvent::TrajectoryDeleted {
+                tenant_id: _,
+                id: event_id,
+            },
+        ) => {
             prop_assert_eq!(event_id, id);
             Ok(())
         }
@@ -343,12 +347,25 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(agent.agent_id, AgentId::nil());
             Ok(())
         }
-        (ExpectedEvent::AgentStatusChanged(id, status), WsEvent::AgentStatusChanged { tenant_id: _, agent_id, status: actual_status }) => {
+        (
+            ExpectedEvent::AgentStatusChanged(id, status),
+            WsEvent::AgentStatusChanged {
+                tenant_id: _,
+                agent_id,
+                status: actual_status,
+            },
+        ) => {
             prop_assert_eq!(agent_id, id);
             prop_assert_eq!(actual_status.to_lowercase(), status.to_lowercase());
             Ok(())
         }
-        (ExpectedEvent::AgentUnregistered(id), WsEvent::AgentUnregistered { tenant_id: _, id: event_id }) => {
+        (
+            ExpectedEvent::AgentUnregistered(id),
+            WsEvent::AgentUnregistered {
+                tenant_id: _,
+                id: event_id,
+            },
+        ) => {
             prop_assert_eq!(event_id, id);
             Ok(())
         }
@@ -356,7 +373,13 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(lock.lock_id, LockId::nil());
             Ok(())
         }
-        (ExpectedEvent::LockReleased(id), WsEvent::LockReleased { tenant_id: _, lock_id }) => {
+        (
+            ExpectedEvent::LockReleased(id),
+            WsEvent::LockReleased {
+                tenant_id: _,
+                lock_id,
+            },
+        ) => {
             prop_assert_eq!(lock_id, id);
             Ok(())
         }
@@ -364,7 +387,13 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(message.message_id, MessageId::nil());
             Ok(())
         }
-        (ExpectedEvent::MessageAcknowledged(id), WsEvent::MessageAcknowledged { tenant_id: _, message_id }) => {
+        (
+            ExpectedEvent::MessageAcknowledged(id),
+            WsEvent::MessageAcknowledged {
+                tenant_id: _,
+                message_id,
+            },
+        ) => {
             prop_assert_eq!(message_id, id);
             Ok(())
         }
@@ -372,7 +401,13 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(delegation.delegation_id, DelegationId::nil());
             Ok(())
         }
-        (ExpectedEvent::DelegationAccepted(id), WsEvent::DelegationAccepted { tenant_id: _, delegation_id }) => {
+        (
+            ExpectedEvent::DelegationAccepted(id),
+            WsEvent::DelegationAccepted {
+                tenant_id: _,
+                delegation_id,
+            },
+        ) => {
             prop_assert_eq!(delegation_id, id);
             Ok(())
         }
@@ -384,7 +419,13 @@ fn assert_event(expected: ExpectedEvent, actual: WsEvent) -> Result<(), TestCase
             prop_assert_ne!(handoff.handoff_id, HandoffId::nil());
             Ok(())
         }
-        (ExpectedEvent::HandoffAccepted(id), WsEvent::HandoffAccepted { tenant_id: _, handoff_id }) => {
+        (
+            ExpectedEvent::HandoffAccepted(id),
+            WsEvent::HandoffAccepted {
+                tenant_id: _,
+                handoff_id,
+            },
+        ) => {
             prop_assert_eq!(handoff_id, id);
             Ok(())
         }

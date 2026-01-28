@@ -6,13 +6,16 @@
 use crate::db::DbClient;
 use crate::error::ApiResult;
 use crate::middleware::AuthExtractor;
+use crate::providers::{
+    EmbedRequest, EmbedResponse, PingResponse, ProviderAdapter, ProviderRegistry, SummarizeRequest,
+    SummarizeResponse,
+};
 use crate::state::AppState;
 use crate::types::PackSource;
-use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use async_trait::async_trait;
+use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use caliber_core::{CaliberError, HealthStatus, LlmError, ProviderCapability, RoutingStrategy};
 use caliber_dsl::compiler::{CompiledConfig as DslCompiledConfig, CompiledInjectionMode};
-use crate::providers::{ProviderAdapter, ProviderRegistry, PingResponse, EmbedRequest, EmbedResponse, SummarizeRequest, SummarizeResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -66,7 +69,9 @@ pub async fn inspect_pack(
     State(db): State<DbClient>,
     AuthExtractor(auth): AuthExtractor,
 ) -> ApiResult<impl IntoResponse> {
-    let compiled = db.dsl_compiled_get_active(auth.tenant_id, "default").await?;
+    let compiled = db
+        .dsl_compiled_get_active(auth.tenant_id, "default")
+        .await?;
     let pack_source = db
         .dsl_pack_get_active(auth.tenant_id, "default")
         .await?
@@ -161,11 +166,14 @@ async fn select_provider_name_effective(
         .map(|p| (p.name.as_str(), p))
         .collect();
 
-    let preferred = compiled.pack_routing.as_ref().and_then(|routing| match capability {
-        ProviderCapability::Embedding => routing.embedding_provider.as_deref(),
-        ProviderCapability::Summarization => routing.summarization_provider.as_deref(),
-        _ => None,
-    });
+    let preferred = compiled
+        .pack_routing
+        .as_ref()
+        .and_then(|routing| match capability {
+            ProviderCapability::Embedding => routing.embedding_provider.as_deref(),
+            ProviderCapability::Summarization => routing.summarization_provider.as_deref(),
+            _ => None,
+        });
 
     if let Some(name) = preferred {
         if providers_by_name.contains_key(name) {
@@ -286,7 +294,10 @@ impl PackProviderAdapter {
     fn new(id: &str) -> Self {
         Self {
             id: id.to_string(),
-            capabilities: vec![ProviderCapability::Embedding, ProviderCapability::Summarization],
+            capabilities: vec![
+                ProviderCapability::Embedding,
+                ProviderCapability::Summarization,
+            ],
         }
     }
 }
@@ -330,10 +341,10 @@ impl ProviderAdapter for PackProviderAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::to_bytes, extract::State, response::IntoResponse};
     use crate::auth::{AuthContext, AuthMethod};
     use crate::db::{DbClient, DbConfig};
     use crate::middleware::AuthExtractor;
+    use axum::{body::to_bytes, extract::State, response::IntoResponse};
 
     #[test]
     fn test_routing_strategy_from_hint() {
@@ -424,7 +435,9 @@ mod tests {
         Some(DbTestContext { db, auth })
     }
 
-    async fn response_json<T: serde::de::DeserializeOwned>(response: axum::response::Response) -> T {
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
@@ -433,15 +446,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_inspect_pack_db_backed_no_active() {
-        let Some(ctx) = db_test_context().await else { return; };
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
 
-        let response = inspect_pack(
-            State(ctx.db.clone()),
-            AuthExtractor(ctx.auth.clone()),
-        )
-        .await
-        .expect("inspect pack")
-        .into_response();
+        let response = inspect_pack(State(ctx.db.clone()), AuthExtractor(ctx.auth.clone()))
+            .await
+            .expect("inspect pack")
+            .into_response();
         let response: PackInspectResponse = response_json(response).await;
 
         assert!(!response.has_active);
@@ -487,7 +499,10 @@ fn effective_injections(compiled: &DslCompiledConfig) -> Vec<PackInspectEffectiv
     ]
 }
 
-fn effective_injection_for_entity(compiled: &DslCompiledConfig, entity: &str) -> PackInspectEffectiveInjection {
+fn effective_injection_for_entity(
+    compiled: &DslCompiledConfig,
+    entity: &str,
+) -> PackInspectEffectiveInjection {
     if !compiled.pack_injections.is_empty() {
         let mut best: Option<&caliber_dsl::compiler::CompiledPackInjectionConfig> = None;
         for injection in &compiled.pack_injections {

@@ -141,7 +141,7 @@ impl CacheStats {
 // IMPLEMENTATIONS FOR CALIBER ENTITIES
 // ============================================================================
 
-use caliber_core::{Artifact, Note, Scope, Trajectory, Turn, EntityIdType};
+use caliber_core::{Artifact, EntityIdType, Note, Scope, Trajectory, Turn};
 
 impl CacheableEntity for Trajectory {
     fn entity_type() -> EntityType {

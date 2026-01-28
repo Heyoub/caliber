@@ -1,13 +1,13 @@
 //! Pack IR and validation
 
 use crate::compiler::{
-    CompiledInjectionMode, CompiledPackAgentConfig, CompiledPackInjectionConfig, CompiledToolConfig,
-    CompiledToolKind, CompiledToolsetConfig, CompiledPackRoutingConfig,
+    CompiledInjectionMode, CompiledPackAgentConfig, CompiledPackInjectionConfig,
+    CompiledPackRoutingConfig, CompiledToolConfig, CompiledToolKind, CompiledToolsetConfig,
 };
 use crate::parser::ast::{Action, InjectionMode, Trigger};
+use crate::parser::AdapterDef as AstAdapterDef;
+use crate::parser::InjectionDef as AstInjectionDef;
 use crate::parser::{AdapterType, CaliberAst, Definition, PolicyDef, PolicyRule};
-use crate::parser::{AdapterDef as AstAdapterDef};
-use crate::parser::{InjectionDef as AstInjectionDef};
 use crate::parser::{EnvValue, ProviderDef as AstProviderDef, ProviderType};
 use std::collections::HashSet;
 
@@ -87,7 +87,11 @@ pub struct MarkdownError {
 
 impl std::fmt::Display for MarkdownError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}:{}: {}", self.file, self.line, self.column, self.message)
+        write!(
+            f,
+            "{}:{}:{}: {}",
+            self.file, self.line, self.column, self.message
+        )
     }
 }
 
@@ -100,7 +104,12 @@ fn validate_profiles(manifest: &PackManifest) -> Result<(), PackError> {
     };
     let mut allowed = HashSet::new();
     for p in &matrix.allowed {
-        allowed.insert(profile_key(&p.retention, &p.index, &p.embeddings, &p.format));
+        allowed.insert(profile_key(
+            &p.retention,
+            &p.index,
+            &p.embeddings,
+            &p.format,
+        ));
     }
     for (name, p) in &manifest.profiles {
         let key = profile_key(&p.retention, &p.index, &p.embeddings, &p.format);
@@ -139,7 +148,9 @@ fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<
         if !profiles.contains(&agent.profile) {
             return Err(PackError::Validation(format!(
                 "agent '{}' references unknown profile '{}'. Available profiles: {:?}",
-                name, agent.profile, profiles.iter().collect::<Vec<_>>()
+                name,
+                agent.profile,
+                profiles.iter().collect::<Vec<_>>()
             )));
         }
 
@@ -177,7 +188,10 @@ fn validate_injections(manifest: &PackManifest) -> Result<(), PackError> {
         // Validate entity type if specified
         if let Some(entity_type) = injection.entity_type.as_deref() {
             let normalized = entity_type.to_lowercase();
-            let valid = matches!(normalized.as_str(), "note" | "notes" | "artifact" | "artifacts");
+            let valid = matches!(
+                normalized.as_str(),
+                "note" | "notes" | "artifact" | "artifacts"
+            );
             if !valid {
                 return Err(PackError::Validation(format!(
                     "injections.{}: invalid entity_type '{}' (expected 'note' or 'artifact')",
@@ -262,7 +276,9 @@ pub type ContractFiles = std::collections::HashMap<String, String>;
 /// and path traversal attacks like `cmd = "./tools/../../../bin/sh"`.
 fn is_valid_executable_path(cmd: &str) -> bool {
     // Forbidden shell metacharacters
-    const FORBIDDEN: &[char] = &[';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n', '\r'];
+    const FORBIDDEN: &[char] = &[
+        ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n', '\r',
+    ];
 
     // Must not contain forbidden characters
     if cmd.chars().any(|c| FORBIDDEN.contains(&c)) {
@@ -281,7 +297,10 @@ fn is_valid_executable_path(cmd: &str) -> bool {
 
 /// Compile pack tool registry into runtime tool configs.
 /// `contracts` maps contract paths to their JSON content.
-pub fn compile_tools(manifest: &PackManifest, contracts: &ContractFiles) -> Result<Vec<CompiledToolConfig>, PackError> {
+pub fn compile_tools(
+    manifest: &PackManifest,
+    contracts: &ContractFiles,
+) -> Result<Vec<CompiledToolConfig>, PackError> {
     let mut tools = Vec::new();
 
     for (name, def) in &manifest.tools.bin {
@@ -365,10 +384,8 @@ pub fn compile_pack_agents(
     markdown_docs: &[super::MarkdownDoc],
 ) -> Vec<CompiledPackAgentConfig> {
     // Build lookup from markdown file path to extracted data
-    let md_by_path: std::collections::HashMap<&str, &super::MarkdownDoc> = markdown_docs
-        .iter()
-        .map(|m| (m.file.as_str(), m))
-        .collect();
+    let md_by_path: std::collections::HashMap<&str, &super::MarkdownDoc> =
+        markdown_docs.iter().map(|m| (m.file.as_str(), m)).collect();
 
     manifest
         .agents
@@ -380,7 +397,8 @@ pub fn compile_pack_agents(
                 .copied()
                 .or_else(|| {
                     // Try suffix match for relative paths
-                    md_by_path.iter()
+                    md_by_path
+                        .iter()
                         .find(|(path, _)| path.ends_with(&agent.prompt_md))
                         .map(|(_, doc)| *doc)
                 });
@@ -406,7 +424,9 @@ pub fn compile_pack_agents(
 }
 
 /// Compile pack injection metadata for runtime wiring.
-pub fn compile_pack_injections(manifest: &PackManifest) -> Result<Vec<CompiledPackInjectionConfig>, PackError> {
+pub fn compile_pack_injections(
+    manifest: &PackManifest,
+) -> Result<Vec<CompiledPackInjectionConfig>, PackError> {
     let mut out = Vec::new();
     for def in manifest.injections.values() {
         let mode = compile_injection_mode_compiled(def)?;
@@ -424,11 +444,14 @@ pub fn compile_pack_injections(manifest: &PackManifest) -> Result<Vec<CompiledPa
 
 /// Compile pack provider routing hints.
 pub fn compile_pack_routing(manifest: &PackManifest) -> Option<CompiledPackRoutingConfig> {
-    manifest.routing.as_ref().map(|routing| CompiledPackRoutingConfig {
-        strategy: routing.strategy.clone().map(|s| s.to_lowercase()),
-        embedding_provider: routing.embedding_provider.clone(),
-        summarization_provider: routing.summarization_provider.clone(),
-    })
+    manifest
+        .routing
+        .as_ref()
+        .map(|routing| CompiledPackRoutingConfig {
+            strategy: routing.strategy.clone().map(|s| s.to_lowercase()),
+            embedding_provider: routing.embedding_provider.clone(),
+            summarization_provider: routing.summarization_provider.clone(),
+        })
 }
 
 fn build_adapters(manifest: &PackManifest) -> Result<Vec<AstAdapterDef>, PackError> {
@@ -540,9 +563,9 @@ fn parse_trigger(value: &str) -> Result<Trigger, PackError> {
         "scope_close" => Ok(Trigger::ScopeClose),
         "turn_end" => Ok(Trigger::TurnEnd),
         "manual" => Ok(Trigger::Manual),
-        other if other.starts_with("schedule:") => {
-            Ok(Trigger::Schedule(other["schedule:".len()..].trim().to_string()))
-        }
+        other if other.starts_with("schedule:") => Ok(Trigger::Schedule(
+            other["schedule:".len()..].trim().to_string(),
+        )),
         other => Err(PackError::Validation(format!(
             "invalid trigger '{}'",
             other
@@ -553,30 +576,18 @@ fn parse_trigger(value: &str) -> Result<Trigger, PackError> {
 fn parse_action(action: &PolicyActionDef) -> Result<Action, PackError> {
     let typ = action.action_type.to_lowercase();
     match typ.as_str() {
-        "summarize" => Ok(Action::Summarize(
-            action
-                .target
-                .clone()
-                .ok_or_else(|| PackError::Validation("summarize action missing target".into()))?,
-        )),
-        "checkpoint" => Ok(Action::Checkpoint(
-            action
-                .target
-                .clone()
-                .ok_or_else(|| PackError::Validation("checkpoint action missing target".into()))?,
-        )),
-        "extract_artifacts" => Ok(Action::ExtractArtifacts(
-            action
-                .target
-                .clone()
-                .ok_or_else(|| PackError::Validation("extract_artifacts action missing target".into()))?,
-        )),
-        "notify" => Ok(Action::Notify(
-            action
-                .target
-                .clone()
-                .ok_or_else(|| PackError::Validation("notify action missing target".into()))?,
-        )),
+        "summarize" => Ok(Action::Summarize(action.target.clone().ok_or_else(
+            || PackError::Validation("summarize action missing target".into()),
+        )?)),
+        "checkpoint" => Ok(Action::Checkpoint(action.target.clone().ok_or_else(
+            || PackError::Validation("checkpoint action missing target".into()),
+        )?)),
+        "extract_artifacts" => Ok(Action::ExtractArtifacts(action.target.clone().ok_or_else(
+            || PackError::Validation("extract_artifacts action missing target".into()),
+        )?)),
+        "notify" => Ok(Action::Notify(action.target.clone().ok_or_else(|| {
+            PackError::Validation("notify action missing target".into())
+        })?)),
         "inject" => Ok(Action::Inject {
             target: action
                 .target
@@ -613,8 +624,11 @@ fn compile_injection_mode_compiled(def: &InjectionDef) -> Result<CompiledInjecti
         "full" => Ok(CompiledInjectionMode::Full),
         "summary" => Ok(CompiledInjectionMode::Summary),
         "topk" => {
-            let k = def.top_k.ok_or_else(|| PackError::Validation("topk mode requires top_k".into()))?;
-            let k = i32::try_from(k).map_err(|_| PackError::Validation("top_k out of range".into()))?;
+            let k = def
+                .top_k
+                .ok_or_else(|| PackError::Validation("topk mode requires top_k".into()))?;
+            let k =
+                i32::try_from(k).map_err(|_| PackError::Validation("top_k out of range".into()))?;
             Ok(CompiledInjectionMode::TopK { k })
         }
         "relevant" => {

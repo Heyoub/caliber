@@ -36,15 +36,19 @@ async fn call_parse_endpoint(db: DbClient, source: String) -> Result<ValidateDsl
 fn dsl_source_strategy() -> impl Strategy<Value = String> {
     prop_oneof![
         Just(r#"caliber: "1.0" {}"#.to_string()),
-        Just(r#"
+        Just(
+            r#"
             caliber: "1.0" {
                 adapter main_db {
                     type: postgres
                     connection: "postgresql://localhost/caliber"
                 }
             }
-        "#.to_string()),
-        Just(r#"
+        "#
+            .to_string()
+        ),
+        Just(
+            r#"
             caliber: "1.0" {
                 memory turns {
                     type: ephemeral
@@ -57,8 +61,11 @@ fn dsl_source_strategy() -> impl Strategy<Value = String> {
                     lifecycle: explicit
                 }
             }
-        "#.to_string()),
-        Just(r#"
+        "#
+            .to_string()
+        ),
+        Just(
+            r#"
             caliber: "1.0" {
                 policy cleanup {
                     on scope_close: [
@@ -67,8 +74,11 @@ fn dsl_source_strategy() -> impl Strategy<Value = String> {
                     ]
                 }
             }
-        "#.to_string()),
-        Just(r#"
+        "#
+            .to_string()
+        ),
+        Just(
+            r#"
             caliber: "1.0" {
                 inject notes into context {
                     mode: relevant(0.8)
@@ -77,7 +87,9 @@ fn dsl_source_strategy() -> impl Strategy<Value = String> {
                     filter: category = "important"
                 }
             }
-        "#.to_string()),
+        "#
+            .to_string()
+        ),
     ]
 }
 

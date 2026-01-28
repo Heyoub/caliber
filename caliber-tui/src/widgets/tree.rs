@@ -1,12 +1,12 @@
 //! Collapsible tree widget.
 
-use uuid::Uuid;
 use ratatui::{
     layout::Rect,
-    style::{Style},
+    style::Style,
     widgets::{Block, Borders, List, ListItem, ListState},
     Frame,
 };
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct TreeItem {
@@ -44,7 +44,11 @@ impl<'a> TreeWidget<'a> {
             .map(|item| {
                 let indent = "  ".repeat(item.depth);
                 let marker = if item.has_children {
-                    if item.expanded { "▾ " } else { "▸ " }
+                    if item.expanded {
+                        "▾ "
+                    } else {
+                        "▸ "
+                    }
                 } else {
                     "  "
                 };

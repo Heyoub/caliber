@@ -89,9 +89,7 @@ pub struct RestClient {
 impl RestClient {
     pub fn new(config: &TuiConfig) -> Result<Self, ApiClientError> {
         let timeout = Duration::from_millis(config.request_timeout_ms);
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .build()?;
+        let client = reqwest::Client::builder().timeout(timeout).build()?;
 
         let auth_header = build_auth_headers(&config.auth)?;
         Ok(Self {
@@ -167,7 +165,10 @@ impl RestClient {
             .await
     }
 
-    pub async fn list_locks(&self, tenant_id: TenantId) -> Result<ListLocksResponse, ApiClientError> {
+    pub async fn list_locks(
+        &self,
+        tenant_id: TenantId,
+    ) -> Result<ListLocksResponse, ApiClientError> {
         self.get_json::<ListLocksResponse, ()>(tenant_id, "/api/v1/locks", None)
             .await
     }
@@ -295,7 +296,12 @@ impl RestClient {
         self.parse_response(response).await
     }
 
-    async fn post_json<T, B>(&self, tenant_id: TenantId, path: &str, body: &B) -> Result<T, ApiClientError>
+    async fn post_json<T, B>(
+        &self,
+        tenant_id: TenantId,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiClientError>
     where
         T: serde::de::DeserializeOwned,
         B: serde::Serialize + ?Sized,
@@ -332,7 +338,12 @@ impl RestClient {
             "PUT" => self.client.put(&url),
             "PATCH" => self.client.patch(&url),
             "DELETE" => self.client.delete(&url),
-            _ => return Err(ApiClientError::InvalidResponse(format!("Unsupported method: {}", method))),
+            _ => {
+                return Err(ApiClientError::InvalidResponse(format!(
+                    "Unsupported method: {}",
+                    method
+                )))
+            }
         };
 
         let response = request
@@ -437,8 +448,10 @@ impl WsClient {
     pub async fn connect(
         &self,
         tenant_id: TenantId,
-    ) -> Result<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, ApiClientError>
-    {
+    ) -> Result<
+        WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        ApiClientError,
+    > {
         let mut request = Request::builder()
             .uri(self.endpoint.clone())
             .body(())
@@ -510,13 +523,16 @@ impl AuthHeaders {
         }
         headers.insert(
             HeaderName::from_static("x-tenant-id"),
-            HeaderValue::from_str(&tenant_id.as_uuid().to_string()).unwrap_or_else(|_| HeaderValue::from_static("")),
+            HeaderValue::from_str(&tenant_id.as_uuid().to_string())
+                .unwrap_or_else(|_| HeaderValue::from_static("")),
         );
         headers
     }
 }
 
-fn build_auth_headers(auth: &crate::config::ClientCredentials) -> Result<HeaderMap, ApiClientError> {
+fn build_auth_headers(
+    auth: &crate::config::ClientCredentials,
+) -> Result<HeaderMap, ApiClientError> {
     let mut headers = HeaderMap::new();
     if let Some(api_key) = &auth.api_key {
         headers.insert(

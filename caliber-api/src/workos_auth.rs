@@ -424,11 +424,17 @@ pub struct SsoAuthorizationParams {
 /// This creates a URL that redirects the user to WorkOS for authentication.
 /// After authentication, WorkOS will redirect back to the callback URL
 /// with an authorization code.
-pub fn generate_authorization_url(config: &WorkOsConfig, params: &SsoAuthorizationParams) -> String {
+pub fn generate_authorization_url(
+    config: &WorkOsConfig,
+    params: &SsoAuthorizationParams,
+) -> String {
     let mut url = String::from("https://api.workos.com/sso/authorize?");
 
     // Required parameters
-    url.push_str(&format!("client_id={}", urlencoding::encode(&config.client_id)));
+    url.push_str(&format!(
+        "client_id={}",
+        urlencoding::encode(&config.client_id)
+    ));
     url.push_str(&format!(
         "&redirect_uri={}",
         urlencoding::encode(&config.redirect_uri)
@@ -439,7 +445,10 @@ pub fn generate_authorization_url(config: &WorkOsConfig, params: &SsoAuthorizati
     if let Some(ref connection) = params.connection {
         url.push_str(&format!("&connection={}", urlencoding::encode(connection)));
     } else if let Some(ref organization) = params.organization {
-        url.push_str(&format!("&organization={}", urlencoding::encode(organization)));
+        url.push_str(&format!(
+            "&organization={}",
+            urlencoding::encode(organization)
+        ));
     } else {
         // Default to Google OAuth provider
         url.push_str("&provider=GoogleOAuth");

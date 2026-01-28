@@ -1,9 +1,9 @@
 //! Message queue view.
 
 use crate::state::App;
-use caliber_core::EntityIdType;
 use crate::theme::message_priority_color;
 use crate::widgets::DetailPanel;
+use caliber_core::EntityIdType;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Style,
@@ -23,16 +23,16 @@ pub fn render(f: &mut Frame<'_>, app: &App, area: ratatui::layout::Rect) {
         .messages
         .iter()
         .map(|message| {
-            let style = Style::default().fg(message_priority_color(message.priority.as_db_str(), &app.theme));
+            let style = Style::default().fg(message_priority_color(
+                message.priority.as_db_str(),
+                &app.theme,
+            ));
             let to = message
                 .recipient_id
                 .map(|id| id.to_string())
                 .or_else(|| message.to_agent_type.clone())
                 .unwrap_or_else(|| "unspecified".to_string());
-            let label = format!(
-                "{} -> {} [{}]",
-                message.sender_id, to, message.priority
-            );
+            let label = format!("{} -> {} [{}]", message.sender_id, to, message.priority);
             ListItem::new(Line::from(Span::styled(label, style)))
         })
         .collect();

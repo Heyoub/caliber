@@ -120,7 +120,6 @@ impl ContextPackage {
     }
 }
 
-
 // ============================================================================
 // CONTEXT WINDOW AND SECTION (Task 7.2)
 // ============================================================================
@@ -388,7 +387,8 @@ impl ContextWindow {
     pub fn add_section(&mut self, section: ContextSection) -> bool {
         if section.token_count <= self.remaining_tokens() {
             self.used_tokens += section.token_count;
-            self.included_sections.push(format!("{:?}", section.section_type));
+            self.included_sections
+                .push(format!("{:?}", section.section_type));
             self.assembly_trace.push(AssemblyDecision {
                 timestamp: Utc::now(),
                 action: AssemblyAction::Include,
@@ -437,7 +437,8 @@ impl ContextWindow {
 
         self.used_tokens += section.token_count;
         self.truncated = true;
-        self.included_sections.push(format!("{:?}", section.section_type));
+        self.included_sections
+            .push(format!("{:?}", section.section_type));
         self.assembly_trace.push(AssemblyDecision {
             timestamp: Utc::now(),
             action: AssemblyAction::Truncate,
@@ -468,7 +469,6 @@ impl std::fmt::Display for ContextWindow {
     }
 }
 
-
 // ============================================================================
 // TOKEN UTILITIES (Task 7.3)
 // ============================================================================
@@ -480,7 +480,6 @@ impl std::fmt::Display for ContextWindow {
 fn estimate_tokens(text: &str) -> i32 {
     crate::llm::estimate_tokens(text)
 }
-
 
 // ============================================================================
 // SMART TRUNCATION (Task 7.4)
@@ -555,7 +554,6 @@ fn safe_truncate(s: &str, max_chars: usize) -> &str {
 
     &s[..end]
 }
-
 
 // ============================================================================
 // CONTEXT ASSEMBLER (Task 7.5)
@@ -707,8 +705,11 @@ impl ContextAssembler {
         if let Some(ref kernel) = pkg.kernel_config {
             let content = self.format_kernel_config(kernel);
             if !content.is_empty() {
-                let mut section =
-                    ContextSection::new(SectionType::Persona, content, self.config.section_priorities.persona);
+                let mut section = ContextSection::new(
+                    SectionType::Persona,
+                    content,
+                    self.config.section_priorities.persona,
+                );
                 section.compressible = false; // Persona shouldn't be truncated
                 sections.push(section);
             }
@@ -716,8 +717,11 @@ impl ContextAssembler {
 
         // Add user input section
         if let Some(ref input) = pkg.user_input {
-            let mut section =
-                ContextSection::new(SectionType::User, input.clone(), self.config.section_priorities.user);
+            let mut section = ContextSection::new(
+                SectionType::User,
+                input.clone(),
+                self.config.section_priorities.user,
+            );
             section.compressible = false; // User input shouldn't be truncated
             sections.push(section);
         }
@@ -840,7 +844,6 @@ impl ContextAssembler {
         self.config.token_budget
     }
 }
-
 
 // ============================================================================
 // TOKEN BUDGET SEGMENTATION (Phase 4)
@@ -1157,7 +1160,6 @@ pub enum SegmentBudgetError {
     },
 }
 
-
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -1166,7 +1168,7 @@ pub enum SegmentBudgetError {
 mod tests {
     use super::*;
     use crate::{
-        ContextPersistence, NoteId, NoteType, RetryConfig, SectionPriorities, TTL, ValidationMode,
+        ContextPersistence, NoteId, NoteType, RetryConfig, SectionPriorities, ValidationMode, TTL,
     };
     use std::time::Duration;
 
@@ -1319,8 +1321,9 @@ mod tests {
         let config = make_test_config(10);
         let assembler = ContextAssembler::new(config)?;
 
-        let pkg = ContextPackage::new(TrajectoryId::now_v7(), ScopeId::now_v7())
-            .with_user_input("This is a very long user input that should exceed the token budget".to_string());
+        let pkg = ContextPackage::new(TrajectoryId::now_v7(), ScopeId::now_v7()).with_user_input(
+            "This is a very long user input that should exceed the token budget".to_string(),
+        );
 
         let window = assembler.assemble(pkg)?;
         // Should respect budget
@@ -1338,7 +1341,7 @@ mod prop_tests {
     use super::*;
     use crate::{
         ArtifactType, ContextPersistence, ExtractionMethod, NoteType, Provenance, RetryConfig,
-        SectionPriorities, TTL, ValidationMode,
+        SectionPriorities, ValidationMode, TTL,
     };
     use proptest::prelude::*;
     use std::time::Duration;
@@ -1397,28 +1400,35 @@ mod prop_tests {
     }
 
     fn arb_artifact() -> impl Strategy<Value = Artifact> {
-        (any::<[u8; 16]>(), any::<[u8; 16]>(), any::<[u8; 16]>(), ".*", ".*").prop_map(
-            |(id_bytes, traj_bytes, scope_bytes, name, content)| Artifact {
-                artifact_id: crate::ArtifactId::new(Uuid::from_bytes(id_bytes)),
-                trajectory_id: crate::TrajectoryId::new(Uuid::from_bytes(traj_bytes)),
-                scope_id: crate::ScopeId::new(Uuid::from_bytes(scope_bytes)),
-                artifact_type: ArtifactType::Fact,
-                name,
-                content,
-                content_hash: [0u8; 32],
-                embedding: None,
-                provenance: Provenance {
-                    source_turn: 1,
-                    extraction_method: ExtractionMethod::Explicit,
-                    confidence: Some(1.0),
-                },
-                ttl: TTL::Persistent,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-                superseded_by: None,
-                metadata: None,
-            },
+        (
+            any::<[u8; 16]>(),
+            any::<[u8; 16]>(),
+            any::<[u8; 16]>(),
+            ".*",
+            ".*",
         )
+            .prop_map(
+                |(id_bytes, traj_bytes, scope_bytes, name, content)| Artifact {
+                    artifact_id: crate::ArtifactId::new(Uuid::from_bytes(id_bytes)),
+                    trajectory_id: crate::TrajectoryId::new(Uuid::from_bytes(traj_bytes)),
+                    scope_id: crate::ScopeId::new(Uuid::from_bytes(scope_bytes)),
+                    artifact_type: ArtifactType::Fact,
+                    name,
+                    content,
+                    content_hash: [0u8; 32],
+                    embedding: None,
+                    provenance: Provenance {
+                        source_turn: 1,
+                        extraction_method: ExtractionMethod::Explicit,
+                        confidence: Some(1.0),
+                    },
+                    ttl: TTL::Persistent,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    superseded_by: None,
+                    metadata: None,
+                },
+            )
     }
 
     // ========================================================================

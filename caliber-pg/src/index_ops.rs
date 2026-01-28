@@ -21,11 +21,11 @@
 //! - Vector similarity: Use HNSW index on embedding column
 
 // Prelude provides common pgrx types and traits used throughout
-#[allow(unused_imports)]
-use pgrx::prelude::*;
-use pgrx::pg_sys;
 use pgrx::list::List;
 use pgrx::memcx::current_context;
+use pgrx::pg_sys;
+#[allow(unused_imports)]
+use pgrx::prelude::*;
 use pgrx::PgRelation;
 
 use caliber_core::{CaliberError, CaliberResult, StorageError};
@@ -65,19 +65,19 @@ pub mod operator_oids {
 
     /// UUID equality operator (uuid = uuid)
     pub const UUID_EQ: pg_sys::Oid = pg_sys::Oid::from_u32(2972);
-    
+
     /// Text equality operator (text = text)
     pub const TEXT_EQ: pg_sys::Oid = pg_sys::Oid::from_u32(98);
-    
+
     /// Int4 equality operator (int4 = int4)
     pub const INT4_EQ: pg_sys::Oid = pg_sys::Oid::from_u32(96);
-    
+
     /// Int8 equality operator (int8 = int8)
     pub const INT8_EQ: pg_sys::Oid = pg_sys::Oid::from_u32(410);
-    
+
     /// Boolean equality operator (bool = bool)
     pub const BOOL_EQ: pg_sys::Oid = pg_sys::Oid::from_u32(91);
-    
+
     /// Timestamp with timezone equality
     pub const TIMESTAMPTZ_EQ: pg_sys::Oid = pg_sys::Oid::from_u32(1320);
 }
@@ -140,11 +140,12 @@ impl IndexRelation {
 /// * `Err(CaliberError)` - If the index cannot be opened
 pub fn open_index(name: &str) -> CaliberResult<IndexRelation> {
     // In pgrx 0.16+, this returns Result<PgRelation, &str>
-    let rel = PgRelation::open_with_name_and_share_lock(name)
-        .map_err(|e| CaliberError::Storage(StorageError::IndexError {
+    let rel = PgRelation::open_with_name_and_share_lock(name).map_err(|e| {
+        CaliberError::Storage(StorageError::IndexError {
             index_name: name.to_string(),
             reason: format!("Failed to open index: {}", e),
-        }))?;
+        })
+    })?;
 
     if rel.as_ptr().is_null() {
         return Err(CaliberError::Storage(StorageError::IndexError {
@@ -165,9 +166,7 @@ pub fn open_index(name: &str) -> CaliberResult<IndexRelation> {
 /// * `Ok(IndexRelation)` - The opened index
 /// * `Err(CaliberError)` - If the index cannot be opened
 pub fn open_index_by_oid(oid: pg_sys::Oid) -> CaliberResult<IndexRelation> {
-    let rel = unsafe {
-        PgRelation::with_lock(oid, pg_sys::AccessShareLock as pg_sys::LOCKMODE)
-    };
+    let rel = unsafe { PgRelation::with_lock(oid, pg_sys::AccessShareLock as pg_sys::LOCKMODE) };
 
     if rel.as_ptr().is_null() {
         return Err(CaliberError::Storage(StorageError::IndexError {
@@ -228,8 +227,8 @@ pub fn get_index_list(rel: &HeapRelation) -> Vec<pg_sys::Oid> {
 pub unsafe fn update_indexes_for_insert(
     rel: &HeapRelation,
     tuple: *mut pg_sys::HeapTupleData,
-    _values: &[pg_sys::Datum],  // Reserved for manual index updates if needed
-    _nulls: &[bool],            // Reserved for manual index updates if needed
+    _values: &[pg_sys::Datum], // Reserved for manual index updates if needed
+    _nulls: &[bool],           // Reserved for manual index updates if needed
 ) -> CaliberResult<()> {
     if tuple.is_null() {
         return Err(CaliberError::Storage(StorageError::IndexError {
@@ -243,11 +242,7 @@ pub unsafe fn update_indexes_for_insert(
 
     if !index_info.is_null() {
         // Insert into all indexes using the WithInfo variant
-        pg_sys::CatalogTupleInsertWithInfo(
-            rel.as_ref().as_ptr(),
-            tuple,
-            index_info,
-        );
+        pg_sys::CatalogTupleInsertWithInfo(rel.as_ref().as_ptr(), tuple, index_info);
 
         // Close the index info
         pg_sys::CatalogCloseIndexes(index_info);
@@ -339,10 +334,8 @@ impl Iterator for IndexScanner {
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             // Get the next TID from the index
-            let tid = pg_sys::index_getnext_tid(
-                self.scan,
-                pg_sys::ScanDirection::ForwardScanDirection,
-            );
+            let tid =
+                pg_sys::index_getnext_tid(self.scan, pg_sys::ScanDirection::ForwardScanDirection);
 
             if tid.is_null() {
                 return None;
@@ -398,7 +391,7 @@ pub fn index_lookup_single(
     id_datum: pg_sys::Datum,
 ) -> Option<(*mut pg_sys::HeapTupleData, pg_sys::ItemPointerData)> {
     let snapshot = crate::heap_ops::get_active_snapshot();
-    
+
     // Initialize scan key for equality on first column
     let mut scan_key = pg_sys::ScanKeyData::default();
     init_scan_key(
@@ -409,13 +402,7 @@ pub fn index_lookup_single(
         id_datum,
     );
 
-    let mut scanner = unsafe { IndexScanner::new(
-        heap_rel,
-        index_rel,
-        snapshot,
-        1,
-        &mut scan_key,
-    ) };
+    let mut scanner = unsafe { IndexScanner::new(heap_rel, index_rel, snapshot, 1, &mut scan_key) };
 
     if let Some(tuple) = scanner.next() {
         let tid = scanner.current_tid()?;

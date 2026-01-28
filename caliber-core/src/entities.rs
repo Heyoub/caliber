@@ -1,20 +1,45 @@
 //! Core entity structures
 
 use crate::{
-    // ID types
-    TrajectoryId, ScopeId, ArtifactId, NoteId, TurnId, AgentId,
-    MessageId, DelegationId, HandoffId, ConflictId,
     identity::EntityIdType,
-    // Other types
-    EntityType, TrajectoryStatus, ArtifactType, NoteType, TurnRole,
-    TTL, AbstractionLevel, ExtractionMethod, OutcomeStatus,
-    EmbeddingVector, ContentHash, RawContent, Timestamp,
+    AbstractionLevel,
+    AgentId,
     // Agent-related types
-    AgentStatus, MemoryAccess,
-    MessageType, MessagePriority,
-    DelegationStatus, DelegationResult, DelegationResultStatus,
-    HandoffStatus, HandoffReason,
-    ConflictType, ConflictStatus, ResolutionStrategy,
+    AgentStatus,
+    ArtifactId,
+    ArtifactType,
+    ConflictId,
+    ConflictStatus,
+    ConflictType,
+    ContentHash,
+    DelegationId,
+    DelegationResult,
+    DelegationResultStatus,
+    DelegationStatus,
+    EmbeddingVector,
+    // Other types
+    EntityType,
+    ExtractionMethod,
+    HandoffId,
+    HandoffReason,
+    HandoffStatus,
+    MemoryAccess,
+    MessageId,
+    MessagePriority,
+    MessageType,
+    NoteId,
+    NoteType,
+    OutcomeStatus,
+    RawContent,
+    ResolutionStrategy,
+    ScopeId,
+    Timestamp,
+    // ID types
+    TrajectoryId,
+    TrajectoryStatus,
+    TurnId,
+    TurnRole,
+    TTL,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -26,7 +51,7 @@ use uuid::Uuid;
 pub struct EntityRef {
     pub entity_type: EntityType,
     #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
-    pub id: Uuid,  // Keep as Uuid - this is intentional, represents ANY entity
+    pub id: Uuid, // Keep as Uuid - this is intentional, represents ANY entity
 }
 
 /// Trajectory - top-level task container.
@@ -445,7 +470,12 @@ pub struct DelegatedTask {
 
 impl DelegatedTask {
     /// Create a delegation to a specific agent.
-    pub fn to_agent(from: AgentId, to: AgentId, trajectory: TrajectoryId, description: &str) -> Self {
+    pub fn to_agent(
+        from: AgentId,
+        to: AgentId,
+        trajectory: TrajectoryId,
+        description: &str,
+    ) -> Self {
         Self {
             delegation_id: DelegationId::new(Uuid::now_v7()),
             delegator_agent_id: from,
@@ -468,7 +498,12 @@ impl DelegatedTask {
     }
 
     /// Create a delegation to an agent type.
-    pub fn to_type(from: AgentId, agent_type: &str, trajectory: TrajectoryId, description: &str) -> Self {
+    pub fn to_type(
+        from: AgentId,
+        agent_type: &str,
+        trajectory: TrajectoryId,
+        description: &str,
+    ) -> Self {
         Self {
             delegation_id: DelegationId::new(Uuid::now_v7()),
             delegator_agent_id: from,
@@ -559,7 +594,13 @@ pub struct AgentHandoff {
 
 impl AgentHandoff {
     /// Create a handoff to a specific agent.
-    pub fn to_agent(from: AgentId, to: AgentId, trajectory: TrajectoryId, scope: ScopeId, reason: HandoffReason) -> Self {
+    pub fn to_agent(
+        from: AgentId,
+        to: AgentId,
+        trajectory: TrajectoryId,
+        scope: ScopeId,
+        reason: HandoffReason,
+    ) -> Self {
         Self {
             handoff_id: HandoffId::new(Uuid::now_v7()),
             from_agent_id: from,
@@ -581,7 +622,13 @@ impl AgentHandoff {
     }
 
     /// Create a handoff to an agent type.
-    pub fn to_type(from: AgentId, agent_type: &str, trajectory: TrajectoryId, scope: ScopeId, reason: HandoffReason) -> Self {
+    pub fn to_type(
+        from: AgentId,
+        agent_type: &str,
+        trajectory: TrajectoryId,
+        scope: ScopeId,
+        reason: HandoffReason,
+    ) -> Self {
         Self {
             handoff_id: HandoffId::new(Uuid::now_v7()),
             from_agent_id: from,
@@ -972,9 +1019,10 @@ mod tests {
         let to = AgentId::now_v7();
         let trajectory = TrajectoryId::now_v7();
         let scope = ScopeId::now_v7();
-        let mut handoff = AgentHandoff::to_agent(from, to, trajectory, scope, HandoffReason::Timeout)
-            .with_notes("note")
-            .with_next_steps(vec!["step1".to_string()]);
+        let mut handoff =
+            AgentHandoff::to_agent(from, to, trajectory, scope, HandoffReason::Timeout)
+                .with_notes("note")
+                .with_next_steps(vec!["step1".to_string()]);
 
         assert_eq!(handoff.status, HandoffStatus::Initiated);
         assert_eq!(handoff.handoff_notes.as_deref(), Some("note"));
@@ -988,7 +1036,8 @@ mod tests {
         assert_eq!(handoff.status, HandoffStatus::Completed);
         assert!(handoff.completed_at.is_some());
 
-        let by_type = AgentHandoff::to_type(from, "planner", trajectory, scope, HandoffReason::Failure);
+        let by_type =
+            AgentHandoff::to_type(from, "planner", trajectory, scope, HandoffReason::Failure);
         assert!(by_type.to_agent_id.is_none());
         assert_eq!(by_type.to_agent_type.as_deref(), Some("planner"));
     }
@@ -997,7 +1046,13 @@ mod tests {
     fn test_conflict_resolution_flow() {
         let item_a = Uuid::now_v7();
         let item_b = Uuid::now_v7();
-        let mut conflict = Conflict::new(ConflictType::ContradictingFact, "artifact", item_a, "note", item_b);
+        let mut conflict = Conflict::new(
+            ConflictType::ContradictingFact,
+            "artifact",
+            item_a,
+            "note",
+            item_b,
+        );
         assert_eq!(conflict.status, ConflictStatus::Detected);
 
         let agent_a = AgentId::now_v7();
