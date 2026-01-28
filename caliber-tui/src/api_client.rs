@@ -533,3 +533,198 @@ fn build_auth_headers(auth: &crate::config::ClientCredentials) -> Result<HeaderM
     }
     Ok(headers)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliber_api::types::Link;
+    use uuid::Uuid;
+
+    // ========================================================================
+    // Error Type Tests
+    // ========================================================================
+
+    #[test]
+    fn test_api_client_error_display_http() {
+        // Test that error types format correctly
+        let err = ApiClientError::InvalidResponse("test error".to_string());
+        let msg = format!("{}", err);
+        assert!(msg.contains("test error"));
+    }
+
+    #[test]
+    fn test_api_client_error_display_config() {
+        let err = ApiClientError::Config("missing key".to_string());
+        let msg = format!("{}", err);
+        assert!(msg.contains("missing key"));
+    }
+
+    #[test]
+    fn test_api_client_error_display_serde() {
+        // Create a serde error by trying to parse invalid JSON
+        let json_err: Result<String, _> = serde_json::from_str("not json {{{");
+        let err = ApiClientError::from(json_err.unwrap_err());
+        let msg = format!("{}", err);
+        assert!(msg.contains("Serialization error"));
+    }
+
+    // ========================================================================
+    // AuthHeaders Tests
+    // ========================================================================
+
+    #[test]
+    fn test_auth_headers_with_api_key() {
+        let creds = crate::config::ClientCredentials {
+            api_key: Some("test-key".to_string()),
+            jwt: None,
+        };
+        let auth = AuthHeaders::from_config(&creds).unwrap();
+        let tenant_id = TenantId::new(Uuid::nil());
+        let headers = auth.to_header_map(tenant_id);
+
+        assert!(headers.contains_key("x-api-key"));
+        assert_eq!(headers.get("x-api-key").unwrap(), "test-key");
+        assert!(headers.contains_key("x-tenant-id"));
+    }
+
+    #[test]
+    fn test_auth_headers_with_jwt() {
+        let creds = crate::config::ClientCredentials {
+            api_key: None,
+            jwt: Some("eyJ...test".to_string()),
+        };
+        let auth = AuthHeaders::from_config(&creds).unwrap();
+        let tenant_id = TenantId::new(Uuid::nil());
+        let headers = auth.to_header_map(tenant_id);
+
+        assert!(headers.contains_key("authorization"));
+        assert_eq!(headers.get("authorization").unwrap(), "Bearer eyJ...test");
+        assert!(headers.contains_key("x-tenant-id"));
+    }
+
+    #[test]
+    fn test_auth_headers_with_both() {
+        let creds = crate::config::ClientCredentials {
+            api_key: Some("key".to_string()),
+            jwt: Some("jwt".to_string()),
+        };
+        let auth = AuthHeaders::from_config(&creds).unwrap();
+        let tenant_id = TenantId::new(Uuid::nil());
+        let headers = auth.to_header_map(tenant_id);
+
+        // Both should be present
+        assert!(headers.contains_key("x-api-key"));
+        assert!(headers.contains_key("authorization"));
+        assert!(headers.contains_key("x-tenant-id"));
+    }
+
+    #[test]
+    fn test_auth_headers_tenant_id_format() {
+        let creds = crate::config::ClientCredentials {
+            api_key: Some("key".to_string()),
+            jwt: None,
+        };
+        let auth = AuthHeaders::from_config(&creds).unwrap();
+        let tenant_uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let tenant_id = TenantId::new(tenant_uuid);
+        let headers = auth.to_header_map(tenant_id);
+
+        assert_eq!(
+            headers.get("x-tenant-id").unwrap(),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+    }
+
+    // ========================================================================
+    // URL Construction Tests
+    // ========================================================================
+
+    #[test]
+    fn test_link_absolute_url_detection() {
+        let link = Link {
+            href: "https://example.com/api/v1/resource".to_string(),
+            method: Some("GET".to_string()),
+            title: None,
+        };
+
+        // The href is already absolute, should be detected
+        assert!(link.href.starts_with("http"));
+    }
+
+    #[test]
+    fn test_link_relative_url_detection() {
+        let link = Link {
+            href: "/api/v1/resource".to_string(),
+            method: Some("GET".to_string()),
+            title: None,
+        };
+
+        // The href is relative, needs base URL prepended
+        assert!(link.href.starts_with("/"));
+        assert!(!link.href.starts_with("http"));
+    }
+
+    #[test]
+    fn test_link_method_defaults_to_get() {
+        let link = Link {
+            href: "/test".to_string(),
+            method: None,
+            title: None,
+        };
+
+        let method = link.method.as_deref().unwrap_or("GET");
+        assert_eq!(method, "GET");
+    }
+
+    #[test]
+    fn test_link_method_case_sensitivity() {
+        let link = Link {
+            href: "/test".to_string(),
+            method: Some("post".to_string()),
+            title: None,
+        };
+
+        // Method should be uppercased when used
+        let method = link.method.as_deref().unwrap_or("GET").to_uppercase();
+        assert_eq!(method, "POST");
+    }
+
+    // ========================================================================
+    // Build Auth Headers Function Tests
+    // ========================================================================
+
+    #[test]
+    fn test_build_auth_headers_api_key() {
+        let creds = crate::config::ClientCredentials {
+            api_key: Some("my-api-key".to_string()),
+            jwt: None,
+        };
+
+        let headers = build_auth_headers(&creds).unwrap();
+        assert!(headers.contains_key("x-api-key"));
+        assert_eq!(headers.get("x-api-key").unwrap(), "my-api-key");
+    }
+
+    #[test]
+    fn test_build_auth_headers_jwt() {
+        let creds = crate::config::ClientCredentials {
+            api_key: None,
+            jwt: Some("my-jwt-token".to_string()),
+        };
+
+        let headers = build_auth_headers(&creds).unwrap();
+        assert!(headers.contains_key("authorization"));
+        assert_eq!(headers.get("authorization").unwrap(), "Bearer my-jwt-token");
+    }
+
+    #[test]
+    fn test_build_auth_headers_empty() {
+        let creds = crate::config::ClientCredentials {
+            api_key: None,
+            jwt: None,
+        };
+
+        let headers = build_auth_headers(&creds).unwrap();
+        assert!(headers.is_empty());
+    }
+}

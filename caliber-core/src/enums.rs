@@ -674,3 +674,810 @@ impl fmt::Display for SummarizationTrigger {
         }
     }
 }
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // Serde Roundtrip Tests - TTL
+    // ========================================================================
+
+    #[test]
+    fn test_ttl_persistent_serde_roundtrip() {
+        let original = TTL::Persistent;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_session_serde_roundtrip() {
+        let original = TTL::Session;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_scope_serde_roundtrip() {
+        let original = TTL::Scope;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_duration_serde_roundtrip() {
+        let original = TTL::Duration(3600000);
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_ephemeral_serde_roundtrip() {
+        let original = TTL::Ephemeral;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_max_serde_roundtrip() {
+        let original = TTL::Max(1000);
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_short_term_serde_roundtrip() {
+        let original = TTL::ShortTerm;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_medium_term_serde_roundtrip() {
+        let original = TTL::MediumTerm;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_long_term_serde_roundtrip() {
+        let original = TTL::LongTerm;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_ttl_permanent_serde_roundtrip() {
+        let original = TTL::Permanent;
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: TTL = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - EntityType
+    // ========================================================================
+
+    #[test]
+    fn test_entity_type_all_variants_serde_roundtrip() {
+        let variants = [
+            EntityType::Trajectory,
+            EntityType::Scope,
+            EntityType::Artifact,
+            EntityType::Note,
+            EntityType::Turn,
+            EntityType::Lock,
+            EntityType::Message,
+            EntityType::Agent,
+            EntityType::Delegation,
+            EntityType::Handoff,
+            EntityType::Conflict,
+            EntityType::Edge,
+            EntityType::EvolutionSnapshot,
+            EntityType::SummarizationPolicy,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: EntityType = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored, "Failed for {:?}", original);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - TrajectoryStatus
+    // ========================================================================
+
+    #[test]
+    fn test_trajectory_status_all_variants_serde_roundtrip() {
+        let variants = [
+            TrajectoryStatus::Active,
+            TrajectoryStatus::Completed,
+            TrajectoryStatus::Failed,
+            TrajectoryStatus::Suspended,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: TrajectoryStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - AgentStatus
+    // ========================================================================
+
+    #[test]
+    fn test_agent_status_all_variants_serde_roundtrip() {
+        let variants = [
+            AgentStatus::Idle,
+            AgentStatus::Active,
+            AgentStatus::Blocked,
+            AgentStatus::Failed,
+            AgentStatus::Offline,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: AgentStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - ArtifactType
+    // ========================================================================
+
+    #[test]
+    fn test_artifact_type_all_variants_serde_roundtrip() {
+        let variants = [
+            ArtifactType::ErrorLog,
+            ArtifactType::CodePatch,
+            ArtifactType::DesignDecision,
+            ArtifactType::UserPreference,
+            ArtifactType::Fact,
+            ArtifactType::Constraint,
+            ArtifactType::ToolResult,
+            ArtifactType::IntermediateOutput,
+            ArtifactType::Custom,
+            ArtifactType::Code,
+            ArtifactType::Document,
+            ArtifactType::Data,
+            ArtifactType::Model,
+            ArtifactType::Config,
+            ArtifactType::Log,
+            ArtifactType::Summary,
+            ArtifactType::Decision,
+            ArtifactType::Plan,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: ArtifactType = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - ExtractionMethod
+    // ========================================================================
+
+    #[test]
+    fn test_extraction_method_all_variants_serde_roundtrip() {
+        let variants = [
+            ExtractionMethod::Explicit,
+            ExtractionMethod::Inferred,
+            ExtractionMethod::UserProvided,
+            ExtractionMethod::LlmExtraction,
+            ExtractionMethod::ToolExtraction,
+            ExtractionMethod::MemoryRecall,
+            ExtractionMethod::ExternalApi,
+            ExtractionMethod::Unknown,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: ExtractionMethod = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - NoteType
+    // ========================================================================
+
+    #[test]
+    fn test_note_type_all_variants_serde_roundtrip() {
+        let variants = [
+            NoteType::Convention,
+            NoteType::Strategy,
+            NoteType::Gotcha,
+            NoteType::Fact,
+            NoteType::Preference,
+            NoteType::Relationship,
+            NoteType::Procedure,
+            NoteType::Meta,
+            NoteType::Insight,
+            NoteType::Correction,
+            NoteType::Summary,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: NoteType = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - EdgeType
+    // ========================================================================
+
+    #[test]
+    fn test_edge_type_all_variants_serde_roundtrip() {
+        let variants = [
+            EdgeType::Supports,
+            EdgeType::Contradicts,
+            EdgeType::Supersedes,
+            EdgeType::DerivedFrom,
+            EdgeType::RelatesTo,
+            EdgeType::Temporal,
+            EdgeType::Causal,
+            EdgeType::SynthesizedFrom,
+            EdgeType::Grouped,
+            EdgeType::Compared,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: EdgeType = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - AbstractionLevel
+    // ========================================================================
+
+    #[test]
+    fn test_abstraction_level_all_variants_serde_roundtrip() {
+        let variants = [
+            AbstractionLevel::Raw,
+            AbstractionLevel::Summary,
+            AbstractionLevel::Principle,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: AbstractionLevel = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - EvolutionPhase
+    // ========================================================================
+
+    #[test]
+    fn test_evolution_phase_all_variants_serde_roundtrip() {
+        let variants = [
+            EvolutionPhase::Online,
+            EvolutionPhase::Frozen,
+            EvolutionPhase::Evolving,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: EvolutionPhase = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - SummarizationTrigger
+    // ========================================================================
+
+    #[test]
+    fn test_summarization_trigger_all_variants_serde_roundtrip() {
+        let variants = [
+            SummarizationTrigger::DosageThreshold { percent: 80 },
+            SummarizationTrigger::ScopeClose,
+            SummarizationTrigger::TurnCount { count: 10 },
+            SummarizationTrigger::ArtifactCount { count: 5 },
+            SummarizationTrigger::Manual,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: SummarizationTrigger = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - MemoryCategory
+    // ========================================================================
+
+    #[test]
+    fn test_memory_category_all_variants_serde_roundtrip() {
+        let variants = [
+            MemoryCategory::Ephemeral,
+            MemoryCategory::Working,
+            MemoryCategory::Episodic,
+            MemoryCategory::Semantic,
+            MemoryCategory::Procedural,
+            MemoryCategory::Meta,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: MemoryCategory = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - TurnRole
+    // ========================================================================
+
+    #[test]
+    fn test_turn_role_all_variants_serde_roundtrip() {
+        let variants = [
+            TurnRole::User,
+            TurnRole::Assistant,
+            TurnRole::System,
+            TurnRole::Tool,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: TurnRole = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - OutcomeStatus
+    // ========================================================================
+
+    #[test]
+    fn test_outcome_status_all_variants_serde_roundtrip() {
+        let variants = [
+            OutcomeStatus::Success,
+            OutcomeStatus::Partial,
+            OutcomeStatus::Failure,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: OutcomeStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // Serde Roundtrip Tests - FieldType
+    // ========================================================================
+
+    #[test]
+    fn test_field_type_simple_variants_serde_roundtrip() {
+        let variants = [
+            FieldType::Uuid,
+            FieldType::Text,
+            FieldType::Int,
+            FieldType::Float,
+            FieldType::Bool,
+            FieldType::Timestamp,
+            FieldType::Json,
+        ];
+
+        for original in variants {
+            let json = serde_json::to_string(&original).unwrap();
+            let restored: FieldType = serde_json::from_str(&json).unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_field_type_embedding_serde_roundtrip() {
+        let original = FieldType::Embedding { dimensions: Some(1536) };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: FieldType = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_field_type_enum_serde_roundtrip() {
+        let original = FieldType::Enum {
+            variants: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: FieldType = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_field_type_array_serde_roundtrip() {
+        let original = FieldType::Array(Box::new(FieldType::Text));
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: FieldType = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    // ========================================================================
+    // Display/FromStr Roundtrip Tests
+    // ========================================================================
+
+    #[test]
+    fn test_entity_type_display_fromstr_roundtrip() {
+        let variants = [
+            EntityType::Trajectory,
+            EntityType::Scope,
+            EntityType::Artifact,
+            EntityType::Note,
+            EntityType::Turn,
+            EntityType::Lock,
+            EntityType::Message,
+            EntityType::Agent,
+            EntityType::Delegation,
+            EntityType::Handoff,
+            EntityType::Conflict,
+            EntityType::Edge,
+            EntityType::EvolutionSnapshot,
+            EntityType::SummarizationPolicy,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: EntityType = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_trajectory_status_display_fromstr_roundtrip() {
+        let variants = [
+            TrajectoryStatus::Active,
+            TrajectoryStatus::Completed,
+            TrajectoryStatus::Failed,
+            TrajectoryStatus::Suspended,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: TrajectoryStatus = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_agent_status_display_fromstr_roundtrip() {
+        let variants = [
+            AgentStatus::Idle,
+            AgentStatus::Active,
+            AgentStatus::Blocked,
+            AgentStatus::Failed,
+            AgentStatus::Offline,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: AgentStatus = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_artifact_type_display_fromstr_roundtrip() {
+        let variants = [
+            ArtifactType::ErrorLog,
+            ArtifactType::CodePatch,
+            ArtifactType::DesignDecision,
+            ArtifactType::UserPreference,
+            ArtifactType::Fact,
+            ArtifactType::Constraint,
+            ArtifactType::ToolResult,
+            ArtifactType::IntermediateOutput,
+            ArtifactType::Custom,
+            ArtifactType::Code,
+            ArtifactType::Document,
+            ArtifactType::Data,
+            ArtifactType::Model,
+            ArtifactType::Config,
+            ArtifactType::Log,
+            ArtifactType::Summary,
+            ArtifactType::Decision,
+            ArtifactType::Plan,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: ArtifactType = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_extraction_method_display_fromstr_roundtrip() {
+        let variants = [
+            ExtractionMethod::Explicit,
+            ExtractionMethod::Inferred,
+            ExtractionMethod::UserProvided,
+            ExtractionMethod::LlmExtraction,
+            ExtractionMethod::ToolExtraction,
+            ExtractionMethod::MemoryRecall,
+            ExtractionMethod::ExternalApi,
+            ExtractionMethod::Unknown,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: ExtractionMethod = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_note_type_display_fromstr_roundtrip() {
+        let variants = [
+            NoteType::Convention,
+            NoteType::Strategy,
+            NoteType::Gotcha,
+            NoteType::Fact,
+            NoteType::Preference,
+            NoteType::Relationship,
+            NoteType::Procedure,
+            NoteType::Meta,
+            NoteType::Insight,
+            NoteType::Correction,
+            NoteType::Summary,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: NoteType = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_edge_type_display_fromstr_roundtrip() {
+        let variants = [
+            EdgeType::Supports,
+            EdgeType::Contradicts,
+            EdgeType::Supersedes,
+            EdgeType::DerivedFrom,
+            EdgeType::RelatesTo,
+            EdgeType::Temporal,
+            EdgeType::Causal,
+            EdgeType::SynthesizedFrom,
+            EdgeType::Grouped,
+            EdgeType::Compared,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: EdgeType = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_abstraction_level_display_fromstr_roundtrip() {
+        let variants = [
+            AbstractionLevel::Raw,
+            AbstractionLevel::Summary,
+            AbstractionLevel::Principle,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: AbstractionLevel = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_evolution_phase_display_fromstr_roundtrip() {
+        let variants = [
+            EvolutionPhase::Online,
+            EvolutionPhase::Frozen,
+            EvolutionPhase::Evolving,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: EvolutionPhase = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_turn_role_display_fromstr_roundtrip() {
+        let variants = [
+            TurnRole::User,
+            TurnRole::Assistant,
+            TurnRole::System,
+            TurnRole::Tool,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: TurnRole = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    #[test]
+    fn test_outcome_status_display_fromstr_roundtrip() {
+        let variants = [
+            OutcomeStatus::Success,
+            OutcomeStatus::Partial,
+            OutcomeStatus::Failure,
+        ];
+
+        for original in variants {
+            let string = original.to_string();
+            let restored: OutcomeStatus = string.parse().unwrap();
+            assert_eq!(original, restored);
+        }
+    }
+
+    // ========================================================================
+    // FromStr with Aliases Tests
+    // ========================================================================
+
+    #[test]
+    fn test_abstraction_level_aliases() {
+        // "raw" and "l0" should both parse to Raw
+        assert_eq!("raw".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Raw);
+        assert_eq!("l0".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Raw);
+
+        // "summary" and "l1" should both parse to Summary
+        assert_eq!("summary".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Summary);
+        assert_eq!("l1".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Summary);
+
+        // "principle" and "l2" should both parse to Principle
+        assert_eq!("principle".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Principle);
+        assert_eq!("l2".parse::<AbstractionLevel>().unwrap(), AbstractionLevel::Principle);
+    }
+
+    #[test]
+    fn test_trajectory_status_aliases() {
+        assert_eq!("completed".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Completed);
+        assert_eq!("complete".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Completed);
+        assert_eq!("failed".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Failed);
+        assert_eq!("failure".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Failed);
+    }
+
+    #[test]
+    fn test_evolution_phase_aliases() {
+        assert_eq!("frozen".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Frozen);
+        assert_eq!("freeze".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Frozen);
+        assert_eq!("evolving".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Evolving);
+        assert_eq!("evolve".parse::<EvolutionPhase>().unwrap(), EvolutionPhase::Evolving);
+    }
+
+    // ========================================================================
+    // Default Implementation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_agent_status_default() {
+        assert_eq!(AgentStatus::default(), AgentStatus::Idle);
+    }
+
+    #[test]
+    fn test_extraction_method_default() {
+        assert_eq!(ExtractionMethod::default(), ExtractionMethod::Unknown);
+    }
+
+    #[test]
+    fn test_abstraction_level_default() {
+        assert_eq!(AbstractionLevel::default(), AbstractionLevel::Raw);
+    }
+
+    #[test]
+    fn test_evolution_phase_default() {
+        assert_eq!(EvolutionPhase::default(), EvolutionPhase::Online);
+    }
+
+    // ========================================================================
+    // AgentStatus Business Logic Tests
+    // ========================================================================
+
+    #[test]
+    fn test_agent_status_can_accept_work() {
+        assert!(AgentStatus::Idle.can_accept_work());
+        assert!(!AgentStatus::Active.can_accept_work());
+        assert!(!AgentStatus::Blocked.can_accept_work());
+        assert!(!AgentStatus::Failed.can_accept_work());
+        assert!(!AgentStatus::Offline.can_accept_work());
+    }
+
+    #[test]
+    fn test_agent_status_as_db_str() {
+        assert_eq!(AgentStatus::Idle.as_db_str(), "Idle");
+        assert_eq!(AgentStatus::Active.as_db_str(), "Active");
+        assert_eq!(AgentStatus::Blocked.as_db_str(), "Blocked");
+        assert_eq!(AgentStatus::Failed.as_db_str(), "Failed");
+        assert_eq!(AgentStatus::Offline.as_db_str(), "Offline");
+    }
+
+    #[test]
+    fn test_agent_status_from_db_str() {
+        assert_eq!(AgentStatus::from_db_str("idle").unwrap(), AgentStatus::Idle);
+        assert_eq!(AgentStatus::from_db_str("ACTIVE").unwrap(), AgentStatus::Active);
+        assert_eq!(AgentStatus::from_db_str("Blocked").unwrap(), AgentStatus::Blocked);
+        assert!(AgentStatus::from_db_str("invalid").is_err());
+    }
+
+    // ========================================================================
+    // Invalid Parse Tests
+    // ========================================================================
+
+    #[test]
+    fn test_entity_type_invalid_parse() {
+        assert!("invalid".parse::<EntityType>().is_err());
+        assert!("".parse::<EntityType>().is_err());
+    }
+
+    #[test]
+    fn test_trajectory_status_invalid_parse() {
+        assert!("invalid".parse::<TrajectoryStatus>().is_err());
+    }
+
+    #[test]
+    fn test_artifact_type_invalid_parse() {
+        assert!("invalid".parse::<ArtifactType>().is_err());
+    }
+
+    #[test]
+    fn test_note_type_invalid_parse() {
+        assert!("invalid".parse::<NoteType>().is_err());
+    }
+
+    #[test]
+    fn test_edge_type_invalid_parse() {
+        assert!("invalid".parse::<EdgeType>().is_err());
+    }
+
+    // ========================================================================
+    // Case Insensitivity Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_case_insensitive() {
+        assert_eq!("ACTIVE".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Active);
+        assert_eq!("active".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Active);
+        assert_eq!("Active".parse::<TrajectoryStatus>().unwrap(), TrajectoryStatus::Active);
+        assert_eq!("TRAJECTORY".parse::<EntityType>().unwrap(), EntityType::Trajectory);
+        assert_eq!("trajectory".parse::<EntityType>().unwrap(), EntityType::Trajectory);
+    }
+
+    // ========================================================================
+    // Error Type Tests
+    // ========================================================================
+
+    #[test]
+    fn test_agent_status_parse_error_display() {
+        let err = AgentStatusParseError("invalid_status".to_string());
+        let msg = format!("{}", err);
+        assert!(msg.contains("invalid_status"));
+        assert!(msg.contains("Invalid agent status"));
+    }
+}

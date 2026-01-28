@@ -534,6 +534,36 @@ jobs:
             load-test-*.json
           retention-days: 30
 
+  test-pg-extension:
+    name: Test (PostgreSQL Extension)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pgrx
+
+      - name: Install PostgreSQL 18 dev headers
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-server-dev-18
+
+      - name: Install cargo-pgrx
+        run: cargo install cargo-pgrx --version 0.16.1 --locked
+
+      - name: Initialize pgrx
+        run: cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+
+      - name: Run caliber-pg tests
+        run: cargo pgrx test pg18 --package caliber-pg
+
   test-mutation:
     name: Test (Mutation)
     runs-on: ubuntu-latest

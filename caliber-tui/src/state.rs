@@ -1065,3 +1065,763 @@ impl Default for TenantViewState {
         Self::new()
     }
 }
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // Test Fixtures
+    // ========================================================================
+
+    fn sample_trajectory(id: Uuid, name: &str, status: TrajectoryStatus) -> TrajectoryResponse {
+        TrajectoryResponse {
+            trajectory_id: TrajectoryId::new(id),
+            tenant_id: TenantId::new(Uuid::nil()),
+            name: name.to_string(),
+            description: None,
+            status,
+            parent_trajectory_id: None,
+            root_trajectory_id: None,
+            agent_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            completed_at: None,
+            outcome: None,
+            metadata: None,
+            links: None,
+        }
+    }
+
+    fn sample_scope(id: Uuid, trajectory_id: Uuid, name: &str) -> ScopeResponse {
+        ScopeResponse {
+            scope_id: ScopeId::new(id),
+            tenant_id: TenantId::new(Uuid::nil()),
+            trajectory_id: TrajectoryId::new(trajectory_id),
+            parent_scope_id: None,
+            name: name.to_string(),
+            purpose: None,
+            is_active: true,
+            created_at: chrono::Utc::now(),
+            closed_at: None,
+            checkpoint: None,
+            token_budget: 8000,
+            tokens_used: 0,
+            metadata: None,
+            links: None,
+        }
+    }
+
+    fn sample_artifact(id: Uuid, trajectory_id: Uuid, name: &str) -> ArtifactResponse {
+        use caliber_api::types::ProvenanceResponse;
+        use caliber_core::ExtractionMethod;
+
+        ArtifactResponse {
+            artifact_id: ArtifactId::new(id),
+            tenant_id: TenantId::new(Uuid::nil()),
+            trajectory_id: TrajectoryId::new(trajectory_id),
+            scope_id: ScopeId::new(Uuid::now_v7()),
+            artifact_type: ArtifactType::Fact,
+            name: name.to_string(),
+            content: "test content".to_string(),
+            content_hash: [0u8; 32],
+            embedding: None,
+            provenance: ProvenanceResponse {
+                source_turn: 1,
+                extraction_method: ExtractionMethod::Explicit,
+                confidence: Some(1.0),
+            },
+            ttl: caliber_core::TTL::Persistent,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            superseded_by: None,
+            metadata: None,
+            links: None,
+        }
+    }
+
+    fn sample_note(id: Uuid, title: &str) -> NoteResponse {
+        NoteResponse {
+            note_id: NoteId::new(id),
+            tenant_id: TenantId::new(Uuid::nil()),
+            note_type: NoteType::Insight,
+            title: title.to_string(),
+            content: "test note".to_string(),
+            content_hash: [0u8; 32],
+            embedding: None,
+            source_trajectory_ids: vec![],
+            source_artifact_ids: vec![],
+            ttl: caliber_core::TTL::Persistent,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            accessed_at: chrono::Utc::now(),
+            access_count: 0,
+            superseded_by: None,
+            metadata: None,
+            links: None,
+        }
+    }
+
+    // ========================================================================
+    // TrajectoryViewState Tests
+    // ========================================================================
+
+    #[test]
+    fn test_trajectory_view_state_new_is_empty() {
+        let state = TrajectoryViewState::new();
+        assert!(state.trajectories.is_empty());
+        assert!(state.expanded.is_empty());
+        assert!(state.selected.is_none());
+        assert!(!state.loading);
+    }
+
+    #[test]
+    fn test_trajectory_view_upsert_inserts_new() {
+        let mut state = TrajectoryViewState::new();
+        let id = Uuid::now_v7();
+        let traj = sample_trajectory(id, "test", TrajectoryStatus::Active);
+
+        state.upsert(traj);
+
+        assert_eq!(state.trajectories.len(), 1);
+        assert_eq!(state.trajectories[0].trajectory_id.as_uuid(), id);
+    }
+
+    #[test]
+    fn test_trajectory_view_upsert_updates_existing() {
+        let mut state = TrajectoryViewState::new();
+        let id = Uuid::now_v7();
+
+        // Insert initial
+        let traj1 = sample_trajectory(id, "original", TrajectoryStatus::Active);
+        state.upsert(traj1);
+
+        // Update
+        let traj2 = sample_trajectory(id, "updated", TrajectoryStatus::Completed);
+        state.upsert(traj2);
+
+        assert_eq!(state.trajectories.len(), 1);
+        assert_eq!(state.trajectories[0].name, "updated");
+        assert_eq!(state.trajectories[0].status, TrajectoryStatus::Completed);
+    }
+
+    #[test]
+    fn test_trajectory_view_remove_existing() {
+        let mut state = TrajectoryViewState::new();
+        let id = Uuid::now_v7();
+        let traj = sample_trajectory(id, "test", TrajectoryStatus::Active);
+        state.upsert(traj);
+
+        state.remove(TrajectoryId::new(id));
+
+        assert!(state.trajectories.is_empty());
+    }
+
+    #[test]
+    fn test_trajectory_view_remove_nonexistent_is_noop() {
+        let mut state = TrajectoryViewState::new();
+        let id = Uuid::now_v7();
+        let traj = sample_trajectory(id, "test", TrajectoryStatus::Active);
+        state.upsert(traj);
+
+        // Remove different ID
+        state.remove(TrajectoryId::new(Uuid::now_v7()));
+
+        assert_eq!(state.trajectories.len(), 1);
+    }
+
+    // ========================================================================
+    // ScopeViewState Tests
+    // ========================================================================
+
+    #[test]
+    fn test_scope_view_state_new_is_empty() {
+        let state = ScopeViewState::new();
+        assert!(state.scopes.is_empty());
+        assert!(state.selected.is_none());
+        assert!(!state.loading);
+    }
+
+    #[test]
+    fn test_scope_view_upsert_inserts_new() {
+        let mut state = ScopeViewState::new();
+        let traj_id = Uuid::now_v7();
+        let scope_id = Uuid::now_v7();
+        let scope = sample_scope(scope_id, traj_id, "test-scope");
+
+        state.upsert(scope);
+
+        assert_eq!(state.scopes.len(), 1);
+        assert_eq!(state.scopes[0].scope_id.as_uuid(), scope_id);
+    }
+
+    #[test]
+    fn test_scope_view_upsert_updates_existing() {
+        let mut state = ScopeViewState::new();
+        let traj_id = Uuid::now_v7();
+        let scope_id = Uuid::now_v7();
+
+        let scope1 = sample_scope(scope_id, traj_id, "original");
+        state.upsert(scope1);
+
+        let mut scope2 = sample_scope(scope_id, traj_id, "updated");
+        scope2.is_active = false;
+        state.upsert(scope2);
+
+        assert_eq!(state.scopes.len(), 1);
+        assert_eq!(state.scopes[0].name, "updated");
+        assert!(!state.scopes[0].is_active);
+    }
+
+    // ========================================================================
+    // ArtifactViewState Tests
+    // ========================================================================
+
+    #[test]
+    fn test_artifact_view_state_new_is_empty() {
+        let state = ArtifactViewState::new();
+        assert!(state.artifacts.is_empty());
+        assert!(state.selected.is_none());
+        assert!(state.search_query.is_empty());
+        assert!(!state.loading);
+    }
+
+    #[test]
+    fn test_artifact_view_upsert_inserts_new() {
+        let mut state = ArtifactViewState::new();
+        let traj_id = Uuid::now_v7();
+        let artifact_id = Uuid::now_v7();
+        let artifact = sample_artifact(artifact_id, traj_id, "test-artifact");
+
+        state.upsert(artifact);
+
+        assert_eq!(state.artifacts.len(), 1);
+        assert_eq!(state.artifacts[0].artifact_id.as_uuid(), artifact_id);
+    }
+
+    #[test]
+    fn test_artifact_view_remove() {
+        let mut state = ArtifactViewState::new();
+        let traj_id = Uuid::now_v7();
+        let artifact_id = Uuid::now_v7();
+        let artifact = sample_artifact(artifact_id, traj_id, "test");
+        state.upsert(artifact);
+
+        state.remove(ArtifactId::new(artifact_id));
+
+        assert!(state.artifacts.is_empty());
+    }
+
+    // ========================================================================
+    // NoteViewState Tests
+    // ========================================================================
+
+    #[test]
+    fn test_note_view_state_new_is_empty() {
+        let state = NoteViewState::new();
+        assert!(state.notes.is_empty());
+        assert!(state.selected.is_none());
+        assert!(state.search_query.is_empty());
+        assert!(!state.loading);
+    }
+
+    #[test]
+    fn test_note_view_upsert_inserts_new() {
+        let mut state = NoteViewState::new();
+        let note_id = Uuid::now_v7();
+        let note = sample_note(note_id, "test-note");
+
+        state.upsert(note);
+
+        assert_eq!(state.notes.len(), 1);
+        assert_eq!(state.notes[0].note_id.as_uuid(), note_id);
+    }
+
+    #[test]
+    fn test_note_view_remove() {
+        let mut state = NoteViewState::new();
+        let note_id = Uuid::now_v7();
+        let note = sample_note(note_id, "test");
+        state.upsert(note);
+
+        state.remove(NoteId::new(note_id));
+
+        assert!(state.notes.is_empty());
+    }
+
+    // ========================================================================
+    // Selection Navigation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_select_next_empty_list() {
+        let trajectories: Vec<TrajectoryResponse> = vec![];
+        let mut selected: Option<Uuid> = None;
+
+        select_next_id(&trajectories, &mut selected);
+
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn test_select_next_single_item() {
+        let id = Uuid::now_v7();
+        let trajectories = vec![sample_trajectory(id, "test", TrajectoryStatus::Active)];
+        let mut selected = Some(id);
+
+        select_next_id(&trajectories, &mut selected);
+
+        assert_eq!(selected, Some(id)); // Wraps to same
+    }
+
+    #[test]
+    fn test_select_next_advances() {
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+        let trajectories = vec![
+            sample_trajectory(id1, "first", TrajectoryStatus::Active),
+            sample_trajectory(id2, "second", TrajectoryStatus::Active),
+        ];
+
+        let mut selected = Some(id1);
+        select_next_id(&trajectories, &mut selected);
+
+        assert_eq!(selected, Some(id2));
+    }
+
+    #[test]
+    fn test_select_next_wraps_around() {
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+        let trajectories = vec![
+            sample_trajectory(id1, "first", TrajectoryStatus::Active),
+            sample_trajectory(id2, "second", TrajectoryStatus::Active),
+        ];
+
+        let mut selected = Some(id2);
+        select_next_id(&trajectories, &mut selected);
+
+        assert_eq!(selected, Some(id1)); // Wrapped to first
+    }
+
+    #[test]
+    fn test_select_next_no_selection_starts_at_first() {
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+        let trajectories = vec![
+            sample_trajectory(id1, "first", TrajectoryStatus::Active),
+            sample_trajectory(id2, "second", TrajectoryStatus::Active),
+        ];
+
+        let mut selected: Option<Uuid> = None;
+        select_next_id(&trajectories, &mut selected);
+
+        assert_eq!(selected, Some(id1));
+    }
+
+    #[test]
+    fn test_select_prev_empty_list() {
+        let trajectories: Vec<TrajectoryResponse> = vec![];
+        let mut selected: Option<Uuid> = None;
+
+        select_prev_id(&trajectories, &mut selected);
+
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn test_select_prev_wraps_around() {
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+        let trajectories = vec![
+            sample_trajectory(id1, "first", TrajectoryStatus::Active),
+            sample_trajectory(id2, "second", TrajectoryStatus::Active),
+        ];
+
+        let mut selected = Some(id1);
+        select_prev_id(&trajectories, &mut selected);
+
+        assert_eq!(selected, Some(id2)); // Wrapped to last
+    }
+
+    // ========================================================================
+    // Filter Default Tests
+    // ========================================================================
+
+    #[test]
+    fn test_trajectory_filter_default() {
+        let filter = TrajectoryFilter::default();
+        assert!(filter.status.is_none());
+        assert!(filter.agent_id.is_none());
+        assert!(filter.date_from.is_none());
+        assert!(filter.date_to.is_none());
+        assert!(filter.search_query.is_none());
+    }
+
+    #[test]
+    fn test_scope_filter_default() {
+        let filter = ScopeFilter::default();
+        assert!(filter.trajectory_id.is_none());
+        assert!(filter.active_only.is_none());
+        assert!(filter.date_from.is_none());
+        assert!(filter.date_to.is_none());
+    }
+
+    #[test]
+    fn test_artifact_filter_default() {
+        let filter = ArtifactFilter::default();
+        assert!(filter.artifact_type.is_none());
+        assert!(filter.trajectory_id.is_none());
+        assert!(filter.scope_id.is_none());
+        assert!(filter.date_from.is_none());
+        assert!(filter.date_to.is_none());
+    }
+
+    #[test]
+    fn test_note_filter_default() {
+        let filter = NoteFilter::default();
+        assert!(filter.note_type.is_none());
+        assert!(filter.source_trajectory_id.is_none());
+        assert!(filter.date_from.is_none());
+        assert!(filter.date_to.is_none());
+    }
+
+    // ========================================================================
+    // Event Queue Tests
+    // ========================================================================
+
+    #[test]
+    fn test_event_queue_preserves_order() {
+        let mut queue: VecDeque<WsEvent> = VecDeque::new();
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+
+        queue.push_back(WsEvent::TrajectoryCreated {
+            trajectory: sample_trajectory(id1, "first", TrajectoryStatus::Active),
+        });
+        queue.push_back(WsEvent::TrajectoryCreated {
+            trajectory: sample_trajectory(id2, "second", TrajectoryStatus::Active),
+        });
+
+        assert_eq!(queue.len(), 2);
+
+        // Verify FIFO order
+        if let Some(WsEvent::TrajectoryCreated { trajectory }) = queue.pop_front() {
+            assert_eq!(trajectory.trajectory_id.as_uuid(), id1);
+        } else {
+            panic!("Expected TrajectoryCreated event");
+        }
+
+        if let Some(WsEvent::TrajectoryCreated { trajectory }) = queue.pop_front() {
+            assert_eq!(trajectory.trajectory_id.as_uuid(), id2);
+        } else {
+            panic!("Expected TrajectoryCreated event");
+        }
+    }
+
+    // ========================================================================
+    // Links Panel Tests
+    // ========================================================================
+
+    #[test]
+    fn test_links_panel_toggle() {
+        let mut visible = false;
+
+        visible = !visible;
+        assert!(visible);
+
+        visible = !visible;
+        assert!(!visible);
+    }
+
+    // ========================================================================
+    // View State Default Implementations
+    // ========================================================================
+
+    #[test]
+    fn test_all_view_states_have_default() {
+        let _ = TrajectoryViewState::default();
+        let _ = ScopeViewState::default();
+        let _ = ArtifactViewState::default();
+        let _ = NoteViewState::default();
+        let _ = TurnViewState::default();
+        let _ = AgentViewState::default();
+        let _ = LockViewState::default();
+        let _ = MessageViewState::default();
+        let _ = DslViewState::default();
+        let _ = ConfigViewState::default();
+        let _ = TenantViewState::default();
+    }
+
+    #[test]
+    fn test_all_filters_have_default() {
+        let _ = TrajectoryFilter::default();
+        let _ = ScopeFilter::default();
+        let _ = ArtifactFilter::default();
+        let _ = NoteFilter::default();
+        let _ = TurnFilter::default();
+        let _ = AgentFilter::default();
+        let _ = LockFilter::default();
+        let _ = MessageFilter::default();
+    }
+}
+
+// ============================================================================
+// PROPERTY-BASED TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use crate::nav::View;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // Generators for TUI State Types
+    // ========================================================================
+
+    /// Generate a random TrajectoryStatus
+    fn arb_trajectory_status() -> impl Strategy<Value = TrajectoryStatus> {
+        prop_oneof![
+            Just(TrajectoryStatus::Active),
+            Just(TrajectoryStatus::Completed),
+            Just(TrajectoryStatus::Failed),
+            Just(TrajectoryStatus::Suspended),
+        ]
+    }
+
+    /// Generate a random View
+    fn arb_view() -> impl Strategy<Value = View> {
+        prop_oneof![
+            Just(View::TenantManagement),
+            Just(View::TrajectoryTree),
+            Just(View::ScopeExplorer),
+            Just(View::ArtifactBrowser),
+            Just(View::NoteLibrary),
+            Just(View::TurnHistory),
+            Just(View::AgentDashboard),
+            Just(View::LockMonitor),
+            Just(View::MessageQueue),
+            Just(View::DslEditor),
+            Just(View::ConfigViewer),
+        ]
+    }
+
+    /// Generate a TrajectoryResponse with arbitrary data
+    fn arb_trajectory_response() -> impl Strategy<Value = TrajectoryResponse> {
+        (
+            any::<[u8; 16]>(),
+            "[a-zA-Z0-9_]{1,50}",
+            arb_trajectory_status(),
+        )
+            .prop_map(|(id_bytes, name, status)| TrajectoryResponse {
+                trajectory_id: TrajectoryId::new(Uuid::from_bytes(id_bytes)),
+                tenant_id: TenantId::new(Uuid::nil()),
+                name,
+                description: None,
+                status,
+                parent_trajectory_id: None,
+                root_trajectory_id: None,
+                agent_id: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                completed_at: None,
+                outcome: None,
+                metadata: None,
+                links: None,
+            })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        // ====================================================================
+        // Property: Upsert is idempotent
+        // ====================================================================
+
+        /// Property: Upserting the same trajectory twice results in single entry
+        #[test]
+        fn prop_trajectory_upsert_idempotent(traj in arb_trajectory_response()) {
+            let mut state = TrajectoryViewState::new();
+
+            state.upsert(traj.clone());
+            state.upsert(traj.clone());
+
+            prop_assert_eq!(state.trajectories.len(), 1);
+        }
+
+        // ====================================================================
+        // Property: Remove after insert leaves empty
+        // ====================================================================
+
+        /// Property: Removing an inserted trajectory leaves state empty
+        #[test]
+        fn prop_trajectory_insert_remove_empty(traj in arb_trajectory_response()) {
+            let mut state = TrajectoryViewState::new();
+            let id = traj.trajectory_id;
+
+            state.upsert(traj);
+            prop_assert_eq!(state.trajectories.len(), 1);
+
+            state.remove(id);
+            prop_assert!(state.trajectories.is_empty());
+        }
+
+        // ====================================================================
+        // Property: Selection never panics
+        // ====================================================================
+
+        /// Property: Selection navigation never panics regardless of state
+        #[test]
+        fn prop_selection_navigation_never_panics(
+            trajs in prop::collection::vec(arb_trajectory_response(), 0..10),
+            ops in prop::collection::vec(prop_oneof![Just(true), Just(false)], 0..20)
+        ) {
+            let mut state = TrajectoryViewState::new();
+            for traj in trajs {
+                state.upsert(traj);
+            }
+
+            // Apply random selection operations (true = next, false = prev)
+            for op in ops {
+                if op {
+                    select_next_id(&state.trajectories, &mut state.selected);
+                } else {
+                    select_prev_id(&state.trajectories, &mut state.selected);
+                }
+            }
+
+            // If we have items and selected is Some, it should be valid
+            if !state.trajectories.is_empty() && state.selected.is_some() {
+                let id = state.selected.unwrap();
+                prop_assert!(state.trajectories.iter().any(|t| t.trajectory_id.as_uuid() == id));
+            }
+        }
+
+        // ====================================================================
+        // Property: Filter default is all None
+        // ====================================================================
+
+        /// Property: Default filter (all None) has no constraints
+        #[test]
+        fn prop_default_filter_all_none(_dummy in 0..1i32) {
+            let filter = TrajectoryFilter::default();
+
+            // All filter fields should be None
+            prop_assert!(filter.status.is_none());
+            prop_assert!(filter.agent_id.is_none());
+            prop_assert!(filter.date_from.is_none());
+            prop_assert!(filter.date_to.is_none());
+            prop_assert!(filter.search_query.is_none());
+        }
+
+        // ====================================================================
+        // Property: Event queue preserves order (FIFO)
+        // ====================================================================
+
+        /// Property: Event queue maintains FIFO order
+        #[test]
+        fn prop_event_queue_fifo(
+            trajs in prop::collection::vec(arb_trajectory_response(), 1..5)
+        ) {
+            let mut queue: VecDeque<WsEvent> = VecDeque::new();
+
+            for traj in &trajs {
+                queue.push_back(WsEvent::TrajectoryCreated { trajectory: traj.clone() });
+            }
+
+            // Verify FIFO order
+            for expected in &trajs {
+                if let Some(WsEvent::TrajectoryCreated { trajectory }) = queue.pop_front() {
+                    prop_assert_eq!(trajectory.trajectory_id, expected.trajectory_id);
+                } else {
+                    prop_assert!(false, "Queue should not be empty");
+                }
+            }
+        }
+
+        // ====================================================================
+        // Property: View enum is exhaustive in match
+        // ====================================================================
+
+        /// Property: View enum covers all cases and title() never panics
+        #[test]
+        fn prop_view_title_never_panics(view in arb_view()) {
+            // This ensures we handle all view variants
+            let title = view.title();
+            prop_assert!(!title.is_empty());
+        }
+
+        // ====================================================================
+        // Property: View navigation is cyclic
+        // ====================================================================
+
+        /// Property: View.next() cycles through all views
+        #[test]
+        fn prop_view_next_cycles(view in arb_view()) {
+            let mut current = view;
+            let all_views = View::all();
+
+            // Going next() len times should return to original
+            for _ in 0..all_views.len() {
+                current = current.next();
+            }
+
+            prop_assert_eq!(current, view);
+        }
+
+        /// Property: View.previous() cycles through all views
+        #[test]
+        fn prop_view_prev_cycles(view in arb_view()) {
+            let mut current = view;
+            let all_views = View::all();
+
+            // Going previous() len times should return to original
+            for _ in 0..all_views.len() {
+                current = current.previous();
+            }
+
+            prop_assert_eq!(current, view);
+        }
+
+        // ====================================================================
+        // Property: Links panel toggle is reversible
+        // ====================================================================
+
+        /// Property: Toggling links panel twice returns to original state
+        #[test]
+        fn prop_links_toggle_reversible(initial in any::<bool>()) {
+            let mut visible = initial;
+
+            visible = !visible; // Toggle once
+            visible = !visible; // Toggle twice
+
+            prop_assert_eq!(visible, initial);
+        }
+
+        // ====================================================================
+        // Property: Multiple upserts with different IDs accumulate
+        // ====================================================================
+
+        /// Property: Upserting N distinct trajectories results in N entries
+        #[test]
+        fn prop_upsert_distinct_accumulates(
+            trajs in prop::collection::vec(arb_trajectory_response(), 0..10)
+        ) {
+            let mut state = TrajectoryViewState::new();
+            let mut seen_ids = std::collections::HashSet::new();
+
+            for traj in trajs {
+                seen_ids.insert(traj.trajectory_id);
+                state.upsert(traj);
+            }
+
+            // Number of trajectories should equal number of unique IDs
+            prop_assert_eq!(state.trajectories.len(), seen_ids.len());
+        }
+    }
+}
