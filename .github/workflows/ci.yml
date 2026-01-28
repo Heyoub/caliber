@@ -317,7 +317,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
           sudo pg_ctlcluster 16 main stop || true
           if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
             sudo pg_createcluster 18 main --start
@@ -444,7 +444,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
           sudo pg_ctlcluster 16 main stop || true
           if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
             sudo pg_createcluster 18 main --start
@@ -536,7 +536,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
           sudo pg_ctlcluster 16 main stop || true
           if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
             sudo pg_createcluster 18 main --start
@@ -646,7 +646,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
 
       - name: Install cargo-pgrx
         run: cargo install cargo-pgrx --version 0.16.1 --locked
@@ -799,7 +799,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
           sudo pg_ctlcluster 16 main stop || true
           if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
             sudo pg_createcluster 18 main --start
@@ -923,7 +923,7 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
           sudo pg_ctlcluster 16 main stop || true
           if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
             sudo pg_createcluster 18 main --start

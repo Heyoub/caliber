@@ -32,6 +32,11 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - Component + smoke test targets wired into CI/Makefile
 - Test script updates for schema reset and PG extension init
 
+### Fixed
+- Swagger UI router state wiring to avoid type inference failures during builds
+- cargo-deny config updated for current schema (removed deprecated keys)
+- CI installs PG18 server dev headers to satisfy pgrx bindgen (postgres.h)
+
 #### Documentation
 - OpenAPI regeneration policy
 - cal.toml vs mcp.json relationship

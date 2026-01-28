@@ -4,17 +4,14 @@
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
 unmaintained = "all"
 yanked = "warn"
-notice = "warn"
 ignore = [
     # Add advisory IDs to ignore here if needed
     # "RUSTSEC-0000-0000",
 ]
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -27,7 +24,6 @@ allow = [
     "MPL-2.0",
     "Unicode-DFS-2016",
 ]
-copyleft = "warn"
 confidence-threshold = 0.8
 exceptions = [
     # Allow specific crates with non-standard licenses

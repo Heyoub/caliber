@@ -5921,6 +5921,7 @@ Key abstractions:
 - Fixed CI to start Postgres 18 explicitly and route all DB connections through its port.
 - Added `protoc` to property tests and initialized `cargo-pgrx` for AI code quality checks.
 - Updated Swagger UI integration and OpenTelemetry config to match v0.31 APIs.
+- Resolved Swagger UI router type inference, updated cargo-deny config, and installed PG18 dev headers for pgrx bindgen.
 
 **Commits:**
 - `4bdb7a4` - fix(ci): stabilize pg18 and pgrx deps
