@@ -16,6 +16,15 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - Coverage regression gate (LCOV vs `.ci/coverage-baseline.txt`)
 - Version tagger workflow to create `vX.Y.Z` tags on main when root `Cargo.toml` version bumps
 - Code review bot configs: `.coderabbit.yaml` and `greptile.json` (strictness=2)
+- SBOM generation workflow (SPDX JSON artifact)
+- CodeQL analysis for JavaScript/TypeScript surfaces
+- CODEOWNERS added for CI/security ownership
+- Gitleaks secret scanning, OSV vulnerability scanning, and OpenSSF Scorecard automation
+- SLSA provenance attestations for release artifacts and images
+- Semgrep scanning workflow and OpenAPI docs build workflow
+- Fly deploy workflow (staging on main, manual production)
+- pgvector sanity checks and dashboard smoke tests in CI
+- AGENTS.md repository guidance for AI agents and CI log usage
 
 #### API & HATEOAS
 - HATEOAS links added to trajectory/scope/artifact/note responses and tests
@@ -38,6 +47,9 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - CI installs PG18 server dev headers to satisfy pgrx bindgen (postgres.h)
 - Swagger UI pinned to axum 0.7-compatible version to avoid mixed axum Router types
 - cargo-deny licenses include AGPL-3.0-or-later and MIT-0; unmaintained advisories downgraded to warnings
+- Clippy priority sorting warnings resolved using `sort_by_key` with `Reverse`
+- WorkOS webhook signature verification endpoint (feature-gated)
+- TUI error reporting enhanced with color-eyre
 
 #### Documentation
 - OpenAPI regeneration policy

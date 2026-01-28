@@ -30,3 +30,10 @@ primary_region = "iad"
     method = "GET"
     timeout = "5s"
     path = "/health/live"
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health/ready"

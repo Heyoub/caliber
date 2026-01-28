@@ -5924,6 +5924,15 @@ Key abstractions:
 - Resolved Swagger UI router type inference, updated cargo-deny config, and installed PG18 dev headers for pgrx bindgen.
 - Pinned Swagger UI to the axum 0.7-compatible release to avoid mixed axum versions in CI.
 - Allowed AGPL-3.0-or-later and MIT-0 licenses in cargo-deny and downgraded unmaintained advisories to warnings.
+- Added CODEOWNERS, SBOM generation, and CodeQL analysis (JS/TS) with least-privilege workflow permissions.
+- Replaced clippy `sort_by` warnings with `sort_by_key`/`Reverse` for consistent priority ordering.
+- Added Gitleaks, OSV-Scanner, and OpenSSF Scorecard automation for security hygiene.
+- Added SLSA provenance attestations for release artifacts and container images.
+- Added Semgrep scanning, OpenAPI docs workflow, and Fly deploy workflow (staging + manual prod).
+- Added pgvector sanity check job and dashboard smoke tests in CI.
+- Added WorkOS webhook signature verification endpoint and config template.
+- Added color-eyre to the TUI for clearer runtime error reporting.
+- Added AGENTS.md with repo-specific agent guidance and CI log flow.
 
 **Commits:**
 - `4bdb7a4` - fix(ci): stabilize pg18 and pgrx deps

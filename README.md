@@ -48,6 +48,20 @@ TMPDIR=$PWD/target/tmp cargo clippy --workspace --exclude caliber-pg -- -D warni
 bun install
 ```
 
+## 🛡️ Security & Compliance Tooling
+
+- SBOM generation (SPDX JSON artifacts)
+- CodeQL (JS/TS) + Semgrep (multi-language) scanning
+- Gitleaks secret scanning
+- OSV vulnerability scanning
+- OpenSSF Scorecard
+
+See `docs/OPERATIONS_CHECKLIST.md` for operational guardrails.
+
+## 🤖 Agent Notes
+
+See `AGENTS.md` for repo-specific agent guidance and CI/log workflow.
+
 ### Build with PostgreSQL (Full Extension)
 
 ```bash

@@ -16,6 +16,13 @@ Authorization: Bearer <api_key>
 X-Tenant-ID: <tenant_uuid>
 ```
 
+**WorkOS Webhooks (optional):**
+```
+POST /api/v1/workos/webhooks
+WorkOS-Signature: t=timestamp,v1=signature
+```
+Requires `CALIBER_WORKOS_WEBHOOK_SECRET` to be set.
+
 ---
 
 ## Trajectories

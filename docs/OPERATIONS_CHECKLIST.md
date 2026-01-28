@@ -35,6 +35,8 @@ and a predictable rollout path.
 - Set `CALIBER_API_KEYS` for service-to-service access.
 - Enforce `X-Tenant-ID` when multi-tenant isolation is required.
 - If WorkOS is enabled, ensure WorkOS env vars are set and validated at startup.
+- If WorkOS webhooks are enabled, set `CALIBER_WORKOS_WEBHOOK_SECRET` and verify signature tolerance.
+- Consider IP allowlisting for WorkOS webhooks if your edge supports it.
 
 ## 5) CORS and Rate Limiting
 
@@ -48,6 +50,7 @@ and a predictable rollout path.
 - Verify `/metrics` is reachable and scraped by Prometheus.
 - Verify request tracing is enabled in your tracing backend.
 - Consider adding DB-level timing for pgrx heap operations if you need perf SLAs.
+- Configure a log drain (Sentry, Logtail, Datadog) for alerting on production errors.
 
 ## 7) External Interfaces
 
@@ -65,9 +68,37 @@ and a predictable rollout path.
 
 - Snapshot the Postgres cluster at least daily in production.
 - Define restore runbooks for tenant-level recovery scenarios.
+- Periodically perform a restore test to validate backup integrity.
 
 ## 10) Security Hygiene
 
 - Keep secrets out of source control.
 - Rotate API keys on schedule.
 - Review auth logs for tenant boundary violations.
+- Ensure Gitleaks/OSV/Scorecard/CodeQL/Semgrep checks are green for releases.
+
+## 11) Fly.io Deployment
+
+- Configure staging and production as separate Fly apps (distinct `FLY_APP` secrets).
+- Set GitHub environment secrets (`FLY_API_TOKEN`, `FLY_APP`) for staging and production.
+- Verify HTTP health checks hit `/health/live` and `/health/ready` as applicable.
+- Use `flyctl deploy` with environment protections for production.
+- Set a log drain for production and monitor error rates.
+
+## 12) Vercel (Landing + Dashboard)
+
+- Ensure preview environments mirror production env var defaults.
+- Require green GitHub checks before Vercel deployment.
+- Disable caching for auth-sensitive routes (if any are added later).
+
+## 13) SDK and OpenAPI Docs
+
+- Regenerate OpenAPI artifacts on release and after schema changes.
+- Publish SDK docs from OpenAPI as a scheduled job or release artifact.
+
+## 14) Postgres Vector Search
+
+- Verify pgvector is installed: `SELECT extname FROM pg_extension WHERE extname = 'vector';`
+- Confirm vector indexes exist for embedding columns (IVFFlat or HNSW).
+- Monitor query latency for vector similarity operations.
+- Consider pgbouncer when connection counts grow or cold starts are costly.
