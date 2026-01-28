@@ -2,13 +2,7 @@
 //!
 //! Validates WorkOS signatures and logs event metadata for auditability.
 
-use axum::{
-    body::Bytes,
-    http::HeaderMap,
-    response::IntoResponse,
-    routing::post,
-    Router,
-};
+use axum::{body::Bytes, http::HeaderMap, response::IntoResponse, routing::post, Router};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
@@ -27,9 +21,9 @@ pub fn create_router() -> Router<AppState> {
 
 #[cfg(feature = "workos")]
 async fn handle_workos_webhook(headers: HeaderMap, body: Bytes) -> ApiResult<impl IntoResponse> {
-    let secret = std::env::var("CALIBER_WORKOS_WEBHOOK_SECRET").ok().ok_or_else(|| {
-        ApiError::unauthorized("WorkOS webhook secret is not configured")
-    })?;
+    let secret = std::env::var("CALIBER_WORKOS_WEBHOOK_SECRET")
+        .ok()
+        .ok_or_else(|| ApiError::unauthorized("WorkOS webhook secret is not configured"))?;
 
     let signature = headers
         .get(SIGNATURE_HEADER)
