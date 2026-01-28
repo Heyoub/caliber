@@ -51,7 +51,7 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 
 # Authentication
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 secrecy = "0.8"
 urlencoding = "2.1"  # For WorkOS URL encoding
 
