@@ -1,0 +1,10 @@
+# Default owner for the repo
+* @Heyoub
+
+# Security + policy files
+/SECURITY.md @Heyoub
+/deny.toml @Heyoub
+
+# CI/CD + automation
+/.github/workflows/ @Heyoub
+/.github/dependabot.yml @Heyoub

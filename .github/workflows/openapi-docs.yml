@@ -1,0 +1,43 @@
+name: OpenAPI Docs
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build API
+        run: cargo build --release -p caliber-api --features openapi
+
+      - name: Generate OpenAPI spec
+        run: |
+          ./target/release/caliber-api --generate-openapi > openapi.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build OpenAPI docs
+        run: |
+          npx @redocly/cli@latest build-docs openapi.json -o openapi.html
+
+      - name: Upload OpenAPI docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-docs
+          path: |
+            openapi.html

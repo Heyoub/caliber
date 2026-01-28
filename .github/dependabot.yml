@@ -13,7 +13,7 @@ updates:
       timezone: "America/New_York"
     open-pull-requests-limit: 10
     reviewers:
-      - "your-username"  # Replace with actual GitHub username
+      - "Heyoub"
     labels:
       - "dependencies"
       - "rust"
@@ -84,7 +84,7 @@ updates:
       # Pin pgrx to 0.16 (breaking changes in 0.17+)
       - dependency-name: "pgrx"
         update-types: ["version-update:semver-major"]
-      # Pin Axum to 0.8 (we use 0.8, tonic uses 0.7 internally)
+      # Pin Axum to 0.7 (tonic uses 0.8 internally)
       - dependency-name: "axum"
         update-types: ["version-update:semver-major"]
 
@@ -98,7 +98,7 @@ updates:
       timezone: "America/New_York"
     open-pull-requests-limit: 5
     reviewers:
-      - "your-username"  # Replace with actual GitHub username
+      - "Heyoub"
     labels:
       - "dependencies"
       - "github-actions"
@@ -116,7 +116,7 @@ updates:
       timezone: "America/New_York"
     open-pull-requests-limit: 10
     reviewers:
-      - "your-username"  # Replace with actual GitHub username
+      - "Heyoub"
     labels:
       - "dependencies"
       - "npm"
@@ -164,7 +164,7 @@ updates:
       timezone: "America/New_York"
     open-pull-requests-limit: 5
     reviewers:
-      - "your-username"  # Replace with actual GitHub username
+      - "Heyoub"
     labels:
       - "dependencies"
       - "docker"

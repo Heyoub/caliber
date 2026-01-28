@@ -24,6 +24,8 @@ on:
     - cron: '0 3 * * 0'
   workflow_dispatch:
 
+permissions: read-all
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
@@ -1068,6 +1070,63 @@ jobs:
 
       - name: Run caliber-pg tests
         run: cargo pgrx test pg18 --package caliber-pg --features pg_test
+
+  pgvector-sanity:
+    name: Test (pgvector Sanity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 18 + pgvector
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
+          sudo pg_ctlcluster 16 main stop || true
+          if ! sudo pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+            sudo pg_createcluster 18 main --start
+          else
+            sudo pg_ctlcluster 18 main start
+          fi
+          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Verify pgvector indexes
+        env:
+          PGPASSWORD: test_password
+        run: |
+          psql -h localhost -p "$PGPORT" -U caliber -d caliber_test -v ON_ERROR_STOP=1 -f scripts/ci/pgvector_sanity.sql
+
+  dashboard-smoke:
+    name: Test (Dashboard Smoke)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: landing
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: landing
+        run: bun x playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        working-directory: landing
+        env:
+          CI: "1"
+        run: bun test -- --project=chromium
 
   test-mutation:
     name: Test (Mutation)

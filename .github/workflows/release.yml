@@ -30,6 +30,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: write
+      id-token: write
+      artifact-metadata: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
       digest: ${{ steps.build.outputs.digest }}
@@ -75,6 +78,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.API_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
   # Build and push caliber-pg Docker image
   build-pg:
     name: Build PostgreSQL Image
@@ -82,6 +92,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: write
+      id-token: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +118,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -116,11 +130,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.PG_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
   # Generate and upload OpenAPI spec
   openapi:
     name: Generate OpenAPI Spec
     runs-on: ubuntu-latest
     needs: build-api
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -150,6 +175,13 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            openapi.json
+            openapi.yaml
+
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
             openapi.json
             openapi.yaml
 

@@ -9,6 +9,8 @@ on:
       - "Cargo.toml"
       - ".github/workflows/extension-sql-check.yml"
 
+permissions: read-all
+
 jobs:
   extension-sql:
     runs-on: ubuntu-latest
