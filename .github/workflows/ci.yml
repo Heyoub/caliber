@@ -340,7 +340,15 @@ jobs:
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
+          if [ -z "$PKGDIR" ]; then
+            echo "Error: could not find pgrx package directory"
+            exit 1
+          fi
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
+          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Install PostgreSQL client
@@ -467,7 +475,15 @@ jobs:
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
+          if [ -z "$PKGDIR" ]; then
+            echo "Error: could not find pgrx package directory"
+            exit 1
+          fi
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
+          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Run DB-backed route tests
@@ -559,7 +575,15 @@ jobs:
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
+          if [ -z "$PKGDIR" ]; then
+            echo "Error: could not find pgrx package directory"
+            exit 1
+          fi
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
+          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
@@ -822,7 +846,15 @@ jobs:
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
+          if [ -z "$PKGDIR" ]; then
+            echo "Error: could not find pgrx package directory"
+            exit 1
+          fi
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
+          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Setup Bun
@@ -946,7 +978,15 @@ jobs:
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          sudo -E env "PATH=$PATH" cargo pgrx install --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
+          if [ -z "$PKGDIR" ]; then
+            echo "Error: could not find pgrx package directory"
+            exit 1
+          fi
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
+          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
+          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo

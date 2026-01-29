@@ -19,6 +19,7 @@ API_URL ?= http://localhost:3000
 FUZZ_RUNS ?= 10000
 CI_WORKFLOW ?= CI
 CI_REF ?= main
+CI_RUN_ID ?=
 
 #==============================================================================
 # Help
@@ -226,6 +227,13 @@ ci-fast: ## Fast CI check (lint + unit tests only)
 ci-cloud: ## Run CI in GitHub Actions and download logs
 	@echo "$(CYAN)Running CI in GitHub Actions...$(RESET)"
 	./scripts/ci/run-ci-and-fetch-logs.sh "$(CI_WORKFLOW)" "$(CI_REF)"
+
+ci-logs: ## Download CI logs by run id (CI_RUN_ID=123)
+	@if [ -z "$(CI_RUN_ID)" ]; then \
+		echo "Usage: make ci-logs CI_RUN_ID=<run_id>"; \
+		exit 1; \
+	fi
+	./scripts/ci/fetch-gh-logs.sh "$(CI_RUN_ID)"
 
 #==============================================================================
 # Build
