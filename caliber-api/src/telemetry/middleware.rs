@@ -101,7 +101,13 @@ pub async fn observability_middleware(request: axum::http::Request<Body>, next: 
         http.route = %normalized_path,
         otel.kind = "server",
     );
-    tracing_span.set_parent(parent_context);
+
+    // Link to incoming trace context (from traceparent header).
+    // This can fail if: no OTel layer configured, span sampled out, or span already started.
+    // All are non-fatal - request proceeds, we just lose trace linkage.
+    if let Err(e) = tracing_span.set_parent(parent_context) {
+        tracing::debug!(error = ?e, "Could not link span to incoming trace context");
+    }
 
     // Execute the request within the tracing span
     let span = tracing_span.clone();
