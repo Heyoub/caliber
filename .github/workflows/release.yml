@@ -172,7 +172,7 @@ jobs:
             openapi.yaml
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             openapi.json
@@ -367,7 +367,7 @@ jobs:
           helm package charts/caliber -d .helm-packages
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: .helm-packages/*.tgz
 
@@ -394,7 +394,7 @@ jobs:
           args: --latest --strip header
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body: |
             ## Docker Images
