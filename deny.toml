@@ -7,8 +7,8 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 unmaintained = "workspace"
 yanked = "workspace"
 ignore = [
-    # Add advisory IDs to ignore here if needed
-    # "RUSTSEC-0000-0000",
+    # paste crate is archived but stable (used transitively by ratatui/pgrx)
+    "RUSTSEC-2024-0436",
 ]
 
 [licenses]
@@ -25,6 +25,7 @@ allow = [
     "CC0-1.0",
     "MPL-2.0",
     "Unicode-DFS-2016",
+    "OpenSSL",  # Used by aws-lc-sys (transitive dep of rustls)
 ]
 confidence-threshold = 0.8
 exceptions = [
