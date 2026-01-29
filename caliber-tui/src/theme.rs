@@ -40,21 +40,15 @@ impl SynthBruteTheme {
         let default_text = (255, 255, 255);
         let default_border_focus = (0, 255, 255);
 
-        let primary = overrides
-            .and_then(|o| o.primary)
-            .unwrap_or(default_primary);
+        let primary = overrides.and_then(|o| o.primary).unwrap_or(default_primary);
         let secondary = overrides
             .and_then(|o| o.secondary)
             .unwrap_or(default_secondary);
         let tertiary = overrides
             .and_then(|o| o.tertiary)
             .unwrap_or(default_tertiary);
-        let success = overrides
-            .and_then(|o| o.success)
-            .unwrap_or(default_success);
-        let warning = overrides
-            .and_then(|o| o.warning)
-            .unwrap_or(default_warning);
+        let success = overrides.and_then(|o| o.success).unwrap_or(default_success);
+        let warning = overrides.and_then(|o| o.warning).unwrap_or(default_warning);
         let error = overrides.and_then(|o| o.error).unwrap_or(default_error);
         let info = overrides.and_then(|o| o.info).unwrap_or(default_info);
         let bg = overrides.and_then(|o| o.bg).unwrap_or(default_bg);

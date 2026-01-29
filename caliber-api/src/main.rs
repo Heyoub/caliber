@@ -93,10 +93,7 @@ async fn validate_extensions(db: &DbClient) -> ApiResult<()> {
 
     // Check for pgvector extension
     let pgvector_check = conn
-        .query_opt(
-            "SELECT 1 FROM pg_extension WHERE extname = 'vector'",
-            &[],
-        )
+        .query_opt("SELECT 1 FROM pg_extension WHERE extname = 'vector'", &[])
         .await
         .map_err(|e| {
             ApiError::internal_error(format!("Failed to check for pgvector extension: {}", e))

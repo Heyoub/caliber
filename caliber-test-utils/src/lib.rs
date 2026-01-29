@@ -1045,26 +1045,22 @@ pub mod fixtures {
     /// Default tenant ID for single-tenant tests.
     /// This is a fixed UUID to ensure consistent test behavior.
     pub fn tenant_id_default() -> uuid::Uuid {
-        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001")
-            .expect("valid tenant UUID")
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").expect("valid tenant UUID")
     }
 
     /// Alice's tenant ID for multi-tenant tests.
     pub fn tenant_id_alice() -> uuid::Uuid {
-        uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111")
-            .expect("valid tenant UUID")
+        uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("valid tenant UUID")
     }
 
     /// Bob's tenant ID for multi-tenant tests.
     pub fn tenant_id_bob() -> uuid::Uuid {
-        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222")
-            .expect("valid tenant UUID")
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").expect("valid tenant UUID")
     }
 
     /// Charlie's tenant ID for multi-tenant tests.
     pub fn tenant_id_charlie() -> uuid::Uuid {
-        uuid::Uuid::parse_str("33333333-3333-3333-3333-333333333333")
-            .expect("valid tenant UUID")
+        uuid::Uuid::parse_str("33333333-3333-3333-3333-333333333333").expect("valid tenant UUID")
     }
 
     /// Seed data for a basic test scenario with one trajectory, one scope, and sample content.
@@ -1206,8 +1202,8 @@ pub mod fixtures {
 
     /// Seed data for a completed trajectory with full conversation history.
     /// Returns (trajectory, scope, turns, artifacts, notes).
-    pub fn seed_completed_conversation(
-    ) -> (Trajectory, Scope, Vec<Turn>, Vec<Artifact>, Vec<Note>) {
+    pub fn seed_completed_conversation() -> (Trajectory, Scope, Vec<Turn>, Vec<Artifact>, Vec<Note>)
+    {
         let trajectory = completed_trajectory();
         let scope = {
             let mut s = active_scope(trajectory.trajectory_id);

@@ -323,7 +323,8 @@ impl ChangeJournal for EventDagChangeJournal {
         // Check each entity type for invalidation events
         for entity_type in entity_types {
             if let Some(event_kind) = Self::entity_type_to_event_kind(*entity_type) {
-                let events = self.event_dag
+                let events = self
+                    .event_dag
                     .find_by_kind_after(event_kind, watermark.sequence, 1)
                     .await;
 
@@ -350,8 +351,7 @@ impl ChangeJournal for EventDagChangeJournal {
     ) -> CaliberResult<Watermark> {
         use caliber_core::{DagPosition, EventFlags, EventHeader};
 
-        let event_kind = Self::entity_type_to_event_kind(entity_type)
-            .unwrap_or(EventKind::DATA);
+        let event_kind = Self::entity_type_to_event_kind(entity_type).unwrap_or(EventKind::DATA);
 
         let timestamp = chrono::Utc::now().timestamp_micros();
         let event_id = uuid::Uuid::now_v7();

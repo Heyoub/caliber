@@ -718,7 +718,11 @@ impl ErrorCollector {
 
         // Multiple errors: create combined message
         let first = &self.errors[0];
-        let mut message = format!("{} (and {} more errors):\n", first.message, self.errors.len() - 1);
+        let mut message = format!(
+            "{} (and {} more errors):\n",
+            first.message,
+            self.errors.len() - 1
+        );
 
         for (i, err) in self.errors.iter().enumerate() {
             message.push_str(&format!(
