@@ -85,7 +85,7 @@ tokio-stream = { workspace = true, features = ["sync"] }
 async-graphql = { version = "=7.0.10", features = ["uuid", "chrono"] }
 async-graphql-axum = { version = "=7.0.10" }
 async-graphql-derive = { version = "=7.0.10" }
-async-graphql-parser = { version = "=7.0.10" }
+async-graphql-parser = { version = "=7.2.1" }
 async-graphql-value = { version = "=7.2.1" }
 async-stream = "0.3"
 futures-util = "0.3"
