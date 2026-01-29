@@ -240,12 +240,24 @@ pgrx::pg_module_magic!();
 // Include the bootstrap SQL schema for extension installation
 // This SQL runs ONCE at CREATE EXTENSION time, not in the hot path
 pgrx::extension_sql_file!("../sql/caliber_init.sql", name = "bootstrap_schema");
+// V2: Add tenant isolation columns to all entity tables
+pgrx::extension_sql_file!(
+    "../sql/migrations/V2__tenant_isolation.sql",
+    name = "tenant_isolation_v2",
+    requires = ["bootstrap_schema"],
+);
+// V3: Add distributed correctness (CAS, change journal, idempotency)
+pgrx::extension_sql_file!(
+    "../sql/migrations/V3__distributed_correctness.sql",
+    name = "distributed_correctness_v3",
+    requires = ["tenant_isolation_v2"],
+);
 // Ensure DSL tables and pack source storage are present at extension install time.
 // These are SQL-only artifacts and do not affect hot-path heap operations.
 pgrx::extension_sql_file!(
     "../sql/migrations/V4__dsl_config.sql",
     name = "dsl_config_v4",
-    requires = ["bootstrap_schema"],
+    requires = ["distributed_correctness_v3"],
 );
 pgrx::extension_sql_file!(
     "../sql/migrations/V5__rls_policies.sql",
@@ -326,7 +338,7 @@ pub mod edge_heap;
 // ============================================================================
 
 /// Current schema version. Increment this when adding migrations.
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Extension initialization hook.
 /// Called when the extension is loaded.

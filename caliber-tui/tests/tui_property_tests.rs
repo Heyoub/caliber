@@ -32,7 +32,9 @@ fn base_config() -> TuiConfig {
         error_log_path: "tmp/caliber-tui-errors.log".into(),
         theme: ThemeConfig {
             name: "synthbrute".to_string(),
+            colors: None,
         },
+        keybindings: None,
         reconnect: ReconnectConfig {
             initial_ms: 250,
             max_ms: 5_000,
@@ -57,6 +59,7 @@ fn config_requires_theme_name() {
     let mut config = base_config();
     config.theme = ThemeConfig {
         name: "unknown".to_string(),
+        colors: None,
     };
     assert!(config.validate().is_err());
 }
@@ -73,7 +76,7 @@ proptest! {
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         };
-        let action = map_key(event);
+        let action = map_key(event, None);
         let expected_index = match ch {
             '1' => Some(0),
             '2' => Some(1),
@@ -125,13 +128,13 @@ proptest! {
 
     /// Property: Navigation keys are consistent (vim and arrow keys)
     fn navigation_keys_consistent(use_vim in prop::bool::ANY) {
-        let _theme = SynthBruteTheme::synthbrute();
+        let _theme = SynthBruteTheme::synthbrute(None);
         let key = if use_vim {
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)
         } else {
             KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)
         };
-        let action = map_key(key);
+        let action = map_key(key, None);
         prop_assert!(matches!(action, Some(KeyAction::MoveDown)));
     }
 
@@ -139,13 +142,13 @@ proptest! {
     fn all_action_keys_mapped(key_char in "[qnedpr?/:]") {
         let ch = key_char.chars().next().unwrap_or('a');
         let event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
-        let action = map_key(event);
+        let action = map_key(event, None);
         prop_assert!(action.is_some(), "Key '{}' should map to an action", ch);
     }
 
     fn tab_switches_views(_ignored in Just(())) {
         let event = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
-        let action = map_key(event);
+        let action = map_key(event, None);
         prop_assert!(matches!(action, Some(KeyAction::NextView)));
     }
 
@@ -156,7 +159,7 @@ proptest! {
 
     /// Property: Trajectory status maps to correct color
     fn trajectory_status_colors_correct(status_idx in 0usize..4) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         let statuses = [
             TrajectoryStatus::Active,
             TrajectoryStatus::Completed,
@@ -176,7 +179,7 @@ proptest! {
 
     /// Property: Agent status maps to correct color
     fn agent_status_colors_correct(status in prop::sample::select(vec!["active", "idle", "blocked", "failed"])) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         let color = agent_status_color(status, &theme);
         let expected = match status {
             "active" => theme.primary,
@@ -190,7 +193,7 @@ proptest! {
 
     /// Property: Message priority maps to correct color
     fn message_priority_colors_correct(priority in prop::sample::select(vec!["low", "normal", "high", "critical"])) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         let color = message_priority_color(priority, &theme);
         let expected = match priority {
             "low" => theme.text_dim,
@@ -204,7 +207,7 @@ proptest! {
 
     /// Property: Turn role maps to correct color
     fn turn_role_colors_correct(role_idx in 0usize..4) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         let roles = [TurnRole::User, TurnRole::Assistant, TurnRole::System, TurnRole::Tool];
         let expected_colors = [
             theme.primary,    // User -> cyan
@@ -231,7 +234,7 @@ proptest! {
 
     /// Property: Utilization color thresholds are correct
     fn utilization_color_thresholds_correct(percent in 0.0f32..150.0f32) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         let color = utilization_color(percent, &theme);
         if percent < 70.0 {
             prop_assert_eq!(color, theme.success, "Below 70% should be green");
@@ -243,7 +246,7 @@ proptest! {
     }
 
     fn utilization_boundary_values(_ignored in Just(())) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Exactly at boundaries
         prop_assert_eq!(utilization_color(69.9, &theme), theme.success);
         prop_assert_eq!(utilization_color(70.0, &theme), theme.warning);
@@ -445,7 +448,7 @@ proptest! {
 
     /// Property: DSL keywords are identified
     fn dsl_keywords_identified(_keyword in prop::sample::select(vec!["caliber", "memory", "policy", "adapter", "inject", "schedule"])) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Keywords should map to cyan
         let expected_color = theme.primary;
         prop_assert_eq!(expected_color, theme.primary);
@@ -453,7 +456,7 @@ proptest! {
 
     /// Property: DSL memory types are identified
     fn dsl_memory_types_identified(_mem_type in prop::sample::select(vec!["ephemeral", "working", "episodic", "semantic", "procedural", "meta"])) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Memory types should map to magenta
         let expected_color = theme.secondary;
         prop_assert_eq!(expected_color, theme.secondary);
@@ -461,7 +464,7 @@ proptest! {
 
     /// Property: DSL field types are identified
     fn dsl_field_types_identified(_field_type in prop::sample::select(vec!["uuid", "text", "int", "float", "bool", "timestamp", "json", "embedding"])) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Field types should map to yellow
         let expected_color = theme.tertiary;
         prop_assert_eq!(expected_color, theme.tertiary);
@@ -514,19 +517,19 @@ proptest! {
     // ========================================================================
 
     fn error_notifications_have_correct_color(_ignored in Just(())) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Errors should be red
         prop_assert_eq!(theme.error, Color::Rgb(255, 0, 0));
     }
 
     fn warning_notifications_have_correct_color(_ignored in Just(())) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Warnings should be yellow
         prop_assert_eq!(theme.warning, Color::Rgb(255, 255, 0));
     }
 
     fn info_notifications_have_correct_color(_ignored in Just(())) {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(None);
         // Info should be cyan
         prop_assert_eq!(theme.info, Color::Rgb(0, 255, 255));
     }

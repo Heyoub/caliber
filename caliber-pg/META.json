@@ -15,9 +15,7 @@
    "prereqs": {
       "runtime": {
          "requires": {
-            "PostgreSQL": "18.0.0"
-         },
-         "recommends": {
+            "PostgreSQL": "18.0.0",
             "pgvector": "0.7.0"
          }
       }

@@ -61,7 +61,7 @@ pub struct App {
 
 impl App {
     pub fn new(config: TuiConfig, api: ApiClient) -> Self {
-        let theme = SynthBruteTheme::synthbrute();
+        let theme = SynthBruteTheme::synthbrute(config.theme.colors.as_ref());
         let tenant_id = TenantId::new(config.tenant_id);
         Self {
             config,

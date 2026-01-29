@@ -101,3 +101,6 @@ scripts/repo_features_matrix.py
 _depg/
 _depg_results/
 analysis_out
+
+# Investigation scratch space
+.scratch/

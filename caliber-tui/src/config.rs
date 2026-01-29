@@ -7,6 +7,31 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct KeybindingsConfig {
+    /// Override for quit key (default: 'q')
+    pub quit: Option<char>,
+    /// Override for help key (default: '?')
+    pub help: Option<char>,
+    /// Override for search key (default: '/')
+    pub search: Option<char>,
+    /// Override for command key (default: ':')
+    pub command: Option<char>,
+    /// Override for refresh key (default: Ctrl+r)
+    pub refresh: Option<char>,
+    /// Override for new item key (default: 'n')
+    pub new_item: Option<char>,
+    /// Override for edit item key (default: 'e')
+    pub edit_item: Option<char>,
+    /// Override for delete item key (default: 'd')
+    pub delete_item: Option<char>,
+    /// Override for toggle links key (default: 'a')
+    pub toggle_links: Option<char>,
+    /// Override for execute link key (default: 'g')
+    pub execute_link: Option<char>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TuiConfig {
     pub api_base_url: String,
     pub grpc_endpoint: String,
@@ -19,6 +44,9 @@ pub struct TuiConfig {
     pub error_log_path: PathBuf,
     pub theme: ThemeConfig,
     pub reconnect: ReconnectConfig,
+    /// Optional keybinding overrides. If not specified, uses default keybindings.
+    #[serde(default)]
+    pub keybindings: Option<KeybindingsConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -32,6 +60,24 @@ pub struct ClientCredentials {
 #[serde(deny_unknown_fields)]
 pub struct ThemeConfig {
     pub name: String,
+    /// Optional color overrides (RGB tuples). If not specified, uses theme defaults.
+    #[serde(default)]
+    pub colors: Option<ThemeColorOverrides>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeColorOverrides {
+    pub primary: Option<(u8, u8, u8)>,
+    pub secondary: Option<(u8, u8, u8)>,
+    pub tertiary: Option<(u8, u8, u8)>,
+    pub success: Option<(u8, u8, u8)>,
+    pub warning: Option<(u8, u8, u8)>,
+    pub error: Option<(u8, u8, u8)>,
+    pub info: Option<(u8, u8, u8)>,
+    pub bg: Option<(u8, u8, u8)>,
+    pub text: Option<(u8, u8, u8)>,
+    pub border_focus: Option<(u8, u8, u8)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -123,12 +169,6 @@ impl TuiConfig {
             return Err(ConfigError::InvalidValue {
                 field: "error_log_path",
                 reason: "must not be empty".to_string(),
-            });
-        }
-        if !self.theme.name.eq_ignore_ascii_case("synthbrute") {
-            return Err(ConfigError::InvalidValue {
-                field: "theme.name",
-                reason: "only 'synthbrute' is supported".to_string(),
             });
         }
         if self.reconnect.initial_ms == 0 {

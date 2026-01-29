@@ -2284,6 +2284,7 @@ pub(crate) fn escape_string(s: &str) -> String {
 // ============================================================================
 
 /// Parse DSL source code into an AST.
+/// Collects and reports all parse errors in a single error message.
 pub fn parse(source: &str) -> Result<CaliberAst, ParseError> {
     let mut lexer = Lexer::new(source);
     let tokens = lexer.tokenize();
