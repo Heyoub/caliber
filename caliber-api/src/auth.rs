@@ -40,7 +40,7 @@ impl JwtSecret {
                 field: "jwt_secret".to_string(),
             }));
         }
-        Ok(Self(SecretString::new(secret)))
+        Ok(Self(SecretString::new(secret.into())))
     }
 
     /// Expose the secret value (use sparingly, only for cryptographic operations).
@@ -278,8 +278,8 @@ fn build_jwt_secret(secret_str: String) -> JwtSecret {
 
     match JwtSecret::new(normalized) {
         Ok(secret) => secret,
-        Err(_) => JwtSecret(Secret::new(
-            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string(),
+        Err(_) => JwtSecret(SecretString::new(
+            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string().into(),
         )),
     }
 }

@@ -2,7 +2,8 @@ use caliber_core::{
     CaliberConfig, ContextAssembler, ContextPackage, ContextPersistence, EntityIdType, RetryConfig,
     ScopeId, SectionPriorities, TrajectoryId, ValidationMode,
 };
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use std::time::Duration;
 
 fn bench_config(token_budget: i32) -> CaliberConfig {

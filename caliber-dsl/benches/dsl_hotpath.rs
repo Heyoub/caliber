@@ -1,7 +1,8 @@
 use caliber_dsl::pack::{compose_pack, PackInput, PackMarkdownFile};
 use caliber_dsl::parser::parse;
 use caliber_dsl::DslCompiler;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use std::path::PathBuf;
 
 const DSL_MIN: &str = r#"
