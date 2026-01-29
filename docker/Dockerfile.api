@@ -22,17 +22,15 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace files
+# Copy workspace files (must match Cargo.toml workspace.members)
 COPY Cargo.toml Cargo.lock ./
 COPY caliber-core ./caliber-core
 COPY caliber-dsl ./caliber-dsl
-COPY caliber-llm ./caliber-llm
-COPY caliber-storage ./caliber-storage
-COPY caliber-agents ./caliber-agents
 COPY caliber-pcp ./caliber-pcp
-COPY caliber-test-utils ./caliber-test-utils
-COPY caliber-api ./caliber-api
+COPY caliber-storage ./caliber-storage
 COPY caliber-pg ./caliber-pg
+COPY caliber-api ./caliber-api
+COPY caliber-test-utils ./caliber-test-utils
 COPY caliber-tui ./caliber-tui
 
 # Remove pgrx git patches for API build (not needed for caliber-api)

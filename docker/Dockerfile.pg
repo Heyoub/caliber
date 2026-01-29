@@ -30,14 +30,12 @@ RUN apt-get update && apt-get install -y \
 RUN cargo install cargo-pgrx --version 0.16.1 --locked
 RUN cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
 
-# Copy workspace files
+# Copy workspace files (must match Cargo.toml workspace.members)
 COPY Cargo.toml Cargo.lock ./
 COPY caliber-core ./caliber-core
-COPY caliber-storage ./caliber-storage
-COPY caliber-pcp ./caliber-pcp
-COPY caliber-llm ./caliber-llm
-COPY caliber-agents ./caliber-agents
 COPY caliber-dsl ./caliber-dsl
+COPY caliber-pcp ./caliber-pcp
+COPY caliber-storage ./caliber-storage
 COPY caliber-pg ./caliber-pg
 COPY caliber-api ./caliber-api
 COPY caliber-test-utils ./caliber-test-utils
