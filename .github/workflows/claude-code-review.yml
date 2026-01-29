@@ -9,6 +9,7 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - "caliber-sdk/src/**/*.ts"
+      - "caliber-sdk/src/**/*.tsx"
 
 jobs:
   claude-review:
