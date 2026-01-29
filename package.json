@@ -89,6 +89,17 @@
     "typedoc": "^0.25.0",
     "typescript": "^5.3.0"
   },
+  "overrides": {
+    "devalue": "5.6.2",
+    "h3": "1.15.5",
+    "tar": "7.5.7",
+    "path-to-regexp": "6.3.0",
+    "lodash": "4.17.23",
+    "lodash-es": "4.17.23",
+    "svelte": "5.46.3",
+    "tmp": "0.2.4",
+    "diff": "5.2.0"
+  },
   "packageManager": "bun@1.1.0",
   "engines": {
     "node": ">=20.0.0"

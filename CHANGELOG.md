@@ -26,6 +26,7 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - pgvector sanity checks and dashboard smoke tests in CI
 - AGENTS.md repository guidance for AI agents and CI log usage
 - Removed landing/package-lock.json (Bun-only) and added overrides for known JS CVEs
+- Moved JS security overrides to workspace root and bumped ratatui for lru fix
 
 #### API & HATEOAS
 - HATEOAS links added to trajectory/scope/artifact/note responses and tests

@@ -5934,6 +5934,7 @@ Key abstractions:
 - Added color-eyre to the TUI for clearer runtime error reporting.
 - Added AGENTS.md with repo-specific agent guidance and CI log flow.
 - Applied security upgrades for JS dependencies via overrides and removed landing/package-lock.json (Bun-only).
+- Centralized JS overrides at workspace root and bumped ratatui to address lru advisory.
 - Updated SDK WebSocket logging to avoid format-string warnings.
 
 **Commits:**
