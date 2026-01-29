@@ -821,7 +821,7 @@ fn validate_tool_input(input: &JsonValue, schema: &JsonValue) -> Result<(), Stri
 
     compiled
         .validate(input)
-        .map_err(|e| format!("{}: {}", e.instance_path, e))
+        .map_err(|e| format!("{}: {}", e.instance_path(), e))
 }
 
 #[cfg(test)]

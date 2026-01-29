@@ -13,7 +13,7 @@
 use crate::error::{ApiError, ApiResult};
 use caliber_core::{CaliberError, ConfigError, EntityIdType, TenantId};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -27,7 +27,7 @@ use uuid::Uuid;
 /// This wraps the secret in a `secrecy::Secret` to ensure it's never
 /// accidentally logged or displayed.
 #[derive(Clone)]
-pub struct JwtSecret(Secret<String>);
+pub struct JwtSecret(SecretString);
 
 impl JwtSecret {
     /// Create a new JWT secret with validation.
@@ -40,7 +40,7 @@ impl JwtSecret {
                 field: "jwt_secret".to_string(),
             }));
         }
-        Ok(Self(Secret::new(secret)))
+        Ok(Self(SecretString::new(secret)))
     }
 
     /// Expose the secret value (use sparingly, only for cryptographic operations).
