@@ -645,8 +645,13 @@ pub fn generate_jwt_token(
     tenant_id: Option<TenantId>,
     roles: Vec<String>,
 ) -> ApiResult<String> {
-    let claims =
-        Claims::new(user_id, tenant_id, config.jwt_expiration_secs, &*config.clock).with_roles(roles);
+    let claims = Claims::new(
+        user_id,
+        tenant_id,
+        config.jwt_expiration_secs,
+        &*config.clock,
+    )
+    .with_roles(roles);
 
     let encoding_key = EncodingKey::from_secret(config.jwt_secret.expose().as_bytes());
     let header = Header::new(config.jwt_algorithm);
