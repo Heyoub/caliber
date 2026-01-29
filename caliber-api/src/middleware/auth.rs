@@ -597,6 +597,7 @@ mod tests {
         config.jwt_secret =
             JwtSecret::new("test_secret".to_string()).expect("test secret should be valid");
         config.require_tenant_header = true;
+        config.clock = std::sync::Arc::new(crate::auth::test_clocks::valid()); // Use deterministic clock
         config
     }
 

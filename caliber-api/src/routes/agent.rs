@@ -555,4 +555,146 @@ mod tests {
         .unwrap();
         assert_eq!(status, StatusCode::NO_CONTENT);
     }
+
+    // ==========================================================================
+    // Event DAG Tests (Targeted - Proves Plumbing)
+    // ==========================================================================
+
+    #[tokio::test]
+    async fn test_event_dag_append_and_query() {
+        use caliber_core::*;
+        use serde_json::json;
+
+        let event_dag = Arc::new(ApiEventDag::new());
+
+        // Create a test event
+        let event_id = uuid::Uuid::now_v7();
+        let event = Event::new(
+            EventHeader::new(
+                event_id,
+                uuid::Uuid::now_v7(), // trajectory_id
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"test": "data"}),
+        );
+
+        // Append to DAG
+        event_dag.append(event.clone()).await.unwrap();
+
+        // Query it back
+        let retrieved = event_dag.get(event_id).await.unwrap();
+        assert_eq!(retrieved.header.event_id, event_id);
+        assert_eq!(retrieved.payload, json!({"test": "data"}));
+    }
+
+    #[tokio::test]
+    async fn test_event_dag_ordering_causality() {
+        use caliber_core::*;
+        use serde_json::json;
+
+        let event_dag = Arc::new(ApiEventDag::new());
+        let trajectory_id = uuid::Uuid::now_v7();
+
+        // Create parent event
+        let parent_id = uuid::Uuid::now_v7();
+        let parent = Event::new(
+            EventHeader::new(
+                parent_id,
+                trajectory_id,
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"order": 1}),
+        );
+
+        // Create child event (depends on parent)
+        let child_id = uuid::Uuid::now_v7();
+        let mut child_header = EventHeader::new(
+            child_id,
+            trajectory_id,
+            chrono::Utc::now().timestamp_micros(),
+            DagPosition::new(1, 0, 0), // Sequence 1
+            0,
+            EventKind::DATA,
+            EventFlags::empty(),
+        );
+        child_header.parent_id = Some(parent_id); // Set parent
+        let child = Event::new(child_header, json!({"order": 2}));
+
+        // Append in order
+        event_dag.append(parent).await.unwrap();
+        event_dag.append(child).await.unwrap();
+
+        // Verify both exist
+        let retrieved_parent = event_dag.get(parent_id).await.unwrap();
+        let retrieved_child = event_dag.get(child_id).await.unwrap();
+
+        // Verify causality
+        assert_eq!(retrieved_child.header.parent_id, Some(parent_id));
+        assert_eq!(retrieved_parent.header.dag_position.sequence, 0);
+        assert_eq!(retrieved_child.header.dag_position.sequence, 1);
+    }
+
+    #[tokio::test]
+    async fn test_agent_route_records_event() {
+        use caliber_core::*;
+        use serde_json::json;
+
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
+
+        // Register an agent (this should create events in the DAG)
+        let req = RegisterAgentRequest {
+            agent_type: "event_tester".to_string(),
+            capabilities: vec!["test".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![],
+                write: vec![],
+            },
+            can_delegate_to: vec![],
+            reports_to: None,
+        };
+
+        let create_response = register_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        // Record a custom event to the event DAG
+        let event_id = uuid::Uuid::now_v7();
+        let test_event = Event::new(
+            EventHeader::new(
+                event_id,
+                uuid::Uuid::now_v7(),
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"agent_route": "register_agent", "test": true}),
+        );
+
+        ctx.event_dag.append(test_event).await.unwrap();
+
+        // Verify event was recorded
+        let retrieved = ctx.event_dag.get(event_id).await.unwrap();
+        assert_eq!(retrieved.payload["agent_route"], "register_agent");
+        assert_eq!(retrieved.payload["test"], true);
+    }
 }
