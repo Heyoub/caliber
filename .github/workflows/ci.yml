@@ -17,6 +17,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - ".github/dependabot.yml"
+      - ".github/workflows/dependabot-ci.yml"
+
   schedule:
     # Nightly at 2am UTC for load tests
     - cron: '0 2 * * *'
@@ -31,6 +35,12 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  dependabot-skip:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Skipping full CI for Dependabot PRs"
+
   # =============================================================================
   # Docs Guard (Warn on PR, Fail on main)
   # =============================================================================

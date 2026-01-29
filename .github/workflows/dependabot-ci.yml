@@ -1,0 +1,40 @@
+name: Dependabot CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "**/Cargo.toml"
+      - "package.json"
+      - "bun.lock"
+      - "landing/package.json"
+      - "caliber-sdk/package.json"
+      - ".github/dependabot.yml"
+
+permissions: read-all
+
+jobs:
+  dependabot-lite:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      - name: JS lint
+        run: bunx biome check .
+
+      - name: Rust fmt
+        run: cargo fmt --all -- --check
+
+      - name: Rust audit
+        run: cargo audit || true

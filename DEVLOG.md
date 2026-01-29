@@ -5935,6 +5935,7 @@ Key abstractions:
 - Added AGENTS.md with repo-specific agent guidance and CI log flow.
 - Applied security upgrades for JS dependencies via overrides and removed landing/package-lock.json (Bun-only).
 - Centralized JS overrides at workspace root and bumped ratatui to address lru advisory.
+- Added Dependabot-lite CI workflow and reduced Dependabot PR concurrency limits.
 - Updated SDK WebSocket logging to avoid format-string warnings.
 
 **Commits:**
