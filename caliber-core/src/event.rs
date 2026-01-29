@@ -883,7 +883,7 @@ impl EventVerifier for Sha256Verifier {
         use sha2::{Digest, Sha256};
         let canonical = serde_json::to_vec(&current).unwrap_or_default();
         let computed = Sha256::digest(&canonical);
-        &computed[..] == &hash_chain.event_hash
+        computed[..] == hash_chain.event_hash
     }
 
     fn algorithm(&self) -> HashAlgorithm {

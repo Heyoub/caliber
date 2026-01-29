@@ -33,6 +33,8 @@ permissions: read-all
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   dependabot-skip:
@@ -119,6 +121,15 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -171,6 +182,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -226,6 +246,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -325,6 +354,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install PostgreSQL 18 + pgvector
         run: |
@@ -455,6 +493,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
@@ -566,6 +613,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install PostgreSQL 18 + pgvector
         run: |
@@ -684,6 +740,15 @@ jobs:
         with:
           components: clippy
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -749,6 +814,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
@@ -841,6 +915,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install PostgreSQL 18 + pgvector
         run: |
@@ -976,6 +1059,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install PostgreSQL 18 + pgvector
         run: |
@@ -1122,6 +1214,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

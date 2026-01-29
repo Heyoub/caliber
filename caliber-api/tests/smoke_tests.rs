@@ -1,7 +1,11 @@
 //! End-to-end smoke tests for CALIBER API
 
 use caliber_api::{ApiResult, DbClient, DbConfig};
+
+#[cfg(feature = "db-tests")]
 use caliber_core::*;
+
+#[cfg(feature = "db-tests")]
 use caliber_test_utils::*;
 
 fn test_db() -> ApiResult<DbClient> {
