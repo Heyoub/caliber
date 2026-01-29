@@ -279,7 +279,9 @@ fn build_jwt_secret(secret_str: String) -> JwtSecret {
     match JwtSecret::new(normalized) {
         Ok(secret) => secret,
         Err(_) => JwtSecret(SecretString::new(
-            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string().into(),
+            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION"
+                .to_string()
+                .into(),
         )),
     }
 }

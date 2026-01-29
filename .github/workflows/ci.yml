@@ -193,7 +193,7 @@ jobs:
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
         run: |
-          cargo llvm-cov --workspace --lcov --output-path lcov.info \
+          cargo llvm-cov --workspace --exclude caliber-pg --lcov --output-path lcov.info \
             --ignore-filename-regex '(caliber-pg|fuzz)' \
             -- --test-threads=1
 
@@ -349,8 +349,10 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
           if [ -z "$PKGDIR" ]; then
             echo "Error: could not find pgrx package directory"
@@ -484,8 +486,10 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
           if [ -z "$PKGDIR" ]; then
             echo "Error: could not find pgrx package directory"
@@ -584,8 +588,10 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
           if [ -z "$PKGDIR" ]; then
             echo "Error: could not find pgrx package directory"
@@ -855,8 +861,10 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
           if [ -z "$PKGDIR" ]; then
             echo "Error: could not find pgrx package directory"
@@ -987,8 +995,10 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          cargo pgrx package --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
           if [ -z "$PKGDIR" ]; then
             echo "Error: could not find pgrx package directory"
@@ -1176,7 +1186,7 @@ jobs:
         working-directory: landing
         env:
           CI: "1"
-        run: bun test -- --project=chromium
+        run: bunx playwright test --project=chromium
 
   test-mutation:
     name: Test (Mutation)
