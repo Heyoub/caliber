@@ -334,7 +334,10 @@ export class CaliberWebSocket {
           try {
             handler(event);
           } catch (error) {
-            console.error(`Error in event handler for ${event.type}:`, error);
+            console.error("Error in event handler", {
+              type: event.type,
+              error,
+            });
           }
         });
       }
@@ -346,9 +349,9 @@ export class CaliberWebSocket {
           try {
             handler(event);
           } catch (error) {
-            console.error('Error in wildcard event handler:', error);
-          }
-        });
+          console.error("Error in wildcard event handler", { error });
+        }
+      });
       }
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);

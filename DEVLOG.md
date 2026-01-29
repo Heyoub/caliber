@@ -5933,6 +5933,8 @@ Key abstractions:
 - Added WorkOS webhook signature verification endpoint and config template.
 - Added color-eyre to the TUI for clearer runtime error reporting.
 - Added AGENTS.md with repo-specific agent guidance and CI log flow.
+- Applied security upgrades for JS dependencies via overrides and removed landing/package-lock.json (Bun-only).
+- Updated SDK WebSocket logging to avoid format-string warnings.
 
 **Commits:**
 - `4bdb7a4` - fix(ci): stabilize pg18 and pgrx deps

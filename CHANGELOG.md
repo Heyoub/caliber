@@ -25,6 +25,7 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - Fly deploy workflow (staging on main, manual production)
 - pgvector sanity checks and dashboard smoke tests in CI
 - AGENTS.md repository guidance for AI agents and CI log usage
+- Removed landing/package-lock.json (Bun-only) and added overrides for known JS CVEs
 
 #### API & HATEOAS
 - HATEOAS links added to trajectory/scope/artifact/note responses and tests
@@ -50,6 +51,7 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - Clippy priority sorting warnings resolved using `sort_by_key` with `Reverse`
 - WorkOS webhook signature verification endpoint (feature-gated)
 - TUI error reporting enhanced with color-eyre
+- Hardened SDK WebSocket logging to avoid format-string issues
 
 #### Documentation
 - OpenAPI regeneration policy
