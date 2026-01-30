@@ -35,16 +35,22 @@ impl PackIr {
 
         // Build from TOML manifest (legacy)
         let mut adapters = build_adapters(&manifest)?;
-        let policies = build_policies(&manifest)?;
-        let injections = build_injections(&manifest)?;
-        let providers = build_providers(&manifest)?;
+        let mut policies = build_policies(&manifest)?;
+        let mut injections = build_injections(&manifest)?;
+        let mut providers = build_providers(&manifest)?;
 
         // Extract configs from Markdown fence blocks (NEW)
         let md_adapters = extract_adapters_from_markdown(&markdown)?;
+        let md_policies = extract_policies_from_markdown(&markdown)?;
+        let md_injections = extract_injections_from_markdown(&markdown)?;
+        let md_providers = extract_providers_from_markdown(&markdown)?;
 
         // Merge: Markdown takes precedence over TOML
         // For now, just append. TODO: Handle duplicates properly
         adapters.extend(md_adapters);
+        policies.extend(md_policies);
+        injections.extend(md_injections);
+        providers.extend(md_providers);
 
         Ok(Self {
             manifest,
@@ -713,4 +719,67 @@ fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAda
     }
 
     Ok(adapters)
+}
+
+/// Extract policy definitions from Markdown fence blocks
+fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<PolicyDef>, PackError> {
+    let mut policies = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Policy {
+                    let policy = parse_policy_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    policies.push(policy);
+                }
+            }
+        }
+    }
+
+    Ok(policies)
+}
+
+/// Extract injection definitions from Markdown fence blocks
+fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstInjectionDef>, PackError> {
+    let mut injections = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Injection {
+                    let injection = parse_injection_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    injections.push(injection);
+                }
+            }
+        }
+    }
+
+    Ok(injections)
+}
+
+/// Extract provider definitions from Markdown fence blocks
+fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstProviderDef>, PackError> {
+    let mut providers = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Provider {
+                    let provider = parse_provider_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    providers.push(provider);
+                }
+            }
+        }
+    }
+
+    Ok(providers)
 }
