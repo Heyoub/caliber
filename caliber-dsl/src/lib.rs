@@ -19,6 +19,7 @@
 //! ```
 
 pub mod compiler;
+pub mod config;
 pub mod lexer;
 pub mod pack;
 pub mod parser;
@@ -26,6 +27,7 @@ pub mod pretty_printer;
 
 // Re-export key types for convenience
 pub use compiler::*;
+pub use config::*;
 pub use lexer::*;
 pub use pack::{compose_pack, PackError, PackInput, PackMarkdownFile, PackOutput};
 pub use parser::*;
