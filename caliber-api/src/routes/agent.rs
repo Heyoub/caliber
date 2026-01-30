@@ -356,6 +356,7 @@ mod tests {
         db: DbClient,
         auth: AuthContext,
         ws: Arc<WsState>,
+        #[allow(dead_code)] // Used in event DAG integration tests
         event_dag: Arc<ApiEventDag>,
     }
 

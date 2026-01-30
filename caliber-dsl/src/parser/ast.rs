@@ -683,7 +683,7 @@ impl std::fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 /// Collector for accumulating multiple parse errors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ErrorCollector {
     errors: Vec<ParseError>,
 }

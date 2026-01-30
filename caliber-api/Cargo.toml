@@ -51,7 +51,7 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 
 # Authentication
-jsonwebtoken = "10.3"
+jsonwebtoken = { version = "10.3", features = ["aws_lc_rs"] }
 secrecy = "0.10"
 urlencoding = "2.1"  # For WorkOS URL encoding
 

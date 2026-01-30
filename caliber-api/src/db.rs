@@ -482,7 +482,7 @@ impl DbClient {
             }
         }
 
-        artifacts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        artifacts.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         artifacts.truncate(limit);
         Ok(artifacts)
     }
