@@ -601,7 +601,6 @@ mod tests {
         use serde_json::json;
 
         let event_dag = Arc::new(ApiEventDag::new());
-        let trajectory_id = uuid::Uuid::now_v7();
 
         // Use append_root and append_child for proper parent-child relationships
         let parent_id = match event_dag.append_root(json!({"order": 1})).await {
