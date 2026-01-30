@@ -1,12 +1,15 @@
 //! End-to-end smoke tests for CALIBER API
 
-use caliber_api::{ApiResult, DbClient, DbConfig};
+use caliber_api::{
+    ApiResult, CreateArtifactRequest, CreateNoteRequest, CreateScopeRequest,
+    CreateTrajectoryRequest, DbClient, DbConfig,
+};
 
 #[cfg(feature = "db-tests")]
 use caliber_core::*;
 
 #[cfg(feature = "db-tests")]
-use caliber_test_utils::*;
+use caliber_test_utils::fixtures::tenant_id_default;
 
 #[allow(dead_code)]
 fn test_db() -> ApiResult<DbClient> {
