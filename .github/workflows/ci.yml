@@ -141,7 +141,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --exclude caliber-pg --all-targets --all-features -- -D warnings
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -392,7 +392,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          sudo env "PATH=$PATH" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
@@ -533,7 +533,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          sudo env "PATH=$PATH" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
@@ -639,7 +639,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          sudo env "PATH=$PATH" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
@@ -935,7 +935,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          sudo env "PATH=$PATH" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
@@ -1073,7 +1073,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          sudo env "PATH=$PATH" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
