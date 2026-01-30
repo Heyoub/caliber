@@ -17,6 +17,14 @@ primary_region = "iad"
   CALIBER_CORS_ALLOW_CREDENTIALS = "false"
   CALIBER_RATE_LIMIT_ENABLED = "true"
 
+# REQUIRED SECRETS (set via `fly secrets set`):
+#   fly secrets set CALIBER_JWT_SECRET="$(openssl rand -base64 32)" -a caliber-api
+#   fly secrets set CALIBER_DB_PASSWORD="your-db-password" -a caliber-api
+#
+# Optional secrets:
+#   CALIBER_WORKOS_API_KEY - For WorkOS SSO integration
+#   CALIBER_OTLP_ENDPOINT - For distributed tracing (e.g., "https://otel.yourinfra.com")
+
 [http_service]
   internal_port = 3000
   force_https = true

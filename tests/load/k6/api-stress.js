@@ -11,22 +11,16 @@
 
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
-import { Rate, Trend, Counter } from 'k6/metrics';
-import {
-  API_BASE_URL,
-  stressThresholds,
-  baseOptions,
-  getHeaders,
-  checks,
-} from './config.js';
+import { Trend, Counter } from 'k6/metrics';
+import { API_BASE_URL, stressThresholds, baseOptions, getHeaders, checks } from './config.js';
 
 // Custom metrics for stress analysis
-const requestsPerSecond = new Trend('requests_per_second', true);
+const _requestsPerSecond = new Trend('requests_per_second', true);
 const errorsByStage = new Counter('errors_by_stage');
 const breakingPointVUs = new Trend('breaking_point_vus');
 const latencyByLoad = new Trend('latency_by_load', true);
 
-const MAX_VUS = parseInt(__ENV.K6_MAX_VUS || '1000', 10);
+const MAX_VUS = Number.parseInt(__ENV.K6_MAX_VUS || '1000', 10);
 
 // Test configuration - Ramping stress test
 export const options = {
@@ -68,7 +62,7 @@ export const options = {
 
 // Track state across iterations
 let currentStage = 'warmup';
-let peakRPS = 0;
+const _peakRPS = 0;
 let breakingPointFound = false;
 
 export function setup() {
@@ -87,9 +81,9 @@ export function setup() {
   };
 }
 
-export default function (data) {
+export default function (_data) {
   const vus = __VU;
-  const iteration = __ITER;
+  const _iteration = __ITER;
 
   // Determine current stage based on VU count
   if (vus <= 10) currentStage = 'warmup';
@@ -170,7 +164,7 @@ export function teardown(data) {
   console.log(`\nStress test completed in ${duration.toFixed(1)}s`);
 
   if (breakingPointFound) {
-    console.log(`Breaking point was detected during the test.`);
+    console.log('Breaking point was detected during the test.');
   } else {
     console.log(`No breaking point detected - system handled ${MAX_VUS} VUs.`);
   }
@@ -199,7 +193,7 @@ function textSummary(data) {
   const maxLatency = metrics.http_req_duration?.values?.max || 0;
 
   // Determine overall status
-  const allPassed = Object.values(thresholdResults).every(t => t);
+  const allPassed = Object.values(thresholdResults).every((t) => t);
   const status = allPassed ? 'PASSED' : 'FAILED (thresholds exceeded)';
 
   return `
@@ -226,7 +220,7 @@ Latency Distribution:
 
 Errors by Stage:
 ${['warmup', 'light', 'moderate', 'heavy', 'very_heavy', 'extreme']
-  .map(stage => {
+  .map((stage) => {
     const count = metrics.errors_by_stage?.values?.[stage] || 0;
     return `  ${stage.padEnd(12)}: ${count}`;
   })
@@ -255,19 +249,27 @@ function generateRecommendations(metrics) {
   }
 
   if (p95 > 500) {
-    recommendations.push('  - p95 latency is high. Consider caching, query optimization, or horizontal scaling.');
+    recommendations.push(
+      '  - p95 latency is high. Consider caching, query optimization, or horizontal scaling.'
+    );
   }
 
   if (p99 > 1000) {
-    recommendations.push('  - p99 latency exceeds 1s. Investigate slow queries and add circuit breakers.');
+    recommendations.push(
+      '  - p99 latency exceeds 1s. Investigate slow queries and add circuit breakers.'
+    );
   }
 
   if (p99 / p95 > 3) {
-    recommendations.push('  - Large gap between p95 and p99. Some requests are hitting edge cases - investigate outliers.');
+    recommendations.push(
+      '  - Large gap between p95 and p99. Some requests are hitting edge cases - investigate outliers.'
+    );
   }
 
   if (recommendations.length === 0) {
-    recommendations.push('  - System performed well under stress. Consider increasing MAX_VUS for next test.');
+    recommendations.push(
+      '  - System performed well under stress. Consider increasing MAX_VUS for next test.'
+    );
   }
 
   return recommendations.join('\n');

@@ -5,8 +5,8 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.4.4  
-**Architecture:** Multi-crate ECS (Entity-Component-System)  
+**Version:** 0.4.5
+**Architecture:** Multi-crate ECS (Entity-Component-System)
 **Language:** Rust (pgrx)
 
 ---
@@ -98,6 +98,35 @@ psql -c "WITH t AS (SELECT caliber_trajectory_create('hello-world', NULL, NULL) 
 ```
 
 Config is required for runtime operations; see `docs/QUICK_REFERENCE.md` for the full JSON shape.
+
+---
+
+## ⚠️ Production Deployment Notes (v0.4.5)
+
+### Cache Invalidation Options
+
+**v0.4.5** provides two cache invalidation strategies:
+
+1. **InMemoryChangeJournal** (default) - Single-instance only
+   - ✅ Zero external dependencies
+   - ✅ Microsecond latency
+   - ❌ Not distributed (cache inconsistency across multiple API instances)
+
+2. **EventDagChangeJournal** (NEW in v0.4.5) - Multi-instance ready
+   - ✅ Distributed coordination via event DAG
+   - ✅ No external infrastructure (LISTEN/NOTIFY, Redis, etc.)
+   - ⚠️ Poll-based (100ms typical latency)
+   - Uses the event log as a shared invalidation journal
+
+**Single-instance deployments** (recommended for most use cases):
+- Use `InMemoryChangeJournal` (default)
+- Deploy behind load balancer with session affinity if needed
+- Vertical scaling fully supported
+
+**Multi-instance deployments** (horizontal scaling):
+- Switch to `EventDagChangeJournal` for cache coordination
+- Accepts ~100ms invalidation propagation delay
+- See `caliber-storage/src/cache/watermark.rs` for setup
 
 ---
 

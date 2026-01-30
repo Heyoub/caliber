@@ -119,19 +119,29 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: lint
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --exclude caliber-pg --all-targets --all-features -- -D warnings
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -171,10 +181,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: test
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -193,7 +213,7 @@ jobs:
           CALIBER_DB_USER: caliber
           CALIBER_DB_PASSWORD: test_password
         run: |
-          cargo llvm-cov --workspace --lcov --output-path lcov.info \
+          cargo llvm-cov --workspace --exclude caliber-pg --lcov --output-path lcov.info \
             --ignore-filename-regex '(caliber-pg|fuzz)' \
             -- --test-threads=1
 
@@ -225,10 +245,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: property
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
@@ -323,6 +353,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install PostgreSQL 18 + pgvector
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -349,16 +388,25 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
-          if [ -z "$PKGDIR" ]; then
-            echo "Error: could not find pgrx package directory"
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
+          cargo pgrx init --pg18 download
+          cd caliber-pg
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
             exit 1
           fi
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
-          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Install PostgreSQL client
@@ -397,6 +445,7 @@ jobs:
         run: |
           ./caliber-api &
           sleep 5
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
 
       - name: Create test tenant
         id: tenant
@@ -450,10 +499,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: integration
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -484,16 +543,25 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
-          if [ -z "$PKGDIR" ]; then
-            echo "Error: could not find pgrx package directory"
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
+          cargo pgrx init --pg18 download
+          cd caliber-pg
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
             exit 1
           fi
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
-          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Run DB-backed route tests
@@ -544,6 +612,7 @@ jobs:
   test-security:
     name: Test (Security/OWASP)
     runs-on: ubuntu-latest
+    needs: [build]
     steps:
       - uses: actions/checkout@v4
 
@@ -557,6 +626,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install PostgreSQL 18 + pgvector
         run: |
@@ -584,25 +662,34 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
-          if [ -z "$PKGDIR" ]; then
-            echo "Error: could not find pgrx package directory"
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
+          cargo pgrx init --pg18 download
+          cd caliber-pg
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
             exit 1
           fi
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
-          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+      - name: Download binary
+        uses: actions/download-artifact@v4
         with:
-          shared-key: security
+          name: caliber-api
 
-      - name: Build API server
-        run: cargo build --release -p caliber-api
+      - name: Make binary executable
+        run: chmod +x caliber-api
 
       - name: Start API server
         env:
@@ -616,7 +703,7 @@ jobs:
           CALIBER_AUTH_PROVIDER: jwt
           CALIBER_REQUIRE_TENANT_HEADER: "true"
         run: |
-          ./target/release/caliber-api &
+          ./caliber-api &
           sleep 5  # Wait for server to start
 
       - name: Create test tenant
@@ -673,6 +760,15 @@ jobs:
         with:
           components: clippy
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -698,7 +794,8 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ai-quality
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install quality tools
         run: |
@@ -738,13 +835,23 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: build
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build release
         run: cargo build --release -p caliber-api --features openapi,swagger-ui
@@ -829,6 +936,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Install PostgreSQL 18 + pgvector
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -855,16 +971,25 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
-          if [ -z "$PKGDIR" ]; then
-            echo "Error: could not find pgrx package directory"
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
+          cargo pgrx init --pg18 download
+          cd caliber-pg
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
             exit 1
           fi
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
-          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Setup Bun
@@ -898,6 +1023,7 @@ jobs:
         run: |
           ./caliber-api &
           sleep 5
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
 
       - name: Create test tenant
         id: tenant
@@ -948,6 +1074,7 @@ jobs:
   test-load:
     name: Test (Load)
     runs-on: ubuntu-latest
+    needs: [build]
     if: github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
     services:
       redis:
@@ -960,6 +1087,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: Install PostgreSQL 18 + pgvector
         run: |
@@ -987,25 +1123,40 @@ jobs:
       - name: Install caliber_pg extension
         run: |
           cargo install cargo-pgrx --version 0.16.1 --locked
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-          cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
-          if [ -z "$PKGDIR" ]; then
-            echo "Error: could not find pgrx package directory"
+          export PGRX_HOME="$HOME/.pgrx"
+          mkdir -p "$PGRX_HOME"
+          cargo pgrx init --pg18 download
+          cd caliber-pg
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
             exit 1
           fi
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
-          sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
-          sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: load
+          shared-key: workspace
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build release
-        run: cargo build --release -p caliber-api
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: caliber-api
+
+      - name: Make binary executable
+        run: chmod +x caliber-api
 
       - name: Start API server
         env:
@@ -1020,8 +1171,9 @@ jobs:
           CALIBER_AUTH_PROVIDER: jwt
           CALIBER_REQUIRE_TENANT_HEADER: "true"
         run: |
-          ./target/release/caliber-api &
+          ./caliber-api &
           sleep 5
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
 
       - name: Create test tenant
         id: tenant
@@ -1099,10 +1251,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: pgrx
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install PostgreSQL 18 dev headers
         run: |
@@ -1176,7 +1338,7 @@ jobs:
         working-directory: landing
         env:
           CI: "1"
-        run: bun test -- --project=chromium
+        run: bunx playwright test --project=chromium
 
   test-mutation:
     name: Test (Mutation)

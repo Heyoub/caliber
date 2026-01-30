@@ -156,9 +156,7 @@ export function logout(): void {
 export function redirectToLogin(returnUrl?: string): void {
   if (!isBrowser) return;
 
-  const loginUrl = returnUrl
-    ? `/login?return_url=${encodeURIComponent(returnUrl)}`
-    : '/login';
+  const loginUrl = returnUrl ? `/login?return_url=${encodeURIComponent(returnUrl)}` : '/login';
   window.location.href = loginUrl;
 }
 

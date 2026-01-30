@@ -16,7 +16,72 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Arc;
 use uuid::Uuid;
+
+// ============================================================================
+// CLOCK ABSTRACTION (FOR DETERMINISTIC TESTS + CI ROBUSTNESS)
+// ============================================================================
+
+/// Clock abstraction for JWT time validation.
+///
+/// This allows us to inject time in tests and handle broken CI environments
+/// where `SystemTime::now()` might return pre-epoch times (causing panics).
+///
+/// By owning time validation ourselves (instead of letting `jsonwebtoken` do it),
+/// we avoid the `SystemTime::now().duration_since(UNIX_EPOCH).expect()` panic
+/// path and make tests fully deterministic.
+pub trait JwtClock: Send + Sync {
+    /// Get current time as Unix epoch seconds.
+    ///
+    /// Returns negative values for pre-1970 times (which should be treated as errors
+    /// in production but can be handled gracefully in tests).
+    fn now_epoch_secs(&self) -> i64;
+}
+
+/// Production clock using system time.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemClock;
+
+impl JwtClock for SystemClock {
+    fn now_epoch_secs(&self) -> i64 {
+        chrono::Utc::now().timestamp()
+    }
+}
+
+/// Fixed clock for deterministic tests.
+///
+/// Always returns the same timestamp, making tests reproducible and
+/// immune to CI environment clock issues.
+#[derive(Debug, Clone, Copy)]
+pub struct FixedClock(pub i64);
+
+impl JwtClock for FixedClock {
+    fn now_epoch_secs(&self) -> i64 {
+        self.0
+    }
+}
+
+/// Test clock helpers for common scenarios.
+#[cfg(test)]
+pub mod test_clocks {
+    use super::FixedClock;
+
+    /// 2024-01-01 00:00:00 UTC - always valid for tests
+    pub fn valid() -> FixedClock {
+        FixedClock(1704067200)
+    }
+
+    /// 2020-01-01 00:00:00 UTC - always in the past
+    pub fn expired() -> FixedClock {
+        FixedClock(1577836800)
+    }
+
+    /// 2030-01-01 00:00:00 UTC - far future for nbf tests
+    pub fn future() -> FixedClock {
+        FixedClock(1893456000)
+    }
+}
 
 // ============================================================================
 // JWT SECRET (TYPE-SAFE)
@@ -114,6 +179,12 @@ pub struct AuthConfig {
     /// JWT token expiration in seconds (default: 1 hour)
     pub jwt_expiration_secs: i64,
 
+    /// JWT clock skew tolerance in seconds (default: 60)
+    ///
+    /// Allows tokens to be slightly in the future/past to handle clock drift
+    /// in distributed systems. This is standard practice (AWS, Google, Auth0 all do this).
+    pub jwt_clock_skew_secs: i64,
+
     /// Whether to require tenant header
     pub require_tenant_header: bool,
 
@@ -128,6 +199,10 @@ pub struct AuthConfig {
 
     /// Authentication provider to use
     pub auth_provider: AuthProvider,
+
+    /// Clock for JWT time validation (injected for testing)
+    #[allow(clippy::type_complexity)]
+    pub clock: Arc<dyn JwtClock>,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -137,6 +212,7 @@ impl std::fmt::Debug for AuthConfig {
             .field("jwt_secret", &self.jwt_secret)
             .field("jwt_algorithm", &self.jwt_algorithm)
             .field("jwt_expiration_secs", &self.jwt_expiration_secs)
+            .field("jwt_clock_skew_secs", &self.jwt_clock_skew_secs)
             .field("require_tenant_header", &self.require_tenant_header)
             .field(
                 "workos_client_id",
@@ -148,6 +224,7 @@ impl std::fmt::Debug for AuthConfig {
             )
             .field("workos_redirect_uri", &self.workos_redirect_uri)
             .field("auth_provider", &self.auth_provider)
+            .field("clock", &"<JwtClock>")
             .finish()
     }
 }
@@ -162,11 +239,13 @@ impl Default for AuthConfig {
             jwt_secret: build_jwt_secret(secret_str),
             jwt_algorithm: Algorithm::HS256,
             jwt_expiration_secs: 3600, // 1 hour
+            jwt_clock_skew_secs: 60,   // 60 seconds (industry standard)
             require_tenant_header: true,
             workos_client_id: None,
             workos_api_key: None,
             workos_redirect_uri: None,
             auth_provider: AuthProvider::default(),
+            clock: Arc::new(SystemClock),
         }
     }
 }
@@ -178,6 +257,7 @@ impl AuthConfig {
     /// - `CALIBER_API_KEYS`: Comma-separated list of valid API keys
     /// - `CALIBER_JWT_SECRET`: JWT signing secret
     /// - `CALIBER_JWT_EXPIRATION_SECS`: JWT token expiration (default: 3600)
+    /// - `CALIBER_JWT_CLOCK_SKEW_SECS`: JWT clock skew tolerance (default: 60)
     /// - `CALIBER_REQUIRE_TENANT_HEADER`: Whether X-Tenant-ID is required (default: true)
     /// - `CALIBER_AUTH_PROVIDER`: Authentication provider ("jwt" | "workos", default: "jwt")
     /// - `CALIBER_WORKOS_CLIENT_ID`: WorkOS application client ID
@@ -213,6 +293,10 @@ impl AuthConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3600),
+            jwt_clock_skew_secs: std::env::var("CALIBER_JWT_CLOCK_SKEW_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(60),
             require_tenant_header: std::env::var("CALIBER_REQUIRE_TENANT_HEADER")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -221,6 +305,7 @@ impl AuthConfig {
             workos_api_key: std::env::var("CALIBER_WORKOS_API_KEY").ok(),
             workos_redirect_uri: std::env::var("CALIBER_WORKOS_REDIRECT_URI").ok(),
             auth_provider,
+            clock: Arc::new(SystemClock),
         }
     }
 
@@ -279,7 +364,9 @@ fn build_jwt_secret(secret_str: String) -> JwtSecret {
     match JwtSecret::new(normalized) {
         Ok(secret) => secret,
         Err(_) => JwtSecret(SecretString::new(
-            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION".to_string().into(),
+            "INSECURE_DEFAULT_SECRET_CHANGE_IN_PRODUCTION"
+                .to_string()
+                .into(),
         )),
     }
 }
@@ -311,9 +398,14 @@ pub struct Claims {
 }
 
 impl Claims {
-    /// Create new claims for a user.
-    pub fn new(user_id: String, tenant_id: Option<TenantId>, expiration_secs: i64) -> Self {
-        let now = chrono::Utc::now().timestamp();
+    /// Create new claims for a user using a clock.
+    pub fn new(
+        user_id: String,
+        tenant_id: Option<TenantId>,
+        expiration_secs: i64,
+        clock: &dyn JwtClock,
+    ) -> Self {
+        let now = clock.now_epoch_secs();
 
         Self {
             sub: user_id,
@@ -336,9 +428,9 @@ impl Claims {
         self
     }
 
-    /// Check if the token has expired.
-    pub fn is_expired(&self) -> bool {
-        let now = chrono::Utc::now().timestamp();
+    /// Check if the token has expired according to a clock.
+    pub fn is_expired(&self, clock: &dyn JwtClock) -> bool {
+        let now = clock.now_epoch_secs();
         self.exp < now
     }
 
@@ -466,18 +558,53 @@ pub fn validate_api_key(config: &AuthConfig, api_key: &str) -> ApiResult<()> {
     }
 }
 
+/// Validate JWT claim times using our own clock logic.
+///
+/// This is separated from signature validation so we can:
+/// 1. Handle broken CI environments (pre-epoch clocks) gracefully
+/// 2. Make tests fully deterministic with injected clocks
+/// 3. Apply custom clock skew policies
+///
+/// # Arguments
+/// * `now` - Current time from clock
+/// * `exp` - Expiration time from JWT claims
+/// * `nbf` - Not-before time from JWT claims (optional)
+/// * `leeway_secs` - Clock skew tolerance
+fn validate_claim_times(now: i64, exp: i64, nbf: Option<i64>, leeway_secs: i64) -> ApiResult<()> {
+    // Check not-before (nbf): allow slightly-in-the-future within leeway
+    if let Some(nbf) = nbf {
+        if now + leeway_secs < nbf {
+            return Err(ApiError::unauthorized("Token not yet valid (nbf)"));
+        }
+    }
+
+    // Check expiration (exp): allow slightly-in-the-past within leeway
+    if exp < now - leeway_secs {
+        return Err(ApiError::token_expired());
+    }
+
+    Ok(())
+}
+
 /// Validate a JWT token and extract claims.
+///
+/// This performs signature validation ONLY (no time validation) to avoid
+/// the `SystemTime::now().duration_since(UNIX_EPOCH).expect()` panic path
+/// in `jsonwebtoken`. We do our own time validation with injected clocks.
 ///
 /// Returns the claims if the token is valid, Err otherwise.
 pub fn validate_jwt_token(config: &AuthConfig, token: &str) -> ApiResult<Claims> {
     let decoding_key = DecodingKey::from_secret(config.jwt_secret.expose().as_bytes());
 
+    // Decode with signature validation ONLY (skip exp/nbf validation)
     let mut validation = Validation::new(config.jwt_algorithm);
-    validation.validate_exp = true;
+    validation.validate_exp = false; // We'll do this ourselves with our clock
+    validation.validate_nbf = false;
+    // Keep required_spec_claims with "exp" to ensure it's present
+    validation.required_spec_claims = std::collections::HashSet::from(["exp".to_string()]);
 
     let token_data =
         decode::<Claims>(token, &decoding_key, &validation).map_err(|e| match e.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => ApiError::token_expired(),
             jsonwebtoken::errors::ErrorKind::InvalidToken => {
                 ApiError::invalid_token("Token is invalid")
             }
@@ -489,10 +616,22 @@ pub fn validate_jwt_token(config: &AuthConfig, token: &str) -> ApiResult<Claims>
 
     let claims = token_data.claims;
 
-    // Double-check expiration (validation should catch this, but be defensive)
-    if claims.is_expired() {
-        return Err(ApiError::token_expired());
+    // Get current time from config's clock
+    let now = config.clock.now_epoch_secs();
+
+    // Fail loud if production clock returns pre-epoch time (server is hallucinating)
+    if now < 0 {
+        tracing::error!(
+            timestamp = now,
+            "System clock returned pre-epoch time - server time is broken"
+        );
+        return Err(ApiError::internal_error(
+            "Server time configuration error - please contact support",
+        ));
     }
+
+    // Apply our own time validation with clock skew tolerance
+    validate_claim_times(now, claims.exp, None, config.jwt_clock_skew_secs)?;
 
     Ok(claims)
 }
@@ -506,7 +645,13 @@ pub fn generate_jwt_token(
     tenant_id: Option<TenantId>,
     roles: Vec<String>,
 ) -> ApiResult<String> {
-    let claims = Claims::new(user_id, tenant_id, config.jwt_expiration_secs).with_roles(roles);
+    let claims = Claims::new(
+        user_id,
+        tenant_id,
+        config.jwt_expiration_secs,
+        &*config.clock,
+    )
+    .with_roles(roles);
 
     let encoding_key = EncodingKey::from_secret(config.jwt_secret.expose().as_bytes());
     let header = Header::new(config.jwt_algorithm);
@@ -725,6 +870,7 @@ mod tests {
         config.jwt_secret =
             JwtSecret::new("test_secret".to_string()).expect("Test secret should be valid");
         config.require_tenant_header = false;
+        config.clock = Arc::new(test_clocks::valid()); // Use deterministic clock
         config
     }
 
@@ -754,7 +900,7 @@ mod tests {
 
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.roles, roles);
-        assert!(!claims.is_expired());
+        assert!(!claims.is_expired(&test_clocks::valid())); // Use same fixed clock as token generation
         Ok(())
     }
 
@@ -765,8 +911,8 @@ mod tests {
 
         let token = generate_jwt_token(&config, "user123".to_string(), None, vec![])?;
 
-        // Reset expiration for validation
-        config.jwt_expiration_secs = 3600;
+        // Move clock forward (or use expired clock) for validation
+        config.clock = Arc::new(test_clocks::future()); // Far in the future, token will be expired
 
         let result = validate_jwt_token(&config, &token);
         assert!(result.is_err());
@@ -924,8 +1070,9 @@ mod tests {
         let user_id = "user123".to_string();
         let tenant_id = TenantId::new(Uuid::now_v7());
         let expiration_secs = 3600;
+        let clock = test_clocks::valid();
 
-        let claims = Claims::new(user_id.clone(), Some(tenant_id), expiration_secs)
+        let claims = Claims::new(user_id.clone(), Some(tenant_id), expiration_secs, &clock)
             .with_role("admin".to_string())
             .with_roles(vec!["editor".to_string(), "viewer".to_string()]);
 
@@ -933,7 +1080,7 @@ mod tests {
         assert_eq!(claims.tenant_id(), Some(tenant_id));
         assert_eq!(claims.roles.len(), 3);
         assert!(claims.roles.contains(&"admin".to_string()));
-        assert!(!claims.is_expired());
+        assert!(!claims.is_expired(&clock));
     }
 
     #[test]
@@ -994,5 +1141,70 @@ mod tests {
 
         // Should not fail when no environment is set (defaults to development)
         assert!(config.validate_for_production().is_ok());
+    }
+
+    #[test]
+    fn test_clock_skew_tolerance() -> ApiResult<()> {
+        let mut config = test_config();
+        config.jwt_clock_skew_secs = 60; // 60 seconds leeway
+
+        // Generate token with current clock
+        let token = generate_jwt_token(&config, "user123".to_string(), None, vec![])?;
+
+        // Move clock 30 seconds forward (within leeway)
+        let future_clock = FixedClock(config.clock.now_epoch_secs() + 30);
+        config.clock = Arc::new(future_clock);
+
+        // Should still be valid
+        let result = validate_jwt_token(&config, &token);
+        assert!(result.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_clock_skew_beyond_tolerance() -> ApiResult<()> {
+        let mut config = test_config();
+        config.jwt_clock_skew_secs = 60;
+        config.jwt_expiration_secs = 100; // Short-lived token
+
+        // Generate token
+        let token = generate_jwt_token(&config, "user123".to_string(), None, vec![])?;
+
+        // Move clock way beyond expiration + leeway
+        let far_future_clock = FixedClock(config.clock.now_epoch_secs() + 200);
+        config.clock = Arc::new(far_future_clock);
+
+        // Should fail - expired beyond leeway
+        let result = validate_jwt_token(&config, &token);
+        assert!(result.is_err());
+
+        if let Err(e) = result {
+            assert_eq!(e.code, crate::error::ErrorCode::TokenExpired);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_pre_epoch_clock_fails_loud() -> ApiResult<()> {
+        let mut config = test_config();
+
+        // Generate valid token with normal clock
+        let token = generate_jwt_token(&config, "user123".to_string(), None, vec![])?;
+
+        // Now use a broken clock (pre-1970)
+        config.clock = Arc::new(FixedClock(-1000));
+
+        // Should fail with internal error, not panic
+        let result = validate_jwt_token(&config, &token);
+        assert!(result.is_err());
+
+        if let Err(e) = result {
+            assert_eq!(e.code, crate::error::ErrorCode::InternalError);
+            assert!(e.message.contains("time configuration error"));
+        }
+
+        Ok(())
     }
 }

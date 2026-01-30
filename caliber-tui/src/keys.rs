@@ -1,5 +1,6 @@
 //! Keybinding definitions for the TUI.
 
+use crate::config::KeybindingsConfig;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,32 +35,45 @@ pub enum KeyAction {
     ExecuteLink,
 }
 
-pub fn map_key(event: KeyEvent) -> Option<KeyAction> {
+/// Map a key event to an action, with optional keybinding overrides.
+pub fn map_key(event: KeyEvent, overrides: Option<&KeybindingsConfig>) -> Option<KeyAction> {
     let KeyEvent {
         code, modifiers, ..
     } = event;
 
+    // Extract configured keys or use defaults
+    let key_quit = overrides.and_then(|o| o.quit).unwrap_or('q');
+    let key_help = overrides.and_then(|o| o.help).unwrap_or('?');
+    let key_search = overrides.and_then(|o| o.search).unwrap_or('/');
+    let key_command = overrides.and_then(|o| o.command).unwrap_or(':');
+    let key_refresh = overrides.and_then(|o| o.refresh).unwrap_or('r');
+    let key_new_item = overrides.and_then(|o| o.new_item).unwrap_or('n');
+    let key_edit_item = overrides.and_then(|o| o.edit_item).unwrap_or('e');
+    let key_delete_item = overrides.and_then(|o| o.delete_item).unwrap_or('d');
+    let key_toggle_links = overrides.and_then(|o| o.toggle_links).unwrap_or('a');
+    let key_execute_link = overrides.and_then(|o| o.execute_link).unwrap_or('g');
+
     if modifiers.contains(KeyModifiers::CONTROL) {
         return match code {
             KeyCode::Char('c') => Some(KeyAction::Cancel),
-            KeyCode::Char('r') => Some(KeyAction::Refresh),
+            KeyCode::Char(c) if c == key_refresh => Some(KeyAction::Refresh),
             _ => None,
         };
     }
 
     match code {
-        KeyCode::Char('q') => Some(KeyAction::Quit),
-        KeyCode::Char('?') => Some(KeyAction::OpenHelp),
-        KeyCode::Char('/') => Some(KeyAction::OpenSearch),
-        KeyCode::Char(':') => Some(KeyAction::OpenCommand),
+        KeyCode::Char(c) if c == key_quit => Some(KeyAction::Quit),
+        KeyCode::Char(c) if c == key_help => Some(KeyAction::OpenHelp),
+        KeyCode::Char(c) if c == key_search => Some(KeyAction::OpenSearch),
+        KeyCode::Char(c) if c == key_command => Some(KeyAction::OpenCommand),
         KeyCode::Char('p') => Some(KeyAction::PauseUpdates),
-        KeyCode::Char('n') => Some(KeyAction::NewItem),
-        KeyCode::Char('e') => Some(KeyAction::EditItem),
-        KeyCode::Char('d') => Some(KeyAction::DeleteItem),
-        KeyCode::Char('a') => Some(KeyAction::ToggleLinks),
+        KeyCode::Char(c) if c == key_new_item => Some(KeyAction::NewItem),
+        KeyCode::Char(c) if c == key_edit_item => Some(KeyAction::EditItem),
+        KeyCode::Char(c) if c == key_delete_item => Some(KeyAction::DeleteItem),
+        KeyCode::Char(c) if c == key_toggle_links => Some(KeyAction::ToggleLinks),
         KeyCode::Char('[') => Some(KeyAction::PrevLink),
         KeyCode::Char(']') => Some(KeyAction::NextLink),
-        KeyCode::Char('g') => Some(KeyAction::ExecuteLink),
+        KeyCode::Char(c) if c == key_execute_link => Some(KeyAction::ExecuteLink),
         KeyCode::Enter => Some(KeyAction::Confirm),
         KeyCode::Esc => Some(KeyAction::Cancel),
         KeyCode::Tab => Some(KeyAction::NextView),

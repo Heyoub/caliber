@@ -34,7 +34,7 @@ pub fn render_view(f: &mut Frame<'_>, app: &App) {
             Constraint::Min(0),
             Constraint::Length(2),
         ])
-        .split(f.size());
+        .split(f.area());
 
     render_header(f, app, layout[0]);
 

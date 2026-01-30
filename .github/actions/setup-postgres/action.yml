@@ -1,0 +1,65 @@
+name: 'Setup PostgreSQL 18 with pgvector'
+description: 'Install PostgreSQL 18, pgvector, and caliber_pg extension'
+
+inputs:
+  install-extension:
+    description: 'Whether to install caliber_pg extension'
+    required: false
+    default: 'true'
+  pg-port:
+    description: 'PostgreSQL port'
+    required: false
+    default: '5433'
+  database-name:
+    description: 'Database name to create'
+    required: false
+    default: 'caliber_test'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install PostgreSQL 18 and pgvector
+      shell: bash
+      run: |
+        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get install -y postgresql-18 postgresql-18-pgvector
+        sudo systemctl start postgresql
+        sudo systemctl status postgresql
+
+    - name: Create PostgreSQL user and database
+      shell: bash
+      env:
+        PGPORT: ${{ inputs.pg-port }}
+        DBNAME: ${{ inputs.database-name }}
+      run: |
+        sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+        sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE $DBNAME OWNER caliber;"
+        sudo -u postgres psql -p "$PGPORT" -d "$DBNAME" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+    - name: Install and configure caliber_pg extension
+      if: inputs.install-extension == 'true'
+      shell: bash
+      env:
+        PGPORT: ${{ inputs.pg-port }}
+        DBNAME: ${{ inputs.database-name }}
+      run: |
+        cargo install cargo-pgrx --version 0.16.1 --locked
+        export PGRX_HOME="$HOME/.pgrx"
+        mkdir -p "$PGRX_HOME"
+        cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+        cargo pgrx package --package caliber-pg --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+
+        PKGDIR=$(find target -name "caliber_pg-pg18" -type d | head -1)
+        if [ -z "$PKGDIR" ]; then
+          echo "ERROR: caliber_pg-pg18 package directory not found"
+          exit 1
+        fi
+
+        sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.control /usr/share/postgresql/18/extension/
+        sudo install -m 644 "$PKGDIR"/usr/share/postgresql/18/extension/*.sql /usr/share/postgresql/18/extension/
+        sudo install -m 755 "$PKGDIR"/usr/lib/postgresql/18/lib/*.so /usr/lib/postgresql/18/lib/
+
+        sudo -u postgres psql -p "$PGPORT" -d "$DBNAME" -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+        echo "✅ caliber_pg extension installed successfully"

@@ -105,13 +105,30 @@ fn initialize_cache() -> ApiResult<Arc<crate::state::ApiCache>> {
     // with a PostgreSQL-backed change journal for cross-instance invalidation
     let change_journal = InMemoryChangeJournal::new();
 
-    // Configure cache with sensible defaults
+    // Configure cache from environment variables with sensible defaults
+    let max_staleness_secs = std::env::var("CALIBER_CACHE_MAX_STALENESS_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(60);
+    let poll_interval_ms = std::env::var("CALIBER_CACHE_POLL_INTERVAL_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(100);
+    let max_entries = std::env::var("CALIBER_CACHE_MAX_ENTRIES")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(10_000);
+    let ttl_secs = std::env::var("CALIBER_CACHE_TTL_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(3600);
+
     let cache_config = CacheConfig::new()
-        .with_max_staleness(Duration::from_secs(60))
-        .with_poll_interval(Duration::from_millis(100))
+        .with_max_staleness(Duration::from_secs(max_staleness_secs))
+        .with_poll_interval(Duration::from_millis(poll_interval_ms))
         .with_prefetch(false)
-        .with_max_entries(10_000)
-        .with_ttl(Duration::from_secs(3600));
+        .with_max_entries(max_entries)
+        .with_ttl(Duration::from_secs(ttl_secs));
 
     // Create the read-through cache
     let cache = ReadThroughCache::new(
@@ -700,12 +717,17 @@ mod tests {
 
     #[test]
     fn test_validate_api_config_for_production_cors_required() {
-        let mut config = ApiConfig::default();
-        config.cors_origins = Vec::new();
+        let config = ApiConfig {
+            cors_origins: Vec::new(),
+            ..Default::default()
+        };
         let err = validate_api_config_for_production(&config).unwrap_err();
         assert_eq!(err.code, ErrorCode::InvalidInput);
 
-        config.cors_origins = vec!["https://example.com".to_string()];
+        let config = ApiConfig {
+            cors_origins: vec!["https://example.com".to_string()],
+            ..Default::default()
+        };
         assert!(validate_api_config_for_production(&config).is_ok());
     }
 }

@@ -356,6 +356,7 @@ mod tests {
         db: DbClient,
         auth: AuthContext,
         ws: Arc<WsState>,
+        #[allow(dead_code)] // Used in event DAG integration tests
         event_dag: Arc<ApiEventDag>,
     }
 
@@ -554,5 +555,139 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+
+    // ==========================================================================
+    // Event DAG Tests (Targeted - Proves Plumbing)
+    // ==========================================================================
+
+    #[tokio::test]
+    async fn test_event_dag_append_and_query() {
+        use caliber_core::*;
+        use serde_json::json;
+
+        let event_dag = Arc::new(ApiEventDag::new());
+
+        // Create a test event
+        let event_id = uuid::Uuid::now_v7();
+        let event = Event::new(
+            EventHeader::new(
+                event_id,
+                uuid::Uuid::now_v7(), // trajectory_id
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"test": "data"}),
+        );
+
+        // Append to DAG
+        event_dag.append(event.clone()).await.unwrap();
+
+        // Query it back
+        let retrieved = match event_dag.read(event_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read event"),
+        };
+        assert_eq!(retrieved.header.event_id, event_id);
+        assert_eq!(retrieved.payload, json!({"test": "data"}));
+    }
+
+    #[tokio::test]
+    async fn test_event_dag_ordering_causality() {
+        use caliber_core::*;
+        use serde_json::json;
+
+        let event_dag = Arc::new(ApiEventDag::new());
+
+        // Use append_root and append_child for proper parent-child relationships
+        let parent_id = match event_dag.append_root(json!({"order": 1})).await {
+            caliber_core::Effect::Ok(id) => id,
+            _ => panic!("Failed to append root"),
+        };
+
+        let child_id = match event_dag.append_child(parent_id, json!({"order": 2})).await {
+            caliber_core::Effect::Ok(id) => id,
+            _ => panic!("Failed to append child"),
+        };
+
+        // Verify both exist
+        let retrieved_parent = match event_dag.read(parent_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read parent"),
+        };
+        let retrieved_child = match event_dag.read(child_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read child"),
+        };
+
+        // Verify causality through correlation_id (child inherits parent's correlation)
+        assert_eq!(
+            retrieved_child.header.correlation_id,
+            retrieved_parent.header.correlation_id
+        );
+        assert_eq!(retrieved_parent.header.position.sequence, 0);
+        assert_eq!(retrieved_child.header.position.sequence, 1);
+    }
+
+    #[tokio::test]
+    async fn test_agent_route_records_event() {
+        use caliber_core::*;
+        use serde_json::json;
+
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
+
+        // Register an agent (this should create events in the DAG)
+        let req = RegisterAgentRequest {
+            agent_type: "event_tester".to_string(),
+            capabilities: vec!["test".to_string()],
+            memory_access: MemoryAccessRequest {
+                read: vec![],
+                write: vec![],
+            },
+            can_delegate_to: vec![],
+            reports_to: None,
+        };
+
+        let create_response = register_agent(
+            State(ctx.db.clone()),
+            State(ctx.ws.clone()),
+            AuthExtractor(ctx.auth.clone()),
+            Json(req),
+        )
+        .await
+        .unwrap()
+        .into_response();
+
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        // Record a custom event to the event DAG
+        let event_id = uuid::Uuid::now_v7();
+        let test_event = Event::new(
+            EventHeader::new(
+                event_id,
+                uuid::Uuid::now_v7(),
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"agent_route": "register_agent", "test": true}),
+        );
+
+        ctx.event_dag.append(test_event).await.unwrap();
+
+        // Verify event was recorded
+        let retrieved = match ctx.event_dag.read(event_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read event"),
+        };
+        assert_eq!(retrieved.payload["agent_route"], "register_agent");
+        assert_eq!(retrieved.payload["test"], true);
     }
 }

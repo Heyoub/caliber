@@ -334,134 +334,6 @@ impl ProviderAdapter for PackProviderAdapter {
     }
 }
 
-// =============================================================================
-// TESTS
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::auth::{AuthContext, AuthMethod};
-    use crate::db::{DbClient, DbConfig};
-    use crate::middleware::AuthExtractor;
-    use axum::{body::to_bytes, extract::State, response::IntoResponse};
-
-    #[test]
-    fn test_routing_strategy_from_hint() {
-        assert_eq!(
-            routing_strategy_from_hint("round_robin"),
-            Some(RoutingStrategy::RoundRobin)
-        );
-        assert_eq!(
-            routing_strategy_from_hint("leastlatency"),
-            Some(RoutingStrategy::LeastLatency)
-        );
-        assert_eq!(routing_strategy_from_hint("unknown"), None);
-    }
-
-    #[test]
-    fn test_routing_strategy_label() {
-        assert_eq!(routing_strategy_label(RoutingStrategy::First), "first");
-        assert_eq!(
-            routing_strategy_label(RoutingStrategy::RoundRobin),
-            "round_robin"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_pack_provider_adapter_ping() {
-        let adapter = PackProviderAdapter::new("test");
-        assert_eq!(adapter.provider_id(), "test");
-        assert!(adapter
-            .capabilities()
-            .contains(&ProviderCapability::Summarization));
-
-        let response = adapter.ping().await.unwrap();
-        assert_eq!(response.provider_id, "test");
-        assert_eq!(response.health, HealthStatus::Healthy);
-    }
-
-    #[test]
-    fn test_pack_inspect_response_roundtrip() {
-        let response = PackInspectResponse {
-            has_active: false,
-            compiled: None,
-            pack_source: None,
-            tools: vec![],
-            toolsets: HashMap::new(),
-            agents: HashMap::new(),
-            injections: vec![],
-            providers: vec![],
-            routing: None,
-            effective_embedding_provider: None,
-            effective_summarization_provider: None,
-            effective_injections: vec![],
-            routing_effective: None,
-        };
-        let json = serde_json::to_string(&response).unwrap();
-        let restored: PackInspectResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(response.has_active, restored.has_active);
-        assert_eq!(response.tools, restored.tools);
-    }
-
-    struct DbTestContext {
-        db: DbClient,
-        auth: AuthContext,
-    }
-
-    async fn db_test_context() -> Option<DbTestContext> {
-        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
-            return None;
-        }
-
-        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
-        let conn = db.get_conn().await.ok()?;
-        let has_fn = conn
-            .query_opt(
-                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
-                &[],
-            )
-            .await
-            .ok()
-            .flatten()
-            .is_some();
-        if !has_fn {
-            return None;
-        }
-
-        let tenant_id = db.tenant_create("test-pack", None, None).await.ok()?;
-        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
-
-        Some(DbTestContext { db, auth })
-    }
-
-    async fn response_json<T: serde::de::DeserializeOwned>(
-        response: axum::response::Response,
-    ) -> T {
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        serde_json::from_slice(&body).expect("parse json")
-    }
-
-    #[tokio::test]
-    async fn test_inspect_pack_db_backed_no_active() {
-        let Some(ctx) = db_test_context().await else {
-            return;
-        };
-
-        let response = inspect_pack(State(ctx.db.clone()), AuthExtractor(ctx.auth.clone()))
-            .await
-            .expect("inspect pack")
-            .into_response();
-        let response: PackInspectResponse = response_json(response).await;
-
-        assert!(!response.has_active);
-        assert!(response.compiled.is_none());
-        assert!(response.tools.is_empty());
-    }
-}
-
 fn inspect_injections(compiled: &DslCompiledConfig) -> Vec<PackInspectInjection> {
     if !compiled.pack_injections.is_empty() {
         return compiled
@@ -591,4 +463,132 @@ fn mode_label(mode: &CompiledInjectionMode) -> String {
 /// Create the pack routes router.
 pub fn create_router() -> Router<AppState> {
     Router::new().route("/inspect", get(inspect_pack))
+}
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::{AuthContext, AuthMethod};
+    use crate::db::{DbClient, DbConfig};
+    use crate::middleware::AuthExtractor;
+    use axum::{body::to_bytes, extract::State, response::IntoResponse};
+
+    #[test]
+    fn test_routing_strategy_from_hint() {
+        assert_eq!(
+            routing_strategy_from_hint("round_robin"),
+            Some(RoutingStrategy::RoundRobin)
+        );
+        assert_eq!(
+            routing_strategy_from_hint("leastlatency"),
+            Some(RoutingStrategy::LeastLatency)
+        );
+        assert_eq!(routing_strategy_from_hint("unknown"), None);
+    }
+
+    #[test]
+    fn test_routing_strategy_label() {
+        assert_eq!(routing_strategy_label(RoutingStrategy::First), "first");
+        assert_eq!(
+            routing_strategy_label(RoutingStrategy::RoundRobin),
+            "round_robin"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pack_provider_adapter_ping() {
+        let adapter = PackProviderAdapter::new("test");
+        assert_eq!(adapter.provider_id(), "test");
+        assert!(adapter
+            .capabilities()
+            .contains(&ProviderCapability::Summarization));
+
+        let response = adapter.ping().await.unwrap();
+        assert_eq!(response.provider_id, "test");
+        assert_eq!(response.health, HealthStatus::Healthy);
+    }
+
+    #[test]
+    fn test_pack_inspect_response_roundtrip() {
+        let response = PackInspectResponse {
+            has_active: false,
+            compiled: None,
+            pack_source: None,
+            tools: vec![],
+            toolsets: HashMap::new(),
+            agents: HashMap::new(),
+            injections: vec![],
+            providers: vec![],
+            routing: None,
+            effective_embedding_provider: None,
+            effective_summarization_provider: None,
+            effective_injections: vec![],
+            routing_effective: None,
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        let restored: PackInspectResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(response.has_active, restored.has_active);
+        assert_eq!(response.tools, restored.tools);
+    }
+
+    struct DbTestContext {
+        db: DbClient,
+        auth: AuthContext,
+    }
+
+    async fn db_test_context() -> Option<DbTestContext> {
+        if std::env::var("DB_TESTS").ok().as_deref() != Some("1") {
+            return None;
+        }
+
+        let db = DbClient::from_config(&DbConfig::from_env()).ok()?;
+        let conn = db.get_conn().await.ok()?;
+        let has_fn = conn
+            .query_opt(
+                "SELECT 1 FROM pg_proc WHERE proname = 'caliber_tenant_create' LIMIT 1",
+                &[],
+            )
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !has_fn {
+            return None;
+        }
+
+        let tenant_id = db.tenant_create("test-pack", None, None).await.ok()?;
+        let auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
+
+        Some(DbTestContext { db, auth })
+    }
+
+    async fn response_json<T: serde::de::DeserializeOwned>(
+        response: axum::response::Response,
+    ) -> T {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&body).expect("parse json")
+    }
+
+    #[tokio::test]
+    async fn test_inspect_pack_db_backed_no_active() {
+        let Some(ctx) = db_test_context().await else {
+            return;
+        };
+
+        let response = inspect_pack(State(ctx.db.clone()), AuthExtractor(ctx.auth.clone()))
+            .await
+            .expect("inspect pack")
+            .into_response();
+        let response: PackInspectResponse = response_json(response).await;
+
+        assert!(!response.has_active);
+        assert!(response.compiled.is_none());
+        assert!(response.tools.is_empty());
+    }
 }

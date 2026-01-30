@@ -23,6 +23,9 @@ async fn main() -> ApiResult<()> {
     let db_config = DbConfig::from_env();
     let db = DbClient::from_config(&db_config)?;
 
+    // Validate required PostgreSQL extensions are installed
+    validate_extensions(&db).await?;
+
     let config_response = db.config_get().await?;
     let pcp_config: PCPConfig = serde_json::from_value(config_response.config)?;
     let pcp = Arc::new(PCPRuntime::new(pcp_config).map_err(|e| {
@@ -61,6 +64,50 @@ async fn main() -> ApiResult<()> {
     }
 
     shutdown_tracer();
+    Ok(())
+}
+
+/// Validates that required PostgreSQL extensions are installed.
+/// Provides clear error messages if extensions are missing.
+async fn validate_extensions(db: &DbClient) -> ApiResult<()> {
+    let conn = db.get_conn().await?;
+
+    // Check for caliber_pg extension
+    let caliber_pg_check = conn
+        .query_opt(
+            "SELECT 1 FROM pg_extension WHERE extname = 'caliber_pg'",
+            &[],
+        )
+        .await
+        .map_err(|e| {
+            ApiError::internal_error(format!("Failed to check for caliber_pg extension: {}", e))
+        })?;
+
+    if caliber_pg_check.is_none() {
+        return Err(ApiError::internal_error(
+            "Extension 'caliber_pg' is not installed. \
+             Run: CREATE EXTENSION IF NOT EXISTS caliber_pg;"
+                .to_string(),
+        ));
+    }
+
+    // Check for pgvector extension
+    let pgvector_check = conn
+        .query_opt("SELECT 1 FROM pg_extension WHERE extname = 'vector'", &[])
+        .await
+        .map_err(|e| {
+            ApiError::internal_error(format!("Failed to check for pgvector extension: {}", e))
+        })?;
+
+    if pgvector_check.is_none() {
+        return Err(ApiError::internal_error(
+            "Extension 'vector' (pgvector) is not installed. \
+             Run: CREATE EXTENSION IF NOT EXISTS vector;"
+                .to_string(),
+        ));
+    }
+
+    tracing::info!("Required PostgreSQL extensions validated: caliber_pg, vector");
     Ok(())
 }
 

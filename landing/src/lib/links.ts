@@ -135,7 +135,7 @@ export function formatRelation(rel: string): string {
   return rel
     .replace(/_/g, ' ')
     .replace(/-/g, ' ')
-    .replace(/\b\w/g, l => l.toUpperCase());
+    .replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
 /**
@@ -162,8 +162,8 @@ export function categorizeLinks(links: Links | undefined): {
   const all = getActions(links);
 
   return {
-    navigation: all.filter(l => isSafe(l)),
-    actions: all.filter(l => !isSafe(l) && !isDestructive(l)),
-    dangerous: all.filter(l => isDestructive(l)),
+    navigation: all.filter((l) => isSafe(l)),
+    actions: all.filter((l) => !isSafe(l) && !isDestructive(l)),
+    dangerous: all.filter((l) => isDestructive(l)),
   };
 }

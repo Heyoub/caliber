@@ -9,6 +9,29 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 ## [Unreleased] (pre-0.6.0)
 
 ### Added
+
+#### Production Hardening (v0.4.5)
+- **Hash Chain Verification**: Event tamper-evidence using Blake3
+  - Added `hash_chain` field to `Event<P>` structure
+  - Implemented full Blake3 and SHA-256 verification (no more placeholders)
+  - Added `compute_hash()`, `verify()`, and `is_genesis()` helper methods
+  - Included `verify_chain_integrity()` for batch verification
+  - Tests for genesis events and tamper detection
+- **End-to-End Smoke Tests**: Full CRUD chain validation
+  - `caliber-api/tests/smoke_tests.rs` with trajectory → scope → artifact → note tests
+  - PostgreSQL extension validation (caliber_pg + pgvector)
+- **Multi-Instance Cache Invalidation**: Event DAG-based coordination
+  - Added `EventDagChangeJournal` for distributed cache invalidation
+  - Cache invalidation event kinds: `CACHE_INVALIDATE_{TRAJECTORY,SCOPE,ARTIFACT,NOTE}`
+  - `find_by_kind_after()` for timestamp-based event filtering
+  - Enables horizontal scaling without external coordination infrastructure
+- **DSL Error Recovery**: Report all parse errors at once
+  - `ErrorCollector` accumulates multiple parse errors
+  - `into_single_error()` combines errors into formatted message
+  - Parser continues after errors with recovery logic
+  - Backwards-compatible API (still returns single `ParseError`)
+
+### Added
 #### CI & DevOps
 - Manual CI trigger via `workflow_dispatch`
 - Docs Guard job (warn on PRs, fail on `main` when code changes without README/docs/CHANGELOG/DEVLOG updates)

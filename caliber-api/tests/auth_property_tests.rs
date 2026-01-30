@@ -546,7 +546,8 @@ mod edge_cases {
     #[tokio::test]
     async fn test_expired_jwt_returns_401() -> Result<(), String> {
         let mut auth_config = test_auth_config();
-        auth_config.jwt_expiration_secs = -1; // Already expired
+        // Set expiration far enough in the past to be outside clock skew window (60 seconds)
+        auth_config.jwt_expiration_secs = -120; // Expired 2 minutes ago
 
         let token = generate_jwt_token(
             &auth_config,
@@ -556,7 +557,7 @@ mod edge_cases {
         )
         .map_err(|e| e.message)?;
 
-        // Reset expiration for middleware
+        // Reset expiration for middleware (doesn't affect validation of existing token)
         auth_config.jwt_expiration_secs = 3600;
         let auth_state = AuthMiddlewareState::new(auth_config);
 

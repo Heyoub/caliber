@@ -682,6 +682,66 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Collector for accumulating multiple parse errors.
+#[derive(Debug, Clone, Default)]
+pub struct ErrorCollector {
+    errors: Vec<ParseError>,
+}
+
+impl ErrorCollector {
+    pub fn new() -> Self {
+        Self { errors: vec![] }
+    }
+
+    pub fn add(&mut self, error: ParseError) {
+        self.errors.push(error);
+    }
+
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    pub fn into_errors(self) -> Vec<ParseError> {
+        self.errors
+    }
+
+    /// Convert multiple errors into a single ParseError for backwards compatibility.
+    /// Returns the first error with all other errors appended to the message.
+    pub fn into_single_error(self) -> Option<ParseError> {
+        if self.errors.is_empty() {
+            return None;
+        }
+
+        if self.errors.len() == 1 {
+            return Some(self.errors.into_iter().next().unwrap());
+        }
+
+        // Multiple errors: create combined message
+        let first = &self.errors[0];
+        let mut message = format!(
+            "{} (and {} more errors):\n",
+            first.message,
+            self.errors.len() - 1
+        );
+
+        for (i, err) in self.errors.iter().enumerate() {
+            message.push_str(&format!(
+                "  {}. Line {}, col {}: {}\n",
+                i + 1,
+                err.line,
+                err.column,
+                err.message
+            ));
+        }
+
+        Some(ParseError {
+            message,
+            line: first.line,
+            column: first.column,
+        })
+    }
+}
+
 // ============================================================================
 // PARSER (Task 4.2 - 4.7)
 // ============================================================================
@@ -690,51 +750,100 @@ impl std::error::Error for ParseError {}
 pub struct Parser {
     pub(crate) tokens: Vec<Token>,
     pub(crate) pos: usize,
+    pub(crate) errors: ErrorCollector,
 }
 
 impl Parser {
     /// Create a new parser from a vector of tokens.
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            errors: ErrorCollector::new(),
+        }
+    }
+
+    /// Record a parse error and continue parsing.
+    fn record_error(&mut self, message: &str) {
+        let token = self.current();
+        self.errors.add(ParseError {
+            message: message.to_string(),
+            line: token.span.line,
+            column: token.span.column,
+        });
+    }
+
+    /// Recover to the next logical field or closing brace after an error.
+    fn recover_to_next_field(&mut self) {
+        while !self.is_at_end() {
+            match &self.current().kind {
+                TokenKind::RBrace | TokenKind::Comma => break,
+                _ => self.advance(),
+            }
+        }
     }
 
     /// Parse the tokens into a CaliberAst.
+    /// Collects all errors and returns them as a single ParseError with combined message.
     pub fn parse(&mut self) -> Result<CaliberAst, ParseError> {
-        if let Some(token) = self
-            .tokens
-            .iter()
-            .find(|t| matches!(t.kind, TokenKind::Error(_)))
-        {
-            let message = match &token.kind {
-                TokenKind::Error(msg) => format!("Lexer error: {}", msg),
-                _ => "Lexer error".to_string(),
-            };
-            return Err(ParseError {
-                message,
-                line: token.span.line,
-                column: token.span.column,
-            });
+        // Collect all lexer errors first
+        for token in &self.tokens {
+            if let TokenKind::Error(msg) = &token.kind {
+                self.errors.add(ParseError {
+                    message: format!("Lexer error: {}", msg),
+                    line: token.span.line,
+                    column: token.span.column,
+                });
+            }
+        }
+
+        if self.errors.has_errors() {
+            return Err(self.errors.clone().into_single_error().unwrap());
         }
 
         // Expect: caliber: "version" { definitions... }
-        self.expect(TokenKind::Caliber)?;
-        self.expect(TokenKind::Colon)?;
+        if let Err(e) = self.expect(TokenKind::Caliber) {
+            self.errors.add(e);
+        }
+        if let Err(e) = self.expect(TokenKind::Colon) {
+            self.errors.add(e);
+        }
 
         let version = match &self.current().kind {
-            TokenKind::String(s) => s.clone(),
-            _ => return Err(self.error("Expected version string")),
+            TokenKind::String(s) => {
+                let v = s.clone();
+                self.advance();
+                v
+            }
+            _ => {
+                self.record_error("Expected version string");
+                "unknown".to_string()
+            }
         };
-        self.advance();
 
-        self.expect(TokenKind::LBrace)?;
+        if let Err(e) = self.expect(TokenKind::LBrace) {
+            self.errors.add(e);
+        }
 
         let mut definitions = Vec::new();
 
         while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
-            definitions.push(self.parse_definition()?);
+            match self.parse_definition() {
+                Ok(def) => definitions.push(def),
+                Err(err) => {
+                    self.record_error(&err.message);
+                    self.recover_to_next_field();
+                }
+            }
         }
 
-        self.expect(TokenKind::RBrace)?;
+        if let Err(e) = self.expect(TokenKind::RBrace) {
+            self.errors.add(e);
+        }
+
+        if self.errors.has_errors() {
+            return Err(self.errors.clone().into_single_error().unwrap());
+        }
 
         Ok(CaliberAst {
             version,

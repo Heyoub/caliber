@@ -14,10 +14,10 @@ export const TENANT_ID = __ENV.CALIBER_TENANT_ID || '';
 export const thresholds = {
   // Latency thresholds
   http_req_duration: [
-    'p(50)<50',   // 50th percentile < 50ms
-    'p(95)<100',  // 95th percentile < 100ms (primary SLO)
-    'p(99)<200',  // 99th percentile < 200ms
-    'max<1000',   // No request > 1s
+    'p(50)<50', // 50th percentile < 50ms
+    'p(95)<100', // 95th percentile < 100ms (primary SLO)
+    'p(99)<200', // 99th percentile < 200ms
+    'max<1000', // No request > 1s
   ],
 
   // Error rate threshold
@@ -34,7 +34,7 @@ export const thresholds = {
 // Thresholds for stress testing (more lenient)
 export const stressThresholds = {
   http_req_duration: [
-    'p(95)<500',  // Allow higher latency under stress
+    'p(95)<500', // Allow higher latency under stress
     'p(99)<1000',
   ],
   http_req_failed: [
@@ -57,11 +57,11 @@ export const baseOptions = {
 export function getHeaders(authenticated = false) {
   const headers = {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   };
 
   if (authenticated && API_KEY) {
-    headers['Authorization'] = `Bearer ${API_KEY}`;
+    headers.Authorization = `Bearer ${API_KEY}`;
   }
 
   if (TENANT_ID) {
@@ -119,15 +119,15 @@ export const scenarios = {
   }),
 
   // Spike test - sudden load increase
-  spike: (baseVUs, spikeVUs, duration) => ({
+  spike: (baseVUs, spikeVUs, _duration) => ({
     executor: 'ramping-vus',
     startVUs: baseVUs,
     stages: [
-      { duration: '1m', target: baseVUs },    // Warm up
-      { duration: '10s', target: spikeVUs },  // Spike!
-      { duration: '3m', target: spikeVUs },   // Hold spike
-      { duration: '10s', target: baseVUs },   // Recovery
-      { duration: '2m', target: baseVUs },    // Cool down
+      { duration: '1m', target: baseVUs }, // Warm up
+      { duration: '10s', target: spikeVUs }, // Spike!
+      { duration: '3m', target: spikeVUs }, // Hold spike
+      { duration: '10s', target: baseVUs }, // Recovery
+      { duration: '2m', target: baseVUs }, // Cool down
     ],
   }),
 

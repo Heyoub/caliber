@@ -7,7 +7,7 @@
  * Run with: bun test tests/security/owasp/sensitive-data.sec.test.ts
  */
 
-import { describe, expect, it, beforeAll } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const SKIP_LIVE_TESTS = process.env.SKIP_SECURITY_TESTS === 'true';
@@ -21,8 +21,7 @@ const SENSITIVE_PATTERNS = {
   token: /token["']?\s*[:=]\s*["'][a-zA-Z0-9_-]{20,}["']/i,
 
   // Database
-  connectionString:
-    /(?:postgres|mysql|mongodb|redis):\/\/[^:]+:[^@]+@[^\/]+/i,
+  connectionString: /(?:postgres|mysql|mongodb|redis):\/\/[^:]+:[^@]+@[^\/]+/i,
   dbPassword: /(?:DB|DATABASE)_PASSWORD\s*=\s*\S+/i,
 
   // AWS
@@ -43,7 +42,7 @@ const SENSITIVE_PATTERNS = {
 };
 
 // Headers that indicate security issues
-const INSECURE_HEADERS = [
+const _INSECURE_HEADERS = [
   { name: 'Server', badValues: ['Apache/2.2', 'nginx/1.0', 'IIS/6'] },
   { name: 'X-Powered-By', shouldNotExist: true },
   { name: 'X-AspNet-Version', shouldNotExist: true },
@@ -51,7 +50,7 @@ const INSECURE_HEADERS = [
 ];
 
 // Required security headers
-const REQUIRED_SECURITY_HEADERS = [
+const _REQUIRED_SECURITY_HEADERS = [
   'X-Content-Type-Options',
   'X-Frame-Options',
   // 'Strict-Transport-Security', // Only required for HTTPS

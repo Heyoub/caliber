@@ -824,6 +824,28 @@ fn validate_tool_input(input: &JsonValue, schema: &JsonValue) -> Result<(), Stri
         .map_err(|e| format!("{}: {}", e.instance_path(), e))
 }
 
+async fn resolve_agent_name_from_args(
+    db: &crate::db::DbClient,
+    tenant_id: TenantId,
+    args: &JsonValue,
+) -> Option<String> {
+    if let Some(name) = args.get("agent_name").and_then(|v| v.as_str()) {
+        return Some(name.to_string());
+    }
+
+    let agent_id = args
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .map(AgentId::new)?;
+
+    db.get::<AgentResponse>(agent_id, tenant_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|agent| agent.agent_type)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -888,26 +910,4 @@ mod tests {
         let err = validate_tool_input(&input, &schema).unwrap_err();
         assert!(err.starts_with("Invalid schema:"));
     }
-}
-
-async fn resolve_agent_name_from_args(
-    db: &crate::db::DbClient,
-    tenant_id: TenantId,
-    args: &JsonValue,
-) -> Option<String> {
-    if let Some(name) = args.get("agent_name").and_then(|v| v.as_str()) {
-        return Some(name.to_string());
-    }
-
-    let agent_id = args
-        .get("agent_id")
-        .and_then(|v| v.as_str())
-        .and_then(|s| uuid::Uuid::parse_str(s).ok())
-        .map(AgentId::new)?;
-
-    db.get::<AgentResponse>(agent_id, tenant_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|agent| agent.agent_type)
 }

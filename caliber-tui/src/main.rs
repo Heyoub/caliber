@@ -153,7 +153,7 @@ async fn initialize_app(app: &mut App, sender: mpsc::Sender<TuiEvent>) {
 async fn handle_event(app: &mut App, event: TuiEvent) -> Result<bool, TuiError> {
     match event {
         TuiEvent::Input(key) => {
-            if let Some(action) = map_key(key) {
+            if let Some(action) = map_key(key, app.config.keybindings.as_ref()) {
                 return handle_action(app, action).await;
             }
         }

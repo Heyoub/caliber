@@ -7,14 +7,14 @@
  * Run with: bun test tests/security/owasp/auth-bypass.sec.test.ts
  */
 
-import { describe, expect, it, beforeAll } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const SKIP_LIVE_TESTS = process.env.SKIP_SECURITY_TESTS === 'true';
 
 // Test tokens and IDs
 const VALID_TEST_TOKEN = process.env.CALIBER_TEST_TOKEN ?? '';
-const OTHER_USER_ID = 'user-other-12345';
+const _OTHER_USER_ID = 'user-other-12345';
 const OTHER_TRAJECTORY_ID = 'traj-other-12345';
 
 // Common auth bypass payloads
@@ -125,8 +125,7 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: Authentication Bypass', () => {
 
   it('rejects tokens with invalid signatures', async () => {
     // Valid structure but wrong signature
-    const badSigToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.WRONG_SIGNATURE';
+    const badSigToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.WRONG_SIGNATURE';
 
     const res = await apiRequest('GET', '/api/v1/trajectories', undefined, {
       Authorization: `Bearer ${badSigToken}`,
@@ -273,12 +272,9 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: HTTP Method Override', () => {
   });
 
   it('prevents method override via query parameter', async () => {
-    const res = await fetch(
-      `${API_BASE_URL}/api/v1/trajectories/test-id?_method=DELETE`,
-      {
-        method: 'GET',
-      }
-    );
+    const res = await fetch(`${API_BASE_URL}/api/v1/trajectories/test-id?_method=DELETE`, {
+      method: 'GET',
+    });
 
     expect([401, 404, 405]).toContain(res.status);
   });
@@ -295,10 +291,7 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: Path Traversal', () => {
     ];
 
     for (const payload of traversalPayloads) {
-      const res = await apiRequest(
-        'GET',
-        `/api/v1/trajectories/${encodeURIComponent(payload)}`
-      );
+      const res = await apiRequest('GET', `/api/v1/trajectories/${encodeURIComponent(payload)}`);
 
       expect([400, 401, 404]).toContain(res.status);
 
@@ -310,9 +303,7 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: Path Traversal', () => {
 
 describe.skipIf(SKIP_LIVE_TESTS)('security: API Key Handling', () => {
   it('rejects API keys in query parameters (should use headers)', async () => {
-    const res = await fetch(
-      `${API_BASE_URL}/api/v1/trajectories?api_key=test_key&apiKey=test_key`
-    );
+    const res = await fetch(`${API_BASE_URL}/api/v1/trajectories?api_key=test_key&apiKey=test_key`);
 
     // Should require proper header authentication
     expect(res.status).toBe(401);
@@ -332,19 +323,12 @@ describe('security: Access control patterns (offline)', () => {
   // Offline tests for access control logic patterns
 
   function isValidUUID(id: string): boolean {
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     return uuidRegex.test(id);
   }
 
   function containsTraversal(path: string): boolean {
-    const traversalPatterns = [
-      /\.\.\//,
-      /\.\.%2[fF]/,
-      /\.\.%5[cC]/,
-      /\.\.\\/,
-      /%2e%2e/i,
-    ];
+    const traversalPatterns = [/\.\.\//, /\.\.%2[fF]/, /\.\.%5[cC]/, /\.\.\\/, /%2e%2e/i];
     return traversalPatterns.some((p) => p.test(path));
   }
 

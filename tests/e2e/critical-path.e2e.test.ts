@@ -94,15 +94,11 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Critical Path', () => {
   });
 
   it('creates an artifact in the scope', async () => {
-    const res = await api<Record<string, unknown>>(
-      'POST',
-      `/api/v1/scopes/${scopeId}/artifacts`,
-      {
-        type: 'text',
-        name: 'critical-artifact',
-        content: 'Critical path artifact content',
-      }
-    );
+    const res = await api<Record<string, unknown>>('POST', `/api/v1/scopes/${scopeId}/artifacts`, {
+      type: 'text',
+      name: 'critical-artifact',
+      content: 'Critical path artifact content',
+    });
 
     expect(res.status).toBe(201);
     artifactId = (res.data.id ?? res.data.artifact_id) as string;
@@ -110,10 +106,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Critical Path', () => {
   });
 
   it('retrieves the artifact', async () => {
-    const res = await api<Record<string, unknown>>(
-      'GET',
-      `/api/v1/artifacts/${artifactId}`
-    );
+    const res = await api<Record<string, unknown>>('GET', `/api/v1/artifacts/${artifactId}`);
 
     expect([200, 404]).toContain(res.status);
     if (res.status === 200) {

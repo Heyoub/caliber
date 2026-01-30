@@ -12,10 +12,7 @@
       },
       "handler": "caliber-api/src/routes/trajectory.rs",
       "db": "DbClient::create<TrajectoryResponse>",
-      "tests": [
-        "tests/e2e/critical-path.e2e.test.ts",
-        "caliber-api/src/routes/trajectory.rs"
-      ]
+      "tests": ["tests/e2e/critical-path.e2e.test.ts", "caliber-api/src/routes/trajectory.rs"]
     },
     {
       "id": "scope.create",
@@ -26,10 +23,7 @@
       },
       "handler": "caliber-api/src/routes/scope.rs",
       "db": "DbClient::create<ScopeResponse>",
-      "tests": [
-        "tests/e2e/critical-path.e2e.test.ts",
-        "caliber-api/src/routes/scope.rs"
-      ]
+      "tests": ["tests/e2e/critical-path.e2e.test.ts", "caliber-api/src/routes/scope.rs"]
     },
     {
       "id": "artifact.create",
@@ -40,10 +34,7 @@
       },
       "handler": "caliber-api/src/routes/artifact.rs",
       "db": "DbClient::create<ArtifactResponse>",
-      "tests": [
-        "tests/e2e/critical-path.e2e.test.ts",
-        "caliber-api/src/routes/artifact.rs"
-      ]
+      "tests": ["tests/e2e/critical-path.e2e.test.ts", "caliber-api/src/routes/artifact.rs"]
     },
     {
       "id": "scope.close",
@@ -54,9 +45,7 @@
       },
       "handler": "caliber-api/src/routes/scope.rs",
       "db": "DbClient::scope_close",
-      "tests": [
-        "tests/e2e/critical-path.e2e.test.ts"
-      ]
+      "tests": ["tests/e2e/critical-path.e2e.test.ts"]
     },
     {
       "id": "trajectory.complete",
@@ -67,9 +56,7 @@
       },
       "handler": "caliber-api/src/routes/trajectory.rs",
       "db": "DbClient::update_raw<TrajectoryResponse>",
-      "tests": [
-        "tests/e2e/critical-path.e2e.test.ts"
-      ]
+      "tests": ["tests/e2e/critical-path.e2e.test.ts"]
     }
   ]
 }

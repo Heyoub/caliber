@@ -6,11 +6,7 @@
 
 import { BaseManager } from './base';
 import type { HttpClient } from '../http';
-import type {
-  Delegation,
-  CreateDelegationParams,
-  CompleteDelegationParams,
-} from '../types';
+import type { Delegation, CreateDelegationParams, CompleteDelegationParams } from '../types';
 
 /**
  * Manager for delegation operations

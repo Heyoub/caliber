@@ -12,8 +12,8 @@
  * - Reduced latency for frequently-accessed context
  */
 
-import { defineSchema, defineTable } from "convex/server";
-import { v } from "convex/values";
+import { defineSchema, defineTable } from 'convex/server';
+import { v } from 'convex/values';
 
 export default defineSchema({
   /**
@@ -32,8 +32,8 @@ export default defineSchema({
     // Sync metadata
     syncedAt: v.number(),
   })
-    .index("by_caliber_id", ["caliberTrajectoryId"])
-    .index("by_status", ["status"]),
+    .index('by_caliber_id', ['caliberTrajectoryId'])
+    .index('by_status', ['status']),
 
   /**
    * Local cache of artifacts.
@@ -51,8 +51,8 @@ export default defineSchema({
     // Sync metadata
     syncedAt: v.number(),
   })
-    .index("by_caliber_id", ["caliberArtifactId"])
-    .index("by_trajectory", ["caliberTrajectoryId"]),
+    .index('by_caliber_id', ['caliberArtifactId'])
+    .index('by_trajectory', ['caliberTrajectoryId']),
 
   /**
    * Local cache of notes.
@@ -69,8 +69,8 @@ export default defineSchema({
     // Sync metadata
     syncedAt: v.number(),
   })
-    .index("by_caliber_id", ["caliberNoteId"])
-    .index("by_type", ["noteType"]),
+    .index('by_caliber_id', ['caliberNoteId'])
+    .index('by_type', ['noteType']),
 
   /**
    * Active sessions linking Convex users to CALIBER trajectories.
@@ -84,6 +84,6 @@ export default defineSchema({
     startedAt: v.number(),
     lastActiveAt: v.number(),
   })
-    .index("by_user", ["userId"])
-    .index("by_trajectory", ["caliberTrajectoryId"]),
+    .index('by_user', ['userId'])
+    .index('by_trajectory', ['caliberTrajectoryId']),
 });

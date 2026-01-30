@@ -21,6 +21,7 @@ pub use caliber_core::{
     CaliberError,
     CaliberResult,
     Checkpoint,
+    ConflictResolution,
     ContentHash,
     ContextPersistence,
     // LLM types for mock providers
@@ -957,6 +958,319 @@ pub mod fixtures {
             data[axis] = 1.0;
         }
         EmbeddingVector::new(data, "test-model".to_string())
+    }
+
+    // ========================================================================
+    // DATABASE FIXTURES (for integration tests)
+    // ========================================================================
+
+    use caliber_pcp::{
+        AntiSprawlConfig, ContextDagConfig, DosageConfig, GroundingConfig, LintingConfig,
+        PCPConfig, PruneStrategy, RecoveryConfig, RecoveryFrequency, StalenessConfig,
+    };
+
+    /// Create a default PCP configuration for integration tests.
+    /// This matches the default configuration in caliber_init.sql.
+    pub fn default_pcp_config() -> PCPConfig {
+        PCPConfig {
+            context_dag: ContextDagConfig {
+                max_depth: 10,
+                prune_strategy: PruneStrategy::OldestFirst,
+            },
+            recovery: RecoveryConfig {
+                enabled: true,
+                frequency: RecoveryFrequency::OnScopeClose,
+                max_checkpoints: 5,
+            },
+            dosage: DosageConfig {
+                max_tokens_per_scope: 8000,
+                max_artifacts_per_scope: 100,
+                max_notes_per_trajectory: 500,
+            },
+            anti_sprawl: AntiSprawlConfig {
+                max_trajectory_depth: 5,
+                max_concurrent_scopes: 10,
+            },
+            grounding: GroundingConfig {
+                require_artifact_backing: false,
+                contradiction_threshold: 0.85,
+                conflict_resolution: ConflictResolution::LastWriteWins,
+            },
+            linting: LintingConfig {
+                max_artifact_size: 1024 * 1024, // 1MB
+                min_confidence_threshold: 0.3,
+            },
+            staleness: StalenessConfig {
+                stale_hours: 24 * 30, // 30 days
+            },
+        }
+    }
+
+    /// Create a minimal PCP configuration (tighter limits for fast tests).
+    pub fn minimal_pcp_config() -> PCPConfig {
+        PCPConfig {
+            context_dag: ContextDagConfig {
+                max_depth: 3,
+                prune_strategy: PruneStrategy::OldestFirst,
+            },
+            recovery: RecoveryConfig {
+                enabled: false,
+                frequency: RecoveryFrequency::OnScopeClose,
+                max_checkpoints: 1,
+            },
+            dosage: DosageConfig {
+                max_tokens_per_scope: 1000,
+                max_artifacts_per_scope: 10,
+                max_notes_per_trajectory: 50,
+            },
+            anti_sprawl: AntiSprawlConfig {
+                max_trajectory_depth: 2,
+                max_concurrent_scopes: 3,
+            },
+            grounding: GroundingConfig {
+                require_artifact_backing: false,
+                contradiction_threshold: 0.9,
+                conflict_resolution: ConflictResolution::LastWriteWins,
+            },
+            linting: LintingConfig {
+                max_artifact_size: 10 * 1024, // 10KB
+                min_confidence_threshold: 0.5,
+            },
+            staleness: StalenessConfig {
+                stale_hours: 1, // 1 hour for fast staleness testing
+            },
+        }
+    }
+
+    /// Default tenant ID for single-tenant tests.
+    /// This is a fixed UUID to ensure consistent test behavior.
+    pub fn tenant_id_default() -> uuid::Uuid {
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").expect("valid tenant UUID")
+    }
+
+    /// Alice's tenant ID for multi-tenant tests.
+    pub fn tenant_id_alice() -> uuid::Uuid {
+        uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("valid tenant UUID")
+    }
+
+    /// Bob's tenant ID for multi-tenant tests.
+    pub fn tenant_id_bob() -> uuid::Uuid {
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").expect("valid tenant UUID")
+    }
+
+    /// Charlie's tenant ID for multi-tenant tests.
+    pub fn tenant_id_charlie() -> uuid::Uuid {
+        uuid::Uuid::parse_str("33333333-3333-3333-3333-333333333333").expect("valid tenant UUID")
+    }
+
+    /// Seed data for a basic test scenario with one trajectory, one scope, and sample content.
+    /// Returns (trajectory, scope, artifacts, notes).
+    pub fn seed_basic() -> (Trajectory, Scope, Vec<Artifact>, Vec<Note>) {
+        let trajectory = active_trajectory();
+        let scope = active_scope(trajectory.trajectory_id);
+
+        let artifacts = vec![
+            test_artifact(trajectory.trajectory_id, scope.scope_id),
+            {
+                let mut artifact = test_artifact(trajectory.trajectory_id, scope.scope_id);
+                artifact.artifact_id = ArtifactId::now_v7();
+                artifact.artifact_type = ArtifactType::CodePatch;
+                artifact.name = "bugfix-patch".to_string();
+                artifact.content = "- old_code()\n+ new_code()".to_string();
+                artifact.content_hash = compute_content_hash(artifact.content.as_bytes());
+                artifact
+            },
+            {
+                let mut artifact = test_artifact(trajectory.trajectory_id, scope.scope_id);
+                artifact.artifact_id = ArtifactId::now_v7();
+                artifact.artifact_type = ArtifactType::DesignDecision;
+                artifact.name = "architecture-decision".to_string();
+                artifact.content =
+                    "Decision: Use PostgreSQL for storage\nRationale: ACID compliance required"
+                        .to_string();
+                artifact.content_hash = compute_content_hash(artifact.content.as_bytes());
+                artifact
+            },
+        ];
+
+        let notes = vec![
+            test_note(trajectory.trajectory_id),
+            {
+                let mut note = test_note(trajectory.trajectory_id);
+                note.note_id = NoteId::now_v7();
+                note.note_type = NoteType::Convention;
+                note.title = "Code Style".to_string();
+                note.content = "Always use 4 spaces for indentation".to_string();
+                note.content_hash = compute_content_hash(note.content.as_bytes());
+                note
+            },
+            {
+                let mut note = test_note(trajectory.trajectory_id);
+                note.note_id = NoteId::now_v7();
+                note.note_type = NoteType::Strategy;
+                note.title = "Performance Strategy".to_string();
+                note.content = "Cache database queries for 60 seconds".to_string();
+                note.content_hash = compute_content_hash(note.content.as_bytes());
+                note
+            },
+        ];
+
+        (trajectory, scope, artifacts, notes)
+    }
+
+    /// Multi-tenant test data seed
+    #[derive(Debug, Clone)]
+    pub struct MultiTenantSeed {
+        pub tenant_id: uuid::Uuid,
+        pub trajectory: Trajectory,
+        pub scope: Scope,
+        pub artifacts: Vec<Artifact>,
+        pub notes: Vec<Note>,
+    }
+
+    /// Seed data for multi-tenant testing with separate trajectories per tenant.
+    pub fn seed_multi_tenant() -> Vec<MultiTenantSeed> {
+        vec![
+            {
+                let tenant_id = tenant_id_alice();
+                let trajectory = {
+                    let mut t = active_trajectory();
+                    t.name = "alice-project".to_string();
+                    t.description = Some("Alice's test project".to_string());
+                    t
+                };
+                let scope = active_scope(trajectory.trajectory_id);
+                let artifacts = vec![{
+                    let mut a = test_artifact(trajectory.trajectory_id, scope.scope_id);
+                    a.name = "alice-artifact".to_string();
+                    a.content = "Alice's private data".to_string();
+                    a.content_hash = compute_content_hash(a.content.as_bytes());
+                    a
+                }];
+                let notes = vec![{
+                    let mut n = test_note(trajectory.trajectory_id);
+                    n.title = "Alice's Note".to_string();
+                    n.content = "Alice's private note".to_string();
+                    n.content_hash = compute_content_hash(n.content.as_bytes());
+                    n
+                }];
+                MultiTenantSeed {
+                    tenant_id,
+                    trajectory,
+                    scope,
+                    artifacts,
+                    notes,
+                }
+            },
+            {
+                let tenant_id = tenant_id_bob();
+                let trajectory = {
+                    let mut t = active_trajectory();
+                    t.name = "bob-project".to_string();
+                    t.description = Some("Bob's test project".to_string());
+                    t
+                };
+                let scope = active_scope(trajectory.trajectory_id);
+                let artifacts = vec![{
+                    let mut a = test_artifact(trajectory.trajectory_id, scope.scope_id);
+                    a.name = "bob-artifact".to_string();
+                    a.content = "Bob's private data".to_string();
+                    a.content_hash = compute_content_hash(a.content.as_bytes());
+                    a
+                }];
+                let notes = vec![{
+                    let mut n = test_note(trajectory.trajectory_id);
+                    n.title = "Bob's Note".to_string();
+                    n.content = "Bob's private note".to_string();
+                    n.content_hash = compute_content_hash(n.content.as_bytes());
+                    n
+                }];
+                MultiTenantSeed {
+                    tenant_id,
+                    trajectory,
+                    scope,
+                    artifacts,
+                    notes,
+                }
+            },
+            {
+                let tenant_id = tenant_id_charlie();
+                let trajectory = {
+                    let mut t = active_trajectory();
+                    t.name = "charlie-project".to_string();
+                    t.description = Some("Charlie's test project".to_string());
+                    t
+                };
+                let scope = active_scope(trajectory.trajectory_id);
+                let artifacts = vec![{
+                    let mut a = test_artifact(trajectory.trajectory_id, scope.scope_id);
+                    a.name = "charlie-artifact".to_string();
+                    a.content = "Charlie's private data".to_string();
+                    a.content_hash = compute_content_hash(a.content.as_bytes());
+                    a
+                }];
+                let notes = vec![{
+                    let mut n = test_note(trajectory.trajectory_id);
+                    n.title = "Charlie's Note".to_string();
+                    n.content = "Charlie's private note".to_string();
+                    n.content_hash = compute_content_hash(n.content.as_bytes());
+                    n
+                }];
+                MultiTenantSeed {
+                    tenant_id,
+                    trajectory,
+                    scope,
+                    artifacts,
+                    notes,
+                }
+            },
+        ]
+    }
+
+    /// Seed data for a completed trajectory with full conversation history.
+    /// Returns (trajectory, scope, turns, artifacts, notes).
+    pub fn seed_completed_conversation() -> (Trajectory, Scope, Vec<Turn>, Vec<Artifact>, Vec<Note>)
+    {
+        let trajectory = completed_trajectory();
+        let scope = {
+            let mut s = active_scope(trajectory.trajectory_id);
+            s.is_active = false;
+            s.closed_at = Some(Utc::now());
+            s.tokens_used = 500;
+            s
+        };
+
+        let turns = vec![
+            user_turn(scope.scope_id, 1),
+            assistant_turn(scope.scope_id, 2),
+            user_turn(scope.scope_id, 3),
+            assistant_turn(scope.scope_id, 4),
+        ];
+
+        let artifacts = vec![{
+            let mut a = test_artifact(trajectory.trajectory_id, scope.scope_id);
+            a.artifact_type = ArtifactType::ToolResult;
+            a.name = "search-results".to_string();
+            a.content = "Found 3 relevant documents".to_string();
+            a.content_hash = compute_content_hash(a.content.as_bytes());
+            a.provenance = Provenance {
+                source_turn: 2,
+                extraction_method: ExtractionMethod::Explicit,
+                confidence: Some(1.0),
+            };
+            a
+        }];
+
+        let notes = vec![{
+            let mut n = test_note(trajectory.trajectory_id);
+            n.note_type = NoteType::Fact;
+            n.title = "User Preference".to_string();
+            n.content = "User prefers concise responses".to_string();
+            n.content_hash = compute_content_hash(n.content.as_bytes());
+            n
+        }];
+
+        (trajectory, scope, turns, artifacts, notes)
     }
 }
 

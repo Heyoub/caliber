@@ -1,4 +1,4 @@
-# CALIBER PostgreSQL with pgrx Extension
+# CALIBER PostgreSQL with pgrx Extension Multi-stage Build
 # PostgreSQL 18 with caliber-pg extension pre-installed
 #
 # BREAKING CHANGE (v0.4.0): CALIBER now requires PostgreSQL 18+
@@ -6,7 +6,63 @@
 # Usage:
 #   docker build -f docker/Dockerfile.pg -t caliber-pg .
 
-# Stage 1: Build extension
+# Stage 1: Planner - Generate dependency recipe
+FROM rust:1.93-bookworm AS planner
+
+WORKDIR /build
+
+# Install cargo-chef
+RUN cargo install cargo-chef --locked
+
+# Copy workspace files to generate recipe
+COPY Cargo.toml Cargo.lock ./
+COPY caliber-core ./caliber-core
+COPY caliber-dsl ./caliber-dsl
+COPY caliber-pcp ./caliber-pcp
+COPY caliber-storage ./caliber-storage
+COPY caliber-pg ./caliber-pg
+COPY caliber-api ./caliber-api
+COPY caliber-test-utils ./caliber-test-utils
+COPY caliber-tui ./caliber-tui
+
+# Remove pgrx git patches
+RUN sed -i '/^\\[patch\\.crates-io\\]/,$d' Cargo.toml
+
+# Generate dependency recipe
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 2: Cacher - Build dependencies
+FROM rust:1.93-bookworm AS cacher
+
+WORKDIR /build
+
+# Add PostgreSQL 18 APT repository
+RUN apt-get update && apt-get install -y wget gnupg lsb-release \
+    && echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
+# Install cargo-chef, pgrx dependencies and PostgreSQL 18 dev packages
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libclang-dev \
+    clang \
+    postgresql-server-dev-18 \
+    postgresql-18 \
+    && rm -rf /var/lib/apt/lists/* \
+    && cargo install cargo-chef --locked
+
+# Initialize pgrx (needed for dependency compilation)
+RUN cargo install cargo-pgrx --version 0.16.1 --locked \
+    && cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+
+# Copy recipe from planner
+COPY --from=planner /build/recipe.json recipe.json
+
+# Build dependencies only (cached layer)
+RUN cargo chef cook --release --recipe-path recipe.json --package caliber-pg --features pg18
+
+# Stage 3: Builder - Build extension
 FROM rust:1.93-bookworm AS builder
 
 WORKDIR /build
@@ -26,18 +82,19 @@ RUN apt-get update && apt-get install -y \
     postgresql-18 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pgrx
-RUN cargo install cargo-pgrx --version 0.16.1 --locked
+# Copy cached dependencies from cacher stage
+COPY --from=cacher /build/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
+
+# Re-initialize pgrx in builder (uses cached cargo-pgrx from cacher)
 RUN cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
 
-# Copy workspace files
+# Copy workspace files (must match Cargo.toml workspace.members)
 COPY Cargo.toml Cargo.lock ./
 COPY caliber-core ./caliber-core
-COPY caliber-storage ./caliber-storage
-COPY caliber-pcp ./caliber-pcp
-COPY caliber-llm ./caliber-llm
-COPY caliber-agents ./caliber-agents
 COPY caliber-dsl ./caliber-dsl
+COPY caliber-pcp ./caliber-pcp
+COPY caliber-storage ./caliber-storage
 COPY caliber-pg ./caliber-pg
 COPY caliber-api ./caliber-api
 COPY caliber-test-utils ./caliber-test-utils
@@ -46,7 +103,7 @@ COPY caliber-tui ./caliber-tui
 # Remove pgrx git patches for extension build (use crates.io release)
 RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
 
-# Install extension directly to PostgreSQL in builder
+# Install extension directly to PostgreSQL (dependencies already cached)
 RUN cd caliber-pg && cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
 
 # pgrx install already writes the generated extension SQL (includes pg_extern functions).
@@ -54,7 +111,7 @@ RUN cd caliber-pg && cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/p
 # Debug: Show installed extension files
 RUN echo "=== Installed extension files ===" && ls -la /usr/share/postgresql/18/extension/caliber*
 
-# Stage 2: Runtime
+# Stage 4: Runtime
 FROM postgres:18-bookworm
 
 # Install pgvector extension (required for embedding columns)

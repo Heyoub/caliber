@@ -7,7 +7,7 @@
  * Run with: bun test tests/security/owasp/injection.sec.test.ts
  */
 
-import { describe, expect, it, beforeAll } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const SKIP_LIVE_TESTS = process.env.SKIP_SECURITY_TESTS === 'true';
@@ -18,7 +18,7 @@ const SQL_INJECTION_PAYLOADS = [
   "' OR '1'='1",
   "'; DROP TABLE trajectories;--",
   "' UNION SELECT * FROM users--",
-  "1; SELECT * FROM information_schema.tables--",
+  '1; SELECT * FROM information_schema.tables--',
 
   // Blind SQL injection
   "' AND 1=1--",
@@ -63,16 +63,10 @@ const COMMAND_INJECTION_PAYLOADS = [
 ];
 
 // LDAP injection payloads
-const LDAP_INJECTION_PAYLOADS = [
-  '*',
-  '*)(&',
-  '*)(uid=*))(|(uid=*',
-  'admin)(&)',
-  'x])(|(cn=*',
-];
+const _LDAP_INJECTION_PAYLOADS = ['*', '*)(&', '*)(uid=*))(|(uid=*', 'admin)(&)', 'x])(|(cn=*'];
 
 // XPath injection payloads
-const XPATH_INJECTION_PAYLOADS = [
+const _XPATH_INJECTION_PAYLOADS = [
   "' or '1'='1",
   "' or ''='",
   "x]|//*[contains(.,''",
@@ -123,13 +117,10 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: SQL Injection', () => {
   });
 
   it('rejects SQL injection in path parameters', async () => {
-    const payloads = ["1' OR '1'='1", "1; DROP TABLE--", "1 UNION SELECT"];
+    const payloads = ["1' OR '1'='1", '1; DROP TABLE--', '1 UNION SELECT'];
 
     for (const payload of payloads) {
-      const res = await apiRequest(
-        'GET',
-        `/api/v1/trajectories/${encodeURIComponent(payload)}`
-      );
+      const res = await apiRequest('GET', `/api/v1/trajectories/${encodeURIComponent(payload)}`);
 
       // Should return 400 (bad request) or 404 (not found), never 500
       expect([400, 401, 404]).toContain(res.status);
@@ -179,20 +170,14 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: SQL Injection', () => {
 describe.skipIf(SKIP_LIVE_TESTS)('security: NoSQL Injection', () => {
   it('rejects NoSQL injection in query parameters', async () => {
     // Test object injection
-    const res = await apiRequest(
-      'GET',
-      `/api/v1/trajectories?filter[$gt]=`
-    );
+    const res = await apiRequest('GET', '/api/v1/trajectories?filter[$gt]=');
 
     expect(res.status).not.toBe(500);
   });
 
   it('rejects NoSQL injection in request body', async () => {
     for (const payload of NOSQL_INJECTION_PAYLOADS.slice(0, 3)) {
-      const body =
-        typeof payload === 'string'
-          ? { name: payload }
-          : { name: payload };
+      const body = typeof payload === 'string' ? { name: payload } : { name: payload };
 
       const res = await apiRequest('POST', '/api/v1/trajectories', body);
 
@@ -236,10 +221,7 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: Command Injection', () => {
     ];
 
     for (const payload of payloads) {
-      const res = await apiRequest(
-        'GET',
-        `/api/v1/artifacts/${encodeURIComponent(payload)}`
-      );
+      const res = await apiRequest('GET', `/api/v1/artifacts/${encodeURIComponent(payload)}`);
 
       expect([400, 401, 404]).toContain(res.status);
 
@@ -342,17 +324,17 @@ describe('security: Injection payload detection (offline)', () => {
     const patterns = [
       // Boolean-based injection
       /'\s*OR\s*'1'\s*=\s*'1/i,
-      /'\s*AND\s+\d+\s*=\s*\d+/i,        // ' AND 1=1
-      /'\s*AND\s+\w+\s*\(/i,             // ' AND FUNCTION(
+      /'\s*AND\s+\d+\s*=\s*\d+/i, // ' AND 1=1
+      /'\s*AND\s+\w+\s*\(/i, // ' AND FUNCTION(
 
       // Statement injection
       /;\s*(DROP|DELETE|UPDATE|INSERT|SELECT)\s+/i,
       /UNION\s+SELECT/i,
 
       // Comment markers (SQL comment = injection attempt)
-      /--/,                               // SQL comment anywhere
-      /\/\*/,                             // Block comment opening
-      /#\s*$/,                            // MySQL comment at end
+      /--/, // SQL comment anywhere
+      /\/\*/, // Block comment opening
+      /#\s*$/, // MySQL comment at end
 
       // Time-based blind injection
       /SLEEP\s*\(/i,

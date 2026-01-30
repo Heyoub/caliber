@@ -210,10 +210,7 @@ export class CalibrClient {
       case 'DELETE':
         return this.http.delete<T>(link.href);
       default:
-        throw new CaliberError(
-          `Unsupported HTTP method: ${method}`,
-          'INVALID_LINK_METHOD'
-        );
+        throw new CaliberError(`Unsupported HTTP method: ${method}`, 'INVALID_LINK_METHOD');
     }
   }
 
@@ -255,10 +252,7 @@ export class CalibrClient {
   async discover<T, R extends Linkable>(response: R, rel: string): Promise<T> {
     const link = response._links?.[rel];
     if (!link) {
-      throw new CaliberError(
-        `Link '${rel}' not found in response`,
-        'LINK_NOT_FOUND'
-      );
+      throw new CaliberError(`Link '${rel}' not found in response`, 'LINK_NOT_FOUND');
     }
     return this.follow<T>(link);
   }
@@ -335,10 +329,6 @@ export class CalibrClient {
     assembleOptions?: AssembleContextOptions,
     formatOptions?: FormatContextOptions
   ): Promise<string> {
-    return this.contextHelper.getFormattedContext(
-      trajectoryId,
-      assembleOptions,
-      formatOptions
-    );
+    return this.contextHelper.getFormattedContext(trajectoryId, assembleOptions, formatOptions);
   }
 }

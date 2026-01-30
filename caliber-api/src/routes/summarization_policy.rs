@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_triggers_not_empty() {
-        let triggers = vec![SummarizationTrigger::ScopeClose];
+        let triggers = [SummarizationTrigger::ScopeClose];
         assert!(!triggers.is_empty());
     }
 

@@ -45,4 +45,4 @@ pub use lmdb_backend::{LmdbCacheBackend, LmdbCacheError};
 pub use read_through::{CacheConfig, ReadThroughCache, StorageFetcher};
 pub use tenant_key::TenantScopedKey;
 pub use traits::{CacheBackend, CacheStats, CacheableEntity};
-pub use watermark::{ChangeJournal, InMemoryChangeJournal, Watermark};
+pub use watermark::{ChangeJournal, EventDagChangeJournal, InMemoryChangeJournal, Watermark};

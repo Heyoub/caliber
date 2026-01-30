@@ -7,6 +7,7 @@ use caliber_core::{
     DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag, EventFlags,
     EventId, EventKind, UpstreamSignal,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -316,6 +317,92 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     }
 }
 
+impl<P: Clone + Send + Sync + Serialize> InMemoryEventDag<P> {
+    /// Find events by kind after a given timestamp.
+    ///
+    /// # Arguments
+    /// * `kind` - Event kind to filter by
+    /// * `after_timestamp` - Only return events after this timestamp (microseconds)
+    /// * `limit` - Maximum number of events to return
+    pub async fn find_by_kind_after(
+        &self,
+        kind: EventKind,
+        after_timestamp: i64,
+        limit: usize,
+    ) -> Effect<Vec<Event<P>>> {
+        let events = self.events.read().unwrap();
+
+        let mut matching: Vec<Event<P>> = events
+            .values()
+            .filter(|e| e.header.event_kind == kind && e.header.timestamp > after_timestamp)
+            .cloned()
+            .collect();
+
+        matching.sort_by_key(|e| e.header.timestamp);
+        matching.truncate(limit);
+
+        Effect::Ok(matching)
+    }
+
+    /// Verify hash chain integrity for a sequence of events.
+    ///
+    /// Checks that each event's hash chain correctly references the previous event's hash.
+    /// Returns true if the chain is valid, false if any link is broken.
+    ///
+    /// # Arguments
+    /// * `event_ids` - Ordered list of event IDs to verify (parent to child order)
+    ///
+    /// # Returns
+    /// * `Effect::Ok(true)` - Chain is valid
+    /// * `Effect::Ok(false)` - Chain has broken links
+    /// * `Effect::Err` - Event not found
+    pub async fn verify_chain_integrity(&self, event_ids: &[EventId]) -> Effect<bool> {
+        let events = self.events.read().unwrap();
+
+        for window in event_ids.windows(2) {
+            let parent_id = window[0];
+            let child_id = window[1];
+
+            let parent = match events.get(&parent_id) {
+                Some(e) => e,
+                None => {
+                    return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
+                        error: DomainError::EntityNotFound {
+                            entity_type: "Event".to_string(),
+                            id: parent_id,
+                        },
+                        source_event: parent_id,
+                        position: DagPosition::root(),
+                        correlation_id: parent_id,
+                    })));
+                }
+            };
+
+            let child = match events.get(&child_id) {
+                Some(e) => e,
+                None => {
+                    return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
+                        error: DomainError::EntityNotFound {
+                            entity_type: "Event".to_string(),
+                            id: child_id,
+                        },
+                        source_event: child_id,
+                        position: DagPosition::root(),
+                        correlation_id: child_id,
+                    })));
+                }
+            };
+
+            let parent_hash = parent.compute_hash();
+            if !child.verify(&parent_hash) {
+                return Effect::Ok(false);
+            }
+        }
+
+        Effect::Ok(true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,6 +463,7 @@ mod tests {
         let event = Event {
             header,
             payload: "needs ack".to_string(),
+            hash_chain: None,
         };
         let event_id = dag.append(event).await.unwrap();
 

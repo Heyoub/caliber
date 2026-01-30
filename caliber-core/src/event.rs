@@ -212,6 +212,12 @@ impl EventKind {
     pub const EFFECT_BACKPRESSURE: Self = Self(0xD005);
     pub const EFFECT_CANCEL: Self = Self(0xD006);
 
+    // Cache invalidation events (0xExxx)
+    pub const CACHE_INVALIDATE_TRAJECTORY: Self = Self(0xE001);
+    pub const CACHE_INVALIDATE_SCOPE: Self = Self(0xE002);
+    pub const CACHE_INVALIDATE_ARTIFACT: Self = Self(0xE003);
+    pub const CACHE_INVALIDATE_NOTE: Self = Self(0xE004);
+
     /// Get the category (upper 4 bits).
     pub const fn category(&self) -> u8 {
         (self.0 >> 12) as u8
@@ -433,12 +439,29 @@ impl EventHeader {
 pub struct Event<P> {
     pub header: EventHeader,
     pub payload: P,
+    /// Hash chain for tamper-evident audit trail (Blake3 hash of parent + self).
+    /// None for genesis events.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash_chain: Option<HashChain>,
 }
 
 impl<P> Event<P> {
-    /// Create a new event with the given header and payload.
+    /// Create a new event with the given header and payload (genesis event, no hash chain).
     pub fn new(header: EventHeader, payload: P) -> Self {
-        Self { header, payload }
+        Self {
+            header,
+            payload,
+            hash_chain: None,
+        }
+    }
+
+    /// Create a new event with the given header, payload, and hash chain.
+    pub fn with_hash_chain(header: EventHeader, payload: P, hash_chain: HashChain) -> Self {
+        Self {
+            header,
+            payload,
+            hash_chain: Some(hash_chain),
+        }
     }
 
     /// Get the event ID.
@@ -466,7 +489,27 @@ impl<P> Event<P> {
         Event {
             header: self.header,
             payload: f(self.payload),
+            hash_chain: self.hash_chain,
         }
+    }
+}
+
+impl<P: Serialize> Event<P> {
+    /// Compute Blake3 hash of this event (canonical JSON serialization).
+    pub fn compute_hash(&self) -> [u8; 32] {
+        let canonical = serde_json::to_vec(self).unwrap_or_default();
+        blake3::hash(&canonical).into()
+    }
+
+    /// Verify this event against a parent hash using Blake3.
+    /// Returns true for genesis events (no hash chain).
+    pub fn verify(&self, parent_hash: &[u8; 32]) -> bool {
+        Blake3Verifier.verify_chain(self, parent_hash)
+    }
+
+    /// Check if this is a genesis event (no parent).
+    pub fn is_genesis(&self) -> bool {
+        self.hash_chain.is_none()
     }
 }
 
@@ -796,11 +839,17 @@ impl EventVerifier for Blake3Verifier {
     }
 
     fn verify_chain<P: Serialize>(&self, current: &Event<P>, previous_hash: &[u8; 32]) -> bool {
-        // For chain verification, we'd need the hash chain to be part of the event
-        // This is a simplified implementation - in production, you'd include
-        // the previous hash in the event's canonical form
-        let _ = (current, previous_hash);
-        true // Placeholder - actual implementation depends on how hash chain is stored
+        let Some(hash_chain) = &current.hash_chain else {
+            return true; // Genesis events are always valid
+        };
+
+        if hash_chain.prev_hash != *previous_hash {
+            return false;
+        }
+
+        let canonical = serde_json::to_vec(&current).unwrap_or_default();
+        let computed_hash = blake3::hash(&canonical);
+        computed_hash.as_bytes() == &hash_chain.event_hash
     }
 
     fn algorithm(&self) -> HashAlgorithm {
@@ -823,8 +872,18 @@ impl EventVerifier for Sha256Verifier {
     }
 
     fn verify_chain<P: Serialize>(&self, current: &Event<P>, previous_hash: &[u8; 32]) -> bool {
-        let _ = (current, previous_hash);
-        true // Placeholder
+        let Some(hash_chain) = &current.hash_chain else {
+            return true; // Genesis events are always valid
+        };
+
+        if hash_chain.prev_hash != *previous_hash {
+            return false;
+        }
+
+        use sha2::{Digest, Sha256};
+        let canonical = serde_json::to_vec(&current).unwrap_or_default();
+        let computed = Sha256::digest(&canonical);
+        computed[..] == hash_chain.event_hash
     }
 
     fn algorithm(&self) -> HashAlgorithm {
@@ -944,6 +1003,7 @@ pub trait EventDagExt: EventDag {
                 EventFlags::empty(),
             ),
             payload,
+            hash_chain: None,
         };
         self.append(event).await
     }
@@ -977,6 +1037,7 @@ pub trait EventDagExt: EventDag {
                 EventFlags::empty(),
             ),
             payload,
+            hash_chain: None,
         };
         self.append(event).await
     }
@@ -1012,6 +1073,7 @@ pub trait EventDagExt: EventDag {
                 EventFlags::empty(),
             ),
             payload,
+            hash_chain: None,
         };
         self.append(event).await
     }
@@ -1195,5 +1257,85 @@ mod tests {
         assert_eq!(header.event_id, event_id);
         assert!(header.requires_ack());
         assert!(!header.is_acknowledged());
+    }
+
+    #[test]
+    fn test_hash_chain_genesis_event() {
+        use serde_json::json;
+
+        let event = Event::new(
+            EventHeader::new(
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"type": "genesis"}),
+        );
+
+        assert!(event.is_genesis());
+        assert!(event.verify(&[0u8; 32]));
+    }
+
+    #[test]
+    fn test_hash_chain_tamper_detection() {
+        use serde_json::json;
+
+        let parent = Event::new(
+            EventHeader::new(
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::root(),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"data": "original"}),
+        );
+
+        let parent_hash = parent.compute_hash();
+        let wrong_hash = [0xFF; 32];
+
+        let child_hash = {
+            let temp = Event::new(
+                EventHeader::new(
+                    Uuid::now_v7(),
+                    Uuid::now_v7(),
+                    chrono::Utc::now().timestamp_micros(),
+                    DagPosition::new(1, 0, 0),
+                    0,
+                    EventKind::DATA,
+                    EventFlags::empty(),
+                ),
+                json!({"data": "child"}),
+            );
+            temp.compute_hash()
+        };
+
+        let hash_chain = HashChain {
+            prev_hash: wrong_hash, // Wrong!
+            event_hash: child_hash,
+            algorithm: HashAlgorithm::Blake3,
+        };
+
+        let tampered = Event::with_hash_chain(
+            EventHeader::new(
+                Uuid::now_v7(),
+                Uuid::now_v7(),
+                chrono::Utc::now().timestamp_micros(),
+                DagPosition::new(1, 0, 0),
+                0,
+                EventKind::DATA,
+                EventFlags::empty(),
+            ),
+            json!({"data": "child"}),
+            hash_chain,
+        );
+
+        assert!(!tampered.verify(&parent_hash)); // Should fail
     }
 }

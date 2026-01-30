@@ -3,11 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "CALIBER - Memory for AI Agents",
-  "workspaces": [
-    "caliber-sdk",
-    "landing",
-    "examples/convex-integration"
-  ],
+  "workspaces": ["caliber-sdk", "landing", "examples/convex-integration"],
   "scripts": {
     "dev": "bun run --cwd landing dev",
     "dev:all": "bun run dev:sdk & bun run dev:landing",

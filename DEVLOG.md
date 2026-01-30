@@ -19,6 +19,50 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### January 29, 2026 — Production Hardening (v0.4.5)
+
+**Completed:**
+
+- ✅ **Hash Chain Verification**: Implemented tamper-evident event logs using Blake3
+  - Added `hash_chain: Option<HashChain>` field to `Event<P>` (preserves 64-byte EventHeader alignment)
+  - Replaced placeholder `verify_chain()` implementations in Blake3Verifier and Sha256Verifier
+  - Added helper methods: `compute_hash()`, `verify()`, `is_genesis()`
+  - Implemented `verify_chain_integrity()` for batch verification in InMemoryEventDag
+  - Added tests for genesis events and tamper detection
+  - Enables AI auditability value proposition with cryptographic proof of event history
+
+- ✅ **End-to-End Smoke Tests**: Comprehensive integration testing
+  - Created `caliber-api/tests/smoke_tests.rs` with full CRUD chain test
+  - Tests trajectory → scope → artifact → note creation and retrieval
+  - PostgreSQL extension validation (caliber_pg + pgvector presence checks)
+  - Uses `db-tests` feature flag for CI integration
+
+- ✅ **Multi-Instance Cache Invalidation**: Event DAG-based distributed coordination
+  - Added cache invalidation EventKinds: `CACHE_INVALIDATE_{TRAJECTORY,SCOPE,ARTIFACT,NOTE}`
+  - Implemented `EventDagChangeJournal` with full `ChangeJournal` trait
+  - Added `find_by_kind_after()` method for timestamp-based event filtering
+  - Enables horizontal scaling without external coordination (Redis, LISTEN/NOTIFY)
+  - Poll-based with ~100ms typical latency (acceptable for most use cases)
+  - Event DAG serves as shared invalidation log across instances
+
+- ✅ **DSL Error Recovery**: Improved developer experience
+  - Added `ErrorCollector` to accumulate multiple parse errors
+  - Implemented `into_single_error()` for backwards-compatible error reporting
+  - Parser now continues after errors with recovery logic (`recover_to_next_field()`)
+  - Users see all syntax errors at once instead of fixing one at a time
+  - Zero breaking changes to public API
+
+- ✅ Fixed all Event struct initializers to include `hash_chain` field
+- ✅ Fixed TUI test config initializers with new optional fields (`colors`, `keybindings`)
+- ✅ Updated README.md with v0.4.5 multi-instance deployment guidance
+- ✅ Exported `EventDagChangeJournal` from cache module
+
+**Architecture Notes:**
+- Hash chains stored in Event payload (not header) to preserve cache-line alignment
+- EventDag trait kept stable - added impl methods rather than trait changes
+- Used existing "free batteries" (EventHeader.timestamp, HashMap storage)
+- Zero external dependencies for multi-instance coordination
+
 ### January 28, 2026 — CI Docs Guard + Review Bots + Release Tagging
 
 **Completed:**

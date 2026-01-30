@@ -603,6 +603,7 @@ mod tests {
                 EventFlags::empty(),
             ),
             payload: "test payload".to_string(),
+            hash_chain: None,
         };
 
         // Append
@@ -635,6 +636,7 @@ mod tests {
                 EventFlags::empty(),
             ),
             payload: "cold event".to_string(),
+            hash_chain: None,
         };
         cold.store(&event).await.unwrap();
 

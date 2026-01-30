@@ -5,8 +5,10 @@
 //! in the mutation history.
 
 use async_trait::async_trait;
-use caliber_core::{CaliberResult, EntityType, TenantId};
+use caliber_core::{CaliberResult, EntityType, Event, EventDag, EventKind, TenantId};
 use chrono::{DateTime, Utc};
+use serde_json::Value;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// A watermark representing a point in the change journal.
@@ -259,6 +261,133 @@ impl ChangeJournal for InMemoryChangeJournal {
         } else {
             Ok(0)
         }
+    }
+}
+
+/// Event DAG-based change journal for multi-instance cache invalidation.
+///
+/// Uses the event DAG as a shared invalidation log. Cache invalidation events
+/// (CACHE_INVALIDATE_*) are appended to the DAG, and this journal polls for new
+/// events to determine cache freshness.
+///
+/// This enables multiple CALIBER instances to coordinate cache invalidation
+/// without requiring external coordination infrastructure.
+///
+/// Note: Uses serde_json::Value as payload type for flexibility.
+pub struct EventDagChangeJournal {
+    event_dag: Arc<crate::event_dag::InMemoryEventDag<Value>>,
+    last_seen_timestamp: tokio::sync::RwLock<i64>,
+}
+
+impl EventDagChangeJournal {
+    pub fn new(event_dag: Arc<crate::event_dag::InMemoryEventDag<Value>>) -> Self {
+        Self {
+            event_dag,
+            last_seen_timestamp: tokio::sync::RwLock::new(0),
+        }
+    }
+
+    /// Convert EntityType to the corresponding cache invalidation EventKind.
+    fn entity_type_to_event_kind(entity_type: EntityType) -> Option<EventKind> {
+        match entity_type {
+            EntityType::Trajectory => Some(EventKind::CACHE_INVALIDATE_TRAJECTORY),
+            EntityType::Scope => Some(EventKind::CACHE_INVALIDATE_SCOPE),
+            EntityType::Artifact => Some(EventKind::CACHE_INVALIDATE_ARTIFACT),
+            EntityType::Note => Some(EventKind::CACHE_INVALIDATE_NOTE),
+            _ => None,
+        }
+    }
+}
+
+#[async_trait]
+impl ChangeJournal for EventDagChangeJournal {
+    async fn current_watermark(&self, _tenant_id: TenantId) -> CaliberResult<Watermark> {
+        let timestamp = *self.last_seen_timestamp.read().await;
+        Ok(Watermark::new(timestamp))
+    }
+
+    async fn watermark_at(
+        &self,
+        _tenant_id: TenantId,
+        at: DateTime<Utc>,
+    ) -> CaliberResult<Option<Watermark>> {
+        Ok(Some(Watermark::with_timestamp(at.timestamp_micros(), at)))
+    }
+
+    async fn changes_since(
+        &self,
+        _tenant_id: TenantId,
+        watermark: &Watermark,
+        entity_types: &[EntityType],
+    ) -> CaliberResult<bool> {
+        // Check each entity type for invalidation events
+        for entity_type in entity_types {
+            if let Some(event_kind) = Self::entity_type_to_event_kind(*entity_type) {
+                let events = self
+                    .event_dag
+                    .find_by_kind_after(event_kind, watermark.sequence, 1)
+                    .await;
+
+                if let caliber_core::Effect::Ok(events) = events {
+                    if !events.is_empty() {
+                        // Update last seen timestamp
+                        if let Some(latest) = events.iter().map(|e| e.header.timestamp).max() {
+                            *self.last_seen_timestamp.write().await = latest;
+                        }
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn record_change(
+        &self,
+        tenant_id: TenantId,
+        entity_type: EntityType,
+        entity_id: Uuid,
+    ) -> CaliberResult<Watermark> {
+        use caliber_core::{DagPosition, EventFlags, EventHeader};
+
+        let event_kind = Self::entity_type_to_event_kind(entity_type).unwrap_or(EventKind::DATA);
+
+        let timestamp = chrono::Utc::now().timestamp_micros();
+        let event_id = uuid::Uuid::now_v7();
+
+        // Create invalidation event payload
+        let payload = serde_json::json!({
+            "tenant_id": tenant_id.to_string(),
+            "entity_type": format!("{:?}", entity_type),
+            "entity_id": entity_id.to_string(),
+            "timestamp": timestamp,
+        });
+
+        let event = Event {
+            header: EventHeader::new(
+                event_id,
+                event_id,
+                timestamp,
+                DagPosition::root(),
+                0,
+                event_kind,
+                EventFlags::empty(),
+            ),
+            payload,
+            hash_chain: None,
+        };
+
+        // Append invalidation event to the DAG
+        let _ = self.event_dag.append(event).await;
+
+        *self.last_seen_timestamp.write().await = timestamp;
+        Ok(Watermark::new(timestamp))
+    }
+
+    async fn prune(&self, _tenant_id: TenantId, _before: DateTime<Utc>) -> CaliberResult<u64> {
+        // Event DAG pruning would be handled separately
+        Ok(0)
     }
 }
 
