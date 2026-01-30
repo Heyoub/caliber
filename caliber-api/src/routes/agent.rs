@@ -587,7 +587,8 @@ mod tests {
         event_dag.append(event.clone()).await.unwrap();
 
         // Query it back
-        let retrieved = event_dag.get(event_id).await.unwrap();
+        let retrieved: caliber_core::Event<serde_json::Value> =
+            event_dag.get(event_id).await.unwrap();
         assert_eq!(retrieved.header.event_id, event_id);
         assert_eq!(retrieved.payload, json!({"test": "data"}));
     }
@@ -634,8 +635,10 @@ mod tests {
         event_dag.append(child).await.unwrap();
 
         // Verify both exist
-        let retrieved_parent = event_dag.get(parent_id).await.unwrap();
-        let retrieved_child = event_dag.get(child_id).await.unwrap();
+        let retrieved_parent: caliber_core::Event<serde_json::Value> =
+            event_dag.get(parent_id).await.unwrap();
+        let retrieved_child: caliber_core::Event<serde_json::Value> =
+            event_dag.get(child_id).await.unwrap();
 
         // Verify causality
         assert_eq!(retrieved_child.header.parent_id, Some(parent_id));
@@ -694,7 +697,8 @@ mod tests {
         ctx.event_dag.append(test_event).await.unwrap();
 
         // Verify event was recorded
-        let retrieved = ctx.event_dag.get(event_id).await.unwrap();
+        let retrieved: caliber_core::Event<serde_json::Value> =
+            ctx.event_dag.get(event_id).await.unwrap();
         assert_eq!(retrieved.payload["agent_route"], "register_agent");
         assert_eq!(retrieved.payload["test"], true);
     }
