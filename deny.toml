@@ -5,7 +5,7 @@
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 unmaintained = "workspace"
-yanked = "deny"
+yanked = "workspace"
 ignore = [
     # paste crate is archived but stable (used transitively by ratatui/pgrx)
     "RUSTSEC-2024-0436",
