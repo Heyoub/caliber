@@ -4,6 +4,7 @@ use crate::compiler::{
     CompiledInjectionMode, CompiledPackAgentConfig, CompiledPackInjectionConfig,
     CompiledPackRoutingConfig, CompiledToolConfig, CompiledToolKind, CompiledToolsetConfig,
 };
+use crate::config::*;
 use crate::parser::ast::{Action, InjectionMode, Trigger};
 use crate::parser::AdapterDef as AstAdapterDef;
 use crate::parser::InjectionDef as AstInjectionDef;
@@ -11,7 +12,7 @@ use crate::parser::{AdapterType, CaliberAst, Definition, PolicyDef, PolicyRule};
 use crate::parser::{EnvValue, ProviderDef as AstProviderDef, ProviderType};
 use std::collections::HashSet;
 
-use super::markdown::MarkdownDoc;
+use super::markdown::{FenceKind, MarkdownDoc};
 use super::schema::*;
 
 #[derive(Debug, Clone)]
@@ -31,10 +32,20 @@ impl PackIr {
         validate_agents(&manifest, &markdown)?;
         validate_injections(&manifest)?;
         validate_routing(&manifest)?;
-        let adapters = build_adapters(&manifest)?;
+
+        // Build from TOML manifest (legacy)
+        let mut adapters = build_adapters(&manifest)?;
         let policies = build_policies(&manifest)?;
         let injections = build_injections(&manifest)?;
         let providers = build_providers(&manifest)?;
+
+        // Extract configs from Markdown fence blocks (NEW)
+        let md_adapters = extract_adapters_from_markdown(&markdown)?;
+
+        // Merge: Markdown takes precedence over TOML
+        // For now, just append. TODO: Handle duplicates properly
+        adapters.extend(md_adapters);
+
         Ok(Self {
             manifest,
             markdown,
@@ -677,4 +688,29 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
             .unwrap_or_else(|| "1.0".to_string()),
         definitions: defs,
     }
+}
+
+// ============================================================================
+// MARKDOWN CONFIG EXTRACTION (NEW)
+// ============================================================================
+
+/// Extract adapter definitions from Markdown fence blocks
+fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAdapterDef>, PackError> {
+    let mut adapters = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Adapter {
+                    let adapter = parse_adapter_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    adapters.push(adapter);
+                }
+            }
+        }
+    }
+
+    Ok(adapters)
 }
