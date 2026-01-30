@@ -1,96 +1,107 @@
-/// Parser Tracer - Shows the token flow through lexer → parser → AST
+/// Pack Markdown Tracer - Shows the flow through Markdown → Config → AST
 ///
-/// Usage: cargo run --bin trace_parser "adapter oN { type: postgres connection: \"db\" }"
+/// Usage: cargo run --bin trace_parser <markdown-file>
 
-use caliber_dsl::lexer::Lexer;
-use caliber_dsl::parser::{parse, pretty_print};
+use caliber_dsl::pack::{compose_pack, PackInput, PackMarkdownFile};
+use caliber_dsl::config::ast_to_markdown;
+use std::fs;
+use std::path::PathBuf;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("Usage: cargo run --bin trace_parser \"<DSL code>\"");
+        eprintln!("Usage: cargo run --bin trace_parser <markdown-file>");
         eprintln!();
         eprintln!("Example:");
-        eprintln!("  cargo run --bin trace_parser 'caliber: \"1.0\" {{ adapter oN {{ type: postgres connection: \"db\" }} }}'");
+        eprintln!("  cargo run --bin trace_parser prompts/main.md");
         std::process::exit(1);
     }
 
-    let source = &args[1..].join(" ");
+    let md_path = &args[1];
 
     println!("╔═══════════════════════════════════════════════════════════════");
-    println!("║ DSL PARSER TRACER");
+    println!("║ PACK MARKDOWN PARSER TRACER");
     println!("╚═══════════════════════════════════════════════════════════════\n");
 
-    println!("📝 INPUT DSL:");
-    println!("{}", source);
+    // Read markdown file
+    let content = match fs::read_to_string(md_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ Failed to read {}: {}", md_path, e);
+            std::process::exit(1);
+        }
+    };
+
+    println!("📝 INPUT MARKDOWN:");
+    println!("{}", content);
     println!();
 
-    // Step 1: Lexer
-    println!("🔍 LEXER OUTPUT (Tokens):");
-    println!("─────────────────────────────────────────────────────────────");
-    let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize();
+    // Create PackInput (use a minimal test manifest)
+    let manifest_toml = r#"
+[meta]
+name = "test"
+version = "1.0"
 
-    for (i, token) in tokens.iter().enumerate() {
-        println!("{:3}: {:?}", i, token);
-    }
-    println!();
+[tools]
+bin = {}
+prompts = {}
 
-    // Step 2: Parser
-    println!("🌳 PARSER OUTPUT (AST):");
+[profiles]
+
+[agents]
+
+[toolsets]
+
+[adapters]
+
+[providers]
+
+[policies]
+
+[injections]
+"#;
+
+    let manifest_path = PathBuf::from("/tmp/test-manifest.toml");
+    fs::write(&manifest_path, manifest_toml).expect("Failed to write temp manifest");
+
+    let input = PackInput {
+        manifest: manifest_path.clone(),
+        markdowns: vec![PackMarkdownFile {
+            path: PathBuf::from(md_path),
+            content,
+        }],
+    };
+
+    // Step 1: Parse markdown → PackIr
+    println!("🔍 PACK PARSER OUTPUT:");
     println!("─────────────────────────────────────────────────────────────");
-    match parse(source) {
-        Ok(ast) => {
-            println!("{:#?}", ast);
+    match compose_pack(input) {
+        Ok(output) => {
+            println!("Pack: {}", output.pack.meta.name);
+            println!("Version: {}", output.pack.meta.version.as_ref().unwrap_or(&"1.0".to_string()));
             println!();
 
-            // Step 3: Round-trip test
+            println!("🌳 AST:");
+            println!("─────────────────────────────────────────────────────────────");
+            println!("{:#?}", output.ast);
+            println!();
+
+            // Step 2: Round-trip test
             println!("🔄 ROUND-TRIP TEST:");
             println!("─────────────────────────────────────────────────────────────");
-            let pretty = pretty_print(&ast);
-            println!("Pretty-printed:");
-            println!("{}", pretty);
+            let canonical = ast_to_markdown(&output.ast);
+            println!("Canonical Markdown:");
+            println!("{}", canonical);
             println!();
 
-            // Check if input == output (lossless round-trip)
-            let source_normalized = source.trim();
-            let pretty_normalized = pretty.trim();
-
-            if source_normalized == pretty_normalized {
-                println!("✅ INPUT-OUTPUT MATCH - Lossless round-trip!");
-            } else {
-                println!("⚠️  INPUT-OUTPUT DIFFER - Information lost!");
-                println!();
-                println!("Original input:");
-                println!("{}", source);
-                println!();
-                println!("Pretty-printed:");
-                println!("{}", pretty);
-            }
-            println!();
-
-            println!("Re-parsing pretty-printed output...");
-            match parse(&pretty) {
-                Ok(ast2) => {
-                    if ast == ast2 {
-                        println!("✅ AST STABILITY - Re-parsing produces same AST");
-                    } else {
-                        println!("❌ AST INSTABILITY - Re-parsing changed the AST!");
-                        println!();
-                        println!("DIFF:");
-                        println!("Original: {:#?}", ast);
-                        println!();
-                        println!("Re-parsed: {:#?}", ast2);
-                    }
-                }
-                Err(e) => {
-                    println!("❌ Re-parse failed: {:?}", e);
-                }
-            }
+            println!("✅ Parse succeeded!");
         }
         Err(e) => {
             println!("❌ Parse error: {:?}", e);
         }
     }
+
+    // Cleanup
+    let _ = fs::remove_file(manifest_path);
 }

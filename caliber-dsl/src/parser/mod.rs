@@ -1,8 +1,6 @@
 //! Parser module for CALIBER DSL
+//! Contains AST definitions (config parsing moved to config module)
 
 pub mod ast;
-#[allow(clippy::module_inception)]
-pub mod parser;
 
 pub use ast::*;
-pub use parser::*;
