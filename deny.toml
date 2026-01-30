@@ -25,6 +25,7 @@ allow = [
     "CC0-1.0",
     "MPL-2.0",
     "Unicode-DFS-2016",
+    "Unicode-3.0",  # OSI-approved, used by icu_collections
     "OpenSSL",  # Used by aws-lc-sys (transitive dep of rustls)
 ]
 confidence-threshold = 0.8

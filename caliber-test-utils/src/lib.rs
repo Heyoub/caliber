@@ -1118,9 +1118,18 @@ pub mod fixtures {
         (trajectory, scope, artifacts, notes)
     }
 
+    /// Multi-tenant test data seed
+    #[derive(Debug, Clone)]
+    pub struct MultiTenantSeed {
+        pub tenant_id: uuid::Uuid,
+        pub trajectory: Trajectory,
+        pub scope: Scope,
+        pub artifacts: Vec<Artifact>,
+        pub notes: Vec<Note>,
+    }
+
     /// Seed data for multi-tenant testing with separate trajectories per tenant.
-    /// Returns Vec<(tenant_id, trajectory, scope, artifacts, notes)>.
-    pub fn seed_multi_tenant() -> Vec<(uuid::Uuid, Trajectory, Scope, Vec<Artifact>, Vec<Note>)> {
+    pub fn seed_multi_tenant() -> Vec<MultiTenantSeed> {
         vec![
             {
                 let tenant_id = tenant_id_alice();
@@ -1145,7 +1154,7 @@ pub mod fixtures {
                     n.content_hash = compute_content_hash(n.content.as_bytes());
                     n
                 }];
-                (tenant_id, trajectory, scope, artifacts, notes)
+                MultiTenantSeed { tenant_id, trajectory, scope, artifacts, notes }
             },
             {
                 let tenant_id = tenant_id_bob();
@@ -1170,7 +1179,7 @@ pub mod fixtures {
                     n.content_hash = compute_content_hash(n.content.as_bytes());
                     n
                 }];
-                (tenant_id, trajectory, scope, artifacts, notes)
+                MultiTenantSeed { tenant_id, trajectory, scope, artifacts, notes }
             },
             {
                 let tenant_id = tenant_id_charlie();
@@ -1195,7 +1204,7 @@ pub mod fixtures {
                     n.content_hash = compute_content_hash(n.content.as_bytes());
                     n
                 }];
-                (tenant_id, trajectory, scope, artifacts, notes)
+                MultiTenantSeed { tenant_id, trajectory, scope, artifacts, notes }
             },
         ]
     }
