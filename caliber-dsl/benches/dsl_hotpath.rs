@@ -1,25 +1,56 @@
 use caliber_dsl::pack::{compose_pack, PackInput, PackMarkdownFile};
-use caliber_dsl::parser::parse;
-use caliber_dsl::DslCompiler;
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
 use std::path::PathBuf;
 
-const DSL_MIN: &str = r#"
-caliber: "1.0" {
-  adapter pg {
-    type: postgres
-    connection: "postgresql://localhost/caliber"
-  }
-}
+// Markdown-based minimal config for benchmarking
+const MARKDOWN_MIN: &str = r#"
+# System
+
+Test system prompt
+
+## PCP
+
+Test PCP
+
+### User
+
+```adapter pg
+adapter_type: postgres
+connection: "postgresql://localhost/caliber"
+```
 "#;
 
 fn bench_parse_compile(c: &mut Criterion) {
-    c.bench_function("dsl/parse_compile_min", |b| {
+    c.bench_function("markdown/parse_compile_min", |b| {
+        let manifest_toml = r#"
+[meta]
+name = "bench"
+version = "1.0"
+[tools]
+bin = {}
+prompts = {}
+[profiles]
+[agents]
+[toolsets]
+[adapters]
+[providers]
+[policies]
+[injections]
+"#;
+
         b.iter(|| {
-            let ast = parse(black_box(DSL_MIN)).expect("parse DSL");
-            let compiled = DslCompiler::compile(&ast).expect("compile DSL");
-            black_box(compiled.adapters.len());
+            let input = PackInput {
+                root: PathBuf::from("."),
+                manifest: black_box(manifest_toml.to_string()),
+                markdowns: vec![PackMarkdownFile {
+                    path: PathBuf::from("test.md"),
+                    content: black_box(MARKDOWN_MIN.to_string()),
+                }],
+                contracts: std::collections::HashMap::new(),
+            };
+            let output = compose_pack(input).expect("compose pack");
+            black_box(output.compiled.adapters.len());
         });
     });
 }
