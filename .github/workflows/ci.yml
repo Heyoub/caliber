@@ -392,8 +392,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
           ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
@@ -437,6 +436,7 @@ jobs:
         run: |
           ./caliber-api &
           sleep 5
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
 
       - name: Create test tenant
         id: tenant
@@ -538,8 +538,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
           ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
@@ -649,8 +648,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
           ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
@@ -950,8 +948,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
           ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
@@ -990,6 +987,7 @@ jobs:
         run: |
           ./caliber-api &
           sleep 5
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
 
       - name: Create test tenant
         id: tenant
@@ -1093,8 +1091,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
           ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
@@ -1131,6 +1128,7 @@ jobs:
         run: |
           ./caliber-api &
           sleep 5
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
 
       - name: Create test tenant
         id: tenant

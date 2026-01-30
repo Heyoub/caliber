@@ -18,9 +18,7 @@ let serverCheckDone = false;
 /**
  * Check if the real server is available
  */
-export async function isServerAvailable(
-  baseUrl = 'http://localhost:3000'
-): Promise<boolean> {
+export async function isServerAvailable(baseUrl = 'http://localhost:3000'): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1000);

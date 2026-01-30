@@ -10,8 +10,8 @@ import { clearRateLimits, getTestToken, isUsingMocks, setupMocking } from '../mo
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const USING_MOCKS = isUsingMocks();
 const TEST_TOKEN = USING_MOCKS
-  ? process.env.CALIBER_TEST_TOKEN ?? getTestToken()
-  : process.env.CALIBER_TEST_TOKEN ?? '';
+  ? (process.env.CALIBER_TEST_TOKEN ?? getTestToken())
+  : (process.env.CALIBER_TEST_TOKEN ?? '');
 const TEST_TENANT_ID = process.env.CALIBER_TEST_TENANT_ID;
 
 interface EntitySpec {
@@ -31,7 +31,7 @@ async function api<T = unknown>(
   method: string,
   path: string,
   body?: unknown
-): Promise<{ status: number; data: T } > {
+): Promise<{ status: number; data: T }> {
   const url = `${API_BASE_URL}${path}`;
   const options: RequestInit = {
     method,
@@ -72,10 +72,7 @@ describe('component: ECS list + get contracts', () => {
   for (const entity of ENTITIES) {
     describe(entity.name, () => {
       it('lists entities', async () => {
-        const { status, data } = await api<Record<string, unknown>>(
-          'GET',
-          entity.endpoint
-        );
+        const { status, data } = await api<Record<string, unknown>>('GET', entity.endpoint);
 
         // If auth is enforced and token missing, allow 401.
         expect([200, 401]).toContain(status);
@@ -96,10 +93,7 @@ describe('component: ECS list + get contracts', () => {
       });
 
       it('returns HATEOAS links when available', async () => {
-        const { status, data } = await api<Record<string, unknown>>(
-          'GET',
-          entity.endpoint
-        );
+        const { status, data } = await api<Record<string, unknown>>('GET', entity.endpoint);
 
         if (USING_MOCKS || status !== 200) return;
 

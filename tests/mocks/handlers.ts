@@ -235,7 +235,11 @@ const healthHandlers = [
 
   http.options(`${API_BASE}/health`, ({ request }) => {
     const origin = request.headers.get('Origin');
-    const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:4321'];
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:4321',
+    ];
 
     return new HttpResponse(null, {
       status: 204,
@@ -256,7 +260,7 @@ const authHandlers = [
     const rl = checkAndTrackRateLimit(request);
     if (rl) return rl;
 
-    const body = await request.json() as { email?: string; password?: string };
+    const body = (await request.json()) as { email?: string; password?: string };
 
     // Simulate consistent timing (prevent timing attacks)
     await new Promise((r) => setTimeout(r, 50 + Math.random() * 20));
@@ -273,7 +277,8 @@ const authHandlers = [
     if (body.email === 'test@caliber.run' && body.password === 'testpassword') {
       return HttpResponse.json(
         {
-          token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE2MzAwMDAwMDB9.mock-signature',
+          token:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE2MzAwMDAwMDB9.mock-signature',
           user: { id: 'user-test', email: body.email },
         },
         { headers: securityHeaders }
@@ -298,8 +303,8 @@ const trajectoryHandlers = [
     const url = new URL(request.url);
     const status = url.searchParams.get('status');
     const search = url.searchParams.get('search');
-    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
-    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+    const limit = Number.parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = Number.parseInt(url.searchParams.get('offset') || '0', 10);
 
     let trajectories = Array.from(stores.trajectories.values());
 
@@ -324,7 +329,11 @@ const trajectoryHandlers = [
   http.post(`${API_BASE}/api/v1/trajectories`, async ({ request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const body = await request.json() as { name?: string; description?: string; metadata?: Record<string, unknown> };
+    const body = (await request.json()) as {
+      name?: string;
+      description?: string;
+      metadata?: Record<string, unknown>;
+    };
 
     if (!body.name || body.name.length === 0) {
       return HttpResponse.json(
@@ -371,7 +380,7 @@ const trajectoryHandlers = [
     const trajectory = stores.trajectories.get(params.id as string);
     if (!trajectory) return notFound('Trajectory');
 
-    const body = await request.json() as Partial<Trajectory>;
+    const body = (await request.json()) as Partial<Trajectory>;
     Object.assign(trajectory, body);
 
     return HttpResponse.json(trajectory, { headers: securityHeaders });
@@ -405,9 +414,7 @@ const trajectoryHandlers = [
   http.get(`${API_BASE}/api/v1/trajectories/:id/notes`, ({ params, request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const notes = Array.from(stores.notes.values()).filter(
-      (n) => n.trajectoryId === params.id
-    );
+    const notes = Array.from(stores.notes.values()).filter((n) => n.trajectoryId === params.id);
 
     return HttpResponse.json({ notes }, { headers: securityHeaders });
   }),
@@ -415,7 +422,7 @@ const trajectoryHandlers = [
   http.post(`${API_BASE}/api/v1/trajectories/:id/notes`, async ({ params, request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const body = await request.json() as { content: string; type?: string };
+    const body = (await request.json()) as { content: string; type?: string };
     const note: Note = {
       id: generateId('note'),
       trajectoryId: params.id as string,
@@ -433,9 +440,7 @@ const trajectoryHandlers = [
   http.get(`${API_BASE}/api/v1/trajectories/:id/scopes`, ({ params, request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const scopes = Array.from(stores.scopes.values()).filter(
-      (s) => s.trajectoryId === params.id
-    );
+    const scopes = Array.from(stores.scopes.values()).filter((s) => s.trajectoryId === params.id);
 
     return HttpResponse.json({ scopes }, { headers: securityHeaders });
   }),
@@ -445,13 +450,14 @@ const trajectoryHandlers = [
 
     const trajectory = stores.trajectories.get(params.id as string);
     if (trajectory?.status === 'completed') {
-      return HttpResponse.json(
-        { error: 'Cannot modify completed trajectory' },
-        { status: 409 }
-      );
+      return HttpResponse.json({ error: 'Cannot modify completed trajectory' }, { status: 409 });
     }
 
-    const body = await request.json() as { name: string; parentId?: string; description?: string };
+    const body = (await request.json()) as {
+      name: string;
+      parentId?: string;
+      description?: string;
+    };
     const scope: Scope = {
       id: generateId('scope'),
       trajectoryId: params.id as string,
@@ -493,7 +499,12 @@ const agentHandlers = [
   http.post(`${API_BASE}/api/v1/agents`, async ({ request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const body = await request.json() as { name: string; type: string; capabilities?: string[]; metadata?: Record<string, unknown> };
+    const body = (await request.json()) as {
+      name: string;
+      type: string;
+      capabilities?: string[];
+      metadata?: Record<string, unknown>;
+    };
 
     if (!body.name || body.name.length === 0) {
       return HttpResponse.json(
@@ -510,9 +521,7 @@ const agentHandlers = [
     }
 
     // Check for duplicate name
-    const existing = Array.from(stores.agents.values()).find(
-      (a) => a.name === body.name
-    );
+    const existing = Array.from(stores.agents.values()).find((a) => a.name === body.name);
     if (existing) {
       return HttpResponse.json(
         { error: 'Conflict', message: 'Agent with this name already exists' },
@@ -590,19 +599,13 @@ const agentHandlers = [
     if (!agent) return notFound('Agent');
 
     if (agent.status === 'inactive') {
-      return HttpResponse.json(
-        { error: 'Agent is inactive' },
-        { status: 409 }
-      );
+      return HttpResponse.json({ error: 'Agent is inactive' }, { status: 409 });
     }
 
     agent.lastHeartbeat = new Date().toISOString();
     agent.lastSeen = agent.lastHeartbeat;
 
-    return HttpResponse.json(
-      { lastHeartbeat: agent.lastHeartbeat },
-      { headers: securityHeaders }
-    );
+    return HttpResponse.json({ lastHeartbeat: agent.lastHeartbeat }, { headers: securityHeaders });
   }),
 ];
 
@@ -634,14 +637,11 @@ const scopeHandlers = [
     const scope = stores.scopes.get(params.id as string);
     if (!scope) return notFound('Scope');
 
-    const body = await request.json() as Partial<Scope>;
+    const body = (await request.json()) as Partial<Scope>;
 
     // Prevent circular reference
     if (body.parentId === scope.id) {
-      return HttpResponse.json(
-        { error: 'Circular reference not allowed' },
-        { status: 422 }
-      );
+      return HttpResponse.json({ error: 'Circular reference not allowed' }, { status: 422 });
     }
 
     Object.assign(scope, body);
@@ -653,9 +653,7 @@ const scopeHandlers = [
   http.get(`${API_BASE}/api/v1/scopes/:id/artifacts`, ({ params, request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const artifacts = Array.from(stores.artifacts.values()).filter(
-      (a) => a.scopeId === params.id
-    );
+    const artifacts = Array.from(stores.artifacts.values()).filter((a) => a.scopeId === params.id);
 
     return HttpResponse.json({ artifacts }, { headers: securityHeaders });
   }),
@@ -669,13 +667,10 @@ const scopeHandlers = [
     // Check if trajectory is completed
     const trajectory = stores.trajectories.get(scope.trajectoryId);
     if (trajectory?.status === 'completed') {
-      return HttpResponse.json(
-        { error: 'Cannot modify completed trajectory' },
-        { status: 409 }
-      );
+      return HttpResponse.json({ error: 'Cannot modify completed trajectory' }, { status: 409 });
     }
 
-    const body = await request.json() as {
+    const body = (await request.json()) as {
       type: Artifact['type'];
       name: string;
       content: string;
@@ -705,7 +700,7 @@ const scopeHandlers = [
   http.post(`${API_BASE}/api/v1/scopes/:id/notes`, async ({ params, request }) => {
     if (!checkAuth(request)) return unauthorized();
 
-    const body = await request.json() as { content: string; type?: string };
+    const body = (await request.json()) as { content: string; type?: string };
     const note: Note = {
       id: generateId('note'),
       scopeId: params.id as string,
@@ -748,7 +743,7 @@ const artifactHandlers = [
     const artifact = stores.artifacts.get(params.id as string);
     if (!artifact) return notFound('Artifact');
 
-    const body = await request.json() as Partial<Artifact>;
+    const body = (await request.json()) as Partial<Artifact>;
     Object.assign(artifact, body);
 
     return HttpResponse.json(artifact, { headers: securityHeaders });
@@ -758,10 +753,10 @@ const artifactHandlers = [
 // =============================================================================
 // Rate Limiting Handler (catch-all for rate limit testing)
 // =============================================================================
-const rateLimitHandler = [
+const _rateLimitHandler = [
   http.all(`${API_BASE}/*`, ({ request }) => {
     const path = new URL(request.url).pathname;
-    const count = trackRequest(path);
+    const _count = trackRequest(path);
 
     if (checkRateLimit(path, 100)) {
       return HttpResponse.json(
@@ -795,10 +790,7 @@ const fallbackHandlers = [
       return HttpResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return HttpResponse.json(
-      { error: 'Not Found', path: url.pathname },
-      { status: 404 }
-    );
+    return HttpResponse.json({ error: 'Not Found', path: url.pathname }, { status: 404 });
   }),
 ];
 

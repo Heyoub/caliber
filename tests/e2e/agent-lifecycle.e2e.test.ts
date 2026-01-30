@@ -139,24 +139,18 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     });
 
     it('retrieves the registered agent', async () => {
-      const { status, data } = await api<TestAgent>(
-        'GET',
-        `/api/v1/agents/${testAgent!.id}`
-      );
+      const { status, data } = await api<TestAgent>('GET', `/api/v1/agents/${testAgent?.id}`);
 
       expect(status).toBe(200);
-      expect(data.id).toBe(testAgent!.id);
+      expect(data.id).toBe(testAgent?.id);
       expect(data.name).toBe(agentName);
     });
 
     it('lists agents including the new one', async () => {
-      const { status, data } = await api<{ agents: TestAgent[] }>(
-        'GET',
-        '/api/v1/agents'
-      );
+      const { status, data } = await api<{ agents: TestAgent[] }>('GET', '/api/v1/agents');
 
       expect(status).toBe(200);
-      expect(data.agents.some((a) => a.id === testAgent!.id)).toBe(true);
+      expect(data.agents.some((a) => a.id === testAgent?.id)).toBe(true);
     });
   });
 
@@ -164,7 +158,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     it('activates the agent', async () => {
       const { status, data } = await api<TestAgent>(
         'POST',
-        `/api/v1/agents/${testAgent!.id}/activate`,
+        `/api/v1/agents/${testAgent?.id}/activate`,
         {}
       );
 
@@ -175,21 +169,14 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     });
 
     it('agent is now active', async () => {
-      const { status, data } = await api<TestAgent>(
-        'GET',
-        `/api/v1/agents/${testAgent!.id}`
-      );
+      const { status, data } = await api<TestAgent>('GET', `/api/v1/agents/${testAgent?.id}`);
 
       expect(status).toBe(200);
       expect(data.status).toBe('active');
     });
 
     it('rejects activation of already active agent', async () => {
-      const { status } = await api(
-        'POST',
-        `/api/v1/agents/${testAgent!.id}/activate`,
-        {}
-      );
+      const { status } = await api('POST', `/api/v1/agents/${testAgent?.id}/activate`, {});
 
       // Should be idempotent (200) or reject (400/409)
       expect([200, 400, 409]).toContain(status);
@@ -200,7 +187,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     it('sends heartbeat successfully', async () => {
       const { status, data } = await api<{ lastHeartbeat: string }>(
         'POST',
-        `/api/v1/agents/${testAgent!.id}/heartbeat`,
+        `/api/v1/agents/${testAgent?.id}/heartbeat`,
         {
           status: 'healthy',
           metrics: {
@@ -217,14 +204,10 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
 
     it('sends multiple heartbeats', async () => {
       for (let i = 0; i < 3; i++) {
-        const { status } = await api(
-          'POST',
-          `/api/v1/agents/${testAgent!.id}/heartbeat`,
-          {
-            status: 'healthy',
-            iteration: i,
-          }
-        );
+        const { status } = await api('POST', `/api/v1/agents/${testAgent?.id}/heartbeat`, {
+          status: 'healthy',
+          iteration: i,
+        });
 
         expect(status).toBe(200);
         await new Promise((r) => setTimeout(r, 100));
@@ -232,21 +215,15 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     });
 
     it('heartbeat updates last seen timestamp', async () => {
-      const before = await api<{ lastSeen: string }>(
-        'GET',
-        `/api/v1/agents/${testAgent!.id}`
-      );
+      const before = await api<{ lastSeen: string }>('GET', `/api/v1/agents/${testAgent?.id}`);
 
       await new Promise((r) => setTimeout(r, 100));
 
-      await api('POST', `/api/v1/agents/${testAgent!.id}/heartbeat`, {
+      await api('POST', `/api/v1/agents/${testAgent?.id}/heartbeat`, {
         status: 'healthy',
       });
 
-      const after = await api<{ lastSeen: string }>(
-        'GET',
-        `/api/v1/agents/${testAgent!.id}`
-      );
+      const after = await api<{ lastSeen: string }>('GET', `/api/v1/agents/${testAgent?.id}`);
 
       // lastSeen should be updated
       expect(new Date(after.data.lastSeen).getTime()).toBeGreaterThanOrEqual(
@@ -273,13 +250,9 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
         testTrajectoryId = trajData.id;
 
         // Assign agent to trajectory
-        const { status } = await api(
-          'POST',
-          `/api/v1/trajectories/${testTrajectoryId}/assign`,
-          {
-            agentId: testAgent!.id,
-          }
-        );
+        const { status } = await api('POST', `/api/v1/trajectories/${testTrajectoryId}/assign`, {
+          agentId: testAgent?.id,
+        });
 
         expect([200, 201]).toContain(status);
       }
@@ -297,7 +270,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     it('deactivates the agent', async () => {
       const { status, data } = await api<TestAgent>(
         'POST',
-        `/api/v1/agents/${testAgent!.id}/deactivate`,
+        `/api/v1/agents/${testAgent?.id}/deactivate`,
         {
           reason: 'e2e test complete',
         }
@@ -310,23 +283,16 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
     });
 
     it('agent is now inactive', async () => {
-      const { status, data } = await api<TestAgent>(
-        'GET',
-        `/api/v1/agents/${testAgent!.id}`
-      );
+      const { status, data } = await api<TestAgent>('GET', `/api/v1/agents/${testAgent?.id}`);
 
       expect(status).toBe(200);
       expect(data.status).toBe('inactive');
     });
 
     it('heartbeat fails for inactive agent', async () => {
-      const { status } = await api(
-        'POST',
-        `/api/v1/agents/${testAgent!.id}/heartbeat`,
-        {
-          status: 'healthy',
-        }
-      );
+      const { status } = await api('POST', `/api/v1/agents/${testAgent?.id}/heartbeat`, {
+        status: 'healthy',
+      });
 
       // Should reject heartbeat from inactive agent
       expect([400, 409]).toContain(status);
@@ -335,28 +301,22 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Lifecycle', () => {
 
   describe('6. Agent Unregistration', () => {
     it('unregisters the agent', async () => {
-      const { status } = await api(
-        'DELETE',
-        `/api/v1/agents/${testAgent!.id}`
-      );
+      const { status } = await api('DELETE', `/api/v1/agents/${testAgent?.id}`);
 
       expect([200, 204]).toContain(status);
     });
 
     it('agent no longer exists', async () => {
-      const { status } = await api('GET', `/api/v1/agents/${testAgent!.id}`);
+      const { status } = await api('GET', `/api/v1/agents/${testAgent?.id}`);
 
       expect(status).toBe(404);
     });
 
     it('agent not in list', async () => {
-      const { status, data } = await api<{ agents: TestAgent[] }>(
-        'GET',
-        '/api/v1/agents'
-      );
+      const { status, data } = await api<{ agents: TestAgent[] }>('GET', '/api/v1/agents');
 
       expect(status).toBe(200);
-      expect(data.agents.some((a) => a.id === testAgent!.id)).toBe(false);
+      expect(data.agents.some((a) => a.id === testAgent?.id)).toBe(false);
     });
   });
 });
@@ -387,11 +347,9 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Agent Edge Cases', () => {
   });
 
   it('handles heartbeat to non-existent agent', async () => {
-    const { status } = await api(
-      'POST',
-      '/api/v1/agents/non-existent-id-12345/heartbeat',
-      { status: 'healthy' }
-    );
+    const { status } = await api('POST', '/api/v1/agents/non-existent-id-12345/heartbeat', {
+      status: 'healthy',
+    });
 
     expect(status).toBe(404);
   });

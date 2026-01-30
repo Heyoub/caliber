@@ -12,14 +12,7 @@
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
-import {
-  API_BASE_URL,
-  thresholds,
-  baseOptions,
-  getHeaders,
-  checks,
-  randomId,
-} from './config.js';
+import { API_BASE_URL, thresholds, baseOptions, getHeaders, checks } from './config.js';
 
 // Custom metrics
 const healthLatency = new Trend('health_latency', true);
@@ -64,7 +57,7 @@ export function setup() {
 }
 
 // Main test function - runs for each VU iteration
-export default function (data) {
+export default function (_data) {
   // Health check endpoint (should be fastest)
   group('Health Endpoints', () => {
     const healthRes = http.get(`${API_BASE_URL}/health`, {

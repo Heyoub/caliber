@@ -8,8 +8,8 @@ import { getTestToken, isUsingMocks, setupMocking } from '../mocks/server';
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const USING_MOCKS = isUsingMocks();
 const TEST_TOKEN = USING_MOCKS
-  ? process.env.CALIBER_TEST_TOKEN ?? getTestToken()
-  : process.env.CALIBER_TEST_TOKEN ?? '';
+  ? (process.env.CALIBER_TEST_TOKEN ?? getTestToken())
+  : (process.env.CALIBER_TEST_TOKEN ?? '');
 const TEST_TENANT_ID = process.env.CALIBER_TEST_TENANT_ID;
 const SKIP_COMPONENT = process.env.SKIP_COMPONENT_TESTS === 'true';
 
@@ -64,21 +64,18 @@ afterAll(async () => {
   }
 });
 
-describe.skipIf(SKIP_COMPONENT || USING_MOCKS || !TEST_TOKEN)(
-  'component: HATEOAS links',
-  () => {
-    it('trajectory responses include _links', async () => {
-      const { status, data } = await api<Record<string, unknown>>(
-        'GET',
-        `/api/v1/trajectories/${trajectoryId}`
-      );
-      expect(status).toBe(200);
+describe.skipIf(SKIP_COMPONENT || USING_MOCKS || !TEST_TOKEN)('component: HATEOAS links', () => {
+  it('trajectory responses include _links', async () => {
+    const { status, data } = await api<Record<string, unknown>>(
+      'GET',
+      `/api/v1/trajectories/${trajectoryId}`
+    );
+    expect(status).toBe(200);
 
-      const links = (data._links ?? data.links) as Record<string, unknown> | undefined;
-      expect(links).toBeDefined();
-      if (links) {
-        expect(links.self).toBeDefined();
-      }
-    });
-  }
-);
+    const links = (data._links ?? data.links) as Record<string, unknown> | undefined;
+    expect(links).toBeDefined();
+    if (links) {
+      expect(links.self).toBeDefined();
+    }
+  });
+});

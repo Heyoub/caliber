@@ -285,7 +285,10 @@ export class CaliberWebSocket {
           return;
         }
 
-        if (this.config.autoReconnect && this.reconnectAttempts < this.config.maxReconnectAttempts) {
+        if (
+          this.config.autoReconnect &&
+          this.reconnectAttempts < this.config.maxReconnectAttempts
+        ) {
           this.scheduleReconnect();
         } else {
           this.setState('disconnected');
@@ -305,9 +308,7 @@ export class CaliberWebSocket {
 
   private buildWebSocketUrl(): string {
     // Convert http(s) to ws(s)
-    let wsUrl = this.config.baseUrl
-      .replace(/^https:\/\//, 'wss://')
-      .replace(/^http:\/\//, 'ws://');
+    let wsUrl = this.config.baseUrl.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://');
 
     // Remove trailing slash
     wsUrl = wsUrl.replace(/\/$/, '');
@@ -334,7 +335,7 @@ export class CaliberWebSocket {
           try {
             handler(event);
           } catch (error) {
-            console.error("Error in event handler", {
+            console.error('Error in event handler', {
               type: event.type,
               error,
             });
@@ -349,9 +350,9 @@ export class CaliberWebSocket {
           try {
             handler(event);
           } catch (error) {
-          console.error("Error in wildcard event handler", { error });
-        }
-      });
+            console.error('Error in wildcard event handler', { error });
+          }
+        });
       }
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);

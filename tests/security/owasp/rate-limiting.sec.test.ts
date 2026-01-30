@@ -7,14 +7,14 @@
  * Run with: bun test tests/security/owasp/rate-limiting.sec.test.ts
  */
 
-import { describe, expect, it, beforeAll } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const SKIP_LIVE_TESTS = process.env.SKIP_SECURITY_TESTS === 'true';
 
 // Test configuration
 const RATE_LIMIT_REQUESTS = 150; // Number of requests to test rate limiting
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute window
+const _RATE_LIMIT_WINDOW_MS = 60000; // 1 minute window
 
 // Helper to make API requests
 async function apiRequest(
@@ -50,10 +50,7 @@ async function makeRapidRequests(
   // Make requests in parallel batches of 10
   const batchSize = 10;
   for (let i = 0; i < count; i += batchSize) {
-    const batch = Array.from(
-      { length: Math.min(batchSize, count - i) },
-      () => requestFn()
-    );
+    const batch = Array.from({ length: Math.min(batchSize, count - i) }, () => requestFn());
 
     const batchResponses = await Promise.all(batch);
     responses.push(...batchResponses);
@@ -82,9 +79,7 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: Rate Limiting', () => {
       'RateLimit-Reset',
     ];
 
-    const hasRateHeaders = rateHeaders.some(
-      (h) => res.headers.get(h) !== null
-    );
+    const hasRateHeaders = rateHeaders.some((h) => res.headers.get(h) !== null);
 
     // Rate limit headers should be present (or server doesn't expose them)
     // This is informational - we'll test actual limiting below
@@ -92,9 +87,8 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: Rate Limiting', () => {
   });
 
   it('enforces rate limits on unauthenticated requests', async () => {
-    const { responses, rateLimitedCount } = await makeRapidRequests(
-      RATE_LIMIT_REQUESTS,
-      () => apiRequest('GET', '/health')
+    const { responses, rateLimitedCount } = await makeRapidRequests(RATE_LIMIT_REQUESTS, () =>
+      apiRequest('GET', '/health')
     );
 
     // At least some requests should be rate limited
@@ -259,9 +253,7 @@ describe.skipIf(SKIP_LIVE_TESTS)('security: DoS Mitigation', () => {
       params.append(`param${i}`, `value${i}`);
     }
 
-    const res = await fetch(
-      `${API_BASE_URL}/api/v1/trajectories?${params.toString()}`
-    );
+    const res = await fetch(`${API_BASE_URL}/api/v1/trajectories?${params.toString()}`);
 
     // Should handle without crashing
     expect(res.status).toBeLessThan(500);

@@ -21,10 +21,7 @@
       "import": "./dist/context.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup src/index.ts src/websocket.ts src/context.ts --format esm,cjs --dts --clean",
     "dev": "tsup src/index.ts src/websocket.ts src/context.ts --format esm,cjs --dts --watch",

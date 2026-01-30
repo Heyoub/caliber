@@ -44,9 +44,9 @@ interface TestNote {
 }
 
 let testTrajectory: TestTrajectory | null = null;
-let testScopes: TestScope[] = [];
-let testArtifacts: TestArtifact[] = [];
-let testNotes: TestNote[] = [];
+const testScopes: TestScope[] = [];
+const testArtifacts: TestArtifact[] = [];
+const testNotes: TestNote[] = [];
 
 // Helper to make authenticated API requests
 async function api<T = unknown>(
@@ -109,18 +109,14 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
 
   describe('1. Trajectory Creation', () => {
     it('creates a new trajectory', async () => {
-      const { status, data } = await api<TestTrajectory>(
-        'POST',
-        '/api/v1/trajectories',
-        {
-          name: trajectoryName,
-          description: 'E2E test trajectory for workflow validation',
-          metadata: {
-            testSuite: 'e2e',
-            timestamp: new Date().toISOString(),
-          },
-        }
-      );
+      const { status, data } = await api<TestTrajectory>('POST', '/api/v1/trajectories', {
+        name: trajectoryName,
+        description: 'E2E test trajectory for workflow validation',
+        metadata: {
+          testSuite: 'e2e',
+          timestamp: new Date().toISOString(),
+        },
+      });
 
       expect(status).toBe(201);
       expect(data.id).toBeDefined();
@@ -133,11 +129,11 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('retrieves the created trajectory', async () => {
       const { status, data } = await api<TestTrajectory>(
         'GET',
-        `/api/v1/trajectories/${testTrajectory!.id}`
+        `/api/v1/trajectories/${testTrajectory?.id}`
       );
 
       expect(status).toBe(200);
-      expect(data.id).toBe(testTrajectory!.id);
+      expect(data.id).toBe(testTrajectory?.id);
       expect(data.name).toBe(trajectoryName);
     });
 
@@ -148,15 +144,13 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
       );
 
       expect(status).toBe(200);
-      expect(data.trajectories.some((t) => t.id === testTrajectory!.id)).toBe(
-        true
-      );
+      expect(data.trajectories.some((t) => t.id === testTrajectory?.id)).toBe(true);
     });
 
     it('updates trajectory metadata', async () => {
       const { status, data } = await api<TestTrajectory>(
         'PATCH',
-        `/api/v1/trajectories/${testTrajectory!.id}`,
+        `/api/v1/trajectories/${testTrajectory?.id}`,
         {
           description: 'Updated description',
           metadata: {
@@ -173,7 +167,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('creates root scope', async () => {
       const { status, data } = await api<TestScope>(
         'POST',
-        `/api/v1/trajectories/${testTrajectory!.id}/scopes`,
+        `/api/v1/trajectories/${testTrajectory?.id}/scopes`,
         {
           name: 'root-scope',
           description: 'Root scope for the trajectory',
@@ -194,7 +188,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
       for (const name of ['planning', 'execution', 'review']) {
         const { status, data } = await api<TestScope>(
           'POST',
-          `/api/v1/trajectories/${testTrajectory!.id}/scopes`,
+          `/api/v1/trajectories/${testTrajectory?.id}/scopes`,
           {
             name,
             parentId,
@@ -214,7 +208,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('retrieves scope hierarchy', async () => {
       const { status, data } = await api<{ scopes: TestScope[] }>(
         'GET',
-        `/api/v1/trajectories/${testTrajectory!.id}/scopes`
+        `/api/v1/trajectories/${testTrajectory?.id}/scopes`
       );
 
       expect(status).toBe(200);
@@ -223,10 +217,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
 
     it('retrieves single scope', async () => {
       const scopeId = testScopes[1].id;
-      const { status, data } = await api<TestScope>(
-        'GET',
-        `/api/v1/scopes/${scopeId}`
-      );
+      const { status, data } = await api<TestScope>('GET', `/api/v1/scopes/${scopeId}`);
 
       expect(status).toBe(200);
       expect(data.id).toBe(scopeId);
@@ -324,13 +315,9 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('updates artifact content', async () => {
       const artifactId = testArtifacts[0].id;
 
-      const { status, data } = await api<TestArtifact>(
-        'PATCH',
-        `/api/v1/artifacts/${artifactId}`,
-        {
-          content: 'console.log("Updated!");',
-        }
-      );
+      const { status, data } = await api<TestArtifact>('PATCH', `/api/v1/artifacts/${artifactId}`, {
+        content: 'console.log("Updated!");',
+      });
 
       expect(status).toBe(200);
     });
@@ -340,7 +327,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('adds note to trajectory', async () => {
       const { status, data } = await api<TestNote>(
         'POST',
-        `/api/v1/trajectories/${testTrajectory!.id}/notes`,
+        `/api/v1/trajectories/${testTrajectory?.id}/notes`,
         {
           content: 'Initial planning complete. Moving to execution phase.',
           type: 'progress',
@@ -357,14 +344,10 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('adds note to scope', async () => {
       const scopeId = testScopes[2].id;
 
-      const { status, data } = await api<TestNote>(
-        'POST',
-        `/api/v1/scopes/${scopeId}/notes`,
-        {
-          content: 'Execution started at ' + new Date().toISOString(),
-          type: 'status',
-        }
-      );
+      const { status, data } = await api<TestNote>('POST', `/api/v1/scopes/${scopeId}/notes`, {
+        content: `Execution started at ${new Date().toISOString()}`,
+        type: 'status',
+      });
 
       expect(status).toBe(201);
       testNotes.push(data);
@@ -373,7 +356,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('lists notes for trajectory', async () => {
       const { status, data } = await api<{ notes: TestNote[] }>(
         'GET',
-        `/api/v1/trajectories/${testTrajectory!.id}/notes`
+        `/api/v1/trajectories/${testTrajectory?.id}/notes`
       );
 
       expect(status).toBe(200);
@@ -389,9 +372,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
       );
 
       expect(status).toBe(200);
-      expect(data.trajectories.some((t) => t.id === testTrajectory!.id)).toBe(
-        true
-      );
+      expect(data.trajectories.some((t) => t.id === testTrajectory?.id)).toBe(true);
     });
 
     it('filters trajectories by status', async () => {
@@ -418,7 +399,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('marks trajectory as complete', async () => {
       const { status, data } = await api<TestTrajectory>(
         'POST',
-        `/api/v1/trajectories/${testTrajectory!.id}/complete`,
+        `/api/v1/trajectories/${testTrajectory?.id}/complete`,
         {
           summary: 'E2E test completed successfully',
           outcome: 'success',
@@ -435,15 +416,11 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
       // Try to add artifact to completed trajectory
       const scopeId = testScopes[0].id;
 
-      const { status } = await api(
-        'POST',
-        `/api/v1/scopes/${scopeId}/artifacts`,
-        {
-          type: 'text',
-          name: 'should-fail.txt',
-          content: 'This should not be allowed',
-        }
-      );
+      const { status } = await api('POST', `/api/v1/scopes/${scopeId}/artifacts`, {
+        type: 'text',
+        name: 'should-fail.txt',
+        content: 'This should not be allowed',
+      });
 
       // Should reject modification to completed trajectory
       expect([400, 403, 409]).toContain(status);
@@ -456,9 +433,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
       );
 
       expect(status).toBe(200);
-      expect(data.trajectories.some((t) => t.id === testTrajectory!.id)).toBe(
-        true
-      );
+      expect(data.trajectories.some((t) => t.id === testTrajectory?.id)).toBe(true);
     });
   });
 
@@ -466,7 +441,7 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Workflow', () => {
     it('trajectory response includes links', async () => {
       const { status, data } = await api<TestTrajectory & { links?: unknown }>(
         'GET',
-        `/api/v1/trajectories/${testTrajectory!.id}`
+        `/api/v1/trajectories/${testTrajectory?.id}`
       );
 
       expect(status).toBe(200);
@@ -499,23 +474,16 @@ describe.skipIf(SKIP_E2E || !TEST_TOKEN)('e2e: Trajectory Edge Cases', () => {
   });
 
   it('handles non-existent trajectory gracefully', async () => {
-    const { status } = await api(
-      'GET',
-      '/api/v1/trajectories/non-existent-id-12345'
-    );
+    const { status } = await api('GET', '/api/v1/trajectories/non-existent-id-12345');
 
     expect(status).toBe(404);
   });
 
   it('handles circular scope references gracefully', async () => {
     // Create a trajectory and scope, then try to make it its own parent
-    const { data: traj } = await api<{ id: string }>(
-      'POST',
-      '/api/v1/trajectories',
-      {
-        name: `circular-test-${Date.now()}`,
-      }
-    );
+    const { data: traj } = await api<{ id: string }>('POST', '/api/v1/trajectories', {
+      name: `circular-test-${Date.now()}`,
+    });
 
     if (traj.id) {
       const { data: scope } = await api<{ id: string }>(

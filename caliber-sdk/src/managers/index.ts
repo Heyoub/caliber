@@ -44,14 +44,12 @@ export type {
   TrajectoryOutcome,
   TrajectoryStatus,
   OutcomeStatus,
-
   // Scope types
   Scope,
   CreateScopeParams,
   UpdateScopeParams,
   CreateCheckpointParams,
   Checkpoint,
-
   // Artifact types
   Artifact,
   CreateArtifactParams,
@@ -65,7 +63,6 @@ export type {
   TTL,
   Provenance,
   Embedding,
-
   // Note types
   Note,
   CreateNoteParams,
@@ -74,12 +71,10 @@ export type {
   ListNotesResponse,
   SearchNotesParams,
   NoteType,
-
   // Turn types
   Turn,
   CreateTurnParams,
   TurnRole,
-
   // Agent types
   Agent,
   RegisterAgentParams,
@@ -89,7 +84,6 @@ export type {
   HeartbeatResponse,
   MemoryAccess,
   MemoryPermission,
-
   // Lock types
   Lock,
   AcquireLockParams,
@@ -97,14 +91,12 @@ export type {
   ListLocksParams,
   ListLocksResponse,
   LockMode,
-
   // Message types
   Message,
   SendMessageParams,
   ListMessagesParams,
   ListMessagesResponse,
   MessagePriority,
-
   // Delegation types
   Delegation,
   CreateDelegationParams,
@@ -112,18 +104,15 @@ export type {
   DelegationResult,
   DelegationStatus,
   DelegationResultStatus,
-
   // Handoff types
   Handoff,
   CreateHandoffParams,
   HandoffStatus,
-
   // Search types
   SearchParams,
   SearchResult,
   EntityType,
   FilterExpr,
-
   // DSL types
   ValidateDslResponse,
   ParseError,

@@ -135,13 +135,10 @@ export class BatchManager {
   async trajectories(
     params: BatchRequestParams<TrajectoryBatchItem>
   ): Promise<BatchResponse<Trajectory>> {
-    return this.http.post<BatchResponse<Trajectory>>(
-      '/api/v1/batch/trajectories',
-      {
-        items: params.items,
-        stop_on_error: params.stop_on_error ?? false,
-      }
-    );
+    return this.http.post<BatchResponse<Trajectory>>('/api/v1/batch/trajectories', {
+      items: params.items,
+      stop_on_error: params.stop_on_error ?? false,
+    });
   }
 
   /**
@@ -150,16 +147,11 @@ export class BatchManager {
    * @param params - Batch request parameters
    * @returns Batch response with results for each item
    */
-  async artifacts(
-    params: BatchRequestParams<ArtifactBatchItem>
-  ): Promise<BatchResponse<Artifact>> {
-    return this.http.post<BatchResponse<Artifact>>(
-      '/api/v1/batch/artifacts',
-      {
-        items: params.items,
-        stop_on_error: params.stop_on_error ?? false,
-      }
-    );
+  async artifacts(params: BatchRequestParams<ArtifactBatchItem>): Promise<BatchResponse<Artifact>> {
+    return this.http.post<BatchResponse<Artifact>>('/api/v1/batch/artifacts', {
+      items: params.items,
+      stop_on_error: params.stop_on_error ?? false,
+    });
   }
 
   /**
@@ -168,16 +160,11 @@ export class BatchManager {
    * @param params - Batch request parameters
    * @returns Batch response with results for each item
    */
-  async notes(
-    params: BatchRequestParams<NoteBatchItem>
-  ): Promise<BatchResponse<Note>> {
-    return this.http.post<BatchResponse<Note>>(
-      '/api/v1/batch/notes',
-      {
-        items: params.items,
-        stop_on_error: params.stop_on_error ?? false,
-      }
-    );
+  async notes(params: BatchRequestParams<NoteBatchItem>): Promise<BatchResponse<Note>> {
+    return this.http.post<BatchResponse<Note>>('/api/v1/batch/notes', {
+      items: params.items,
+      stop_on_error: params.stop_on_error ?? false,
+    });
   }
 
   // ============================================================================
@@ -231,10 +218,7 @@ export class BatchManager {
    * @param stopOnError - Stop on first error (default: false)
    * @returns Batch response with created notes
    */
-  async createNotes(
-    notes: CreateNoteParams[],
-    stopOnError = false
-  ): Promise<BatchResponse<Note>> {
+  async createNotes(notes: CreateNoteParams[], stopOnError = false): Promise<BatchResponse<Note>> {
     return this.notes({
       items: notes.map((create) => ({
         operation: 'create',
@@ -291,10 +275,7 @@ export class BatchManager {
    * @param stopOnError - Stop on first error (default: false)
    * @returns Batch response with deleted notes
    */
-  async deleteNotes(
-    noteIds: string[],
-    stopOnError = false
-  ): Promise<BatchResponse<Note>> {
+  async deleteNotes(noteIds: string[], stopOnError = false): Promise<BatchResponse<Note>> {
     return this.notes({
       items: noteIds.map((note_id) => ({
         operation: 'delete',

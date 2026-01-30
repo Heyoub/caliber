@@ -5,7 +5,7 @@
  * and error handling.
  */
 
-import axios, { type AxiosInstance, type AxiosRequestConfig, } from 'axios';
+import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 import { CaliberError, parseApiError, AuthenticationError } from './errors';
 
 export interface HttpClientConfig {
@@ -52,7 +52,7 @@ export class HttpClient {
       timeout: config.timeout ?? 30000,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         'X-Tenant-ID': config.tenantId,
         ...config.headers,
       },
@@ -67,10 +67,7 @@ export class HttpClient {
           const body = error.response?.data;
           throw parseApiError(statusCode, body);
         }
-        throw new CaliberError(
-          error.message ?? 'Network error',
-          'NETWORK_ERROR'
-        );
+        throw new CaliberError(error.message ?? 'Network error', 'NETWORK_ERROR');
       }
     );
   }

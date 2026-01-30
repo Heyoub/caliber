@@ -36,14 +36,12 @@ export type {
   TrajectoryOutcomeResponse as TrajectoryOutcome,
   TrajectoryStatus,
   OutcomeStatus,
-
   // Scope types (from types.rs)
   ScopeResponse as Scope,
   CreateScopeRequest as CreateScopeParams,
   UpdateScopeRequest as UpdateScopeParams,
   CreateCheckpointRequest as CreateCheckpointParams,
   CheckpointResponse as Checkpoint,
-
   // Artifact types (from types.rs)
   ArtifactResponse as Artifact,
   CreateArtifactRequest as CreateArtifactParams,
@@ -56,7 +54,6 @@ export type {
   TTL,
   ProvenanceResponse as Provenance,
   EmbeddingResponse as Embedding,
-
   // Note types (from types.rs)
   NoteResponse as Note,
   CreateNoteRequest as CreateNoteParams,
@@ -64,12 +61,10 @@ export type {
   ListNotesRequest as ListNotesParams,
   ListNotesResponse,
   NoteType,
-
   // Turn types (from types.rs)
   TurnResponse as Turn,
   CreateTurnRequest as CreateTurnParams,
   TurnRole,
-
   // Agent types (from types.rs and routes/agent.rs)
   AgentResponse as Agent,
   RegisterAgentRequest as RegisterAgentParams,
@@ -78,21 +73,18 @@ export type {
   ListAgentsResponse,
   MemoryAccessResponse as MemoryAccess,
   MemoryPermissionResponse as MemoryPermission,
-
   // Lock types (from types.rs and routes/lock.rs)
   LockResponse as Lock,
   AcquireLockRequest as AcquireLockParams,
   ExtendLockRequest as ExtendLockParams,
   ListLocksResponse,
   LockMode,
-
   // Message types (from types.rs and routes/message.rs)
   MessageResponse as Message,
   SendMessageRequest as SendMessageParams,
   ListMessagesRequest as ListMessagesParams,
   ListMessagesResponse,
   MessagePriority,
-
   // Delegation types (from types.rs)
   DelegationResponse as Delegation,
   CreateDelegationRequest as CreateDelegationParams,
@@ -100,18 +92,15 @@ export type {
   DelegationResultResponse as DelegationResult,
   DelegationStatus,
   DelegationResultStatus,
-
   // Handoff types (from types.rs)
   HandoffResponse as Handoff,
   CreateHandoffRequest as CreateHandoffParams,
   HandoffStatus,
-
   // Search types (from types.rs)
   SearchRequest as SearchParams,
   SearchResult,
   EntityType,
   FilterExpr,
-
   // DSL types (from types.rs)
   ValidateDslResponse,
   ParseErrorResponse as ParseError,

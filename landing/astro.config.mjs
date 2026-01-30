@@ -22,11 +22,11 @@ export default defineConfig({
         output: {
           manualChunks: {
             svelte: ['svelte'],
-            motion: ['motion']
-          }
-        }
-      }
-    }
+            motion: ['motion'],
+          },
+        },
+      },
+    },
   },
 
   // Compress HTML output
@@ -34,6 +34,6 @@ export default defineConfig({
 
   build: {
     // Inline small assets
-    inlineStylesheets: 'auto'
-  }
+    inlineStylesheets: 'auto',
+  },
 });

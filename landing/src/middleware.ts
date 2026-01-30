@@ -14,20 +14,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
 
   // Skip middleware for public routes
-  if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+  if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
     return next();
   }
 
   // Check if route requires authentication
-  const isProtected = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
+  const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
 
   if (!isProtected) {
     return next();
   }
 
   // Get token from cookie or Authorization header
-  const token = context.cookies.get('caliber_token')?.value
-    || context.request.headers.get('Authorization')?.replace('Bearer ', '');
+  const token =
+    context.cookies.get('caliber_token')?.value ||
+    context.request.headers.get('Authorization')?.replace('Bearer ', '');
 
   if (!token) {
     // Redirect to login with return URL

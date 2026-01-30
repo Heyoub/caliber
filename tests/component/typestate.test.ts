@@ -10,8 +10,8 @@ import { clearRateLimits, getTestToken, isUsingMocks, setupMocking } from '../mo
 const API_BASE_URL = process.env.CALIBER_API_URL ?? 'http://localhost:3000';
 const USING_MOCKS = isUsingMocks();
 const TEST_TOKEN = USING_MOCKS
-  ? process.env.CALIBER_TEST_TOKEN ?? getTestToken()
-  : process.env.CALIBER_TEST_TOKEN ?? '';
+  ? (process.env.CALIBER_TEST_TOKEN ?? getTestToken())
+  : (process.env.CALIBER_TEST_TOKEN ?? '');
 const TEST_TENANT_ID = process.env.CALIBER_TEST_TENANT_ID;
 const SKIP_COMPONENT = process.env.SKIP_COMPONENT_TESTS === 'true';
 
@@ -134,32 +134,24 @@ describe.skipIf(SKIP_COMPONENT || USING_MOCKS || !TEST_TOKEN)(
   'component: Typestate enforcement',
   () => {
     it('delegation requires accept before complete', async () => {
-      const createRes = await api<Record<string, unknown>>(
-        'POST',
-        '/api/v1/delegations',
-        {
-          from_agent_id: agentA,
-          to_agent_id: agentB,
-          trajectory_id: trajectoryId,
-          scope_id: scopeId,
-          task_description: 'typestate delegation test',
-        }
-      );
+      const createRes = await api<Record<string, unknown>>('POST', '/api/v1/delegations', {
+        from_agent_id: agentA,
+        to_agent_id: agentB,
+        trajectory_id: trajectoryId,
+        scope_id: scopeId,
+        task_description: 'typestate delegation test',
+      });
       expect(createRes.status).toBe(201);
       const delegationId = idOf(createRes.data, ['delegation_id', 'id']);
 
-      const completeRes = await api(
-        'POST',
-        `/api/v1/delegations/${delegationId}/complete`,
-        {
-          result: {
-            status: 'Success',
-            output: 'done',
-            artifacts: [],
-            error: null,
-          },
-        }
-      );
+      const completeRes = await api('POST', `/api/v1/delegations/${delegationId}/complete`, {
+        result: {
+          status: 'Success',
+          output: 'done',
+          artifacts: [],
+          error: null,
+        },
+      });
       expect([400, 409]).toContain(completeRes.status);
 
       const acceptRes = await api('POST', `/api/v1/delegations/${delegationId}/accept`, {
@@ -167,18 +159,14 @@ describe.skipIf(SKIP_COMPONENT || USING_MOCKS || !TEST_TOKEN)(
       });
       expect([200, 204]).toContain(acceptRes.status);
 
-      const completeRes2 = await api(
-        'POST',
-        `/api/v1/delegations/${delegationId}/complete`,
-        {
-          result: {
-            status: 'Success',
-            output: 'done',
-            artifacts: [],
-            error: null,
-          },
-        }
-      );
+      const completeRes2 = await api('POST', `/api/v1/delegations/${delegationId}/complete`, {
+        result: {
+          status: 'Success',
+          output: 'done',
+          artifacts: [],
+          error: null,
+        },
+      });
       expect([200, 204]).toContain(completeRes2.status);
     });
 

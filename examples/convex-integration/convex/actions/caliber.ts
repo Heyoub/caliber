@@ -34,12 +34,12 @@
  * ```
  */
 
-"use node";
+'use node';
 
-import { action } from "../_generated/server";
-import { v } from "convex/values";
-import { CalibrClient } from "@caliber-run/sdk";
-import type { ArtifactType, NoteType } from "@caliber-run/sdk";
+import { action } from '../_generated/server';
+import { v } from 'convex/values';
+import { CalibrClient } from '@caliber-run/sdk';
+import type { ArtifactType, NoteType } from '@caliber-run/sdk';
 
 // ============================================================================
 // TYPE CEREMONY: Convex validators → SDK types
@@ -74,13 +74,13 @@ const toNoteType = (s: string): NoteType => s as NoteType;
 function getCalibrClient(): CalibrClient {
   const apiKey = process.env.CALIBER_API_KEY;
   const tenantId = process.env.CALIBER_TENANT_ID;
-  const baseUrl = process.env.CALIBER_API_URL ?? "https://api.caliber.run";
+  const baseUrl = process.env.CALIBER_API_URL ?? 'https://api.caliber.run';
 
   if (!apiKey) {
-    throw new Error("CALIBER_API_KEY environment variable is required");
+    throw new Error('CALIBER_API_KEY environment variable is required');
   }
   if (!tenantId) {
-    throw new Error("CALIBER_TENANT_ID environment variable is required");
+    throw new Error('CALIBER_TENANT_ID environment variable is required');
   }
 
   return new CalibrClient({
@@ -124,7 +124,7 @@ export const startTask = action({
     // Create initial scope
     const scope = await caliber.scopes.create({
       trajectory_id: trajectory.trajectory_id,
-      name: "main",
+      name: 'main',
       token_budget: args.tokenBudget ?? 8000,
     });
 
@@ -145,7 +145,7 @@ export const startTask = action({
 export const completeTask = action({
   args: {
     trajectoryId: v.string(),
-    status: v.union(v.literal("Success"), v.literal("Failure"), v.literal("Partial")),
+    status: v.union(v.literal('Success'), v.literal('Failure'), v.literal('Partial')),
     summary: v.optional(v.string()),
     metadata: v.optional(v.any()),
   },
@@ -154,7 +154,7 @@ export const completeTask = action({
 
     // Update trajectory with completion status
     const trajectory = await caliber.trajectories.update(args.trajectoryId, {
-      status: "Completed",
+      status: 'Completed',
       metadata: {
         outcome: {
           status: args.status,
@@ -180,7 +180,7 @@ export const completeTask = action({
 export const addTurn = action({
   args: {
     scopeId: v.string(),
-    role: v.union(v.literal("User"), v.literal("Agent"), v.literal("System"), v.literal("Tool")),
+    role: v.union(v.literal('User'), v.literal('Agent'), v.literal('System'), v.literal('Tool')),
     content: v.string(),
     tokenCount: v.optional(v.number()),
     metadata: v.optional(v.any()),
@@ -217,23 +217,21 @@ export const extractArtifact = action({
     name: v.string(),
     content: v.string(),
     artifactType: v.union(
-      v.literal("Code"),
-      v.literal("Document"),
-      v.literal("Decision"),
-      v.literal("Plan"),
-      v.literal("Data"),
-      v.literal("Reference"),
-      v.literal("Summary"),
-      v.literal("Principle"),
-      v.literal("Other")
+      v.literal('Code'),
+      v.literal('Document'),
+      v.literal('Decision'),
+      v.literal('Plan'),
+      v.literal('Data'),
+      v.literal('Reference'),
+      v.literal('Summary'),
+      v.literal('Principle'),
+      v.literal('Other')
     ),
     sourceTurn: v.number(),
     extractionMethod: v.optional(
-      v.union(v.literal("Explicit"), v.literal("Inferred"), v.literal("Automatic"))
+      v.union(v.literal('Explicit'), v.literal('Inferred'), v.literal('Automatic'))
     ),
-    ttl: v.optional(
-      v.union(v.literal("Ephemeral"), v.literal("Session"), v.literal("Persistent"))
-    ),
+    ttl: v.optional(v.union(v.literal('Ephemeral'), v.literal('Session'), v.literal('Persistent'))),
     confidence: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
@@ -247,8 +245,8 @@ export const extractArtifact = action({
       content: args.content,
       artifact_type: args.artifactType,
       source_turn: args.sourceTurn,
-      extraction_method: args.extractionMethod ?? "Explicit",
-      ttl: args.ttl ?? "Persistent",
+      extraction_method: args.extractionMethod ?? 'Explicit',
+      ttl: args.ttl ?? 'Persistent',
       confidence: args.confidence,
       metadata: args.metadata,
     });
@@ -294,18 +292,16 @@ export const createNote = action({
     title: v.string(),
     content: v.string(),
     noteType: v.union(
-      v.literal("Lesson"),
-      v.literal("Fact"),
-      v.literal("Preference"),
-      v.literal("Context"),
-      v.literal("Reference"),
-      v.literal("Other")
+      v.literal('Lesson'),
+      v.literal('Fact'),
+      v.literal('Preference'),
+      v.literal('Context'),
+      v.literal('Reference'),
+      v.literal('Other')
     ),
     sourceTrajectoryId: v.optional(v.string()),
     sourceArtifactId: v.optional(v.string()),
-    ttl: v.optional(
-      v.union(v.literal("Ephemeral"), v.literal("Session"), v.literal("Persistent"))
-    ),
+    ttl: v.optional(v.union(v.literal('Ephemeral'), v.literal('Session'), v.literal('Persistent'))),
     metadata: v.optional(v.any()),
   },
   handler: async (_ctx, args) => {
@@ -317,7 +313,7 @@ export const createNote = action({
       note_type: args.noteType,
       source_trajectory_id: args.sourceTrajectoryId,
       source_artifact_id: args.sourceArtifactId,
-      ttl: args.ttl ?? "Persistent",
+      ttl: args.ttl ?? 'Persistent',
       metadata: args.metadata,
     });
 
@@ -365,7 +361,7 @@ export const getContext = action({
     maxArtifacts: v.optional(v.number()),
     maxNotes: v.optional(v.number()),
     maxTurns: v.optional(v.number()),
-    format: v.optional(v.union(v.literal("xml"), v.literal("markdown"), v.literal("json"))),
+    format: v.optional(v.union(v.literal('xml'), v.literal('markdown'), v.literal('json'))),
   },
   handler: async (_ctx, args) => {
     const caliber = getCalibrClient();
@@ -381,7 +377,7 @@ export const getContext = action({
         relevanceQuery: args.relevanceQuery,
       },
       {
-        format: args.format ?? "xml",
+        format: args.format ?? 'xml',
       }
     );
 
@@ -462,7 +458,7 @@ export const closeScope = action({
     const caliber = getCalibrClient();
 
     const scope = await caliber.scopes.update(args.scopeId, {
-      status: "Closed",
+      status: 'Closed',
       summary: args.summary,
     });
 
@@ -503,8 +499,8 @@ export const batchCreateArtifacts = action({
         content: a.content,
         artifact_type: toArtifactType(a.artifactType),
         source_turn: a.sourceTurn,
-        extraction_method: "Explicit" as const,
-        ttl: "Persistent" as const,
+        extraction_method: 'Explicit' as const,
+        ttl: 'Persistent' as const,
       }))
     );
 
@@ -537,7 +533,7 @@ export const batchCreateNotes = action({
         title: n.title,
         content: n.content,
         note_type: toNoteType(n.noteType),
-        ttl: "Persistent" as const,
+        ttl: 'Persistent' as const,
       }))
     );
 

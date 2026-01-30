@@ -113,11 +113,13 @@ class CaliberApi {
   }
 
   // Trajectory endpoints
-  async listTrajectories(params: {
-    page?: number;
-    limit?: number;
-    status?: string;
-  } = {}): Promise<ApiResponse<Trajectory[]>> {
+  async listTrajectories(
+    params: {
+      page?: number;
+      limit?: number;
+      status?: string;
+    } = {}
+  ): Promise<ApiResponse<Trajectory[]>> {
     const queryParams: Record<string, string> = {};
     if (params.page) queryParams.page = String(params.page);
     if (params.limit) queryParams.limit = String(params.limit);
