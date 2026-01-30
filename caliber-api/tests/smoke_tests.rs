@@ -8,6 +8,7 @@ use caliber_core::*;
 #[cfg(feature = "db-tests")]
 use caliber_test_utils::*;
 
+#[allow(dead_code)]
 fn test_db() -> ApiResult<DbClient> {
     let config = DbConfig::from_env();
     DbClient::from_config(&config)

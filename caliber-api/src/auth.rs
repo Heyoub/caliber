@@ -900,7 +900,7 @@ mod tests {
 
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.roles, roles);
-        assert!(!claims.is_expired());
+        assert!(!claims.is_expired(&SystemJwtClock));
         Ok(())
     }
 

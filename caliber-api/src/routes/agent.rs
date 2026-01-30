@@ -587,8 +587,10 @@ mod tests {
         event_dag.append(event.clone()).await.unwrap();
 
         // Query it back
-        let retrieved: caliber_core::Event<serde_json::Value> =
-            event_dag.get(event_id).await.unwrap();
+        let retrieved = match event_dag.read(event_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read event"),
+        };
         assert_eq!(retrieved.header.event_id, event_id);
         assert_eq!(retrieved.payload, json!({"test": "data"}));
     }
@@ -601,49 +603,34 @@ mod tests {
         let event_dag = Arc::new(ApiEventDag::new());
         let trajectory_id = uuid::Uuid::now_v7();
 
-        // Create parent event
-        let parent_id = uuid::Uuid::now_v7();
-        let parent = Event::new(
-            EventHeader::new(
-                parent_id,
-                trajectory_id,
-                chrono::Utc::now().timestamp_micros(),
-                DagPosition::root(),
-                0,
-                EventKind::DATA,
-                EventFlags::empty(),
-            ),
-            json!({"order": 1}),
-        );
+        // Use append_root and append_child for proper parent-child relationships
+        let parent_id = match event_dag.append_root(json!({"order": 1})).await {
+            caliber_core::Effect::Ok(id) => id,
+            _ => panic!("Failed to append root"),
+        };
 
-        // Create child event (depends on parent)
-        let child_id = uuid::Uuid::now_v7();
-        let mut child_header = EventHeader::new(
-            child_id,
-            trajectory_id,
-            chrono::Utc::now().timestamp_micros(),
-            DagPosition::new(1, 0, 0), // Sequence 1
-            0,
-            EventKind::DATA,
-            EventFlags::empty(),
-        );
-        child_header.parent_id = Some(parent_id); // Set parent
-        let child = Event::new(child_header, json!({"order": 2}));
-
-        // Append in order
-        event_dag.append(parent).await.unwrap();
-        event_dag.append(child).await.unwrap();
+        let child_id = match event_dag.append_child(parent_id, json!({"order": 2})).await {
+            caliber_core::Effect::Ok(id) => id,
+            _ => panic!("Failed to append child"),
+        };
 
         // Verify both exist
-        let retrieved_parent: caliber_core::Event<serde_json::Value> =
-            event_dag.get(parent_id).await.unwrap();
-        let retrieved_child: caliber_core::Event<serde_json::Value> =
-            event_dag.get(child_id).await.unwrap();
+        let retrieved_parent = match event_dag.read(parent_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read parent"),
+        };
+        let retrieved_child = match event_dag.read(child_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read child"),
+        };
 
-        // Verify causality
-        assert_eq!(retrieved_child.header.parent_id, Some(parent_id));
-        assert_eq!(retrieved_parent.header.dag_position.sequence, 0);
-        assert_eq!(retrieved_child.header.dag_position.sequence, 1);
+        // Verify causality through correlation_id (child inherits parent's correlation)
+        assert_eq!(
+            retrieved_child.header.correlation_id,
+            retrieved_parent.header.correlation_id
+        );
+        assert_eq!(retrieved_parent.header.position.sequence, 0);
+        assert_eq!(retrieved_child.header.position.sequence, 1);
     }
 
     #[tokio::test]
@@ -697,8 +684,10 @@ mod tests {
         ctx.event_dag.append(test_event).await.unwrap();
 
         // Verify event was recorded
-        let retrieved: caliber_core::Event<serde_json::Value> =
-            ctx.event_dag.get(event_id).await.unwrap();
+        let retrieved = match ctx.event_dag.read(event_id).await {
+            caliber_core::Effect::Ok(event) => event,
+            _ => panic!("Failed to read event"),
+        };
         assert_eq!(retrieved.payload["agent_route"], "register_agent");
         assert_eq!(retrieved.payload["test"], true);
     }
