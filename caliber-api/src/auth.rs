@@ -900,7 +900,7 @@ mod tests {
 
         assert_eq!(claims.sub, user_id);
         assert_eq!(claims.roles, roles);
-        assert!(!claims.is_expired(&SystemClock));
+        assert!(!claims.is_expired(&test_clocks::valid())); // Use same fixed clock as token generation
         Ok(())
     }
 
