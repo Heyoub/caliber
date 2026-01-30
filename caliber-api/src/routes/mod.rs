@@ -717,12 +717,17 @@ mod tests {
 
     #[test]
     fn test_validate_api_config_for_production_cors_required() {
-        let mut config = ApiConfig::default();
-        config.cors_origins = Vec::new();
+        let config = ApiConfig {
+            cors_origins: Vec::new(),
+            ..Default::default()
+        };
         let err = validate_api_config_for_production(&config).unwrap_err();
         assert_eq!(err.code, ErrorCode::InvalidInput);
 
-        config.cors_origins = vec!["https://example.com".to_string()];
+        let config = ApiConfig {
+            cors_origins: vec!["https://example.com".to_string()],
+            ..Default::default()
+        };
         assert!(validate_api_config_for_production(&config).is_ok());
     }
 }
