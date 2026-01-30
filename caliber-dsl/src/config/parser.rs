@@ -746,3 +746,181 @@ fn parse_freshness_def(config: FreshnessConfig) -> Result<FreshnessDef, ConfigEr
         FreshnessConfig::Strict => Ok(FreshnessDef::Strict),
     }
 }
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adapter_parse_with_header_name() {
+        let yaml = r#"
+adapter_type: postgres
+connection: "postgresql://localhost/test"
+"#;
+        let result = parse_adapter_block(Some("postgres_main".to_string()), yaml);
+        assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
+
+        let adapter = result.unwrap();
+        assert_eq!(adapter.name, "postgres_main");
+        assert_eq!(adapter.adapter_type, AdapterType::Postgres);
+        assert_eq!(adapter.connection, "postgresql://localhost/test");
+    }
+
+    #[test]
+    fn test_adapter_parse_with_payload_name() {
+        let yaml = r#"
+name: postgres_main
+adapter_type: postgres
+connection: "postgresql://localhost/test"
+"#;
+        let result = parse_adapter_block(None, yaml);
+        assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
+
+        let adapter = result.unwrap();
+        assert_eq!(adapter.name, "postgres_main");
+    }
+
+    #[test]
+    fn test_adapter_deny_unknown_fields() {
+        let yaml = r#"
+adapter_type: postgres
+connection: "postgresql://localhost/test"
+unknown_field: bad
+"#;
+        let result = parse_adapter_block(Some("test".to_string()), yaml);
+        assert!(result.is_err(), "Should reject unknown field");
+
+        let err = result.unwrap_err();
+        match err {
+            ConfigError::YamlParse(msg) => {
+                assert!(msg.contains("unknown field"), "Expected 'unknown field' error, got: {}", msg);
+            }
+            _ => panic!("Expected YamlParse error, got: {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_adapter_name_conflict() {
+        let yaml = r#"
+name: payload_name
+adapter_type: postgres
+connection: "postgresql://localhost/test"
+"#;
+        let result = parse_adapter_block(Some("header_name".to_string()), yaml);
+        assert!(result.is_err(), "Should reject name conflict");
+
+        let err = result.unwrap_err();
+        match err {
+            ConfigError::NameConflict(_) => {
+                // Expected
+            }
+            _ => panic!("Expected NameConflict error, got: {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_adapter_missing_name() {
+        let yaml = r#"
+adapter_type: postgres
+connection: "postgresql://localhost/test"
+"#;
+        let result = parse_adapter_block(None, yaml);
+        assert!(result.is_err(), "Should require name");
+
+        let err = result.unwrap_err();
+        match err {
+            ConfigError::MissingName(_) => {
+                // Expected
+            }
+            _ => panic!("Expected MissingName error, got: {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_adapter_case_preservation() {
+        let yaml = r#"
+adapter_type: PostgreS
+connection: "PostgreSQL://LocalHost/Test"
+"#;
+        let result = parse_adapter_block(Some("MyAdapter".to_string()), yaml);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+
+        let adapter = result.unwrap();
+        assert_eq!(adapter.name, "MyAdapter");
+        // Note: adapter_type is normalized to lowercase in parsing, but connection preserves case
+        assert_eq!(adapter.connection, "PostgreSQL://LocalHost/Test");
+    }
+
+    #[test]
+    fn test_provider_parse_with_env_key() {
+        let yaml = r#"
+provider_type: openai
+api_key: env:OPENAI_API_KEY
+model: "gpt-4"
+"#;
+        let result = parse_provider_block(Some("my_provider".to_string()), yaml);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+
+        let provider = result.unwrap();
+        assert_eq!(provider.name, "my_provider");
+        assert_eq!(provider.provider_type, ProviderType::OpenAI);
+        match provider.api_key {
+            EnvValue::Env(var) => assert_eq!(var, "OPENAI_API_KEY"),
+            _ => panic!("Expected Env variant"),
+        }
+    }
+
+    #[test]
+    fn test_provider_deny_unknown_fields() {
+        let yaml = r#"
+provider_type: openai
+api_key: "secret"
+model: "gpt-4"
+invalid_option: true
+"#;
+        let result = parse_provider_block(Some("test".to_string()), yaml);
+        assert!(result.is_err(), "Should reject unknown field");
+    }
+
+    #[test]
+    fn test_injection_mode_parsing() {
+        let yaml = r#"
+source: "memories.episodic"
+target: "context.main"
+mode: full
+priority: 100
+"#;
+        let result = parse_injection_block(None, yaml);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+
+        let injection = result.unwrap();
+        assert_eq!(injection.mode, InjectionMode::Full);
+        assert_eq!(injection.priority, 100);
+    }
+
+    #[test]
+    fn test_cache_freshness_parsing() {
+        let yaml = r#"
+backend: lmdb
+path: "/var/cache"
+size_mb: 1024
+default_freshness:
+  type: best_effort
+  max_staleness: "60s"
+"#;
+        let result = parse_cache_block(Some("main".to_string()), yaml);
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+
+        let cache = result.unwrap();
+        match cache.default_freshness {
+            FreshnessDef::BestEffort { max_staleness } => {
+                assert_eq!(max_staleness, "60s");
+            }
+            _ => panic!("Expected BestEffort variant"),
+        }
+    }
+}
