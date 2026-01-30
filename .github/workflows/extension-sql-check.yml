@@ -37,6 +37,11 @@ jobs:
           set -euo pipefail
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
 
+      - name: Install PostgreSQL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev zlib1g-dev
+
       - name: Install cargo-pgrx
         run: |
           set -euo pipefail
