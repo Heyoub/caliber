@@ -392,6 +392,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
+          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -538,6 +539,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
+          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -648,6 +650,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
+          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -948,6 +951,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
+          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -1091,6 +1095,7 @@ jobs:
           mkdir -p "$PGRX_HOME"
           cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
           cd caliber-pg
+          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
