@@ -1154,7 +1154,13 @@ pub mod fixtures {
                     n.content_hash = compute_content_hash(n.content.as_bytes());
                     n
                 }];
-                MultiTenantSeed { tenant_id, trajectory, scope, artifacts, notes }
+                MultiTenantSeed {
+                    tenant_id,
+                    trajectory,
+                    scope,
+                    artifacts,
+                    notes,
+                }
             },
             {
                 let tenant_id = tenant_id_bob();
@@ -1179,7 +1185,13 @@ pub mod fixtures {
                     n.content_hash = compute_content_hash(n.content.as_bytes());
                     n
                 }];
-                MultiTenantSeed { tenant_id, trajectory, scope, artifacts, notes }
+                MultiTenantSeed {
+                    tenant_id,
+                    trajectory,
+                    scope,
+                    artifacts,
+                    notes,
+                }
             },
             {
                 let tenant_id = tenant_id_charlie();
@@ -1204,7 +1216,13 @@ pub mod fixtures {
                     n.content_hash = compute_content_hash(n.content.as_bytes());
                     n
                 }];
-                MultiTenantSeed { tenant_id, trajectory, scope, artifacts, notes }
+                MultiTenantSeed {
+                    tenant_id,
+                    trajectory,
+                    scope,
+                    artifacts,
+                    notes,
+                }
             },
         ]
     }
