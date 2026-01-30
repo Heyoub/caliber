@@ -153,10 +153,25 @@ impl TuiConfig {
                 reason: "must be > 0".to_string(),
             });
         }
-        if self.theme.name.trim().is_empty() {
+        // Validate theme name
+        const VALID_THEMES: &[&str] = &["synthbrute"];
+        let theme_name = self.theme.name.trim();
+
+        if theme_name.is_empty() {
             return Err(ConfigError::InvalidValue {
                 field: "theme.name",
                 reason: "must not be empty".to_string(),
+            });
+        }
+
+        if !VALID_THEMES.contains(&theme_name) {
+            return Err(ConfigError::InvalidValue {
+                field: "theme.name",
+                reason: format!(
+                    "unknown theme '{}'. Valid themes: {}",
+                    theme_name,
+                    VALID_THEMES.join(", ")
+                ),
             });
         }
         if self.persistence_path.as_os_str().is_empty() {
