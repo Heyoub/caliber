@@ -26,6 +26,7 @@ allow = [
     "MPL-2.0",
     "Unicode-DFS-2016",
     "Unicode-3.0",  # OSI-approved, used by icu_collections
+    "CDLA-Permissive-2.0",  # Community Data License, used by webpki-roots/webpki-root-certs
     "OpenSSL",  # Used by aws-lc-sys (transitive dep of rustls)
 ]
 confidence-threshold = 0.8
