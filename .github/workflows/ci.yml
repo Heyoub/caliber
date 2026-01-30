@@ -390,9 +390,17 @@ jobs:
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          cargo pgrx init --pg18 download
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
+            exit 1
+          fi
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -537,9 +545,17 @@ jobs:
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          cargo pgrx init --pg18 download
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
+            exit 1
+          fi
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -648,9 +664,17 @@ jobs:
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          cargo pgrx init --pg18 download
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
+            exit 1
+          fi
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -949,9 +973,17 @@ jobs:
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          cargo pgrx init --pg18 download
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
+            exit 1
+          fi
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
@@ -1093,9 +1125,17 @@ jobs:
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+          cargo pgrx init --pg18 download
           cd caliber-pg
-          cargo pgrx schema --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+          mkdir -p ../target/tmp
+          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
+            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
+            exit 1
+          fi
+          echo "=== Generated SQL schema (first 20 lines) ==="
+          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
+          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
           cd ..
           echo "=== Installed extension files ==="
