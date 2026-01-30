@@ -57,7 +57,11 @@
       "**/generated",
       "**/*.astro",
       "**/*.svelte",
-      "**/bench/**"
+      "**/bench/**",
+      "target",
+      ".target",
+      "target-pgrx",
+      "landing/.vercel/output"
     ]
   },
   "overrides": [

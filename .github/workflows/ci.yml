@@ -387,6 +387,8 @@ jobs:
 
       - name: Install caliber_pg extension
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
@@ -542,6 +544,8 @@ jobs:
 
       - name: Install caliber_pg extension
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
@@ -661,6 +665,8 @@ jobs:
 
       - name: Install caliber_pg extension
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
@@ -970,6 +976,8 @@ jobs:
 
       - name: Install caliber_pg extension
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
@@ -1122,6 +1130,8 @@ jobs:
 
       - name: Install caliber_pg extension
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev
           cargo install cargo-pgrx --version 0.16.1 --locked
           export PGRX_HOME="$HOME/.pgrx"
           mkdir -p "$PGRX_HOME"
