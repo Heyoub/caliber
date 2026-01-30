@@ -27,10 +27,6 @@ criterion = "0.8"
 name = "trace_parser"
 path = "src/bin/trace_parser.rs"
 
-[[bin]]
-name = "audit_keywords"
-path = "src/bin/audit_keywords.rs"
-
 [[bench]]
 name = "dsl_hotpath"
 harness = false
