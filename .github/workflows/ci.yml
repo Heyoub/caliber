@@ -394,6 +394,10 @@ jobs:
           cd caliber-pg
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Install PostgreSQL client
@@ -535,6 +539,10 @@ jobs:
           cd caliber-pg
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Run DB-backed route tests
@@ -641,6 +649,10 @@ jobs:
           cd caliber-pg
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Download binary
@@ -937,6 +949,10 @@ jobs:
           cd caliber-pg
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Setup Bun
@@ -1075,6 +1091,10 @@ jobs:
           cd caliber-pg
           sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
           cd ..
+          echo "=== Installed extension files ==="
+          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
+          echo "=== Control file content ==="
+          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
           sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
 
       - name: Cache cargo
