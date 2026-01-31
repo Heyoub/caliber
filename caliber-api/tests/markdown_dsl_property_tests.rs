@@ -275,14 +275,14 @@ connection: "PostgreSQL://LocalHost/DB"
 
             // CRITICAL ASSERTION: Case must be preserved exactly
             prop_assert_eq!(
-                adapter.name,
-                mixed_case_name,
+                &adapter.name,
+                &mixed_case_name,
                 "Adapter name case should be preserved exactly"
             );
 
             // Also verify connection string case is preserved
             prop_assert_eq!(
-                adapter.connection,
+                &adapter.connection,
                 "PostgreSQL://LocalHost/DB",
                 "Connection string case should be preserved"
             );
