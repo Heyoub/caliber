@@ -35,6 +35,7 @@ This release represents a major consolidation and simplification of the CALIBER 
 - **Workspace versions**: All internal crate dependencies now correctly reference 0.5.0
 - **Doctest lint**: Removed invalid `#[test]` attribute from parser docstring
 - **Dead code**: Removed duplicate `parse_markdown_source` from db.rs (shared version in utils)
+- **Unused imports**: Cleaned up leftover imports in db.rs from removed code
 - **Clippy lint**: Fixed needless borrow in workos_auth.rs
 
 ### Changed
