@@ -57,8 +57,7 @@ export const profileDefSchema = z
 export const adapterDefSchema = z
   .object({
     type: z.enum(['postgres', 'redis', 'memory']),
-    connection: z.string(),
-    options: z.record(z.string()).optional(),
+  options: z.record(z.string()),
   })
   .strict();
 
