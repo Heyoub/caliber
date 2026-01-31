@@ -264,12 +264,13 @@ export const usePackStore = defineStore('pack', {
     /**
      * Add a new file
      */
-    addFile(path: string, content: string = '') {
-      const language = getFileLanguage(path);
-      this.files.push(createEditorFile(path, content, language, true));
-      this.isDirty = true;
-      this.activeFilePath = path;
-    },
+  addFile(path: string, content: string = '') {
+    const language = getFileLanguage(path);
+    this.files.push(createEditorFile(path, content, language, true));
+    this.isDirty = true;
+    this.activeFilePath = path;
+    this.revalidate();
+  }
 
     /**
      * Delete a file
