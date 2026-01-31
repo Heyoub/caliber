@@ -1,10 +1,18 @@
 # CALIBER Dependency Graph & Type System
 
-Updated for the typed ID refactor and current workspace layout.
+Updated for v0.4.7 - typed ID refactor and current workspace layout.
+
+> **Note (v0.4.6):** The following crates were deleted and absorbed:
+> - `caliber-tui` (~4,500 LOC) → TypeScript SDK replaces
+> - `caliber-agents` (~1,654 LOC) → `caliber-core/src/agent.rs`, `entities.rs`
+> - `caliber-llm` (~1,145 LOC) → `caliber-core/src/llm.rs`, `caliber-api/src/providers/`
+> - `caliber-context`, `caliber-events` → absorbed into core/storage
+>
+> See `docs/SPEC_CRATE_ABSORPTION_FINAL.md` for details.
 
 ---
 
-## 1. Crate Dependency Graph (DAG)
+## 1. Crate Dependency Graph (DAG) - 7 Crates
 
 ```
                     ┌─────────────────┐

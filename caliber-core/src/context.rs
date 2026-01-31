@@ -5,7 +5,7 @@
 
 use crate::{
     identity::EntityIdType, AgentId, Artifact, ArtifactId, CaliberConfig, CaliberResult,
-    EntityType, Note, ScopeId, Timestamp, TrajectoryId,
+    EntityType, Note, ScopeId, Timestamp, Trajectory, TrajectoryId, Turn,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,12 @@ pub struct ContextPackage {
     pub relevant_notes: Vec<Note>,
     /// Recent artifacts from current trajectory
     pub recent_artifacts: Vec<Artifact>,
+    /// Conversation turns (ephemeral buffer)
+    pub conversation_turns: Vec<Turn>,
     /// Scope summaries (compressed history)
     pub scope_summaries: Vec<ScopeSummary>,
+    /// Trajectory hierarchy (parent chain for context inheritance)
+    pub trajectory_hierarchy: Vec<Trajectory>,
     /// Session markers (active context)
     pub session_markers: SessionMarkers,
     /// Kernel/persona configuration
@@ -83,7 +87,9 @@ impl ContextPackage {
             user_input: None,
             relevant_notes: Vec::new(),
             recent_artifacts: Vec::new(),
+            conversation_turns: Vec::new(),
             scope_summaries: Vec::new(),
+            trajectory_hierarchy: Vec::new(),
             session_markers: SessionMarkers::default(),
             kernel_config: None,
         }
@@ -104,6 +110,18 @@ impl ContextPackage {
     /// Add recent artifacts.
     pub fn with_artifacts(mut self, artifacts: Vec<Artifact>) -> Self {
         self.recent_artifacts = artifacts;
+        self
+    }
+
+    /// Add conversation turns.
+    pub fn with_turns(mut self, turns: Vec<Turn>) -> Self {
+        self.conversation_turns = turns;
+        self
+    }
+
+    /// Add trajectory hierarchy (parent chain).
+    pub fn with_hierarchy(mut self, hierarchy: Vec<Trajectory>) -> Self {
+        self.trajectory_hierarchy = hierarchy;
         self
     }
 

@@ -26,8 +26,8 @@ use caliber_api::{
 };
 use caliber_core::{
     AgentId, AgentStatus, ArtifactId, ArtifactType, DelegationId, DelegationResultStatus,
-    EntityIdType, ExtractionMethod, HandoffId, LockId, MessageId, NoteId, NoteType, ScopeId,
-    TenantId, TrajectoryId, TrajectoryStatus, TurnId, TurnRole, TTL,
+    EntityIdType, ExtractionMethod, HandoffId, LockId, MessageId, MessagePriority, MessageType,
+    NoteId, NoteType, ScopeId, TenantId, TrajectoryId, TrajectoryStatus, TurnId, TurnRole, TTL,
 };
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
@@ -213,12 +213,12 @@ async fn seed_message(
         from_agent_id,
         to_agent_id: Some(to_agent_id),
         to_agent_type: None,
-        message_type: "TaskDelegation".to_string(),
+        message_type: MessageType::TaskDelegation,
         payload: r#"{"hello":"world"}"#.to_string(),
         trajectory_id,
         scope_id,
         artifact_ids: vec![],
-        priority: "Normal".to_string(),
+        priority: MessagePriority::Normal,
         expires_at: None,
     };
     db.message_send(&req, tenant_id)
@@ -724,12 +724,12 @@ proptest! {
                         from_agent_id: sender.agent_id,
                         to_agent_id: Some(receiver.agent_id),
                         to_agent_type: None,
-                        message_type: "TaskDelegation".to_string(),
+                        message_type: MessageType::TaskDelegation,
                         payload: r#"{"task":"ping"}"#.to_string(),
                         trajectory_id: None,
                         scope_id: None,
                         artifact_ids: vec![],
-                        priority: "Normal".to_string(),
+                        priority: MessagePriority::Normal,
                         expires_at: None,
                     };
                     message::send_message(

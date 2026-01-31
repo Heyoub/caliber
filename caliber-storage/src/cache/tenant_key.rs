@@ -228,7 +228,7 @@ mod tests {
 
         let key = TenantScopedKey::new(tenant_id, entity_type, entity_id);
         let encoded = key.encode();
-        let decoded = TenantScopedKey::decode(&encoded).unwrap();
+        let decoded = TenantScopedKey::decode(&encoded).expect("decode should succeed");
 
         assert_eq!(key, decoded);
     }
@@ -346,7 +346,7 @@ mod tests {
         for entity_type in entity_types {
             let key = TenantScopedKey::new(tenant_id, entity_type, entity_id);
             let encoded = key.encode();
-            let decoded = TenantScopedKey::decode(&encoded).unwrap();
+            let decoded = TenantScopedKey::decode(&encoded).expect("decode should succeed");
             assert_eq!(key, decoded, "Roundtrip failed for {:?}", entity_type);
         }
     }
@@ -400,7 +400,7 @@ mod prop_tests {
             let decoded = TenantScopedKey::decode(&encoded);
 
             prop_assert!(decoded.is_some(), "Decode should succeed for valid key");
-            prop_assert_eq!(key, decoded.unwrap(), "Roundtrip should preserve value");
+            prop_assert_eq!(key, decoded.expect("decode should succeed"), "Roundtrip should preserve value");
         }
 
         /// Property: Encoding is injective (different inputs produce different outputs).
@@ -466,7 +466,7 @@ mod prop_tests {
             let key = TenantScopedKey::new(tenant_id, entity_type, entity_id);
             let encoded = key.encode();
 
-            let extracted = uuid::Uuid::from_slice(&encoded[0..16]).unwrap();
+            let extracted = uuid::Uuid::from_slice(&encoded[0..16]).expect("UUID extraction should succeed");
             prop_assert_eq!(tenant_id, extracted, "Tenant ID must be at bytes 0-15");
         }
 
@@ -480,7 +480,7 @@ mod prop_tests {
             let key = TenantScopedKey::new(tenant_id, entity_type, entity_id);
             let encoded = key.encode();
 
-            let extracted = uuid::Uuid::from_slice(&encoded[18..34]).unwrap();
+            let extracted = uuid::Uuid::from_slice(&encoded[18..34]).expect("UUID extraction should succeed");
             prop_assert_eq!(entity_id, extracted, "Entity ID must be at bytes 18-33");
         }
 

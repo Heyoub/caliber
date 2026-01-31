@@ -8,6 +8,7 @@ use caliber_storage::{
 };
 
 use crate::cached_db::CachedDbClient;
+use crate::config::{ContextConfig, WebhookConfig};
 use crate::db::DbClient;
 use crate::routes::billing::BillingState;
 use crate::routes::graphql::CaliberSchema;
@@ -57,6 +58,12 @@ pub struct AppState {
     /// Uses LMDB backend with InMemoryChangeJournal for invalidation.
     /// Part of the Three Dragons architecture for sub-millisecond reads.
     pub cache: Arc<ApiCache>,
+    /// Context assembly configuration defaults.
+    /// Loaded from environment variables at startup.
+    pub context_config: ContextConfig,
+    /// Webhook configuration.
+    /// Loaded from environment variables at startup.
+    pub webhook_config: WebhookConfig,
     #[cfg(feature = "workos")]
     pub workos_config: Option<crate::workos_auth::WorkOsConfig>,
 }
@@ -73,6 +80,8 @@ crate::impl_from_ref!(Arc<McpState>, mcp_state);
 crate::impl_from_ref!(std::time::Instant, start_time);
 crate::impl_from_ref!(Arc<ApiEventDag>, event_dag);
 crate::impl_from_ref!(Arc<ApiCache>, cache);
+crate::impl_from_ref!(ContextConfig, context_config);
+crate::impl_from_ref!(WebhookConfig, webhook_config);
 
 // WorkOS configuration is accessed directly from AppState in route handlers.
 // The workos_config field is an Option<WorkOsConfig> that handlers check at runtime.

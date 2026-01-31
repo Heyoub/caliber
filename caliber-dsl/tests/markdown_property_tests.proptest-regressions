@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 83ac7cf3a8a0008159c667c80fd640177f34b9d0cfc35fec4ec8fbda9923ac5c # shrinks to name = "a", adapter_type = Postgres
+cc c0d3aae74b202a6ea2da0ea2d17be42a186df14eba20c8a07f9cda23680d8ac3 # shrinks to ast = CaliberAst { version: "1.0", definitions: [Adapter(AdapterDef { name: "a", adapter_type: Postgres, connection: "a://a/a", options: [] })] }
+cc 279e83899b134b23468d93224dde53f1ff5aa9b8c9716e71687e8ed9ef257289 # shrinks to ast = CaliberAst { version: "1.0", definitions: [Adapter(AdapterDef { name: "A", adapter_type: Postgres, connection: "a://a/a", options: [] })] }
+cc e0f97ec37ba9f1f6eaec781f3a92620380eedbf798b47091df54beef8895258b # shrinks to ast = CaliberAst { version: "1.0", definitions: [Provider(ProviderDef { name: "a", provider_type: OpenAI, api_key: Literal("a"), model: "-", options: [] })] }

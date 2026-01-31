@@ -19,8 +19,8 @@ use std::path::PathBuf;
 /// Minimal manifest for testing (no TOML-based configs)
 const MINIMAL_MANIFEST: &str = r#"
 [meta]
-name = "test"
 version = "1.0"
+project = "test"
 
 [tools]
 bin = {}
@@ -61,10 +61,31 @@ struct TestPackBuilder {
 }
 
 impl TestPackBuilder {
+    /// Creates a new builder initialized with its default state.
+    ///
+    /// Returns a new TestPackBuilder initialized to its default state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let _builder = TestPackBuilder::new();
+    /// ```
     fn new() -> Self {
         Self::default()
     }
 
+    /// Appends an adapter fenced block to the builder using the provided name, adapter type, and connection string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let builder = TestPackBuilder::new()
+    ///     .with_adapter("MyAdapter", "Postgres", "postgres://User:Pass@localhost/db");
+    /// let input = builder.build();
+    /// assert!(input.files.iter().any(|f| f.content.contains("```adapter MyAdapter")));
+    /// assert!(input.files.iter().any(|f| f.content.contains("adapter_type: Postgres")));
+    /// assert!(input.files.iter().any(|f| f.content.contains("connection: \"postgres://User:Pass@localhost/db\"")));
+    /// ```
     fn with_adapter(mut self, name: &str, adapter_type: &str, connection: &str) -> Self {
         self.fence_blocks.push(format!(
             r#"```adapter {}
@@ -76,6 +97,16 @@ connection: "{}"
         self
     }
 
+    /// Appends a fenced "provider" block to the builder's collection of fence blocks.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pack = TestPackBuilder::new()
+    ///     .with_provider("MyProvider", "openai", "ENV_API_KEY", "gpt-4")
+    ///     .build();
+    /// // pack now contains a markdown file with a ```provider MyProvider ... ``` fence
+    /// ```
     fn with_provider(mut self, name: &str, provider_type: &str, api_key: &str, model: &str) -> Self {
         self.fence_blocks.push(format!(
             r#"```provider {}
@@ -88,10 +119,28 @@ model: "{}"
         self
     }
 
+    /// Appends a fenced `policy` block to the builder using the given name, rule trigger, and action list.
+    ///
+    /// The appended fence contains a single rule with the provided trigger and each action rendered as a YAML
+    /// list entry with `type` set to the action string and `target` set to `"test"`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pack = TestPackBuilder::new()
+    ///     .with_policy("MyPolicy", "on_event", &["log", "notify"])
+    ///     .build();
+    ///
+    /// let md = pack.files.get("test.md").unwrap();
+    /// assert!(md.contains("```policy MyPolicy"));
+    /// assert!(md.contains("trigger: on_event"));
+    /// assert!(md.contains("- type: log"));
+    /// assert!(md.contains("- type: notify"));
+    /// ```
     fn with_policy(mut self, name: &str, trigger: &str, actions: &[&str]) -> Self {
         let actions_yaml = actions
             .iter()
-            .map(|a| format!("  - type: {}\n    target: test", a))
+            .map(|a| format!("      - type: {}\n        target: test", a))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -107,6 +156,61 @@ rules:
         self
     }
 
+    /// Appends an `injection` fenced block to the builder, representing an injection
+    
+    /// with the given source, target, mode, and priority.
+    
+    ///
+    
+    /// The produced fence block will be formatted as:
+    
+    /// ```injection
+    
+    /// source: "<source>"
+    
+    /// target: "<target>"
+    
+    /// mode: <mode>
+    
+    /// priority: <priority>
+    
+    /// ```
+    
+    ///
+    
+    /// # Parameters
+    
+    ///
+    
+    /// - `source`: Identifier or path of the injection source.
+    
+    /// - `target`: Identifier or path of the injection target.
+    
+    /// - `mode`: Mode string for the injection (e.g., `"TopK"`, `"Relevant"`).
+    
+    /// - `priority`: Numeric priority for the injection.
+    
+    ///
+    
+    /// # Returns
+    
+    ///
+    
+    /// The updated builder with the new fence block appended.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let builder = TestPackBuilder::new()
+    
+    ///     .with_injection("serviceA", "serviceB", "TopK", 10);
+    
+    /// ```
     fn with_injection(mut self, source: &str, target: &str, mode: &str, priority: i32) -> Self {
         self.fence_blocks.push(format!(
             r#"```injection
@@ -120,11 +224,42 @@ priority: {}
         self
     }
 
+    /// Appends a memory definition fence block with sensible defaults.
+    fn with_memory(mut self, name: &str) -> Self {
+        self.fence_blocks.push(format!(
+            r#"```memory {}
+memory_type: working
+retention: session
+lifecycle: explicit
+```"#,
+            name
+        ));
+        self
+    }
+
+    /// Appends a raw fenced block to the builder and returns the builder for chaining.
+    ///
+    /// The provided `block` is stored as-is and will be injected into the generated markdown
+    /// when `build()` is called.
     fn with_raw_fence(mut self, block: &str) -> Self {
         self.fence_blocks.push(block.to_string());
         self
     }
 
+    /// Builds a PackInput containing the minimal manifest and a single markdown file whose content
+    /// is the MARKDOWN_TEMPLATE with this builder's fence blocks substituted for the "{fence_blocks}" placeholder.
+    ///
+    /// The builder's fence blocks are joined with a blank line between each prior to substitution.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pack = TestPackBuilder::new()
+    ///     .with_adapter("db", "Postgres", "postgres://user@host")
+    ///     .build();
+    /// assert_eq!(pack.markdowns.len(), 1);
+    /// assert_eq!(pack.markdowns[0].path, PathBuf::from("test.md"));
+    /// ```
     fn build(self) -> PackInput {
         let markdown_content = MARKDOWN_TEMPLATE.replace(
             "{fence_blocks}",
@@ -147,7 +282,20 @@ priority: {}
 // ASSERTION HELPERS (Descriptive Errors)
 // ============================================================================
 
-/// Assert adapter exists with expected values
+/// Asserts that the AST contains an adapter with the specified name, type, and connection.
+///
+/// Panics if no adapter is present in the AST or if the adapter's name, type, or connection
+/// does not match the provided expectations.
+///
+/// # Examples
+///
+/// ```
+/// # use caliber_dsl::{CaliberAst, AdapterType};
+/// # // `ast` would be obtained from parsing in real tests
+/// # fn example(ast: &CaliberAst) {
+/// assert_adapter_eq(ast, "main", AdapterType::Postgres, "postgres://user:pass");
+/// # }
+/// ```
 fn assert_adapter_eq(ast: &CaliberAst, name: &str, expected_type: AdapterType, expected_conn: &str) {
     let adapter = ast.definitions.iter()
         .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
@@ -158,7 +306,17 @@ fn assert_adapter_eq(ast: &CaliberAst, name: &str, expected_type: AdapterType, e
     assert_eq!(adapter.connection, expected_conn, "Adapter connection mismatch");
 }
 
-/// Assert provider exists with expected values
+/// Asserts that the AST contains a provider with the given name, type, and model.
+///
+/// This helper fails the test if no provider is present or if the provider's
+/// name, `ProviderType`, or model string do not match the expected values.
+///
+/// # Examples
+///
+/// ```
+/// // Assume `ast` is a `CaliberAst` parsed from test input.
+/// assert_provider_eq(&ast, "my-provider", ProviderType::OpenAI, "gpt-4");
+/// ```
 fn assert_provider_eq(ast: &CaliberAst, name: &str, expected_type: ProviderType, expected_model: &str) {
     let provider = ast.definitions.iter()
         .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
@@ -169,7 +327,17 @@ fn assert_provider_eq(ast: &CaliberAst, name: &str, expected_type: ProviderType,
     assert_eq!(provider.model, expected_model, "Provider model mismatch");
 }
 
-/// Assert policy exists with expected trigger
+/// Asserts that a policy with the specified name exists and that its first rule's trigger equals `expected_trigger`.
+///
+/// Panics if no policy is present in the AST, if the policy name does not match, if the policy has no rules,
+/// or if the first rule's trigger does not equal `expected_trigger`.
+///
+/// # Examples
+///
+/// ```
+/// // Given an AST `ast` containing a policy named "my_policy" whose first rule trigger is `Trigger::OnEvent`:
+/// assert_policy_trigger(&ast, "my_policy", Trigger::OnEvent);
+/// ```
 fn assert_policy_trigger(ast: &CaliberAst, name: &str, expected_trigger: Trigger) {
     let policy = ast.definitions.iter()
         .find_map(|d| if let Definition::Policy(p) = d { Some(p) } else { None })
@@ -184,6 +352,27 @@ fn assert_policy_trigger(ast: &CaliberAst, name: &str, expected_trigger: Trigger
 // BASIC PARSING TESTS
 // ============================================================================
 
+/// Verifies that an adapter defined in a Markdown fence header uses the header name.
+///
+/// This test builds a pack with an adapter whose name is specified in the fence header
+/// and asserts the parsed AST contains an adapter with the same name, type, and connection.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_adapter("postgres_main", "postgres", "postgresql://localhost/caliber")
+///     .build();
+///
+/// let output = compose_pack(input).expect("Failed to parse pack");
+///
+/// assert_adapter_eq(
+///     &output.ast,
+///     "postgres_main",
+///     AdapterType::Postgres,
+///     "postgresql://localhost/caliber",
+/// );
+/// ```
 #[test]
 fn test_parse_adapter_with_header_name() {
     let input = TestPackBuilder::new()
@@ -200,6 +389,26 @@ fn test_parse_adapter_with_header_name() {
     );
 }
 
+/// Verifies that a provider's API key specified as `env:VAR` is parsed as an environment variable.
+///
+/// The test builds a pack with a provider whose `api_key` uses the `env:` prefix, composes the pack,
+/// asserts the provider fields, and checks that the parsed `api_key` is `EnvValue::Env("VAR")`.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_provider("openai_main", "openai", "env:OPENAI_API_KEY", "gpt-4")
+///     .build();
+/// let output = compose_pack(input).expect("Failed to parse pack");
+/// let provider = output.ast.definitions.iter()
+///     .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
+///     .unwrap();
+/// match &provider.api_key {
+///     EnvValue::Env(var) => assert_eq!(var, "OPENAI_API_KEY"),
+///     _ => panic!("Expected EnvValue::Env"),
+/// }
+/// ```
 #[test]
 fn test_parse_provider_with_env_key() {
     let input = TestPackBuilder::new()
@@ -241,6 +450,7 @@ fn test_parse_policy_with_multiple_actions() {
 #[test]
 fn test_parse_injection_with_priority() {
     let input = TestPackBuilder::new()
+        .with_memory("memories.notes")  // Add memory for injection to reference
         .with_injection("memories.notes", "context.main", "full", 100)
         .build();
 
@@ -260,6 +470,25 @@ fn test_parse_injection_with_priority() {
 // CASE PRESERVATION TESTS (The Core Bug Fix)
 // ============================================================================
 
+/// Ensures an adapter's name preserves the exact letter casing from the Markdown fence header.
+///
+/// Verifies that when an adapter is declared in a fenced Markdown block with a mixed-case
+/// name, the parsed AST retains that exact casing.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_adapter("MyAdapter", "postgres", "postgresql://localhost/db")
+///     .build();
+///
+/// let output = compose_pack(input).expect("Failed to parse pack");
+/// let adapter = output.ast.definitions.iter()
+///     .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+///     .unwrap();
+///
+/// assert_eq!(adapter.name, "MyAdapter");
+/// ```
 #[test]
 fn test_case_preserved_in_adapter_name() {
     let input = TestPackBuilder::new()
@@ -294,6 +523,20 @@ fn test_case_preserved_in_connection_string() {
     );
 }
 
+/// Verifies that a provider's `model` string preserves the original letter casing from the input.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_provider("ai", "openai", "env:KEY", "GPT-4-Turbo")
+///     .build();
+/// let output = compose_pack(input).expect("Failed to parse pack");
+/// let provider = output.ast.definitions.iter()
+///     .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
+///     .unwrap();
+/// assert_eq!(provider.model, "GPT-4-Turbo");
+/// ```
 #[test]
 fn test_case_preserved_in_provider_model() {
     let input = TestPackBuilder::new()
@@ -393,6 +636,26 @@ connection: "conn"
     assert_eq!(adapter.name, "my_adapter");
 }
 
+/// Verifies that an adapter's name is taken from the YAML payload when the fenced header omits a name.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_raw_fence(r#"```adapter
+/// name: my_adapter
+/// adapter_type: postgres
+/// connection: "conn"
+/// ```"#)
+///     .build();
+///
+/// let output = compose_pack(input).expect("Should parse with payload name");
+/// let adapter = output.ast.definitions.iter()
+///     .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+///     .unwrap();
+///
+/// assert_eq!(adapter.name, "my_adapter");
+/// ```
 #[test]
 fn test_name_from_payload_only() {
     let input = TestPackBuilder::new()
@@ -459,6 +722,24 @@ connection: "conn"
 // MULTI-CONFIG TESTS (Multiple Fence Blocks)
 // ============================================================================
 
+/// Asserts that multiple adapter fence blocks are parsed and both adapters appear in the resulting AST.
+///
+/// Builds a pack with two adapter fence blocks and checks that exactly two adapters are present and that adapters named "postgres_main" and "redis_cache" are included.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_adapter("postgres_main", "postgres", "conn1")
+///     .with_adapter("redis_cache", "redis", "conn2")
+///     .build();
+/// let output = compose_pack(input).expect("Failed to parse multiple adapters");
+/// let names: Vec<_> = output.ast.definitions.iter()
+///     .filter_map(|d| if let Definition::Adapter(a) = d { Some(a.name.as_str()) } else { None })
+///     .collect();
+/// assert!(names.contains(&"postgres_main"));
+/// assert!(names.contains(&"redis_cache"));
+/// ```
 #[test]
 fn test_parse_multiple_adapters() {
     let input = TestPackBuilder::new()
@@ -483,6 +764,7 @@ fn test_parse_mixed_config_types() {
         .with_adapter("db", "postgres", "conn")
         .with_provider("ai", "openai", "env:KEY", "gpt-4")
         .with_policy("cleanup", "scope_close", &["summarize"])
+        .with_memory("notes")  // Add memory for injection to reference
         .with_injection("notes", "context", "full", 100)
         .build();
 
@@ -555,6 +837,31 @@ connection: "conn"
     assert_eq!(adapter.adapter_type, AdapterType::Postgres);
 }
 
+/// Verifies that injection mode strings are parsed into the correct `InjectionMode` variants.
+///
+/// Tests several mode formats: `"full"`, `"summary"`, `"topk:N"`, and `"relevant:FLOAT"`,
+/// asserting each parses to the expected enum variant.
+///
+/// # Examples
+///
+/// ```
+/// // Build a pack with an injection block using a top-k mode and assert parsing.
+/// let input = TestPackBuilder::new()
+///     .with_raw_fence(r#"```injection
+/// source: "test"
+/// target: "test"
+/// mode: "topk:5"
+/// priority: 100
+/// ```"#)
+///     .build();
+///
+/// let output = compose_pack(input).unwrap();
+/// let injection = output.ast.definitions.iter()
+///     .find_map(|d| if let Definition::Injection(i) = d { Some(i) } else { None })
+///     .unwrap();
+///
+/// assert_eq!(injection.mode, InjectionMode::TopK(5));
+/// ```
 #[test]
 fn test_injection_mode_parsing() {
     let modes = vec![
@@ -566,6 +873,7 @@ fn test_injection_mode_parsing() {
 
     for (mode_str, expected_mode) in modes {
         let input = TestPackBuilder::new()
+            .with_memory("test")  // Add memory for injection to reference
             .with_raw_fence(&format!(r#"```injection
 source: "test"
 target: "test"
@@ -574,7 +882,7 @@ priority: 100
 ```"#, mode_str))
             .build();
 
-        let output = compose_pack(input).unwrap_or_else(|_| panic!("Failed to parse mode: {}", mode_str));
+        let output = compose_pack(input).unwrap_or_else(|e| panic!("Failed to parse mode '{}': {:?}", mode_str, e));
 
         let injection = output.ast.definitions.iter()
             .find_map(|d| if let Definition::Injection(i) = d { Some(i) } else { None })
@@ -588,6 +896,24 @@ priority: 100
 // ERROR RECOVERY TESTS
 // ============================================================================
 
+/// Verifies that a fenced YAML block with malformed content is rejected by the pack composer.
+///
+/// This test constructs a markdown fence representing an adapter whose YAML payload contains a
+/// syntactically invalid string and asserts that composing the pack returns an error.
+///
+/// # Examples
+///
+/// ```
+/// let input = TestPackBuilder::new()
+///     .with_raw_fence(r#"```adapter test
+/// adapter_type: postgres
+/// connection: "unclosed string
+/// ```"#)
+///     .build();
+///
+/// let result = compose_pack(input);
+/// assert!(result.is_err());
+/// ```
 #[test]
 fn test_malformed_yaml_rejected() {
     let input = TestPackBuilder::new()
@@ -602,6 +928,9 @@ connection: "unclosed string
     assert!(result.is_err(), "Should reject malformed YAML");
 }
 
+/// Ensures an unsupported markdown fence kind causes pack composition to fail.
+///
+/// Builds a pack containing a code fence with an unknown fence type and asserts that `compose_pack` returns an error.
 #[test]
 fn test_invalid_fence_kind_rejected() {
     let input = TestPackBuilder::new()
@@ -634,8 +963,8 @@ fn test_toml_and_markdown_merge() {
     // This test verifies TOML configs and Markdown configs merge correctly
     let manifest_with_adapter = r#"
 [meta]
-name = "test"
 version = "1.0"
+project = "test"
 
 [tools]
 bin = {}
@@ -649,7 +978,7 @@ prompts = {}
 [injections]
 
 [adapters.toml_adapter]
-adapter_type = "postgres"
+type = "postgres"
 connection = "from_toml"
 "#;
 

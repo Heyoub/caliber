@@ -28,6 +28,26 @@ mod test_db_support;
 // TEST CONFIGURATION
 // ============================================================================
 
+/// Convert an `IntoResponse` into a concrete type by reading and deserializing its JSON body.
+///
+/// Attempts to read the full response body and deserialize it as JSON into `T`. If reading the
+/// body or JSON deserialization fails, returns a descriptive error string.
+///
+/// # Examples
+///
+/// ```
+/// # tokio_test::block_on(async {
+/// use axum::Json;
+/// use serde_json::json;
+/// let resp = Json(json!({"a": 1}));
+/// let v: serde_json::Value = extract_json(resp).await.unwrap();
+/// assert_eq!(v["a"], 1);
+/// # });
+/// ```
+///
+/// # Returns
+///
+/// The deserialized value of type `T`, or an error string describing the read or parse failure.
 async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> Result<T, String> {
     let response = response.into_response();
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -40,7 +60,22 @@ async fn extract_json<T: DeserializeOwned>(response: impl IntoResponse) -> Resul
 // MARKDOWN CONFIG STRATEGIES
 // ============================================================================
 
-/// Generate valid Markdown configs for testing
+/// Generates a proptest Strategy that yields representative, valid Markdown configuration strings for use in tests.
+///
+/// The produced samples cover common DSL blocks such as adapter, provider, policy, injection, mixed documents, and a case-preservation variant.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+///
+/// let strategy = valid_markdown_config_strategy();
+/// let mut runner = proptest::test_runner::TestRunner::default();
+/// let tree = strategy.new_tree(&mut runner).unwrap();
+/// let sample = tree.current();
+/// // samples are Markdown strings containing fenced DSL blocks
+/// assert!(sample.contains("```"));
+/// ```
 fn valid_markdown_config_strategy() -> impl Strategy<Value = String> {
     let samples = vec![
         // Adapter config
@@ -54,8 +89,8 @@ Test
 adapter_type: postgres
 connection: "postgres://localhost:5432/caliber"
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Provider config
         r#"
 # System
@@ -68,8 +103,8 @@ provider_type: openai
 api_key: env:OPENAI_API_KEY
 model: "gpt-4"
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Policy config
         r#"
 # System
@@ -84,8 +119,8 @@ rules:
       - type: summarize
         target: scope
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Injection config
         r#"
 # System
@@ -99,8 +134,8 @@ target: "context"
 mode: full
 priority: 10
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Mixed configs
         r#"
 # System
@@ -118,8 +153,8 @@ provider_type: openai
 api_key: env:KEY
 model: "gpt-4"
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Case preservation test
         r#"
 # System
@@ -131,7 +166,8 @@ Test
 adapter_type: postgres
 connection: "PostgreSQL://LocalHost/DB"
 ```
-"#.to_string(),
+"#
+        .to_string(),
     ];
 
     prop::sample::select(samples)
@@ -330,8 +366,7 @@ connection: "test://conn"
     assert!(parsed.valid, "Should be valid");
 
     let ast_json = parsed.ast.expect("AST should be present");
-    let ast: CaliberAst =
-        serde_json::from_value(ast_json).expect("Should deserialize AST");
+    let ast: CaliberAst = serde_json::from_value(ast_json).expect("Should deserialize AST");
 
     let adapter = ast
         .definitions
@@ -376,12 +411,10 @@ connection: "conn"
     .expect("Parse should succeed");
 
     let response = response.into_response();
-    let parsed: ValidateDslResponse = extract_json(response)
-        .await
-        .expect("Should deserialize");
+    let parsed: ValidateDslResponse = extract_json(response).await.expect("Should deserialize");
 
-    let ast: CaliberAst = serde_json::from_value(parsed.ast.unwrap())
-        .expect("Should deserialize AST");
+    let ast: CaliberAst =
+        serde_json::from_value(parsed.ast.unwrap()).expect("Should deserialize AST");
 
     let adapter = ast
         .definitions
@@ -392,7 +425,10 @@ connection: "conn"
         })
         .expect("Adapter should exist");
 
-    assert_eq!(adapter.name, "MAIN_DATABASE", "All caps should be preserved");
+    assert_eq!(
+        adapter.name, "MAIN_DATABASE",
+        "All caps should be preserved"
+    );
 }
 
 #[tokio::test]
@@ -422,12 +458,10 @@ model: "gpt-4"
     .expect("Parse should succeed");
 
     let response = response.into_response();
-    let parsed: ValidateDslResponse = extract_json(response)
-        .await
-        .expect("Should deserialize");
+    let parsed: ValidateDslResponse = extract_json(response).await.expect("Should deserialize");
 
-    let ast: CaliberAst = serde_json::from_value(parsed.ast.unwrap())
-        .expect("Should deserialize AST");
+    let ast: CaliberAst =
+        serde_json::from_value(parsed.ast.unwrap()).expect("Should deserialize AST");
 
     let provider = ast
         .definitions

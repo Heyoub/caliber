@@ -464,7 +464,8 @@ mod tests {
             HandoffStatus::Completed,
         ] {
             let db_str = status.as_db_str();
-            let parsed = HandoffStatus::from_db_str(db_str).unwrap();
+            let parsed = HandoffStatus::from_db_str(db_str)
+                .expect("HandoffStatus roundtrip should succeed");
             assert_eq!(status, parsed);
         }
     }
@@ -499,7 +500,9 @@ mod tests {
             status: HandoffStatus::Initiated,
         };
 
-        let initiated = stored.into_initiated().unwrap();
+        let initiated = stored
+            .into_initiated()
+            .expect("initiated handoff should convert successfully");
         assert_eq!(initiated.handoff_id(), data.handoff_id);
     }
 

@@ -5,7 +5,7 @@ use crate::compiler::{
     CompiledPackRoutingConfig, CompiledToolConfig, CompiledToolKind, CompiledToolsetConfig,
 };
 use crate::config::*;
-use crate::parser::ast::{Action, InjectionMode, Trigger};
+use crate::parser::ast::{Action, InjectionMode, MemoryDef, Trigger};
 use crate::parser::AdapterDef as AstAdapterDef;
 use crate::parser::InjectionDef as AstInjectionDef;
 use crate::parser::{AdapterType, CaliberAst, Definition, PolicyDef, PolicyRule};
@@ -23,9 +23,40 @@ pub struct PackIr {
     pub policies: Vec<PolicyDef>,
     pub injections: Vec<AstInjectionDef>,
     pub providers: Vec<AstProviderDef>,
+    pub memories: Vec<MemoryDef>,
 }
 
 impl PackIr {
+    /// Constructs a PackIr by validating the provided manifest, extracting configurations from
+    /// Markdown fence blocks, checking for duplicates, and merging TOML- and Markdown-derived
+    /// definitions into a single intermediate representation.
+    ///
+    /// This performs the following high-level steps:
+    /// - Validates profiles, toolsets, agents, injections, and routing declared in the manifest.
+    /// - Builds adapters, policies, injections, and providers from the TOML manifest.
+    /// - Extracts adapters, policies, injections, and providers from Markdown fence blocks.
+    /// - Checks for duplicates within Markdown and across TOML vs Markdown (adapters, policies,
+    ///   providers, and injections). Duplicate definitions cause a validation error.
+    /// - Merges Markdown-derived definitions into the TOML-derived lists and returns the merged IR.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Self)` containing the manifest, the original Markdown documents, and the merged lists of
+    /// adapters, policies, injections, and providers on success; `Err(PackError)` if validation,
+    /// TOML parsing, or Markdown extraction fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct a PackIr from a manifest and any Markdown docs.
+    /// // (The concrete construction of `manifest` and `markdown` depends on your crate's API.)
+    /// # use crate::ir::{PackIr, PackManifest, MarkdownDoc};
+    /// # fn build_manifest() -> PackManifest { unimplemented!() }
+    /// # fn load_markdown() -> Vec<MarkdownDoc> { Vec::new() }
+    /// let manifest = build_manifest();
+    /// let markdown = load_markdown();
+    /// let pack_ir = PackIr::new(manifest, markdown).expect("manifest and markdown must be valid");
+    /// ```
     pub fn new(manifest: PackManifest, markdown: Vec<MarkdownDoc>) -> Result<Self, PackError> {
         validate_profiles(&manifest)?;
         validate_toolsets(&manifest)?;
@@ -44,6 +75,7 @@ impl PackIr {
         let md_policies = extract_policies_from_markdown(&markdown)?;
         let md_injections = extract_injections_from_markdown(&markdown)?;
         let md_providers = extract_providers_from_markdown(&markdown)?;
+        let md_memories = extract_memories_from_markdown(&markdown)?;
 
         // Check for duplicates within Markdown configs
         check_markdown_duplicates(&md_adapters, &md_policies, &md_injections, &md_providers)?;
@@ -110,6 +142,7 @@ impl PackIr {
             policies,
             injections,
             providers,
+            memories: md_memories,
         })
     }
 }
@@ -209,6 +242,8 @@ fn validate_toolsets(manifest: &PackManifest) -> Result<(), PackError> {
 fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<(), PackError> {
     let toolsets: HashSet<String> = manifest.toolsets.keys().cloned().collect();
     let profiles: HashSet<String> = manifest.profiles.keys().cloned().collect();
+    let adapters: HashSet<String> = manifest.adapters.keys().cloned().collect();
+    let formats: HashSet<String> = manifest.formats.keys().cloned().collect();
     let md_paths: HashSet<String> = markdown.iter().map(|m| m.file.clone()).collect();
 
     for (name, agent) in &manifest.agents {
@@ -220,6 +255,40 @@ fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<
                 agent.profile,
                 profiles.iter().collect::<Vec<_>>()
             )));
+        }
+
+        // Validate adapter reference exists (if specified)
+        if let Some(ref adapter_name) = agent.adapter {
+            if !adapters.contains(adapter_name) {
+                return Err(PackError::Validation(format!(
+                    "agent '{}' references unknown adapter '{}'. Available adapters: {:?}",
+                    name,
+                    adapter_name,
+                    adapters.iter().collect::<Vec<_>>()
+                )));
+            }
+        }
+
+        // Validate format reference exists (if specified)
+        if let Some(ref format_name) = agent.format {
+            if !formats.contains(format_name) {
+                return Err(PackError::Validation(format!(
+                    "agent '{}' references unknown format '{}'. Available formats: {:?}",
+                    name,
+                    format_name,
+                    formats.iter().collect::<Vec<_>>()
+                )));
+            }
+        }
+
+        // Validate token_budget is positive (if specified)
+        if let Some(budget) = agent.token_budget {
+            if budget <= 0 {
+                return Err(PackError::Validation(format!(
+                    "agent '{}' has invalid token_budget '{}'. Must be greater than 0.",
+                    name, budget
+                )));
+            }
         }
 
         // Validate toolset references
@@ -447,6 +516,11 @@ pub fn compile_toolsets(manifest: &PackManifest) -> Vec<CompiledToolsetConfig> {
 }
 
 /// Compile pack agent bindings to toolsets with extracted markdown metadata.
+///
+/// This function transforms manifest agent definitions into runtime-ready
+/// configurations, combining TOML settings with markdown-extracted metadata.
+/// All reference validations (profile, adapter, format, toolsets) have been
+/// performed during the IR validation phase.
 pub fn compile_pack_agents(
     manifest: &PackManifest,
     markdown_docs: &[super::MarkdownDoc],
@@ -480,8 +554,23 @@ pub fn compile_pack_agents(
                 None => (Vec::new(), Vec::new(), None),
             };
 
+            // PROFILE INHERITANCE: Resolve format from agent or profile
+            let profile_def = manifest.profiles.get(&agent.profile);
+            let resolved_format = agent
+                .format
+                .clone()
+                .or_else(|| profile_def.map(|p| p.format.clone()))
+                .unwrap_or_else(|| "markdown".to_string());
+
             CompiledPackAgentConfig {
                 name: name.clone(),
+                enabled: agent.enabled.unwrap_or(true),
+                profile: agent.profile.clone(),
+                adapter: agent.adapter.clone(),
+                format: agent.format.clone(),
+                resolved_format,
+                token_budget: agent.token_budget,
+                prompt_md: agent.prompt_md.clone(),
                 toolsets: agent.toolsets.clone(),
                 extracted_constraints: constraints,
                 extracted_tool_refs: tool_refs,
@@ -722,6 +811,20 @@ fn profile_key(ret: &str, idx: &str, emb: &str, fmt: &str) -> String {
     )
 }
 
+/// Builds a Caliber AST from a pack intermediate representation.
+///
+/// The resulting AST contains definitions for adapters, policies, injections, and providers
+/// extracted from the given `PackIr`. The AST version is taken from `ir.manifest.meta.version`
+/// if present; otherwise `"1.0"` is used.
+///
+/// # Examples
+///
+/// ```
+/// // Construct a minimal PackIr (fields elided for brevity) and convert it.
+/// // let ir = PackIr { manifest: ..., markdown: vec![], adapters: vec![], policies: vec![], injections: vec![], providers: vec![] };
+/// // let ast = ast_from_ir(&ir);
+/// // assert_eq!(ast.version, "1.0");
+/// ```
 pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
     let mut defs: Vec<Definition> = Vec::new();
     for a in &ir.adapters {
@@ -735,6 +838,9 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
     }
     for provider in &ir.providers {
         defs.push(Definition::Provider(provider.clone()));
+    }
+    for memory in &ir.memories {
+        defs.push(Definition::Memory(memory.clone()));
     }
     CaliberAst {
         version: ir
@@ -751,7 +857,24 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
 // MARKDOWN CONFIG EXTRACTION (NEW)
 // ============================================================================
 
-/// Check for duplicate definitions within Markdown configs
+/// Validates that Markdown-extracted adapters, policies, injections, and providers contain no duplicate definitions.
+///
+/// Returns an error if any adapter, policy, or provider name appears more than once, or if any injection's (source, target) pair is duplicated.
+///
+/// # Errors
+///
+/// Returns `PackError::Validation` with a descriptive message for the first duplicate encountered.
+///
+/// # Examples
+///
+/// ```
+/// // Accepts empty collections when there are no duplicates
+/// let adapters: Vec<_> = vec![];
+/// let policies: Vec<_> = vec![];
+/// let injections: Vec<_> = vec![];
+/// let providers: Vec<_> = vec![];
+/// assert!(check_markdown_duplicates(&adapters, &policies, &injections, &providers).is_ok());
+/// ```
 fn check_markdown_duplicates(
     adapters: &[AstAdapterDef],
     policies: &[PolicyDef],
@@ -806,7 +929,23 @@ fn check_markdown_duplicates(
     Ok(())
 }
 
-/// Extract adapter definitions from Markdown fence blocks
+/// Extracts adapter definitions from Markdown fence blocks.
+///
+/// Scans the provided Markdown documents for fence blocks marked as adapter definitions,
+/// parses each matching block into an `AstAdapterDef`, and returns the collected adapters.
+///
+/// # Returns
+///
+/// `Ok(Vec<AstAdapterDef>)` containing all adapter definitions found in the markdown documents;
+/// `Err(PackError)` if any adapter fence fails to parse.
+///
+/// # Examples
+///
+/// ```
+/// let docs: Vec<MarkdownDoc> = Vec::new();
+/// let adapters = extract_adapters_from_markdown(&docs).unwrap();
+/// assert!(adapters.is_empty());
+/// ```
 fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAdapterDef>, PackError> {
     let mut adapters = Vec::new();
 
@@ -827,7 +966,23 @@ fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAda
     Ok(adapters)
 }
 
-/// Extract policy definitions from Markdown fence blocks
+/// Extracts policy definitions from Markdown fence blocks.
+///
+/// Scans each MarkdownDoc and its users' fence blocks for those with FenceKind::Policy,
+/// parses each policy block via `parse_policy_block`, and returns the collected `PolicyDef` entries.
+///
+/// # Errors
+///
+/// Returns a `PackError` if parsing or validation of any encountered policy block fails.
+///
+/// # Examples
+///
+/// ```
+/// // assume `markdown_docs` is a Vec<MarkdownDoc> parsed elsewhere
+/// let policies = extract_policies_from_markdown(&markdown_docs).unwrap();
+/// // each policy should have a non-empty name
+/// assert!(policies.iter().all(|p| !p.name.is_empty()));
+/// ```
 fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<PolicyDef>, PackError> {
     let mut policies = Vec::new();
 
@@ -848,7 +1003,14 @@ fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<Policy
     Ok(policies)
 }
 
-/// Extract injection definitions from Markdown fence blocks
+/// Extracts injection definitions from Markdown fence blocks.
+///
+/// # Examples
+///
+/// ```
+/// let injections = extract_injections_from_markdown(&[]).unwrap();
+/// assert!(injections.is_empty());
+/// ```
 fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstInjectionDef>, PackError> {
     let mut injections = Vec::new();
 
@@ -869,7 +1031,22 @@ fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstI
     Ok(injections)
 }
 
-/// Extract provider definitions from Markdown fence blocks
+/// Parse provider definitions from Markdown fence blocks and return their AST representations.
+///
+/// Scans each MarkdownDoc's users and fence blocks for Provider fences, parses each provider
+/// block into an `AstProviderDef`, and collects the results.
+///
+/// # Errors
+///
+/// Returns a `PackError` if parsing any provider fence fails.
+///
+/// # Examples
+///
+/// ```
+/// let docs: Vec<MarkdownDoc> = vec![]; // no provider fences
+/// let providers = extract_providers_from_markdown(&docs).unwrap();
+/// assert!(providers.is_empty());
+/// ```
 fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstProviderDef>, PackError> {
     let mut providers = Vec::new();
 
@@ -888,4 +1065,25 @@ fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstPr
     }
 
     Ok(providers)
+}
+
+/// Extract memory definitions from Markdown fence blocks.
+fn extract_memories_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<MemoryDef>, PackError> {
+    let mut memories = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Memory {
+                    let memory = parse_memory_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    memories.push(memory);
+                }
+            }
+        }
+    }
+
+    Ok(memories)
 }

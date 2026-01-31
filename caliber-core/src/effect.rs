@@ -233,6 +233,14 @@ impl<T> Effect<T> {
         }
     }
 
+    /// Extract the success value, panicking with a custom message if not Ok.
+    pub fn expect(self, msg: &str) -> T {
+        match self {
+            Effect::Ok(v) => v,
+            _ => panic!("{}", msg),
+        }
+    }
+
     /// Chain a function that returns an Effect on the success value.
     ///
     /// If `self` is `Ok(t)`, returns `f(t)`. Otherwise, returns the original
@@ -883,7 +891,7 @@ mod tests {
     fn test_effect_ok() {
         let effect: Effect<i32> = Effect::ok(42);
         assert!(effect.is_ok());
-        assert_eq!(effect.unwrap(), 42);
+        assert_eq!(effect.expect("effect should be ok"), 42);
     }
 
     #[test]
@@ -909,7 +917,7 @@ mod tests {
     fn test_effect_map() {
         let effect: Effect<i32> = Effect::ok(42);
         let mapped = effect.map(|n| n * 2);
-        assert_eq!(mapped.unwrap(), 84);
+        assert_eq!(mapped.expect("mapped effect should be ok"), 84);
     }
 
     #[test]

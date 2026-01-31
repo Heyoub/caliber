@@ -13,14 +13,28 @@ use caliber_api::db::DbClient;
 use caliber_api::routes::dsl;
 use caliber_api::types::{ValidateDslRequest, ValidateDslResponse};
 use caliber_dsl::{ast_to_markdown, compose_pack, CaliberAst, PackInput, PackMarkdownFile};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[path = "support/db.rs"]
 mod test_db_support;
 
+/// Build a minimal pack containing a single Markdown file and compose it into a Caliber AST.
+///
+/// The provided `source` is placed into a temporary manifest plus one markdown file named `test.md`,
+/// then `compose_pack` is invoked. On success returns the resulting `CaliberAst`; on failure returns
+/// the error formatted as a `String`.
+///
+/// # Examples
+///
+/// ```
+/// let md = r#"
+/// caliber: "1.0" {}
+/// "#;
+/// let ast = parse_markdown(md).expect("should parse markdown into AST");
+/// ```
 fn parse_markdown(source: &str) -> Result<CaliberAst, String> {
     let manifest = r#"
 [meta]
@@ -50,9 +64,31 @@ prompts = {}
         contracts: HashMap::new(),
     };
 
-    compose_pack(input).map(|output| output.ast).map_err(|e| e.to_string())
+    compose_pack(input)
+        .map(|output| output.ast)
+        .map_err(|e| e.to_string())
 }
 
+/// Invoke the DSL parse endpoint with the given database client and DSL source string.
+///
+/// On success, returns the deserialized `ValidateDslResponse` produced by the endpoint.
+/// On failure, returns a `String` describing the error (endpoint failure, body read failure,
+/// or JSON deserialization failure).
+///
+/// # Examples
+///
+/// ```no_run
+/// use caliber_api::types::ValidateDslResponse;
+/// // `db` should be a test or real DbClient available in your test harness.
+/// # async fn example(db: crate::DbClient) -> Result<(), String> {
+/// let source = "caliber: \"1.0\" {}".to_string();
+/// let resp: ValidateDslResponse = tokio::runtime::Runtime::new()
+///     .unwrap()
+///     .block_on(crate::call_parse_endpoint(db, source))?;
+/// println!("valid: {}", resp.valid);
+/// # Ok(())
+/// # }
+/// ```
 async fn call_parse_endpoint(db: DbClient, source: String) -> Result<ValidateDslResponse, String> {
     let response = dsl::parse_dsl(State(db), Json(ValidateDslRequest { source }))
         .await

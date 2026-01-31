@@ -808,8 +808,9 @@ mod tests {
             entity_type: EntityType::Trajectory,
             id: Uuid::now_v7(),
         };
-        let json = serde_json::to_string(&entity).unwrap();
-        let restored: EntityRef = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entity).expect("EntityRef serialization should succeed");
+        let restored: EntityRef =
+            serde_json::from_str(&json).expect("EntityRef deserialization should succeed");
         assert_eq!(entity, restored);
     }
 
@@ -836,8 +837,10 @@ mod tests {
             outcome: Some(outcome),
             metadata: Some(json!({"k": "v"})),
         };
-        let json = serde_json::to_string(&trajectory).unwrap();
-        let restored: Trajectory = serde_json::from_str(&json).unwrap();
+        let json =
+            serde_json::to_string(&trajectory).expect("Trajectory serialization should succeed");
+        let restored: Trajectory =
+            serde_json::from_str(&json).expect("Trajectory deserialization should succeed");
         assert_eq!(trajectory, restored);
     }
 
@@ -860,8 +863,9 @@ mod tests {
             tokens_used: 42,
             metadata: Some(json!({"a": 1})),
         };
-        let json = serde_json::to_string(&scope).unwrap();
-        let restored: Scope = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&scope).expect("Scope serialization should succeed");
+        let restored: Scope =
+            serde_json::from_str(&json).expect("Scope deserialization should succeed");
         assert_eq!(scope, restored);
     }
 
@@ -887,8 +891,9 @@ mod tests {
             superseded_by: None,
             metadata: Some(json!({"meta": true})),
         };
-        let json = serde_json::to_string(&artifact).unwrap();
-        let restored: Artifact = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&artifact).expect("Artifact serialization should succeed");
+        let restored: Artifact =
+            serde_json::from_str(&json).expect("Artifact deserialization should succeed");
         assert_eq!(artifact, restored);
     }
 
@@ -913,8 +918,9 @@ mod tests {
             abstraction_level: AbstractionLevel::Raw,
             source_note_ids: vec![NoteId::now_v7()],
         };
-        let json = serde_json::to_string(&note).unwrap();
-        let restored: Note = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&note).expect("Note serialization should succeed");
+        let restored: Note =
+            serde_json::from_str(&json).expect("Note deserialization should succeed");
         assert_eq!(note, restored);
     }
 
@@ -932,8 +938,9 @@ mod tests {
             tool_results: Some(json!({"result": "ok"})),
             metadata: Some(json!({"m": true})),
         };
-        let json = serde_json::to_string(&turn).unwrap();
-        let restored: Turn = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&turn).expect("Turn serialization should succeed");
+        let restored: Turn =
+            serde_json::from_str(&json).expect("Turn deserialization should succeed");
         assert_eq!(turn, restored);
     }
 

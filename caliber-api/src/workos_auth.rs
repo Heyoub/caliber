@@ -44,15 +44,22 @@ pub struct WorkOsConfig {
 
     /// Redirect URI for SSO callback
     pub redirect_uri: String,
+
+    /// WorkOS API base URL (default: https://api.workos.com)
+    pub api_url: String,
 }
 
 impl WorkOsConfig {
+    /// Default WorkOS API URL
+    const DEFAULT_API_URL: &'static str = "https://api.workos.com";
+
     /// Create WorkOS configuration from environment variables.
     ///
     /// # Environment Variables
     /// - `CALIBER_WORKOS_CLIENT_ID`: Required - WorkOS application client ID
     /// - `CALIBER_WORKOS_API_KEY`: Required - WorkOS API key
     /// - `CALIBER_WORKOS_REDIRECT_URI`: Optional - Redirect URI (defaults to /auth/sso/callback)
+    /// - `CALIBER_WORKOS_API_URL`: Optional - WorkOS API URL (defaults to https://api.workos.com)
     ///
     /// # Errors
     /// Returns an error if required environment variables are not set.
@@ -66,10 +73,14 @@ impl WorkOsConfig {
         let redirect_uri = std::env::var("CALIBER_WORKOS_REDIRECT_URI")
             .unwrap_or_else(|_| "/auth/sso/callback".to_string());
 
+        let api_url = std::env::var("CALIBER_WORKOS_API_URL")
+            .unwrap_or_else(|_| Self::DEFAULT_API_URL.to_string());
+
         Ok(Self {
             client_id,
             api_key,
             redirect_uri,
+            api_url,
         })
     }
 
@@ -83,7 +94,33 @@ impl WorkOsConfig {
             client_id: client_id.into(),
             api_key: api_key.into(),
             redirect_uri: redirect_uri.into(),
+            api_url: Self::DEFAULT_API_URL.to_string(),
         }
+    }
+
+    /// Create WorkOS configuration with explicit values including custom API URL.
+    pub fn with_api_url(
+        client_id: impl Into<String>,
+        api_key: impl Into<String>,
+        redirect_uri: impl Into<String>,
+        api_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            client_id: client_id.into(),
+            api_key: api_key.into(),
+            redirect_uri: redirect_uri.into(),
+            api_url: api_url.into(),
+        }
+    }
+
+    /// Get the SSO token endpoint URL.
+    pub fn sso_token_url(&self) -> String {
+        format!("{}/sso/token", self.api_url)
+    }
+
+    /// Get the SSO authorize endpoint URL.
+    pub fn sso_authorize_url(&self) -> String {
+        format!("{}/sso/authorize", self.api_url)
     }
 }
 
@@ -242,7 +279,7 @@ pub async fn exchange_code_for_profile(
     let client = reqwest::Client::new();
 
     let response = client
-        .post("https://api.workos.com/sso/token")
+        .post(&config.sso_token_url())
         .header("Content-Type", "application/x-www-form-urlencoded")
         .basic_auth(&config.client_id, Some(&config.api_key))
         .form(&[
@@ -428,7 +465,7 @@ pub fn generate_authorization_url(
     config: &WorkOsConfig,
     params: &SsoAuthorizationParams,
 ) -> String {
-    let mut url = String::from("https://api.workos.com/sso/authorize?");
+    let mut url = format!("{}?", config.sso_authorize_url());
 
     // Required parameters
     url.push_str(&format!(
@@ -567,6 +604,36 @@ mod tests {
     fn test_workos_config_new() {
         let config = WorkOsConfig::new("client_123", "sk_test_abc", "https://example.com/callback");
         assert_eq!(config.redirect_uri, "https://example.com/callback");
+        assert_eq!(config.api_url, "https://api.workos.com");
+    }
+
+    #[test]
+    fn test_workos_config_with_api_url() {
+        let config = WorkOsConfig::with_api_url(
+            "client_123",
+            "sk_test_abc",
+            "https://example.com/callback",
+            "https://custom.workos.com",
+        );
+        assert_eq!(config.api_url, "https://custom.workos.com");
+        assert_eq!(
+            config.sso_token_url(),
+            "https://custom.workos.com/sso/token"
+        );
+        assert_eq!(
+            config.sso_authorize_url(),
+            "https://custom.workos.com/sso/authorize"
+        );
+    }
+
+    #[test]
+    fn test_workos_config_url_helpers() {
+        let config = WorkOsConfig::new("client_123", "sk_test_abc", "https://example.com/callback");
+        assert_eq!(config.sso_token_url(), "https://api.workos.com/sso/token");
+        assert_eq!(
+            config.sso_authorize_url(),
+            "https://api.workos.com/sso/authorize"
+        );
     }
 
     #[test]

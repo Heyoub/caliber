@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This spec covers migrating `caliber-pg` from SPI-based SQL operations to direct heap operations using pgrx. The CALIBER spec mandates NO SQL IN HOT PATH - all entity CRUD operations must bypass SQL parsing entirely for maximum performance. This is a prerequisite for the caliber-api and caliber-tui specs.
+This spec covers migrating `caliber-pg` from SPI-based SQL operations to direct heap operations using pgrx. The CALIBER spec mandates NO SQL IN HOT PATH - all entity CRUD operations must bypass SQL parsing entirely for maximum performance. This is a prerequisite for the caliber-api spec.
 
 ## Glossary
 

@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn test_entity_id_from_str() {
         let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
-        let id: TenantId = uuid_str.parse().unwrap();
+        let id: TenantId = uuid_str.parse().expect("valid UUID should parse");
         assert_eq!(id.to_string(), uuid_str);
     }
 
@@ -307,12 +307,13 @@ mod tests {
     #[test]
     fn test_entity_id_serde() {
         let id = TenantId::now_v7();
-        let json = serde_json::to_string(&id).unwrap();
+        let json = serde_json::to_string(&id).expect("serialization should succeed");
         // Should serialize as UUID string (not wrapped in object)
         assert!(json.starts_with('"'));
         assert!(json.ends_with('"'));
 
-        let deserialized: TenantId = serde_json::from_str(&json).unwrap();
+        let deserialized: TenantId =
+            serde_json::from_str(&json).expect("deserialization should succeed");
         assert_eq!(id, deserialized);
     }
 

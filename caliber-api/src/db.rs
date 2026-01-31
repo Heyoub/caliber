@@ -18,11 +18,11 @@ use caliber_core::{
 };
 use caliber_dsl::compiler::CompiledConfig as DslCompiledConfig;
 use caliber_dsl::pack::{PackInput, PackMarkdownFile};
-use caliber_dsl::CaliberAst;
+use caliber_dsl::parser::ast::CaliberAst;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_postgres::NoTls;
@@ -1006,12 +1006,12 @@ impl DbClient {
                     &req.from_agent_id.as_uuid(),
                     &req.to_agent_id.as_ref().map(|id| id.as_uuid()),
                     &req.to_agent_type,
-                    &req.message_type,
+                    &req.message_type.as_db_str(),
                     &req.payload,
                     &req.trajectory_id.as_ref().map(|id| id.as_uuid()),
                     &req.scope_id.as_ref().map(|id| id.as_uuid()),
                     &artifact_ids,
-                    &req.priority,
+                    &req.priority.as_db_str(),
                     &req.expires_at.map(|ts| ts.timestamp()),
                     &tenant_id.as_uuid(),
                 ],
@@ -1957,10 +1957,29 @@ impl DbClient {
     // DSL OPERATIONS
     // ========================================================================
 
-    /// Validate DSL source.
+    /// Validates DSL Markdown source and produces its AST when parsing succeeds.
+    ///
+    /// On success, the response has `valid = true`, an empty `errors` array, and `ast` set to
+    /// the parsed AST serialized as JSON. On parse failure, the response has `valid = false`,
+    /// `ast = None`, and `errors` contains a single `ParseErrorResponse` with the parser's
+    /// error message (line and column default to 0).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # // `client` is assumed to be an initialized `DbClient` available in the test context.
+    /// # async fn doc_example(client: &crate::db::DbClient) {
+    /// use crate::api::ValidateDslRequest;
+    ///
+    /// let req = ValidateDslRequest { source: "# Title\n\nSome DSL content".to_string() };
+    /// let resp = client.dsl_validate(&req).await.unwrap();
+    /// assert!(resp.valid);
+    /// assert!(resp.ast.is_some());
+    /// # }
+    /// ```
     pub async fn dsl_validate(&self, req: &ValidateDslRequest) -> ApiResult<ValidateDslResponse> {
         // Use caliber_dsl to validate the Markdown source
-        let parse_result = self.parse_markdown_source(&req.source);
+        let parse_result = crate::utils::parse_markdown_source(&req.source);
 
         match parse_result {
             Ok(ast) => {
@@ -1983,7 +2002,17 @@ impl DbClient {
         }
     }
 
-    /// Parse Markdown source to AST using the new compose_pack system
+    /// Parses Markdown DSL source into a Caliber AST by composing a minimal pack manifest and invoking the pack composer.
+    ///
+    /// Returns `Ok(CaliberAst)` when parsing succeeds, or `Err(String)` containing an error message when parsing fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given a `DbClient` instance `client`, parse a simple Markdown DSL source:
+    /// // let client: DbClient = ...;
+    /// let ast = client.parse_markdown_source("# Example DSL").expect("failed to parse DSL");
+    /// ```
     fn parse_markdown_source(&self, source: &str) -> Result<CaliberAst, String> {
         // Create minimal manifest for standalone DSL parsing
         let manifest = r#"
@@ -2020,7 +2049,25 @@ prompts = {}
         }
     }
 
-    /// Parse DSL source and return AST.
+    /// Parse DSL source into an abstract syntax tree (AST) and validate it.
+    ///
+    /// This is equivalent to validation but with the intent focused on parsing the provided source.
+    ///
+    /// # Parameters
+    ///
+    /// - `req`: a `ParseDslRequest` containing the DSL source to parse.
+    ///
+    /// # Returns
+    ///
+    /// `ValidateDslResponse` containing the parsed AST when parsing succeeds, or error details when parsing fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given a `db` instance of the client and a `req: ParseDslRequest` with `source` populated:
+    /// let resp = db.dsl_parse(&req).await.unwrap();
+    /// // `resp` contains either a parsed AST or parsing errors.
+    /// ```
     pub async fn dsl_parse(&self, req: &ParseDslRequest) -> ApiResult<ValidateDslResponse> {
         // Same as validate but focused on parsing
         let validate_req = ValidateDslRequest {

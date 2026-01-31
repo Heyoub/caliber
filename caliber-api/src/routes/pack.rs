@@ -507,7 +507,7 @@ mod tests {
             .capabilities()
             .contains(&ProviderCapability::Summarization));
 
-        let response = adapter.ping().await.unwrap();
+        let response = adapter.ping().await.expect("ping should succeed");
         assert_eq!(response.provider_id, "test");
         assert_eq!(response.health, HealthStatus::Healthy);
     }
@@ -529,8 +529,9 @@ mod tests {
             effective_injections: vec![],
             routing_effective: None,
         };
-        let json = serde_json::to_string(&response).unwrap();
-        let restored: PackInspectResponse = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&response).expect("serialization should succeed");
+        let restored: PackInspectResponse =
+            serde_json::from_str(&json).expect("deserialization should succeed");
         assert_eq!(response.has_active, restored.has_active);
         assert_eq!(response.tools, restored.tools);
     }

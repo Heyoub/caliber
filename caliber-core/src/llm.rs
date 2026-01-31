@@ -409,7 +409,8 @@ mod tests {
             SummarizeStyle::Structured,
         ] {
             let s = style.as_db_str();
-            let parsed = SummarizeStyle::from_db_str(s).unwrap();
+            let parsed =
+                SummarizeStyle::from_db_str(s).expect("SummarizeStyle roundtrip should succeed");
             assert_eq!(style, parsed);
         }
     }
@@ -423,7 +424,8 @@ mod tests {
             ProviderCapability::ContradictionDetection,
         ] {
             let s = cap.as_db_str();
-            let parsed = ProviderCapability::from_db_str(s).unwrap();
+            let parsed = ProviderCapability::from_db_str(s)
+                .expect("ProviderCapability roundtrip should succeed");
             assert_eq!(cap, parsed);
         }
     }
@@ -444,7 +446,8 @@ mod tests {
             CircuitState::HalfOpen,
         ] {
             let s = state.as_db_str();
-            let parsed = CircuitState::from_db_str(s).unwrap();
+            let parsed =
+                CircuitState::from_db_str(s).expect("CircuitState roundtrip should succeed");
             assert_eq!(state, parsed);
         }
     }
