@@ -332,8 +332,8 @@ pg-build: ## Build caliber-pg extension
 	cd caliber-pg && cargo build --features pg18 --release
 
 pg-install: ## Install caliber-pg extension to PostgreSQL 18
-	@echo "$(CYAN)Installing caliber-pg extension...$(RESET)"
-	cd caliber-pg && cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+	@echo "$(CYAN)Installing caliber-pg extension (requires sudo)...$(RESET)"
+	cd caliber-pg && sudo $(HOME)/.cargo/bin/cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --features pg18 --release
 	@echo "$(CYAN)Recreating extension in database...$(RESET)"
 	sudo -u postgres psql -d caliber -c "DROP EXTENSION IF EXISTS caliber_pg CASCADE; CREATE EXTENSION caliber_pg;"
 	@echo "$(GREEN)Extension installed!$(RESET)"
