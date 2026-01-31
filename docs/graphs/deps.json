@@ -1,46 +1,13 @@
 {
-  "generated_at": "2026-01-28T09:03:18.818Z",
-  "nodes": [
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-core#0.4.4",
-      "name": "caliber-core",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-core/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-dsl#0.4.4",
-      "name": "caliber-dsl",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-dsl/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-pcp#0.4.4",
-      "name": "caliber-pcp",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-pcp/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-storage#0.4.4",
-      "name": "caliber-storage",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-storage/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-pg#0.4.4",
-      "name": "caliber-pg",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-pg/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-api#0.4.4",
-      "name": "caliber-api",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-api/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-test-utils#0.4.4",
-      "name": "caliber-test-utils",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-test-utils/Cargo.toml"
-    },
-    {
-      "id": "path+file:///home/eassa/projects/caliber/caliber-tui#0.4.4",
-      "name": "caliber-tui",
-      "manifest_path": "/home/eassa/projects/caliber/caliber-tui/Cargo.toml"
-    }
+  "generated": "2026-01-31T06:37:13Z",
+  "crates": [
+    "caliber-api",
+    "caliber-core",
+    "caliber-dsl",
+    "caliber-pcp",
+    "caliber-pg",
+    "caliber-storage",
+    "caliber-test-utils"
   ],
   "edges": [
     {
