@@ -20,6 +20,7 @@ export { default as Badge } from './Badge.svelte';
 export { default as Icon } from './Icon.svelte';
 export { default as Spinner } from './Spinner.svelte';
 export { default as Avatar } from './Avatar.svelte';
+export { default as CircularRings } from './CircularRings.svelte';
 
 // Layout components
 export { default as Divider } from './Divider.svelte';

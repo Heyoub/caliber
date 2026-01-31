@@ -67,6 +67,10 @@ export { default as GridAnimation } from './GridAnimation.svelte';
 // Features: Vertex coloring, wireframe mode, mouse interaction
 export { default as IcosahedronAnimation } from './IcosahedronAnimation.svelte';
 
+// Hexagonal particle network animation
+// Features: Node connections, glow effects, edge bouncing
+export { default as HexScroll } from './HexScroll.svelte';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Type Re-exports (for convenience)
 // ═══════════════════════════════════════════════════════════════════════════

@@ -29,6 +29,10 @@ export { default as FileTreeItem } from './FileTreeItem.svelte';
 // AI/Mode molecules
 export { default as ModeSelector } from './ModeSelector.svelte';
 
+// Content molecules
+export { default as Accordion } from './Accordion.svelte';
+export { default as PromptButtons } from './PromptButtons.svelte';
+
 // Re-export types for external use
 export type { } from './SearchInput.svelte';
 export type { } from './InputGroup.svelte';
