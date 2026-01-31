@@ -54,11 +54,29 @@
   let selectedIndex = $state(0);
   let inputRef: HTMLInputElement | undefined = $state();
 
+  // Tagged union type for combined items
+  type CommandItem = Command & { _type: 'command' };
+  type PromptItem = Prompt & { _type: 'prompt'; action: () => void };
+  type PaletteItem = CommandItem | PromptItem;
+
   // Combine commands and prompts into unified list
-  const allItems = $derived([
+  const allItems = $derived<PaletteItem[]>([
     ...commands.map(c => ({ ...c, _type: 'command' as const })),
     ...prompts.map(p => ({ ...p, _type: 'prompt' as const, action: () => {} }))
   ]);
+
+  // Type-safe accessors for display properties
+  function getItemLabel(item: PaletteItem): string {
+    return item._type === 'command' ? item.label : item.name;
+  }
+
+  function getItemCategory(item: PaletteItem): string | undefined {
+    return item._type === 'command' ? item.category : undefined;
+  }
+
+  function getItemId(item: PaletteItem): string {
+    return item._type === 'command' ? item.id : item.name;
+  }
 
   // Fuzzy search filter
   function fuzzyMatch(query: string, text: string): boolean {
@@ -83,18 +101,18 @@
   // Filtered items based on search
   const filteredItems = $derived(
     allItems.filter(item =>
-      fuzzyMatch(searchQuery, item.label || item.name || '') ||
+      fuzzyMatch(searchQuery, getItemLabel(item)) ||
       fuzzyMatch(searchQuery, item.description || '') ||
-      fuzzyMatch(searchQuery, item.category || '')
+      fuzzyMatch(searchQuery, getItemCategory(item) || '')
     )
   );
 
   // Group items by category
   const groupedItems = $derived.by(() => {
-    const groups: Record<string, typeof filteredItems> = {};
+    const groups: Record<string, PaletteItem[]> = {};
 
     for (const item of filteredItems) {
-      const category = item.category || (item._type === 'prompt' ? 'Prompts' : 'Commands');
+      const category = getItemCategory(item) || (item._type === 'prompt' ? 'Prompts' : 'Commands');
       if (!groups[category]) {
         groups[category] = [];
       }
@@ -218,7 +236,7 @@
           </div>
 
           <!-- Items -->
-          {#each items as item, i (item.id || item.name)}
+          {#each items as item, i (getItemId(item))}
             {@const flatIndex = getFlatIndex(item)}
             {@const isSelected = flatIndex === selectedIndex}
 
@@ -254,7 +272,7 @@
                 <!-- Content -->
                 <div class="flex-1 min-w-0">
                   <div class="font-medium truncate">
-                    {item.label || item.name}
+                    {getItemLabel(item)}
                   </div>
                   {#if item.description}
                     <div class="text-xs text-slate-500 truncate">

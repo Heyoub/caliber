@@ -441,12 +441,31 @@ export type {
   PropsFor,
   // Application types
   CMSContent,
-  ChatMessage,
+  ChatMessageData,
   ToolCall,
+  ToolCallStatusLiteral,
   ToolResult,
   EditorTab,
   EditorPosition,
   FileFormat,
+  FileFormatLiteral,
+  FileFormatInfo,
+  // Tree view types
+  TreeNode,
+  TreeNodeValue,
+  // Diff view types
+  DiffLine,
+  DiffLineType,
+  DiffViewMode,
+  // Memory graph types
+  GraphNode,
+  GraphEdge,
+  // Command palette types
+  Command,
+  // MCP types
+  Prompt,
+  PromptArgument,
+  MCPResource,
 } from './props';
 
 // ═══════════════════════════════════════════════════════════════════════════

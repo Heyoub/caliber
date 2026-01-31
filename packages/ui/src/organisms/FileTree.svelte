@@ -48,16 +48,22 @@
     onContextMenu
   }: Props = $props();
 
+  /** Known node types for icon mapping */
+  type KnownNodeType = 'file' | 'folder' | 'scope' | 'event' | 'trajectory' | 'turn';
+
+  /** Default file icon config */
+  const defaultIcon = {
+    icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+    color: 'text-slate-400'
+  };
+
   // Icon mapping by type
-  const typeIcons: Record<TreeNode['type'], { icon: string; color: string }> = {
+  const typeIcons: Record<KnownNodeType, { icon: string; color: string }> = {
     folder: {
       icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
       color: 'text-amber-400'
     },
-    file: {
-      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-      color: 'text-slate-400'
-    },
+    file: defaultIcon,
     trajectory: {
       icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
       color: 'text-teal-400'
@@ -69,6 +75,10 @@
     turn: {
       icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
       color: 'text-pink-400'
+    },
+    event: {
+      icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+      color: 'text-coral-400'
     }
   };
 
@@ -122,13 +132,13 @@
   {@const expanded = isExpanded(node.id)}
   {@const selected = isSelected(node.id)}
   {@const hasChildren = node.children && node.children.length > 0}
-  {@const iconConfig = typeIcons[node.type] || typeIcons.file}
+  {@const iconConfig = (node.type && node.type in typeIcons) ? typeIcons[node.type as KnownNodeType] : defaultIcon}
 
   <div class="tree-item" role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
     {#if nodeRenderer}
       {@render nodeRenderer({ node, depth, selected, expanded })}
     {:else}
-      <button
+      <div
         class={`
           w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded-md
           transition-colors cursor-pointer group
@@ -141,13 +151,19 @@
         onclick={() => handleClick(node)}
         oncontextmenu={(e) => handleContextMenu(e, node)}
         onkeydown={(e) => handleKeyDown(e, node)}
+        role="treeitem"
+        tabindex="0"
+        aria-selected={selected}
       >
         <!-- Expand/collapse toggle -->
         {#if hasChildren}
-          <button
+          <span
             class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-slate-300 rounded transition-colors"
             onclick={(e) => handleToggle(e, node)}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggle(e as unknown as MouseEvent, node); } }}
+            role="button"
             tabindex="-1"
+            aria-label="Toggle expand"
           >
             <svg
               class="w-3 h-3 transition-transform duration-150"
@@ -158,7 +174,7 @@
             >
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
-          </button>
+          </span>
         {:else}
           <span class="w-4"></span>
         {/if}
@@ -186,18 +202,19 @@
         {/if}
 
         <!-- Hover actions -->
-        <div class="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-          <button
-            class="p-0.5 text-slate-500 hover:text-slate-300 rounded transition-colors"
-            onclick={(e) => { e.stopPropagation(); }}
-            title={cms.moreActions || 'More actions'}
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
-        </div>
-      </button>
+        <span
+          class="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity"
+          onclick={(e) => { e.stopPropagation(); }}
+          onkeydown={(e) => { e.stopPropagation(); }}
+          role="button"
+          tabindex="-1"
+          aria-label={cms.moreActions || 'More actions'}
+        >
+          <svg class="w-3.5 h-3.5 p-0.5 text-slate-500 hover:text-slate-300 rounded transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+          </svg>
+        </span>
+      </div>
     {/if}
 
     <!-- Children -->

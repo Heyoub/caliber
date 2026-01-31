@@ -14,8 +14,10 @@
     "noEmit": true,
     "declaration": true,
     "declarationMap": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": false,
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*", "tests/**/*"],
+  "include": ["src/**/*", "src/**/*.svelte", "tests/**/*"],
   "exclude": ["node_modules", "dist"]
 }

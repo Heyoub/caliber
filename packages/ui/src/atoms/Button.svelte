@@ -254,7 +254,7 @@
     <div class="absolute -inset-px rounded-lg opacity-15 transition-all duration-500 ease-out -z-10 outer-glow-effect" class:forced-glow={forcePressed}></div>
 
     <!-- Border highlight -->
-    <div class="absolute inset-0 border border-white/20 group-hover:border-white/50 rounded-lg transition-all duration-300 z-[1]" class:border-white/60={forcePressed}></div>
+    <div class={`absolute inset-0 border border-white/20 group-hover:border-white/50 rounded-lg transition-all duration-300 z-[1] ${forcePressed ? 'border-white/60' : ''}`}></div>
 
     <!-- Animated gradient background -->
     <div class="absolute inset-0 bg-gradient-to-br transition-all duration-700 ease-out z-[4] opacity-0 group-hover:opacity-75 {colorConfig.gradient}" class:opacity-60={forcePressed}></div>
@@ -316,7 +316,7 @@
       {/if}
 
       <!-- Border highlight -->
-      <div class="absolute inset-0 border border-white/20 hover:border-white/50 rounded-lg transition-all duration-300 z-[1]" class:border-white/60={forcePressed}></div>
+      <div class={`absolute inset-0 border border-white/20 hover:border-white/50 rounded-lg transition-all duration-300 z-[1] ${forcePressed ? 'border-white/60' : ''}`}></div>
 
       <!-- Animated gradient background -->
       <div class="absolute inset-0 bg-gradient-to-br transition-all duration-700 ease-out z-[4] opacity-0 hover:opacity-75 {colorConfig.gradient}" class:opacity-60={forcePressed}></div>

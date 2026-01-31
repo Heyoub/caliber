@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { ToolCall, ToolResult, ToolCallStatus, ColorPalette, CMSContent } from '../types/index.js';
+  import type { ToolCall, ToolResult, ToolCallStatusLiteral, ColorPalette, CMSContent } from '../types/index.js';
 
   interface Props {
     /** Content from CMS */
@@ -51,20 +51,22 @@
   }: Props = $props();
 
   // Status to color mapping
-  const statusColors: Record<ToolCallStatus, ColorPalette> = {
+  const statusColors: Record<ToolCallStatusLiteral, ColorPalette> = {
     pending: 'amber',
     approved: 'teal',
     running: 'purple',
     success: 'mint',
-    error: 'coral'
+    error: 'coral',
+    rejected: 'coral'
   };
 
-  const statusLabels: Record<ToolCallStatus, string> = {
+  const statusLabels: Record<ToolCallStatusLiteral, string> = {
     pending: cms.pendingLabel || 'Pending',
     approved: cms.approvedLabel || 'Approved',
     running: cms.runningLabel || 'Running',
     success: cms.successLabel || 'Success',
-    error: cms.errorLabel || 'Error'
+    error: cms.errorLabel || 'Error',
+    rejected: cms.errorLabel || 'Rejected'
   };
 
   // Derived values

@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { ChatMessage, ToolCall, CMSContent } from '../types/index.js';
+  import type { ChatMessageData, ToolCall, CMSContent } from '../types/index.js';
 
   type ViewMode = 'chat' | 'prompts' | 'templates' | 'reasoning' | 'history' | 'documents';
 
@@ -20,7 +20,7 @@
     /** Content from CMS */
     cms?: CMSContent;
     /** Chat messages */
-    messages?: ChatMessage[];
+    messages?: ChatMessageData[];
     /** Current tool calls */
     toolCalls?: ToolCall[];
     /** Currently sending message */

@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { EditorTab, EditorPosition, FileFormat, CMSContent } from '../types/index.js';
+  import type { EditorTab, EditorPosition, FileFormatLiteral, CMSContent } from '../types/index.js';
 
   type ViewMode = 'edit' | 'preview' | 'split';
 
@@ -78,19 +78,31 @@
   const hasTabs = $derived(tabs.length > 0);
   const isSplitView = $derived(viewMode === 'split');
 
-  // Format display names
-  const formatNames: Record<FileFormat, string> = {
+  // Format display names (partial - only common formats)
+  const formatNames: Partial<Record<FileFormatLiteral, string>> = {
     markdown: 'Markdown',
     yaml: 'YAML',
     toml: 'TOML',
     json: 'JSON',
     xml: 'XML',
+    html: 'HTML',
+    css: 'CSS',
+    javascript: 'JavaScript',
+    typescript: 'TypeScript',
+    python: 'Python',
+    rust: 'Rust',
+    go: 'Go',
+    sql: 'SQL',
+    shell: 'Shell',
     csv: 'CSV',
-    mermaid: 'Mermaid'
+    latex: 'LaTeX',
+    mermaid: 'Mermaid',
+    plaintext: 'Plain Text',
+    unknown: 'Unknown'
   };
 
   // Format icons (simplified)
-  const formatIcons: Record<FileFormat, string> = {
+  const formatIcons: Partial<Record<FileFormatLiteral, string>> = {
     markdown: 'M',
     yaml: 'Y',
     toml: 'T',
@@ -114,15 +126,19 @@
     {#if tabBar}
       {@render tabBar()}
     {:else}
-      <div class="flex items-center overflow-x-auto">
+      <div class="flex items-center overflow-x-auto" role="tablist">
         {#each tabs as tab (tab.id)}
-          <button
-            class={`flex items-center gap-2 px-4 py-2.5 text-sm border-r border-slate-800 transition-colors ${
+          <div
+            class={`group flex items-center gap-2 px-4 py-2.5 text-sm border-r border-slate-800 transition-colors cursor-pointer ${
               tab.id === activeTabId
                 ? 'bg-slate-900 text-slate-100'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
+            role="tab"
+            tabindex="0"
+            aria-selected={tab.id === activeTabId}
             onclick={() => onTabSelect?.(tab.id)}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onTabSelect?.(tab.id); }}
           >
             <!-- Format indicator -->
             <span class="w-5 h-5 flex items-center justify-center rounded bg-slate-700 text-[10px] font-bold text-teal-400">
@@ -133,20 +149,22 @@
             <span class="max-w-32 truncate">{tab.name}</span>
 
             <!-- Dirty indicator -->
-            {#if tab.dirty}
+            {#if tab.dirty || tab.isDirty}
               <span class="w-2 h-2 rounded-full bg-coral-400"></span>
             {/if}
 
             <!-- Close button -->
             <button
+              type="button"
               class="ml-1 p-0.5 rounded hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-opacity"
               onclick={(e) => { e.stopPropagation(); onTabClose?.(tab.id); }}
+              aria-label="Close tab"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-          </button>
+          </div>
         {/each}
 
         <!-- New tab button -->
@@ -257,8 +275,9 @@
 
       <div class="flex items-center gap-2">
         <!-- Save button -->
-        {#if activeTab?.dirty}
+        {#if activeTab?.dirty || activeTab?.isDirty}
           <button
+            type="button"
             class="px-2 py-0.5 text-xs text-teal-400 hover:text-teal-300 hover:bg-teal-500/10 rounded transition-colors"
             onclick={() => onSave?.()}
           >

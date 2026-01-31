@@ -761,9 +761,10 @@ export interface CMSContent {
 }
 
 /**
- * Chat message type.
+ * Chat message data type.
+ * Named ChatMessageData to avoid conflict with ChatMessage component.
  */
-export interface ChatMessage {
+export interface ChatMessageData {
   /** Message ID */
   id: string;
   /** Message role */
@@ -783,6 +784,11 @@ export interface ChatMessage {
 }
 
 /**
+ * Tool call status type (string literal union).
+ */
+export type ToolCallStatusLiteral = 'pending' | 'approved' | 'running' | 'success' | 'error' | 'rejected';
+
+/**
  * Tool call type.
  */
 export interface ToolCall {
@@ -793,9 +799,15 @@ export interface ToolCall {
   /** Tool arguments */
   arguments: Record<string, unknown>;
   /** Tool call status */
-  status: 'pending' | 'approved' | 'running' | 'success' | 'error' | 'rejected';
+  status: ToolCallStatusLiteral;
   /** Result if completed */
   result?: ToolResult;
+  /** Execution duration in milliseconds */
+  duration?: number;
+  /** Start timestamp */
+  startedAt?: Date;
+  /** End timestamp */
+  endedAt?: Date;
 }
 
 /**
@@ -816,14 +828,20 @@ export interface ToolResult {
 export interface EditorTab {
   /** Tab ID */
   id: string;
+  /** File name (for display) */
+  name: string;
   /** File path or title */
   path: string;
   /** Tab label */
   label: string;
   /** Content */
   content: string;
+  /** File format */
+  format: FileFormatLiteral;
   /** Language for syntax highlighting */
   language?: string;
+  /** Whether file is modified (alias for isDirty) */
+  dirty?: boolean;
   /** Whether file is modified */
   isDirty?: boolean;
   /** Whether tab is active */
@@ -841,15 +859,218 @@ export interface EditorPosition {
 }
 
 /**
- * File format detection result.
+ * File format literal type (string union).
  */
-export interface FileFormat {
+export type FileFormatLiteral =
+  | 'markdown'
+  | 'yaml'
+  | 'json'
+  | 'xml'
+  | 'html'
+  | 'css'
+  | 'javascript'
+  | 'typescript'
+  | 'python'
+  | 'rust'
+  | 'go'
+  | 'sql'
+  | 'shell'
+  | 'toml'
+  | 'csv'
+  | 'latex'
+  | 'mermaid'
+  | 'plaintext'
+  | 'unknown';
+
+/**
+ * File format detection result (detailed info).
+ */
+export interface FileFormatInfo {
   /** Format name */
-  name: string;
+  name: FileFormatLiteral;
   /** MIME type */
   mimeType: string;
   /** File extension */
   extension: string;
   /** Language for syntax highlighting */
   language?: string;
+}
+
+/**
+ * Alias for backwards compatibility.
+ * @deprecated Use FileFormatLiteral for string values or FileFormatInfo for detailed info
+ */
+export type FileFormat = FileFormatLiteral;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TREE VIEW TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Tree node value - can be any JSON-serializable value.
+ */
+export type TreeNodeValue = string | number | boolean | null | undefined | object | unknown[];
+
+/**
+ * Tree node for hierarchical data display.
+ */
+export interface TreeNode {
+  /** Node ID */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Node value */
+  value?: TreeNodeValue;
+  /** Icon name */
+  icon?: string;
+  /** Child nodes */
+  children?: TreeNode[];
+  /** Whether node is expanded */
+  expanded?: boolean;
+  /** Whether node is selected */
+  selected?: boolean;
+  /** Whether node is disabled */
+  disabled?: boolean;
+  /** Node type for styling */
+  type?: 'file' | 'folder' | 'scope' | 'event' | 'trajectory' | 'turn' | string;
+  /** Additional metadata */
+  meta?: Record<string, unknown>;
+  /** Node metadata (alias for meta) */
+  metadata?: Record<string, unknown>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIFF VIEW TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Diff line type.
+ */
+export type DiffLineType = 'add' | 'remove' | 'unchanged' | 'header';
+
+/**
+ * Diff line data.
+ */
+export interface DiffLine {
+  /** Line type */
+  type: DiffLineType;
+  /** Line content */
+  content: string;
+  /** Original line number (for removed/unchanged) */
+  oldLineNumber?: number;
+  /** New line number (for added/unchanged) */
+  newLineNumber?: number;
+}
+
+/**
+ * Diff view mode.
+ */
+export type DiffViewMode = 'unified' | 'split' | 'inline';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEMORY GRAPH TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Graph node for memory visualization.
+ */
+export interface GraphNode {
+  /** Node ID */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Node type */
+  type: 'trajectory' | 'scope' | 'turn' | 'event' | 'artifact';
+  /** Color palette for styling */
+  color: import('./modifiers').ColorPalette;
+  /** X position */
+  x: number;
+  /** Y position */
+  y: number;
+  /** Connected node IDs */
+  connections: string[];
+  /** Node metadata */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Graph edge for memory visualization.
+ */
+export interface GraphEdge {
+  /** Source node ID */
+  source: string;
+  /** Target node ID */
+  target: string;
+  /** Edge label */
+  label?: string;
+  /** Edge type */
+  type?: 'parent' | 'fork' | 'reference';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMMAND PALETTE TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Command for command palette.
+ */
+export interface Command {
+  /** Command ID */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Optional description */
+  description?: string;
+  /** Keyboard shortcut */
+  shortcut?: string;
+  /** Icon name */
+  icon?: string;
+  /** Command category */
+  category?: string;
+  /** Whether command is disabled */
+  disabled?: boolean;
+  /** Action to execute */
+  action: () => void | Promise<void>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MCP PROMPT TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * MCP Prompt argument.
+ */
+export interface PromptArgument {
+  /** Argument name */
+  name: string;
+  /** Argument description */
+  description?: string;
+  /** Whether argument is required */
+  required?: boolean;
+}
+
+/**
+ * MCP Prompt definition.
+ */
+export interface Prompt {
+  /** Prompt name */
+  name: string;
+  /** Prompt description */
+  description?: string;
+  /** Prompt arguments */
+  arguments?: PromptArgument[];
+}
+
+/**
+ * MCP Resource definition.
+ */
+export interface MCPResource {
+  /** Resource URI */
+  uri: string;
+  /** Resource name */
+  name: string;
+  /** Resource description */
+  description?: string;
+  /** MIME type */
+  mimeType?: string;
 }

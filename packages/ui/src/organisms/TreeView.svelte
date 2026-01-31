@@ -11,7 +11,10 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { TreeNodeValue, CMSContent } from '../types/index.js';
+  import type { CMSContent } from '../types/index.js';
+
+  /** Value type classification for tree node primitives */
+  type ValueType = 'string' | 'number' | 'boolean' | 'null' | 'array' | 'object';
 
   interface Props {
     /** Content from CMS */
@@ -44,7 +47,7 @@
   }: Props = $props();
 
   // Determine value type
-  function getType(value: unknown): TreeNodeValue['type'] {
+  function getType(value: unknown): ValueType {
     if (value === null) return 'null';
     if (Array.isArray(value)) return 'array';
     if (typeof value === 'object') return 'object';
@@ -59,7 +62,7 @@
   }
 
   // Format value for display
-  function formatValue(value: unknown, type: TreeNodeValue['type']): string {
+  function formatValue(value: unknown, type: ValueType): string {
     switch (type) {
       case 'null':
         return 'null';
@@ -90,7 +93,7 @@
   }
 
   // Color classes by type
-  const typeColors: Record<TreeNodeValue['type'], string> = {
+  const typeColors: Record<ValueType, string> = {
     string: 'text-mint-400',
     number: 'text-coral-400',
     boolean: 'text-purple-400',

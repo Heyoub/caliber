@@ -459,7 +459,7 @@ export function isValidAssetId(id: string): id is AssetId {
  * Create a branded content key
  */
 export function contentKey<P extends string>(path: P): ContentKey {
-  return path as ContentKey;
+  return path as unknown as ContentKey;
 }
 
 /**

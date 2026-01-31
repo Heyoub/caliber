@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { FileFormat, CMSContent } from '../types/index.js';
+  import type { FileFormatLiteral, CMSContent } from '../types/index.js';
 
   interface Props {
     /** Content from CMS */
@@ -20,13 +20,13 @@
     /** Content to render */
     content: string;
     /** File format (auto-detected if not provided) */
-    format?: FileFormat;
+    format?: FileFormatLiteral;
     /** Additional CSS classes */
     class?: string;
     /** Custom markdown renderer slot */
     markdownRenderer?: Snippet<[{ content: string }]>;
     /** Custom tree view slot */
-    treeRenderer?: Snippet<[{ data: unknown; format: FileFormat }]>;
+    treeRenderer?: Snippet<[{ data: unknown; format: FileFormatLiteral }]>;
     /** Custom table renderer slot */
     tableRenderer?: Snippet<[{ headers: string[]; rows: string[][] }]>;
     /** Custom diagram renderer slot */
@@ -45,7 +45,7 @@
   }: Props = $props();
 
   // Auto-detect format from content if not provided
-  const detectedFormat = $derived.by((): FileFormat => {
+  const detectedFormat = $derived.by((): FileFormatLiteral => {
     if (format) return format;
 
     const trimmed = content.trim();

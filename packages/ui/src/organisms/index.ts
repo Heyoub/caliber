@@ -73,6 +73,7 @@ export { default as HexScroll } from './HexScroll.svelte';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Type Re-exports (for convenience)
+// Note: ChatMessage type renamed to ChatMessageData to avoid conflict with component
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type {
@@ -89,20 +90,17 @@ export type {
 
   // MCP types
   ToolCall,
-  ToolCallStatus,
+  ToolCallStatusLiteral,
   ToolResult,
-  Resource,
-  Prompt,
-  PromptArgument,
 
   // Chat types
-  ChatMessage,
-  MessageRole,
+  ChatMessageData,
 
   // Editor types
   EditorTab,
   EditorPosition,
   FileFormat,
+  FileFormatLiteral,
 
   // Tree types
   TreeNode,
@@ -115,9 +113,7 @@ export type {
 
   // Graph types
   GraphNode,
-
-  // Command types
-  Command,
+  GraphEdge,
 
   // CMS types
   CMSContent

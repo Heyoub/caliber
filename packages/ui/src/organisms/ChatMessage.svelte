@@ -11,13 +11,13 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { ChatMessage, ColorPalette, CMSContent } from '../types/index.js';
+  import type { ChatMessageData, ColorPalette, CMSContent } from '../types/index.js';
 
   interface Props {
     /** Content from CMS */
     cms?: CMSContent;
     /** Message data */
-    message: ChatMessage;
+    message: ChatMessageData;
     /** Show typing indicator */
     streaming?: boolean;
     /** Enable markdown rendering */

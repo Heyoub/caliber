@@ -153,7 +153,7 @@ export function useContent<P extends string>(path: P): ContentValue<P> {
 
   const namespaceContent = store[namespace];
   const value = resolveContentPath<ContentValue<P>>(
-    namespaceContent as Record<string, unknown>,
+    namespaceContent as unknown as Record<string, unknown>,
     rest.join('.')
   );
 
