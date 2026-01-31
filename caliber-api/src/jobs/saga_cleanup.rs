@@ -32,6 +32,11 @@
 //! };
 //! ```
 
+use crate::constants::{
+    DEFAULT_SAGA_BATCH_SIZE, DEFAULT_SAGA_CHECK_INTERVAL_SECS,
+    DEFAULT_SAGA_DELEGATION_TIMEOUT_SECS, DEFAULT_SAGA_HANDOFF_TIMEOUT_SECS,
+    DEFAULT_SAGA_IDEMPOTENCY_CLEANUP_INTERVAL_SECS,
+};
 use crate::db::DbClient;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -74,17 +79,77 @@ pub struct SagaCleanupConfig {
 impl Default for SagaCleanupConfig {
     fn default() -> Self {
         Self {
-            check_interval: Duration::from_secs(60),
-            delegation_timeout: Duration::from_secs(3600), // 1 hour
-            handoff_timeout: Duration::from_secs(1800),    // 30 minutes
-            batch_size: 100,
-            idempotency_cleanup_interval: Duration::from_secs(3600), // 1 hour
+            check_interval: Duration::from_secs(DEFAULT_SAGA_CHECK_INTERVAL_SECS),
+            delegation_timeout: Duration::from_secs(DEFAULT_SAGA_DELEGATION_TIMEOUT_SECS),
+            handoff_timeout: Duration::from_secs(DEFAULT_SAGA_HANDOFF_TIMEOUT_SECS),
+            batch_size: DEFAULT_SAGA_BATCH_SIZE,
+            idempotency_cleanup_interval: Duration::from_secs(
+                DEFAULT_SAGA_IDEMPOTENCY_CLEANUP_INTERVAL_SECS,
+            ),
             log_timeouts: true,
         }
     }
 }
 
 impl SagaCleanupConfig {
+    /// Create SagaCleanupConfig from environment variables.
+    ///
+    /// # Environment Variables
+    /// - `CALIBER_SAGA_CHECK_INTERVAL_SECS`: How often to check for stuck sagas (default: 60)
+    /// - `CALIBER_SAGA_DELEGATION_TIMEOUT_SECS`: Delegation timeout threshold (default: 3600)
+    /// - `CALIBER_SAGA_HANDOFF_TIMEOUT_SECS`: Handoff timeout threshold (default: 1800)
+    /// - `CALIBER_SAGA_BATCH_SIZE`: Max sagas to process per cycle (default: 100)
+    /// - `CALIBER_SAGA_IDEMPOTENCY_CLEANUP_INTERVAL_SECS`: Idempotency cleanup interval (default: 3600)
+    /// - `CALIBER_SAGA_LOG_TIMEOUTS`: Whether to log timeouts (default: true)
+    pub fn from_env() -> Self {
+        let check_interval = Duration::from_secs(
+            std::env::var("CALIBER_SAGA_CHECK_INTERVAL_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_SAGA_CHECK_INTERVAL_SECS),
+        );
+
+        let delegation_timeout = Duration::from_secs(
+            std::env::var("CALIBER_SAGA_DELEGATION_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_SAGA_DELEGATION_TIMEOUT_SECS),
+        );
+
+        let handoff_timeout = Duration::from_secs(
+            std::env::var("CALIBER_SAGA_HANDOFF_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_SAGA_HANDOFF_TIMEOUT_SECS),
+        );
+
+        let batch_size = std::env::var("CALIBER_SAGA_BATCH_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_SAGA_BATCH_SIZE);
+
+        let idempotency_cleanup_interval = Duration::from_secs(
+            std::env::var("CALIBER_SAGA_IDEMPOTENCY_CLEANUP_INTERVAL_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_SAGA_IDEMPOTENCY_CLEANUP_INTERVAL_SECS),
+        );
+
+        let log_timeouts = std::env::var("CALIBER_SAGA_LOG_TIMEOUTS")
+            .ok()
+            .map(|s| s.to_lowercase() != "false")
+            .unwrap_or(true);
+
+        Self {
+            check_interval,
+            delegation_timeout,
+            handoff_timeout,
+            batch_size,
+            idempotency_cleanup_interval,
+            log_timeouts,
+        }
+    }
+
     /// Create a configuration for development/testing with shorter timeouts.
     pub fn development() -> Self {
         Self {
@@ -100,11 +165,13 @@ impl SagaCleanupConfig {
     /// Create a configuration for production with longer timeouts.
     pub fn production() -> Self {
         Self {
-            check_interval: Duration::from_secs(60),
+            check_interval: Duration::from_secs(DEFAULT_SAGA_CHECK_INTERVAL_SECS),
             delegation_timeout: Duration::from_secs(7200), // 2 hours
             handoff_timeout: Duration::from_secs(3600),    // 1 hour
-            batch_size: 100,
-            idempotency_cleanup_interval: Duration::from_secs(3600),
+            batch_size: DEFAULT_SAGA_BATCH_SIZE,
+            idempotency_cleanup_interval: Duration::from_secs(
+                DEFAULT_SAGA_IDEMPOTENCY_CLEANUP_INTERVAL_SECS,
+            ),
             log_timeouts: true,
         }
     }
@@ -581,14 +648,27 @@ async fn delete_expired_idempotency_keys(db: &DbClient) -> Result<i32, tokio_pos
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{
+        DEFAULT_SAGA_BATCH_SIZE, DEFAULT_SAGA_CHECK_INTERVAL_SECS,
+        DEFAULT_SAGA_DELEGATION_TIMEOUT_SECS, DEFAULT_SAGA_HANDOFF_TIMEOUT_SECS,
+    };
 
     #[test]
     fn test_config_default() {
         let config = SagaCleanupConfig::default();
-        assert_eq!(config.check_interval, Duration::from_secs(60));
-        assert_eq!(config.delegation_timeout, Duration::from_secs(3600));
-        assert_eq!(config.handoff_timeout, Duration::from_secs(1800));
-        assert_eq!(config.batch_size, 100);
+        assert_eq!(
+            config.check_interval,
+            Duration::from_secs(DEFAULT_SAGA_CHECK_INTERVAL_SECS)
+        );
+        assert_eq!(
+            config.delegation_timeout,
+            Duration::from_secs(DEFAULT_SAGA_DELEGATION_TIMEOUT_SECS)
+        );
+        assert_eq!(
+            config.handoff_timeout,
+            Duration::from_secs(DEFAULT_SAGA_HANDOFF_TIMEOUT_SECS)
+        );
+        assert_eq!(config.batch_size, DEFAULT_SAGA_BATCH_SIZE);
         assert!(config.log_timeouts);
     }
 
@@ -603,8 +683,31 @@ mod tests {
     #[test]
     fn test_config_production() {
         let config = SagaCleanupConfig::production();
-        assert_eq!(config.check_interval, Duration::from_secs(60));
+        assert_eq!(
+            config.check_interval,
+            Duration::from_secs(DEFAULT_SAGA_CHECK_INTERVAL_SECS)
+        );
         assert_eq!(config.delegation_timeout, Duration::from_secs(7200));
+    }
+
+    #[test]
+    fn test_config_from_env_defaults() {
+        // Without environment variables set, should use defaults
+        let config = SagaCleanupConfig::from_env();
+        assert_eq!(
+            config.check_interval,
+            Duration::from_secs(DEFAULT_SAGA_CHECK_INTERVAL_SECS)
+        );
+        assert_eq!(
+            config.delegation_timeout,
+            Duration::from_secs(DEFAULT_SAGA_DELEGATION_TIMEOUT_SECS)
+        );
+        assert_eq!(
+            config.handoff_timeout,
+            Duration::from_secs(DEFAULT_SAGA_HANDOFF_TIMEOUT_SECS)
+        );
+        assert_eq!(config.batch_size, DEFAULT_SAGA_BATCH_SIZE);
+        assert!(config.log_timeouts);
     }
 
     #[test]

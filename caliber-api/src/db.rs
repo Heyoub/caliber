@@ -18,11 +18,11 @@ use caliber_core::{
 };
 use caliber_dsl::compiler::CompiledConfig as DslCompiledConfig;
 use caliber_dsl::pack::{PackInput, PackMarkdownFile};
-use caliber_dsl::CaliberAst;
+use caliber_dsl::parser::ast::CaliberAst;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_postgres::NoTls;
@@ -1006,12 +1006,12 @@ impl DbClient {
                     &req.from_agent_id.as_uuid(),
                     &req.to_agent_id.as_ref().map(|id| id.as_uuid()),
                     &req.to_agent_type,
-                    &req.message_type,
+                    &req.message_type.as_db_str(),
                     &req.payload,
                     &req.trajectory_id.as_ref().map(|id| id.as_uuid()),
                     &req.scope_id.as_ref().map(|id| id.as_uuid()),
                     &artifact_ids,
-                    &req.priority,
+                    &req.priority.as_db_str(),
                     &req.expires_at.map(|ts| ts.timestamp()),
                     &tenant_id.as_uuid(),
                 ],
@@ -1979,7 +1979,7 @@ impl DbClient {
     /// ```
     pub async fn dsl_validate(&self, req: &ValidateDslRequest) -> ApiResult<ValidateDslResponse> {
         // Use caliber_dsl to validate the Markdown source
-        let parse_result = self.parse_markdown_source(&req.source);
+        let parse_result = crate::utils::parse_markdown_source(&req.source);
 
         match parse_result {
             Ok(ast) => {

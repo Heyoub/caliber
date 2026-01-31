@@ -61,4 +61,6 @@ Yes. AGPL allows internal use. You only need to share source if you offer CALIBE
 
 Need SLAs, dedicated infrastructure, or custom terms?
 
-Contact: [your email]
+Contact: enterprise@caliber.run
+
+*Or open a GitHub issue with the "enterprise" label.*

@@ -36,7 +36,6 @@ Fixes #(issue number)
 - [ ] caliber-dsl (DSL parser)
 - [ ] caliber-pg (PostgreSQL extension)
 - [ ] caliber-api (REST/gRPC/WebSocket)
-- [ ] caliber-tui (Terminal UI)
 - [ ] Documentation
 - [ ] Build system / CI/CD
 
@@ -94,7 +93,6 @@ cargo test -p caliber-core -- test_name
 - [ ] Tested with PostgreSQL 18
 - [ ] Tested in WSL environment
 - [ ] Tested with caliber-api running
-- [ ] Tested with caliber-tui
 - [ ] Tested with Docker deployment
 - [ ] Tested with Helm chart
 

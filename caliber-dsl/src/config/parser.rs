@@ -103,6 +103,8 @@ pub struct MemoryConfig {
 #[serde(deny_unknown_fields)]
 pub struct FieldConfig {
     pub name: String,
+    /// Field type (accepts both "field_type" and "type" for compatibility)
+    #[serde(alias = "type")]
     pub field_type: String,
     #[serde(default)]
     pub nullable: bool,
@@ -114,6 +116,8 @@ pub struct FieldConfig {
 #[serde(deny_unknown_fields)]
 pub struct IndexConfig {
     pub field: String,
+    /// Index type (accepts both "index_type" and "type" for compatibility)
+    #[serde(alias = "type")]
     pub index_type: String,
     #[serde(default)]
     pub options: Vec<(String, String)>,
@@ -796,7 +800,7 @@ fn validate_adapter_config(config: &AdapterConfig) -> Result<(), ConfigError> {
 /// ```
 fn parse_adapter_type(s: &str) -> Result<AdapterType, ConfigError> {
     match s.to_lowercase().as_str() {
-        "postgres" => Ok(AdapterType::Postgres),
+        "postgres" | "postgresql" => Ok(AdapterType::Postgres),
         "redis" => Ok(AdapterType::Redis),
         "memory" => Ok(AdapterType::Memory),
         other => Err(ConfigError::UnknownAdapter(other.to_string())),
@@ -853,19 +857,21 @@ fn parse_retention(s: &str) -> Result<Retention, ConfigError> {
         "persistent" => Ok(Retention::Persistent),
         "session" => Ok(Retention::Session),
         "scope" => Ok(Retention::Scope),
-        other if other.starts_with("duration:") => {
-            Ok(Retention::Duration(other["duration:".len()..].to_string()))
+        other => {
+            if let Some(duration) = other.strip_prefix("duration:") {
+                Ok(Retention::Duration(duration.to_string()))
+            } else if let Some(max_str) = other.strip_prefix("max:") {
+                let count = max_str
+                    .parse()
+                    .map_err(|_| ConfigError::InvalidValue("Invalid max count".to_string()))?;
+                Ok(Retention::Max(count))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown retention '{}'",
+                    other
+                )))
+            }
         }
-        other if other.starts_with("max:") => {
-            let count = other["max:".len()..]
-                .parse()
-                .map_err(|_| ConfigError::InvalidValue("Invalid max count".to_string()))?;
-            Ok(Retention::Max(count))
-        }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown retention '{}'",
-            other
-        ))),
     }
 }
 
@@ -894,14 +900,17 @@ fn parse_retention(s: &str) -> Result<Retention, ConfigError> {
 fn parse_lifecycle(s: &str) -> Result<Lifecycle, ConfigError> {
     match s.to_lowercase().as_str() {
         "explicit" => Ok(Lifecycle::Explicit),
-        other if other.starts_with("autoclose:") => {
-            let trigger = parse_trigger(other["autoclose:".len()..].trim())?;
-            Ok(Lifecycle::AutoClose(trigger))
+        other => {
+            if let Some(autoclose_str) = other.strip_prefix("autoclose:") {
+                let trigger = parse_trigger(autoclose_str.trim())?;
+                Ok(Lifecycle::AutoClose(trigger))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown lifecycle '{}'",
+                    other
+                )))
+            }
         }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown lifecycle '{}'",
-            other
-        ))),
     }
 }
 
@@ -930,13 +939,16 @@ fn parse_trigger(s: &str) -> Result<Trigger, ConfigError> {
         "scope_close" => Ok(Trigger::ScopeClose),
         "turn_end" => Ok(Trigger::TurnEnd),
         "manual" => Ok(Trigger::Manual),
-        other if other.starts_with("schedule:") => {
-            Ok(Trigger::Schedule(other["schedule:".len()..].to_string()))
+        other => {
+            if let Some(schedule_str) = other.strip_prefix("schedule:") {
+                Ok(Trigger::Schedule(schedule_str.to_string()))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown trigger '{}'",
+                    other
+                )))
+            }
         }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown trigger '{}'",
-            other
-        ))),
     }
 }
 
@@ -998,16 +1010,17 @@ fn parse_field_type(s: &str) -> Result<FieldType, ConfigError> {
         "bool" => Ok(FieldType::Bool),
         "timestamp" => Ok(FieldType::Timestamp),
         "json" => Ok(FieldType::Json),
-        other if other.starts_with("embedding:") => {
-            let dim = other["embedding:".len()..]
-                .parse()
-                .ok();
-            Ok(FieldType::Embedding(dim))
+        other => {
+            if let Some(dim_str) = other.strip_prefix("embedding:") {
+                let dim = dim_str.parse().ok();
+                Ok(FieldType::Embedding(dim))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown field type '{}'",
+                    other
+                )))
+            }
         }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown field type '{}'",
-            other
-        ))),
     }
 }
 
@@ -1092,10 +1105,61 @@ fn parse_index_type(s: &str) -> Result<IndexType, ConfigError> {
 /// }
 /// ```
 fn parse_modifier(s: String) -> Result<ModifierDef, ConfigError> {
-    // Placeholder - proper parsing needed
-    Ok(ModifierDef::Embeddable {
-        provider: s,
-    })
+    let s_lower = s.to_lowercase();
+
+    if let Some(provider) = s_lower.strip_prefix("embeddable:") {
+        Ok(ModifierDef::Embeddable {
+            provider: provider.to_string(),
+        })
+    } else if let Some(style_str) = s_lower.strip_prefix("summarizable:") {
+        let style = match style_str {
+            "brief" => SummaryStyle::Brief,
+            "detailed" => SummaryStyle::Detailed,
+            other => {
+                return Err(ConfigError::InvalidValue(format!(
+                    "invalid summary style '{}', expected 'brief' or 'detailed'",
+                    other
+                )))
+            }
+        };
+        Ok(ModifierDef::Summarizable {
+            style,
+            on_triggers: vec![], // Default to empty triggers
+        })
+    } else if let Some(mode_str) = s_lower.strip_prefix("lockable:") {
+        let mode = match mode_str {
+            "exclusive" => LockMode::Exclusive,
+            "shared" => LockMode::Shared,
+            other => {
+                return Err(ConfigError::InvalidValue(format!(
+                    "invalid lock mode '{}', expected 'exclusive' or 'shared'",
+                    other
+                )))
+            }
+        };
+        Ok(ModifierDef::Lockable { mode })
+    } else if s_lower == "embeddable" {
+        // Default embeddable with empty provider
+        Ok(ModifierDef::Embeddable {
+            provider: String::new(),
+        })
+    } else if s_lower == "summarizable" {
+        // Default summarizable with brief style
+        Ok(ModifierDef::Summarizable {
+            style: SummaryStyle::Brief,
+            on_triggers: vec![],
+        })
+    } else if s_lower == "lockable" {
+        // Default lockable with exclusive mode
+        Ok(ModifierDef::Lockable {
+            mode: LockMode::Exclusive,
+        })
+    } else {
+        Err(ConfigError::InvalidValue(format!(
+            "invalid modifier '{}', expected 'embeddable', 'summarizable', or 'lockable'",
+            s
+        )))
+    }
 }
 
 /// Converts a deserialized PolicyRuleConfig into a validated PolicyRule.
@@ -1301,7 +1365,7 @@ connection: "postgresql://localhost/test"
         let result = parse_adapter_block(Some("postgres_main".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
 
-        let adapter = result.unwrap();
+        let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "postgres_main");
         assert_eq!(adapter.adapter_type, AdapterType::Postgres);
         assert_eq!(adapter.connection, "postgresql://localhost/test");
@@ -1317,7 +1381,7 @@ connection: "postgresql://localhost/test"
         let result = parse_adapter_block(None, yaml);
         assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
 
-        let adapter = result.unwrap();
+        let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "postgres_main");
     }
 
@@ -1386,7 +1450,7 @@ connection: "PostgreSQL://LocalHost/Test"
         let result = parse_adapter_block(Some("MyAdapter".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let adapter = result.unwrap();
+        let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "MyAdapter");
         // Note: adapter_type is normalized to lowercase in parsing, but connection preserves case
         assert_eq!(adapter.connection, "PostgreSQL://LocalHost/Test");
@@ -1402,7 +1466,7 @@ model: "gpt-4"
         let result = parse_provider_block(Some("my_provider".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let provider = result.unwrap();
+        let provider = result.expect("provider parsing verified above");
         assert_eq!(provider.name, "my_provider");
         assert_eq!(provider.provider_type, ProviderType::OpenAI);
         match provider.api_key {
@@ -1434,7 +1498,7 @@ priority: 100
         let result = parse_injection_block(None, yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let injection = result.unwrap();
+        let injection = result.expect("injection parsing verified above");
         assert_eq!(injection.mode, InjectionMode::Full);
         assert_eq!(injection.priority, 100);
     }
@@ -1452,7 +1516,7 @@ default_freshness:
         let result = parse_cache_block(Some("main".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let cache = result.unwrap();
+        let cache = result.expect("cache parsing verified above");
         match cache.default_freshness {
             FreshnessDef::BestEffort { max_staleness } => {
                 assert_eq!(max_staleness, "60s");

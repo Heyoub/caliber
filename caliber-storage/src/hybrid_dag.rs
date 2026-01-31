@@ -506,7 +506,7 @@ mod tests {
         async fn store(&self, event: &Event<Self::Payload>) -> Result<(), ColdStorageError> {
             self.events
                 .write()
-                .unwrap()
+                .expect("test lock should not be poisoned")
                 .insert(event.header.event_id, event.clone());
             Ok(())
         }
@@ -515,7 +515,7 @@ mod tests {
             &self,
             event_id: EventId,
         ) -> Result<Option<Event<Self::Payload>>, ColdStorageError> {
-            Ok(self.events.read().unwrap().get(&event_id).cloned())
+            Ok(self.events.read().expect("test lock should not be poisoned").get(&event_id).cloned())
         }
 
         async fn walk_ancestors(
@@ -538,7 +538,7 @@ mod tests {
             &self,
             correlation_id: EventId,
         ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
-            let events = self.events.read().unwrap();
+            let events = self.events.read().expect("test lock should not be poisoned");
             Ok(events
                 .values()
                 .filter(|e| e.header.correlation_id == correlation_id)
@@ -553,7 +553,7 @@ mod tests {
             max_depth: u32,
             limit: usize,
         ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
-            let events = self.events.read().unwrap();
+            let events = self.events.read().expect("test lock should not be poisoned");
             Ok(events
                 .values()
                 .filter(|e| {
@@ -578,7 +578,7 @@ mod tests {
         }
 
         async fn next_sequence(&self) -> Result<u64, ColdStorageError> {
-            let mut seq = self.sequence.write().unwrap();
+            let mut seq = self.sequence.write().expect("test lock should not be poisoned");
             *seq += 1;
             Ok(*seq)
         }
@@ -586,9 +586,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_dag_append_and_read() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("TempDir creation should succeed");
         let cold = Arc::new(MockColdStorage::new());
-        let dag = HybridDag::new(temp_dir.path(), cold).unwrap();
+        let dag = HybridDag::new(temp_dir.path(), cold).expect("HybridDag creation should succeed");
 
         // Create an event
         let event_id = uuid::Uuid::now_v7();
@@ -620,7 +620,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_dag_cache_miss_falls_back_to_cold() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("TempDir creation should succeed");
         let cold = Arc::new(MockColdStorage::new());
 
         // Pre-populate cold storage
@@ -638,10 +638,10 @@ mod tests {
             payload: "cold event".to_string(),
             hash_chain: None,
         };
-        cold.store(&event).await.unwrap();
+        cold.store(&event).await.expect("cold store should succeed");
 
         // Create dag WITHOUT the event in hot cache
-        let dag = HybridDag::new(temp_dir.path(), cold).unwrap();
+        let dag = HybridDag::new(temp_dir.path(), cold).expect("HybridDag creation should succeed");
 
         // Read should fall back to cold storage
         let read_result = dag.read(event_id).await;

@@ -16,15 +16,19 @@ Keep presets explicit and tracked alongside config changes.
 
 ---
 
-## Multi-Crate Architecture
+## Multi-Crate Architecture (7 crates)
 
 ```
-caliber-core/        # Entities (data only)
-caliber-storage/     # Storage trait + pgrx
-caliber-pcp/         # Validation, checkpoints
-caliber-dsl/         # DSL → config (separate)
-caliber-pg/          # pgrx extension (runtime)
+caliber-core/        # Entity types, VAL traits, agent types (data only)
+caliber-storage/     # Storage trait + mock implementation
+caliber-pcp/         # Validation, checkpoints, recovery
+caliber-dsl/         # Markdown+YAML DSL parser → CaliberConfig
+caliber-pg/          # PostgreSQL extension (pgrx, direct heap ops)
+caliber-api/         # REST/gRPC/WebSocket API server
+caliber-test-utils/  # Test generators, fixtures, assertions
 ```
+
+**Deleted (v0.4.6):** caliber-tui, caliber-agents, caliber-llm (absorbed into core/api)
 
 ---
 

@@ -30,6 +30,7 @@ pub mod state;
 pub mod telemetry;
 pub mod traits;
 pub mod types;
+pub mod utils;
 pub mod validation;
 pub mod ws;
 
@@ -51,7 +52,7 @@ pub use auth::{
 
 // Re-export WorkOS types when feature is enabled
 pub use cached_db::{CacheImpl, CachedDbClient};
-pub use config::ApiConfig;
+pub use config::{ApiConfig, EndpointsConfig};
 pub use db::{DbClient, DbConfig};
 pub use error::{ApiError, ApiResult, ErrorCode};
 pub use events::WsEvent;

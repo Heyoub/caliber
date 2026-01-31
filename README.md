@@ -5,7 +5,7 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.4.5
+**Version:** 0.4.7
 **Architecture:** Multi-crate ECS (Entity-Component-System)
 **Language:** Rust (pgrx)
 
@@ -80,7 +80,7 @@ cargo pgrx package -p caliber-pg
 cargo pgrx test pg18 --package caliber-pg
 ```
 
-Note: `openapi.json` is committed; CI regenerates it and fails on drift.
+Note: OpenAPI spec is generated on-demand via the `openapi` feature flag. Run `cargo run -p caliber-api --features openapi -- --openapi` to generate.
 
 Use `./scripts/test.sh` to run clippy, workspace tests, and pg18 pgrx tests in one pass.
 
@@ -101,18 +101,18 @@ Config is required for runtime operations; see `docs/QUICK_REFERENCE.md` for the
 
 ---
 
-## ⚠️ Production Deployment Notes (v0.4.5)
+## ⚠️ Production Deployment Notes (v0.4.7)
 
 ### Cache Invalidation Options
 
-**v0.4.5** provides two cache invalidation strategies:
+**v0.4.7** provides two cache invalidation strategies:
 
 1. **InMemoryChangeJournal** (default) - Single-instance only
    - ✅ Zero external dependencies
    - ✅ Microsecond latency
    - ❌ Not distributed (cache inconsistency across multiple API instances)
 
-2. **EventDagChangeJournal** (NEW in v0.4.5) - Multi-instance ready
+2. **EventDagChangeJournal** (NEW in v0.4.7) - Multi-instance ready
    - ✅ Distributed coordination via event DAG
    - ✅ No external infrastructure (LISTEN/NOTIFY, Redis, etc.)
    - ⚠️ Poll-based (100ms typical latency)
@@ -140,7 +140,6 @@ caliber/
 ├── caliber-dsl/         # DSL parser → CaliberConfig
 ├── caliber-pg/          # pgrx extension (requires PostgreSQL)
 ├── caliber-api/         # REST/gRPC/WebSocket API server
-├── caliber-tui/         # Terminal user interface
 ├── caliber-test-utils/  # Test generators, fixtures, assertions
 ├── caliber-sdk/         # TypeScript SDK for REST/WebSocket APIs
 ├── examples/            # Example programs and usage patterns

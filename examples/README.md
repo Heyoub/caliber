@@ -6,6 +6,7 @@ This directory contains real-world examples of using CALIBER in different scenar
 
 | Example | Description | Components Used | Difficulty |
 |---------|-------------|-----------------|------------|
+| [agents-pack](agents-pack/) | Complete pack manifest with agents & tools | dsl, api | Reference |
 | [basic_trajectory](basic_trajectory.rs) | Create trajectory, scope, and artifacts | core, storage | Beginner |
 | [context_assembly](context_assembly.rs) | Assemble context with token budgets | core, context | Intermediate |
 | [multi_agent_coordination](multi_agent_coordination.rs) | Agents with locks and messages | core, agents | Advanced |
@@ -65,6 +66,16 @@ go run main.go
 - Python 3.12+ / Node.js 20+ / Go 1.22+
 
 ## Example Categories
+
+### 0. Pack Development
+- **[agents-pack](agents-pack/)** - Complete reference pack with:
+  - `cal.toml` manifest with all supported sections
+  - Agent definitions (`.agent.md` files)
+  - Prompt-based tools (`.md` prompt files)
+  - Tool contracts (JSON schemas)
+  - Toolsets for grouping tools
+
+See [Creating Your Own Pack](#creating-your-own-pack) below.
 
 ### 1. Core Concepts
 - **basic_trajectory.rs** - Trajectory → Scope → Artifact hierarchy
@@ -206,6 +217,128 @@ When adding new examples:
 4. Include tests
 5. Update this README
 6. Add to the table above
+
+## Creating Your Own Pack
+
+A pack is a directory containing your CALIBER configuration, agents, and tools.
+
+### Minimal Pack Structure
+
+```
+my-pack/
+├── cal.toml           # Required: Pack manifest
+└── agents/
+    └── support.md     # At least one agent
+```
+
+### Quick Start
+
+1. **Copy the minimal fixture** (or use `caliber pack init`):
+   ```bash
+   cp -r tests/fixtures/pack_min my-pack
+   ```
+
+2. **Or copy the full example**:
+   ```bash
+   cp -r examples/agents-pack my-pack
+   ```
+
+3. **Configure the TUI to use your pack**:
+   ```toml
+   # In your TUI config file
+   pack_root = "./my-pack"
+   ```
+
+4. **Compose your pack**:
+   - Run the TUI and press `n` to compose
+   - Or use the REST API: `POST /v1/pack/compose`
+
+### Pack Manifest (cal.toml)
+
+The `cal.toml` file defines your pack structure:
+
+```toml
+[meta]
+version = "1.0"
+project = "my-project"
+
+[defaults]
+strict_markdown = true
+strict_refs = true
+
+[adapters.main]
+type = "postgres"
+connection = "env:DATABASE_URL"
+
+[profiles.default]
+retention = "persistent"
+index = "vector"
+embeddings = "openai"
+format = "markdown"
+
+[agents.support]
+enabled = true
+profile = "default"
+adapter = "main"
+prompt_md = "agents/support.md"
+toolsets = ["core"]
+
+[toolsets.core]
+tools = ["tools.prompts.search"]
+
+[tools.prompts.search]
+kind = "prompt"
+prompt_md = "tools/prompts/search.md"
+```
+
+See [examples/agents-pack/cal.toml](agents-pack/cal.toml) for a comprehensive reference.
+
+### Agent Definition (*.agent.md or *.md)
+
+Agents are Markdown files with frontmatter:
+
+```markdown
+---
+role: support
+capabilities:
+  - memory_read
+  - memory_write
+---
+
+# Support Agent
+
+You are a helpful support agent...
+```
+
+### Prompt Tool (tools/prompts/*.md)
+
+Prompt-based tools are Markdown files:
+
+```markdown
+---
+name: search
+description: Search the knowledge base
+---
+
+# Search Tool
+
+Given a query, search for relevant information...
+```
+
+### Tool Contract (tools/contracts/*.json)
+
+Optional JSON Schema for tool validation:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": { "type": "string" }
+  },
+  "required": ["query"]
+}
+```
 
 ## Questions?
 

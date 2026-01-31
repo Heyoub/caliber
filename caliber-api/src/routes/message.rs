@@ -56,11 +56,6 @@ pub async fn send_message(
         ));
     }
 
-    // TODO: Convert SendMessageRequest.message_type and .priority from String to
-    // caliber_core::{MessageType, MessagePriority} enums. Serde will then handle
-    // validation automatically during deserialization.
-    // For now, db layer validates these values.
-
     // Validate payload is valid JSON
     if serde_json::from_str::<serde_json::Value>(&req.payload).is_err() {
         return Err(ApiError::invalid_input("payload must be valid JSON string"));
@@ -356,7 +351,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("register_agent should succeed")
         .into_response();
 
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -365,17 +360,17 @@ mod tests {
 
     #[test]
     fn test_send_message_request_validation() {
-        // SendMessageRequest still uses String for HTTP deserialization
+        // SendMessageRequest uses proper enum types for type-safe validation
         let req = SendMessageRequest {
             from_agent_id: AgentId::now_v7(),
             to_agent_id: None,
             to_agent_type: None,
-            message_type: "TaskDelegation".to_string(),
+            message_type: MessageType::TaskDelegation,
             payload: "{}".to_string(),
             trajectory_id: None,
             scope_id: None,
             artifact_ids: vec![],
-            priority: "Normal".to_string(),
+            priority: MessagePriority::Normal,
             expires_at: None,
         };
 
@@ -444,12 +439,12 @@ mod tests {
             from_agent_id: from_agent.agent_id,
             to_agent_id: Some(to_agent.agent_id),
             to_agent_type: None,
-            message_type: "TaskDelegation".to_string(),
+            message_type: MessageType::TaskDelegation,
             payload: "{}".to_string(),
             trajectory_id: None,
             scope_id: None,
             artifact_ids: vec![],
-            priority: "Normal".to_string(),
+            priority: MessagePriority::Normal,
             expires_at: None,
         };
 
@@ -460,7 +455,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("send_message should succeed")
         .into_response();
         assert_eq!(send_response.status(), StatusCode::CREATED);
         let message: MessageResponse = response_json(send_response).await;
@@ -482,7 +477,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap()
+        .expect("list_messages should succeed")
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListMessagesResponse = response_json(list_response).await;
@@ -498,7 +493,7 @@ mod tests {
             PathId(message.message_id),
         )
         .await
-        .unwrap();
+        .expect("deliver_message should succeed");
         assert_eq!(deliver_status, StatusCode::NO_CONTENT);
 
         let ack_status = acknowledge_message(
@@ -508,7 +503,7 @@ mod tests {
             PathId(message.message_id),
         )
         .await
-        .unwrap();
+        .expect("acknowledge_message should succeed");
         assert_eq!(ack_status, StatusCode::NO_CONTENT);
     }
 }

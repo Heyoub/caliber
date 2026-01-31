@@ -628,7 +628,7 @@ mod tests {
             Json(trajectory_req),
         )
         .await
-        .unwrap()
+        .expect("create_trajectory should succeed")
         .into_response();
         assert_eq!(trajectory_response.status(), StatusCode::CREATED);
         let trajectory: TrajectoryResponse = response_json(trajectory_response).await;
@@ -650,7 +650,7 @@ mod tests {
             Json(scope_req),
         )
         .await
-        .unwrap()
+        .expect("create_scope should succeed")
         .into_response();
         assert_eq!(scope_response.status(), StatusCode::CREATED);
         let scope: ScopeResponse = response_json(scope_response).await;
@@ -661,7 +661,7 @@ mod tests {
             PathId(trajectory.trajectory_id),
         )
         .await
-        .unwrap()
+        .expect("list_trajectory_scopes should succeed")
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: Vec<ScopeResponse> = response_json(list_response).await;
@@ -670,10 +670,10 @@ mod tests {
         ctx.db
             .delete::<ScopeResponse>(scope.scope_id, ctx.auth.tenant_id)
             .await
-            .unwrap();
+            .expect("delete scope should succeed");
         ctx.db
             .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.auth.tenant_id)
             .await
-            .unwrap();
+            .expect("delete trajectory should succeed");
     }
 }

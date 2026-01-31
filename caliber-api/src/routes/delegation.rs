@@ -386,7 +386,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("register_agent should succeed")
         .into_response();
 
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -477,7 +477,7 @@ mod tests {
             Json(trajectory_req),
         )
         .await
-        .unwrap()
+        .expect("create_trajectory should succeed")
         .into_response();
         assert_eq!(trajectory_response.status(), StatusCode::CREATED);
         let trajectory: TrajectoryResponse = response_json(trajectory_response).await;
@@ -498,7 +498,7 @@ mod tests {
             Json(scope_req),
         )
         .await
-        .unwrap()
+        .expect("create_scope should succeed")
         .into_response();
         assert_eq!(scope_response.status(), StatusCode::CREATED);
         let scope: ScopeResponse = response_json(scope_response).await;
@@ -522,7 +522,7 @@ mod tests {
             Json(create_req),
         )
         .await
-        .unwrap()
+        .expect("create_delegation should succeed")
         .into_response();
         assert_eq!(delegation_response.status(), StatusCode::CREATED);
         let delegation: DelegationResponse = response_json(delegation_response).await;
@@ -537,7 +537,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap();
+        .expect("accept_delegation should succeed");
         assert_eq!(accept_status, StatusCode::NO_CONTENT);
 
         let complete_status = complete_delegation(
@@ -555,7 +555,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap();
+        .expect("complete_delegation should succeed");
         assert_eq!(complete_status, StatusCode::NO_CONTENT);
     }
 }

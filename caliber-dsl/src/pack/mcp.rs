@@ -91,8 +91,8 @@ mod tests {
         let config1 = CompiledConfig::default();
         let config2 = CompiledConfig::default();
 
-        let json1 = to_canonical_json(&generate_mcp_schema(&config1)).unwrap();
-        let json2 = to_canonical_json(&generate_mcp_schema(&config2)).unwrap();
+        let json1 = to_canonical_json(&generate_mcp_schema(&config1)).expect("valid JSON serialization");
+        let json2 = to_canonical_json(&generate_mcp_schema(&config2)).expect("valid JSON serialization");
 
         assert_eq!(json1, json2, "Same config should produce identical JSON");
     }

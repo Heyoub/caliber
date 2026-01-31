@@ -8,7 +8,64 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 ## [Unreleased] (pre-0.6.0)
 
+### Changed
+
+#### Technical Debt Cleanup (v0.4.7)
+- **unwrap() conversion**: Converted 400+ unwrap() calls to proper error handling
+  - caliber-storage: 136 unwraps → proper Result propagation with StorageError::LockPoisoned
+  - caliber-core: Lock/conversion unwraps → CaliberError variants
+  - caliber-dsl: Parser safety improvements with expect() messages
+  - caliber-pg: Verified all 208 unwraps are in test code only (0 in production)
+- **Property test generators fixed**: Updated markdown_property_tests.rs to match new schema formats
+  - Action printing now uses YAML format (`type: summarize, target: X`)
+  - Injection mode uses colon format (`topk:5` vs `topk(5)`)
+  - Memory-injection pairing ensures valid ASTs (injections reference existing memories)
+  - Definition comparison by name instead of order for deterministic round-trips
+- **Config refactor**: Made hardcoded values configurable via environment variables
+  - EndpointsConfig: API base URL, domain, docs URL, third-party service URLs
+  - ContextConfig: Token budgets, max notes/artifacts/turns/summaries
+  - WebhookConfig: Signature tolerance settings
+  - IdempotencySettings: TTL, max body size, require key
+  - All with sensible defaults and from_env() constructors
+- **Stale reference cleanup**: Removed caliber-tui references from build artifacts
+  - Docker files: removed COPY commands that would fail builds
+  - docs/graphs/*.json: removed 178 stale type signature entries
+  - Updated crate counts in spec documentation
+- **Type system improvements**:
+  - SendMessageRequest now uses `MessageType` and `MessagePriority` enums (was String)
+  - Serde automatically validates message types during deserialization
+  - Consistent with MessageResponse which already used enums
+- **Context package extension**: Added conversation_turns and trajectory_hierarchy fields
+  - with_turns() and with_hierarchy() builder methods
+  - Conversion functions for API response types to core types
+  - Enables full context assembly for LLM interactions
+- **Security enhancement**: JWT secret validation warning in development mode
+  - Logs warning when using insecure default secret
+  - Warns about short secrets (< 32 chars)
+  - Errors remain for production environment
+
+### Removed
+
+#### TUI Removal (v0.4.6)
+- **caliber-tui crate deleted**: Terminal UI was a thin wrapper (~4,500 lines) with zero unique business logic
+  - All TUI functionality was just rendering API responses in ratatui
+  - No features lost: TypeScript SDK provides complete programmatic access
+  - Reduces CI time by eliminating TUI tests and property tests
+  - Removes ~4,500 lines of maintenance burden
+  - Dependencies removed: ratatui, crossterm, tui-textarea, reqwest, tokio-tungstenite
+- **Documentation cleaned**: Removed TUI references from README, AGENTS.md, DEPENDENCY_GRAPH.md, issue templates, and PR template
+
 ### Added
+
+#### Markdown-Based Configuration (v0.4.6)
+- **Custom DSL replaced with Markdown**: Config files now use YAML frontmatter in fenced code blocks
+  - All 8 config types supported: Agent, Adapter, Memory, Policy, Injection, Tool, Prompt, Pack
+  - `markdown_printer.rs` for pretty-printing configs back to Markdown format
+  - Duplicate detection with detailed error messages
+  - Comprehensive test suites: `markdown_config_tests.rs`, `markdown_property_tests.rs`
+- **3,762 lines of custom DSL parser deleted**: Replaced with battle-tested `serde_yaml` + Markdown fence parsing
+- **API integration**: DSL routes updated to parse/validate/deploy Markdown configs
+- **Round-trip property tests**: Ensure parse → print → parse produces identical ASTs
 
 #### Production Hardening (v0.4.5)
 - **Hash Chain Verification**: Event tamper-evidence using Blake3
@@ -54,7 +111,7 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 #### API & HATEOAS
 - HATEOAS links added to trajectory/scope/artifact/note responses and tests
-- TUI API client link following via `follow_link`, with link handling tests
+- API client link following via `follow_link`, with link handling tests
 - Unified links field on API responses for consistent navigation
 
 #### DSL & Pack
@@ -75,7 +132,6 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - cargo-deny licenses include AGPL-3.0-or-later and MIT-0; unmaintained advisories downgraded to warnings
 - Clippy priority sorting warnings resolved using `sort_by_key` with `Reverse`
 - WorkOS webhook signature verification endpoint (feature-gated)
-- TUI error reporting enhanced with color-eyre
 - Hardened SDK WebSocket logging to avoid format-string issues
 
 #### Documentation

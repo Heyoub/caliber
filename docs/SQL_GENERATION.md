@@ -10,7 +10,7 @@ The **repo-checked-in SQL files are authoritative**. Generated SQL from `cargo p
 
 | File | Purpose |
 |------|---------|
-| `caliber-pg/sql/caliber_pg--{version}.sql` | Versioned extension SQL (e.g., `caliber_pg--0.4.4.sql`). Contains the complete schema for `CREATE EXTENSION caliber_pg`. |
+| `caliber-pg/sql/caliber_pg--{version}.sql` | Versioned extension SQL (e.g., `caliber_pg--0.4.7.sql`). Contains the complete schema for `CREATE EXTENSION caliber_pg`. |
 | `caliber-pg/sql/caliber_init.sql` | Bootstrap schema. Creates core tables (`caliber_config`, `caliber_schema_version`) and default configuration. |
 | `caliber-pg/sql/migrations/V*` | Incremental migrations (e.g., `V2__tenant_isolation.sql`, `V4__dsl_config.sql`). Applied in version order. |
 
@@ -20,7 +20,7 @@ The extension version comes from `Cargo.toml`:
 
 ```toml
 [workspace.package]
-version = "0.4.4"
+version = "0.4.7"
 ```
 
 The control file (`caliber-pg/caliber_pg.control`) uses `@CARGO_VERSION@` placeholder:
@@ -148,7 +148,7 @@ sudo cargo pgrx install --package caliber-pg \
   --pg-config /usr/lib/postgresql/18/bin/pg_config
 
 # Copy versioned SQL (if not copied by pgrx)
-VERSION=0.4.4
+VERSION=0.4.7
 sudo cp caliber-pg/sql/caliber_pg--${VERSION}.sql \
   /usr/share/postgresql/18/extension/
 ```

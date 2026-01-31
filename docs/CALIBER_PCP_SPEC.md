@@ -1,14 +1,14 @@
-# CALIBER + PCP: Unified Specification v0.2.1
+# CALIBER + PCP: Unified Specification v0.4.7
 
 ## Meta
 
 ```yaml
-spec_version: "0.2.1"
+spec_version: "0.4.7"
 target_reader: "AI Agent / LLM implementing this system"
 human_bureaucracy: false
 implementation_ready: true
 architecture: "Multi-crate ECS (Entity-Component-System)"
-language: "Rust (pgrx) + CALIBER DSL"
+language: "Rust (pgrx) + Markdown+YAML DSL"
 sql_usage: "human debug interface only, NOT in hot path"
 philosophy: "NOTHING HARD-CODED. This is a FRAMEWORK, not a product."
 ```
@@ -66,27 +66,27 @@ The CALIBER DSL compiles to **Rust code using pgrx**, which talks directly to:
 CALIBER uses **compositional architecture** over inheritance. Rust's functional/trait-based design enables ECS-style separation:
 
 ```
-caliber-core/        # ENTITIES: Data structures only (Trajectory, Scope, Artifact, Note)
-                     # No behavior, just types. Pure data.
+caliber-core/        # ENTITIES: Data structures, VAL traits, agent types
                      # Includes context assembly module (context.rs)
+                     # Includes LLM traits (llm.rs) - provider-agnostic
 
-caliber-storage/     # COMPONENT: Storage trait + pgrx implementation
-                     # Defines StorageTrait, implements via direct heap access
+caliber-dsl/         # SYSTEM: Markdown+YAML DSL parser → CaliberAst
+                     # Compiles agent packs with compose_pack()
 
 caliber-pcp/         # COMPONENT: Validation, checkpoints, recovery
                      # PCP harm reduction as composable component
 
-caliber-llm/         # COMPONENT: VAL (Vector Abstraction Layer) + summarization traits
-                     # Provider-agnostic traits, user provides implementation
+caliber-storage/     # COMPONENT: Storage trait + mock implementation
+                     # Defines StorageTrait for pluggable backends
 
-caliber-agents/      # COMPONENT: Multi-agent coordination (full support)
-                     # Locks, messages, delegation, handoffs
+caliber-pg/          # SYSTEM: PostgreSQL extension (pgrx)
+                     # Direct heap/index access, wires storage to Postgres
 
-caliber-dsl/         # SYSTEM: DSL parser → CaliberConfig struct
-                     # Separate crate, generates configuration, no runtime
+caliber-api/         # SYSTEM: REST/gRPC/WebSocket API server
+                     # Routes, handlers, provider orchestration
 
-caliber-pg/          # SYSTEM: The actual pgrx extension
-                     # Wires all components together, runs in Postgres
+caliber-test-utils/  # DEV: Test generators, fixtures, property tests
+                     # Shared testing infrastructure
 ```
 
 **Composition over inheritance:**
@@ -780,10 +780,47 @@ are always explicit; there are no implicit runtime defaults.
 
 ## 2. DSL SPECIFICATION
 
-### 2.1 Grammar (EBNF)
+> **Note (v0.4.7):** The DSL has transitioned from custom EBNF syntax to **Markdown+YAML** format.
+> Agent packs now use TOML manifests (`caliber.toml`) plus Markdown files for agent prompts.
+> The conceptual model (memory types, policies, injections) remains the same.
+> See `caliber-dsl/src/pack/` for the current implementation using `compose_pack()`.
+
+### 2.1 Pack Structure (Markdown+YAML)
+
+Agent packs consist of:
+- **`caliber.toml`** - TOML manifest defining agents, toolsets, adapters, providers
+- **`*.md` files** - Markdown agent prompts with YAML frontmatter and fence blocks
+
+```toml
+# caliber.toml - Pack manifest
+[meta]
+version = "1.0"
+project = "my-agent-pack"
+
+[agents.research_agent]
+prompt_md = "agents/research.md"
+toolsets = ["web", "code"]
+profile = "default"
+
+[profiles.default]
+format = "markdown"
+adapter = "primary"
+
+[adapters.primary]
+adapter_type = "postgres"
+connection = "postgresql://localhost/caliber"
+
+[providers.openai]
+provider_type = "openai"
+model = "gpt-4"
+```
+
+### 2.2 Legacy Grammar Reference (EBNF)
+
+The following EBNF describes the conceptual model. In v0.4.7+, this is expressed via TOML+Markdown rather than custom syntax.
 
 ```ebnf
-(* CALIBER DSL Grammar *)
+(* CALIBER DSL Grammar - Conceptual Reference *)
 
 config          = "caliber" ":" version "{" definition* "}" ;
 version         = STRING ;
@@ -872,7 +909,9 @@ json_value      = STRING | INTEGER | FLOAT | "true" | "false" | "null" | json_ob
 json_array      = "[" (json_value ("," json_value)*)? "]" ;
 ```
 
-### 2.2 Example DSL Configuration
+### 2.3 Legacy DSL Example (Conceptual Reference)
+
+The following illustrates the conceptual model using the legacy syntax. In v0.4.7+, equivalent configuration is expressed via TOML manifests.
 
 ```caliber
 caliber: "0.1.0" {
@@ -3209,51 +3248,53 @@ caliber/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
-│       ├── types.rs                # Entity types
-│       ├── error.rs                # CaliberError
+│       ├── entities.rs             # Core entity types (Trajectory, Scope, etc.)
+│       ├── enums.rs                # Status/type enums
+│       ├── error.rs                # CaliberError, CaliberResult
 │       ├── config.rs               # CaliberConfig
-│       └── context.rs              # Context assembly
-├── caliber-storage/
+│       ├── context.rs              # Context assembly
+│       ├── llm.rs                  # VAL traits (EmbeddingProvider, etc.)
+│       └── agent.rs                # Agent types, multi-agent coordination
+├── caliber-dsl/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
-│       └── traits.rs               # StorageTrait
+│       ├── pack/                   # Pack composition
+│       │   ├── mod.rs
+│       │   ├── schema.rs           # TOML manifest schema
+│       │   ├── markdown.rs         # Markdown+YAML parser
+│       │   └── ir.rs               # Intermediate representation
+│       ├── compiler/               # AST compilation
+│       └── config/                 # Config parsing
 ├── caliber-pcp/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
 │       ├── validator.rs            # PCP validation
 │       └── checkpoint.rs           # Checkpoint/recovery
-├── caliber-llm/
+├── caliber-storage/
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs
-│       ├── provider.rs             # EmbeddingProvider, SummarizationProvider traits
-│       └── cache.rs                # Embedding cache
-├── caliber-agents/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs
-│       ├── registry.rs             # Agent registration
-│       ├── locks.rs                # Distributed locks
-│       ├── messages.rs             # Message passing
-│       ├── delegation.rs           # Task delegation
-│       └── handoff.rs              # Agent handoffs
-├── caliber-dsl/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs
-│       ├── lexer.rs
-│       ├── parser.rs
-│       └── codegen.rs              # Generates CaliberConfig
+│       ├── lib.rs                  # StorageTrait + mock impl
+│       └── event_dag.rs            # Event DAG for causal ordering
 ├── caliber-pg/
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs                  # Extension entry, wires all components
-│       ├── storage_impl.rs         # StorageTrait impl via pgrx
-│       └── functions.rs            # pg_extern functions
-└── sql/
-    └── bootstrap.sql               # DDL for all tables
+│       ├── lib.rs                  # pgrx extension entry
+│       └── *_heap.rs               # Direct heap access per entity
+├── caliber-api/
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs
+│       ├── routes/                 # REST/gRPC/WebSocket handlers
+│       ├── providers/              # LLM provider orchestration
+│       └── components/             # Entity CRUD components
+├── caliber-test-utils/
+│   ├── Cargo.toml
+│   └── src/
+│       └── lib.rs                  # Test generators, fixtures
+└── examples/
+    └── agents-pack/                # Example agent pack
 ```
 
 ### 10.2 Workspace Cargo.toml (Root)
@@ -3265,12 +3306,12 @@ caliber/
 resolver = "2"
 members = [
     "caliber-core",
-    "caliber-storage",
-    "caliber-pcp",
-    "caliber-llm",
-    "caliber-agents",
     "caliber-dsl",
+    "caliber-pcp",
+    "caliber-storage",
     "caliber-pg",
+    "caliber-api",
+    "caliber-test-utils",
 ]
 
 [workspace.package]
@@ -3336,35 +3377,6 @@ chrono.workspace = true
 ```
 
 ```toml
-# caliber-llm/Cargo.toml
-[package]
-name = "caliber-llm"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-caliber-core = { path = "../caliber-core" }
-reqwest = { version = "0.11", features = ["blocking", "json"] }
-serde.workspace = true
-serde_json.workspace = true
-```
-
-```toml
-# caliber-agents/Cargo.toml
-[package]
-name = "caliber-agents"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-caliber-core = { path = "../caliber-core" }
-caliber-storage = { path = "../caliber-storage" }
-uuid.workspace = true
-chrono.workspace = true
-serde.workspace = true
-```
-
-```toml
 # caliber-dsl/Cargo.toml
 [package]
 name = "caliber-dsl"
@@ -3373,7 +3385,9 @@ edition.workspace = true
 
 [dependencies]
 caliber-core = { path = "../caliber-core" }
-# DSL is standalone - only depends on core types
+toml = "0.8"
+serde.workspace = true
+serde_json.workspace = true
 ```
 
 ```toml
@@ -3387,12 +3401,10 @@ edition.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-# All caliber crates
 caliber-core = { path = "../caliber-core" }
-caliber-storage = { path = "../caliber-storage" }
+caliber-dsl = { path = "../caliber-dsl" }
 caliber-pcp = { path = "../caliber-pcp" }
-caliber-llm = { path = "../caliber-llm" }
-caliber-agents = { path = "../caliber-agents" }
+caliber-storage = { path = "../caliber-storage" }
 
 # pgrx for Postgres extension
 pgrx = "0.16"
@@ -3406,35 +3418,72 @@ default = ["pg18"]
 pg18 = ["pgrx/pg18"]
 ```
 
+```toml
+# caliber-api/Cargo.toml
+[package]
+name = "caliber-api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliber-core = { path = "../caliber-core" }
+caliber-dsl = { path = "../caliber-dsl" }
+caliber-pcp = { path = "../caliber-pcp" }
+caliber-storage = { path = "../caliber-storage" }
+
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.4"
+uuid.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+caliber-test-utils = { path = "../caliber-test-utils" }
+```
+
+```toml
+# caliber-test-utils/Cargo.toml
+[package]
+name = "caliber-test-utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliber-core = { path = "../caliber-core" }
+caliber-dsl = { path = "../caliber-dsl" }
+caliber-pcp = { path = "../caliber-pcp" }
+caliber-storage = { path = "../caliber-storage" }
+
+proptest = "1.0"
+uuid.workspace = true
+```
+
 ### 10.4 Dependency Graph
 
 ```
 ┌─────────────────┐
-│  caliber-core   │  ← No internal deps (just std + uuid/chrono/serde)
+│  caliber-core   │  ← Entities, VAL traits, agent types, context assembly
 └────────┬────────┘
          │
-    ┌────┴────┬──────────────┬─────────────┐
-    │         │              │             │
-    ▼         ▼              ▼             ▼
-┌────────┐ ┌────────┐ ┌──────────┐ ┌─────────────┐
-│storage │ │  llm   │ │   dsl    │ │   agents    │
-│ trait  │ │ traits │ │ (parser) │ │  (types)    │
-└────┬───┘ └────┬───┘ └──────────┘ └──────┬──────┘
-     │          │                         │
-     │    ┌─────┴─────┐                   │
-     │    │           │                   │
-     ▼    ▼           ▼                   │
-┌─────────────┐ ┌──────────┐              │
-│   context   │ │   pcp    │              │
-│  assembler  │ │validator │              │
-└──────┬──────┘ └────┬─────┘              │
-       │             │                    │
-       └──────┬──────┴────────────────────┘
-              │
-              ▼
-      ┌──────────────┐
-      │  caliber-pg  │  ← pgrx extension, wires everything
-      └──────────────┘
+    ┌────┴────┬──────────────┐
+    │         │              │
+    ▼         ▼              ▼
+┌────────┐ ┌──────────┐ ┌──────────┐
+│storage │ │   dsl    │ │   pcp    │
+│ trait  │ │ (parser) │ │validator │
+└────┬───┘ └────┬─────┘ └────┬─────┘
+     │          │             │
+     └──────────┼─────────────┘
+                │
+    ┌───────────┼───────────────┐
+    │           │               │
+    ▼           ▼               ▼
+┌──────────┐ ┌──────────┐ ┌─────────────┐
+│caliber-pg│ │caliber-  │ │caliber-test │
+│(pgrx ext)│ │   api    │ │   -utils    │
+└──────────┘ └──────────┘ └─────────────┘
 ```
 
 ### 10.5 Build Commands
@@ -5301,16 +5350,13 @@ pub enum ConfigError {
 
 | Concept | Trait Name | Location |
 |---------|------------|----------|
-| Embedding | `EmbeddingProvider` | caliber-llm |
-| Summarization | `SummarizationProvider` | caliber-llm |
+| Embedding | `EmbeddingProvider` | caliber-core::llm |
+| Summarization | `SummarizationProvider` | caliber-core::llm |
 | Storage | `CaliberStorage` | caliber-storage |
 | Context Assembly | `ContextAssembler` | caliber-core::context (struct, not trait) |
 | PCP Validation | `PCPValidator` | caliber-pcp (struct, not trait) |
-
-**Deprecated names (do not use):**
-
-- ~~`EmbeddingProvider`~~ → use `EmbeddingProvider`
-- ~~`SummarizationProvider`~~ → use `SummarizationProvider`
+| Pack Composition | `compose_pack` | caliber-dsl::pack (function) |
+| API Routes | `create_api_router` | caliber-api (function) |
 
 ---
 
@@ -5326,7 +5372,7 @@ This document is complete. An AI agent with:
 
 **Architecture summary:**
 
-- Multi-crate ECS: core, storage, context, pcp, llm, agents, dsl, pg
+- Multi-crate ECS: core, dsl, pcp, storage, pg, api, test-utils
 - Nothing hard-coded - all values from CaliberConfig
 - NO SQL in hot path (direct pgrx heap/index access)
 - Rust for all runtime code

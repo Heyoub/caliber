@@ -22,7 +22,6 @@ body:
         - caliber-dsl (DSL syntax, parser)
         - caliber-pg (PostgreSQL extension, heap operations)
         - caliber-api (REST/gRPC/WebSocket endpoints)
-        - caliber-tui (Terminal UI, views)
         - Build system / CI/CD
         - Documentation
         - New component

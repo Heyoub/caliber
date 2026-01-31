@@ -490,7 +490,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("create_trajectory should succeed")
         .into_response();
 
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -500,7 +500,7 @@ mod tests {
             .db
             .get::<TrajectoryResponse>(created.trajectory_id, ctx.auth.tenant_id)
             .await
-            .unwrap();
+            .expect("get trajectory should succeed");
         assert!(fetched.is_some());
 
         let list_response = list_trajectories(
@@ -515,7 +515,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap()
+        .expect("list_trajectories should succeed")
         .into_response();
 
         assert_eq!(list_response.status(), StatusCode::OK);
@@ -528,6 +528,6 @@ mod tests {
         ctx.db
             .delete::<TrajectoryResponse>(created.trajectory_id, ctx.auth.tenant_id)
             .await
-            .unwrap();
+            .expect("delete trajectory should succeed");
     }
 }

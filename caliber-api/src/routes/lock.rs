@@ -326,7 +326,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("register_agent should succeed")
         .into_response();
 
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -389,7 +389,7 @@ mod tests {
             Json(acquire_req),
         )
         .await
-        .unwrap()
+        .expect("acquire_lock should succeed")
         .into_response();
         assert_eq!(acquire_response.status(), StatusCode::CREATED);
         let lock: LockResponse = response_json(acquire_response).await;
@@ -397,7 +397,7 @@ mod tests {
 
         let list_response = list_locks(State(ctx.db.clone()), AuthExtractor(ctx.auth.clone()))
             .await
-            .unwrap()
+            .expect("list_locks should succeed")
             .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListLocksResponse = response_json(list_response).await;
@@ -412,7 +412,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap()
+        .expect("extend_lock should succeed")
         .into_response();
         assert_eq!(extend_response.status(), StatusCode::OK);
         let extended: LockResponse = response_json(extend_response).await;
@@ -428,7 +428,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap();
+        .expect("release_lock should succeed");
         assert_eq!(release_status, StatusCode::NO_CONTENT);
     }
 }

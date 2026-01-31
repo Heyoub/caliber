@@ -1664,7 +1664,7 @@ mod tests {
             MessageType::Heartbeat,
         ] {
             let s = mt.as_db_str();
-            let parsed = MessageType::from_db_str(s).unwrap();
+            let parsed = MessageType::from_db_str(s).expect("MessageType roundtrip should succeed");
             assert_eq!(mt, parsed);
         }
     }
@@ -1678,7 +1678,8 @@ mod tests {
             MessagePriority::Critical,
         ] {
             let s = mp.as_db_str();
-            let parsed = MessagePriority::from_db_str(s).unwrap();
+            let parsed =
+                MessagePriority::from_db_str(s).expect("MessagePriority roundtrip should succeed");
             assert_eq!(mp, parsed);
         }
     }
@@ -1719,7 +1720,7 @@ mod tests {
         goal.start();
         assert_eq!(goal.status, GoalStatus::Active);
         assert!(goal.started_at.is_some());
-        assert!(goal.started_at.unwrap() >= before_start);
+        assert!(goal.started_at.expect("started_at should be set after start") >= before_start);
 
         goal.achieve();
         assert_eq!(goal.status, GoalStatus::Achieved);
@@ -1791,7 +1792,7 @@ mod tests {
         plan.start();
         assert_eq!(plan.status, PlanStatus::InProgress);
         assert!(plan.started_at.is_some());
-        assert!(plan.started_at.unwrap() >= before_start);
+        assert!(plan.started_at.expect("started_at should be set after start") >= before_start);
 
         let cost = PlanCost::new(10, 100);
         plan.complete(Some(cost.clone()));
@@ -1987,37 +1988,44 @@ mod tests {
 
     #[test]
     fn test_message_type_parsing_variants_and_errors() {
-        let underscored = MessageType::from_db_str("task_delegation").unwrap();
+        let underscored = MessageType::from_db_str("task_delegation")
+            .expect("underscore variant should parse");
         assert_eq!(underscored, MessageType::TaskDelegation);
 
-        let mixed = MessageType::from_db_str("Coordination_Signal").unwrap();
+        let mixed = MessageType::from_db_str("Coordination_Signal")
+            .expect("mixed case underscore variant should parse");
         assert_eq!(mixed, MessageType::CoordinationSignal);
 
-        let err = MessageType::from_db_str("unknown_type").unwrap_err();
+        let err = MessageType::from_db_str("unknown_type")
+            .expect_err("unknown type should fail to parse");
         assert_eq!(err.0, "unknown_type");
     }
 
     #[test]
     fn test_message_priority_parsing_variants_and_errors() {
-        let high = MessagePriority::from_db_str("HIGH").unwrap();
+        let high = MessagePriority::from_db_str("HIGH").expect("uppercase should parse");
         assert_eq!(high, MessagePriority::High);
 
-        let normal = MessagePriority::from_db_str("normal").unwrap();
+        let normal = MessagePriority::from_db_str("normal").expect("lowercase should parse");
         assert_eq!(normal, MessagePriority::Normal);
 
-        let err = MessagePriority::from_db_str("urgent").unwrap_err();
+        let err = MessagePriority::from_db_str("urgent")
+            .expect_err("unknown priority should fail to parse");
         assert_eq!(err.0, "urgent");
     }
 
     #[test]
     fn test_handoff_reason_parsing_aliases() {
-        let failed = HandoffReason::from_db_str("failed").unwrap();
+        let failed =
+            HandoffReason::from_db_str("failed").expect("failed alias should parse to Failure");
         assert_eq!(failed, HandoffReason::Failure);
 
-        let load = HandoffReason::from_db_str("load_balancing").unwrap();
+        let load = HandoffReason::from_db_str("load_balancing")
+            .expect("underscore variant should parse");
         assert_eq!(load, HandoffReason::LoadBalancing);
 
-        let err = HandoffReason::from_db_str("nonsense").unwrap_err();
+        let err = HandoffReason::from_db_str("nonsense")
+            .expect_err("unknown reason should fail to parse");
         assert_eq!(err.0, "nonsense");
     }
 
