@@ -8,7 +8,6 @@ members = [
     "caliber-pg",
     "caliber-api",
     "caliber-test-utils",
-    "caliber-tui",
 ]
 
 [workspace.package]
@@ -50,14 +49,9 @@ tonic = "0.12"
 prost = "0.13"
 tonic-build = "0.12"
 
-# TUI dependencies
-ratatui = "0.30"
-crossterm = "0.29"
+# Async runtime
 tokio = "1.42"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio-tungstenite = "0.28"
 futures-util = "0.3"
-tui-textarea = "0.7"
 toml = "0.8"
 
 # Internal crates

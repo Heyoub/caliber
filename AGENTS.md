@@ -19,7 +19,6 @@ This repo is designed for agent-driven iteration with CI as the source of truth.
 - Core primitives: `caliber-core/` (entities, events, effects)
 - Storage: `caliber-storage/` (EventDag, cache, hybrid LMDB+cold storage)
 - PostgreSQL extension: `caliber-pg/` (pgrx-based extension)
-- TUI: `caliber-tui/` (terminal interface with ratatui)
 - DSL: `caliber-dsl/` (parser for .caliber config files)
 - Test utils: `caliber-test-utils/` (fixtures, generators)
 - Landing site: `landing/` (Astro + Svelte marketing site)

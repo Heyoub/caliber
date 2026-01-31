@@ -19,6 +19,59 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### January 31, 2026 — TUI Removal + Markdown DSL Refactor (v0.4.6)
+
+**Completed:**
+
+- ✅ **caliber-tui crate removed**: Deleted entire TUI crate from workspace
+  - Analysis showed TUI was ~4,500 lines of pure presentation code
+  - Zero unique business logic — just HTTP client + ratatui rendering
+  - TypeScript SDK already provides complete programmatic access
+  - Decision: Remove technical debt disguised as a feature
+  - Workspace reduced from 8 to 7 Rust crates
+
+- ✅ **Documentation cleanup**:
+  - Removed TUI from workspace Cargo.toml members
+  - Removed TUI dependencies (ratatui, crossterm, tui-textarea)
+  - Updated README.md project structure
+  - Updated AGENTS.md repo structure
+  - Updated docs/DEPENDENCY_GRAPH.md diagram
+  - Updated .github/ISSUE_TEMPLATE/bug_report.yml
+  - Updated .github/ISSUE_TEMPLATE/feature_request.yml
+  - Updated .github/PULL_REQUEST_TEMPLATE.md
+  - Deleted .kiro/specs/caliber-tui/ spec files
+  - Deleted docs/TUI_ENDPOINT_COVERAGE.md
+
+- ✅ **Markdown-based configuration refactor**:
+  - Custom DSL parser (3,762 lines) replaced with Markdown + serde_yaml
+  - All 8 config types now use YAML in fenced code blocks
+  - Added `markdown_printer.rs` with pretty-printing for all config types
+  - Added duplicate detection with detailed error messages
+  - API DSL routes updated for Markdown parsing
+  - 174 compile errors resolved during migration
+  - Comprehensive test suites added (1,595 lines of new tests)
+
+**Architecture Decision:**
+
+The TUI was "beautiful technical debt" — a demo-quality terminal interface that:
+1. Duplicated all functionality already in the TypeScript SDK
+2. Added CI overhead with slow property tests
+3. Created maintenance burden without user value
+4. Blocked shipping by failing CI
+
+The Markdown refactor replaces a custom parser with standard tooling:
+1. YAML parsing via battle-tested serde_yaml
+2. Markdown fence extraction is ~100 lines vs 3,762 line custom lexer/parser
+3. Config files are now readable in any Markdown viewer
+4. IDE support comes free (YAML language servers)
+
+**Files Deleted:**
+
+- `caliber-tui/` (entire directory, ~4,500 lines)
+- `.kiro/specs/caliber-tui/` (spec files)
+- `docs/TUI_ENDPOINT_COVERAGE.md`
+- DSL lexer/parser modules (~3,762 lines, replaced by Markdown)
+
 ### January 29, 2026 — Production Hardening (v0.4.5)
 
 **Completed:**
