@@ -145,12 +145,6 @@ impl From<crate::compiler::CompileError> for PackError {
     }
 }
 
-impl From<crate::config::ConfigError> for PackError {
-    fn from(err: crate::config::ConfigError) -> Self {
-        PackError::Validation(err.to_string())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct MarkdownError {
     pub file: String,
