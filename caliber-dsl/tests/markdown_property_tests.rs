@@ -114,38 +114,90 @@ fn arb_policy_def() -> impl Strategy<Value = PolicyDef> {
         })
 }
 
-/// Generate arbitrary injection definition
-fn arb_injection_def() -> impl Strategy<Value = InjectionDef> {
+/// Generate arbitrary memory definition
+#[allow(dead_code)]
+fn arb_memory_def() -> impl Strategy<Value = MemoryDef> {
+    "[a-zA-Z][a-zA-Z0-9_]*".prop_map(|name| MemoryDef {
+        name,
+        memory_type: MemoryType::Working,
+        retention: Retention::Session,
+        lifecycle: Lifecycle::Explicit,
+        parent: None,
+        schema: vec![],
+        indexes: vec![],
+        inject_on: vec![],
+        artifacts: vec![],
+        modifiers: vec![],
+    })
+}
+
+/// Generate arbitrary injection definition with a matching memory
+fn arb_injection_with_memory() -> impl Strategy<Value = (MemoryDef, InjectionDef)> {
     (
-        "[a-z_]+",
+        "[a-z][a-z0-9_]*",
         "[a-z_]+",
         arb_injection_mode(),
-        0..1000i32,
+        0..899i32,  // Pack injections max priority is 899
     )
-        .prop_map(|(source, target, mode, priority)| InjectionDef {
-            source,
-            target,
-            mode,
-            priority,
-            max_tokens: None,
-            filter: None,
+        .prop_map(|(source, target, mode, priority)| {
+            let memory = MemoryDef {
+                name: source.clone(),
+                memory_type: MemoryType::Working,
+                retention: Retention::Session,
+                lifecycle: Lifecycle::Explicit,
+                parent: None,
+                schema: vec![],
+                indexes: vec![],
+                inject_on: vec![],
+                artifacts: vec![],
+                modifiers: vec![],
+            };
+            let injection = InjectionDef {
+                source,
+                target,
+                mode,
+                priority,
+                max_tokens: None,
+                filter: None,
+            };
+            (memory, injection)
         })
 }
 
 /// Generate arbitrary CaliberAst with 1-3 definitions
+/// Note: Injections are paired with memories to satisfy validation
 fn arb_caliber_ast() -> impl Strategy<Value = CaliberAst> {
-    prop::collection::vec(
+    // Generate non-injection definitions
+    let non_injection_defs = prop::collection::vec(
         prop_oneof![
             arb_adapter_def().prop_map(Definition::Adapter),
             arb_provider_def().prop_map(Definition::Provider),
             arb_policy_def().prop_map(Definition::Policy),
-            arb_injection_def().prop_map(Definition::Injection),
         ],
-        1..4,
-    )
-    .prop_map(|definitions| CaliberAst {
-        version: "1.0".to_string(),
-        definitions,
+        0..3,
+    );
+
+    // Optionally include injection with its required memory
+    let maybe_injection = prop::option::of(arb_injection_with_memory());
+
+    (non_injection_defs, maybe_injection).prop_map(|(mut defs, injection_opt)| {
+        if let Some((memory, injection)) = injection_opt {
+            defs.push(Definition::Memory(memory));
+            defs.push(Definition::Injection(injection));
+        }
+        // Ensure we have at least one definition
+        if defs.is_empty() {
+            defs.push(Definition::Adapter(AdapterDef {
+                name: "default".to_string(),
+                adapter_type: AdapterType::Memory,
+                connection: "mem://default".to_string(),
+                options: vec![],
+            }));
+        }
+        CaliberAst {
+            version: "1.0".to_string(),
+            definitions: defs,
+        }
     })
 }
 
@@ -229,31 +281,51 @@ proptest! {
         prop_assert_eq!(ast.version, ast_prime.version, "Version should be preserved");
         prop_assert_eq!(ast.definitions.len(), ast_prime.definitions.len(), "Number of definitions should match");
 
-        // Compare each definition
-        for (original, reparsed) in ast.definitions.iter().zip(ast_prime.definitions.iter()) {
-            match (original, reparsed) {
-                (Definition::Adapter(a1), Definition::Adapter(a2)) => {
-                    prop_assert_eq!(&a1.name, &a2.name, "Adapter name should be preserved");
+        // Compare definitions by type and name (order may differ due to sorting)
+        for original in ast.definitions.iter() {
+            match original {
+                Definition::Adapter(a1) => {
+                    let found = ast_prime.definitions.iter().find_map(|d| {
+                        if let Definition::Adapter(a) = d { if a.name == a1.name { Some(a) } else { None } } else { None }
+                    });
+                    let a2 = found.ok_or_else(|| TestCaseError::fail(format!("Adapter '{}' not found after round-trip", a1.name)))?;
                     prop_assert_eq!(a1.adapter_type, a2.adapter_type, "Adapter type should be preserved");
                     prop_assert_eq!(&a1.connection, &a2.connection, "Adapter connection should be preserved");
                 }
-                (Definition::Provider(p1), Definition::Provider(p2)) => {
-                    prop_assert_eq!(&p1.name, &p2.name, "Provider name should be preserved");
+                Definition::Provider(p1) => {
+                    let found = ast_prime.definitions.iter().find_map(|d| {
+                        if let Definition::Provider(p) = d { if p.name == p1.name { Some(p) } else { None } } else { None }
+                    });
+                    let p2 = found.ok_or_else(|| TestCaseError::fail(format!("Provider '{}' not found after round-trip", p1.name)))?;
                     prop_assert_eq!(p1.provider_type, p2.provider_type, "Provider type should be preserved");
                     prop_assert_eq!(&p1.model, &p2.model, "Provider model should be preserved");
                 }
-                (Definition::Policy(pol1), Definition::Policy(pol2)) => {
-                    prop_assert_eq!(&pol1.name, &pol2.name, "Policy name should be preserved");
+                Definition::Policy(pol1) => {
+                    let found = ast_prime.definitions.iter().find_map(|d| {
+                        if let Definition::Policy(p) = d { if p.name == pol1.name { Some(p) } else { None } } else { None }
+                    });
+                    let pol2 = found.ok_or_else(|| TestCaseError::fail(format!("Policy '{}' not found after round-trip", pol1.name)))?;
                     prop_assert_eq!(pol1.rules.len(), pol2.rules.len(), "Policy rules count should match");
                 }
-                (Definition::Injection(i1), Definition::Injection(i2)) => {
-                    prop_assert_eq!(&i1.source, &i2.source, "Injection source should be preserved");
-                    prop_assert_eq!(&i1.target, &i2.target, "Injection target should be preserved");
+                Definition::Injection(i1) => {
+                    let found = ast_prime.definitions.iter().find_map(|d| {
+                        if let Definition::Injection(i) = d { if i.source == i1.source && i.target == i1.target { Some(i) } else { None } } else { None }
+                    });
+                    let i2 = found.ok_or_else(|| TestCaseError::fail(format!("Injection source='{}' target='{}' not found after round-trip", i1.source, i1.target)))?;
                     prop_assert_eq!(&i1.mode, &i2.mode, "Injection mode should be preserved");
                     prop_assert_eq!(i1.priority, i2.priority, "Injection priority should be preserved");
                 }
+                Definition::Memory(m1) => {
+                    let found = ast_prime.definitions.iter().find_map(|d| {
+                        if let Definition::Memory(m) = d { if m.name == m1.name { Some(m) } else { None } } else { None }
+                    });
+                    let m2 = found.ok_or_else(|| TestCaseError::fail(format!("Memory '{}' not found after round-trip", m1.name)))?;
+                    prop_assert_eq!(&m1.memory_type, &m2.memory_type, "Memory type should be preserved");
+                    prop_assert_eq!(&m1.retention, &m2.retention, "Memory retention should be preserved");
+                    prop_assert_eq!(&m1.lifecycle, &m2.lifecycle, "Memory lifecycle should be preserved");
+                }
                 _ => {
-                    return Err(TestCaseError::fail("Definition type mismatch"));
+                    // Skip other definition types for now
                 }
             }
         }

@@ -125,7 +125,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("  - trigger: {}\n", trigger_to_string(&rule.trigger)));
             output.push_str("    actions:\n");
             for action in &rule.actions {
-                output.push_str(&format!("      - {}\n", action_to_string(action)));
+                output.push_str(&action_to_yaml(action));
             }
         }
         output.push_str("```\n\n");
@@ -325,6 +325,26 @@ fn modifier_to_string(m: &ModifierDef) -> String {
     }
 }
 
+/// Convert action to YAML format (for policy rules)
+fn action_to_yaml(a: &Action) -> String {
+    match a {
+        Action::Summarize(target) => format!("      - type: summarize\n        target: {}\n", target),
+        Action::ExtractArtifacts(target) => format!("      - type: extract_artifacts\n        target: {}\n", target),
+        Action::Checkpoint(target) => format!("      - type: checkpoint\n        target: {}\n", target),
+        Action::Prune { target, criteria } => {
+            format!("      - type: prune\n        target: {}\n        criteria: {}\n", target, filter_expr_to_string(criteria))
+        }
+        Action::Notify(msg) => format!("      - type: notify\n        target: {}\n", msg),
+        Action::Inject { target, mode } => {
+            format!("      - type: inject\n        target: {}\n        mode: {}\n", target, injection_mode_to_string(mode))
+        }
+        Action::AutoSummarize { source_level, target_level, create_edges } => {
+            format!("      - type: auto_summarize\n        source_level: {:?}\n        target_level: {:?}\n        create_edges: {}\n", source_level, target_level, create_edges)
+        }
+    }
+}
+
+#[allow(dead_code)]
 fn action_to_string(a: &Action) -> String {
     match a {
         Action::Summarize(target) => format!("summarize({})", target),
@@ -347,8 +367,8 @@ fn injection_mode_to_string(m: &InjectionMode) -> String {
     match m {
         InjectionMode::Full => "full".to_string(),
         InjectionMode::Summary => "summary".to_string(),
-        InjectionMode::TopK(k) => format!("topk({})", k),
-        InjectionMode::Relevant(threshold) => format!("relevant({})", threshold),
+        InjectionMode::TopK(k) => format!("topk:{}", k),
+        InjectionMode::Relevant(threshold) => format!("relevant:{}", threshold),
     }
 }
 
