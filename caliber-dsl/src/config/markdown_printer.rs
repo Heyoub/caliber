@@ -375,37 +375,23 @@ fn retention_to_string(r: &Retention) -> String {
 }
 
 /// Formats a Lifecycle value into its canonical string representation.
-
 ///
-
 /// The returned string is the canonical form used in the markdown output, e.g. `"explicit"` or
-
 /// `"auto_close(<trigger>)"` where `<trigger>` is the trigger's string form.
-
 ///
-
 /// # Examples
-
 ///
-
 /// ```
-
 /// use crate::config::ast::{Lifecycle, Trigger};
-
 /// // Explicit lifecycle
-
 /// let s = crate::config::markdown_printer::lifecycle_to_string(&Lifecycle::Explicit);
-
 /// assert_eq!(s, "explicit");
-
 ///
-
 /// // AutoClose lifecycle with a trigger
-
 /// let s2 = crate::config::markdown_printer::lifecycle_to_string(&Lifecycle::AutoClose(Trigger::TaskEnd));
-
 /// assert_eq!(s2, format!("auto_close({})", crate::config::markdown_printer::trigger_to_string(&Trigger::TaskEnd)));
-
+/// ```
+fn lifecycle_to_string(l: &Lifecycle) -> String {
 /// ```
 fn lifecycle_to_string(l: &Lifecycle) -> String {
     match l {
