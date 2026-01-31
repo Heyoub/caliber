@@ -14,6 +14,9 @@ _No unreleased changes._
 
 ## [0.5.0] - 2025-01-31
 
+### Fixed
+- **Workspace versions**: All internal crate dependencies now correctly reference 0.5.0
+
 ### Added
 
 #### Frontend Application & UI System
