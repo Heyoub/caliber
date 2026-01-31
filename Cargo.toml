@@ -55,12 +55,12 @@ futures-util = "0.3"
 toml = "0.8"
 
 # Internal crates
-caliber-core = { path = "caliber-core", version = "0.4.7" }
-caliber-storage = { path = "caliber-storage", version = "0.4.7" }
-caliber-pcp = { path = "caliber-pcp", version = "0.4.7" }
-caliber-dsl = { path = "caliber-dsl", version = "0.4.7" }
-caliber-test-utils = { path = "caliber-test-utils", version = "0.4.7" }
-caliber-api = { path = "caliber-api", version = "0.4.7" }
+caliber-core = { path = "caliber-core", version = "0.5.0" }
+caliber-storage = { path = "caliber-storage", version = "0.5.0" }
+caliber-pcp = { path = "caliber-pcp", version = "0.5.0" }
+caliber-dsl = { path = "caliber-dsl", version = "0.5.0" }
+caliber-test-utils = { path = "caliber-test-utils", version = "0.5.0" }
+caliber-api = { path = "caliber-api", version = "0.5.0" }
 
 # === PROFILE OPTIMIZATIONS ===
 
