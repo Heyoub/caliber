@@ -287,7 +287,16 @@ fn trigger_to_string(t: &Trigger) -> &'static str {
         Trigger::ScopeClose => "scope_close",
         Trigger::TurnEnd => "turn_end",
         Trigger::Manual => "manual",
-        Trigger::Schedule(_) => "schedule", // Simplified for now
+fn trigger_to_string(t: &Trigger) -> String {
+    match t {
+        Trigger::TaskStart => "task_start".to_string(),
+        Trigger::TaskEnd => "task_end".to_string(),
+        Trigger::ScopeClose => "scope_close".to_string(),
+        Trigger::TurnEnd => "turn_end".to_string(),
+        Trigger::Manual => "manual".to_string(),
+        Trigger::Schedule(s) => format!("schedule:{}", s),
+    }
+}
     }
 }
 
