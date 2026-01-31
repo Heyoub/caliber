@@ -3,6 +3,30 @@
 
 use crate::parser::ast::*;
 
+/// Quote a string value if it could be misinterpreted by YAML
+/// YAML special values: null, true, false, ~, -, numbers, strings starting with special chars
+fn yaml_safe_string(s: &str) -> String {
+    if s.is_empty() {
+        return "\"\"".to_string();
+    }
+
+    // Check if it needs quoting
+    let needs_quoting = s == "-" || s == "~" || s == "null" || s == "true" || s == "false"
+        || s.starts_with('-') || s.starts_with('!') || s.starts_with('&')
+        || s.starts_with('*') || s.starts_with('>') || s.starts_with('|')
+        || s.starts_with('{') || s.starts_with('[') || s.starts_with(':')
+        || s.starts_with('#') || s.starts_with('@') || s.starts_with('`')
+        || s.contains(':') || s.contains('\n')
+        || s.parse::<f64>().is_ok(); // Looks like a number
+
+    if needs_quoting {
+        // Use double quotes and escape any internal quotes
+        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        s.to_string()
+    }
+}
+
 /// Convert AST to canonical Markdown format
 pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     let mut output = String::new();
@@ -49,11 +73,11 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     for adapter in adapters {
         output.push_str(&format!("```adapter {}\n", adapter.name));
         output.push_str(&format!("adapter_type: {}\n", adapter_type_to_string(&adapter.adapter_type)));
-        output.push_str(&format!("connection: {}\n", adapter.connection));
+        output.push_str(&format!("connection: {}\n", yaml_safe_string(&adapter.connection)));
         if !adapter.options.is_empty() {
             output.push_str("options:\n");
             for (k, v) in &adapter.options {
-                output.push_str(&format!("  {}: {}\n", k, v));
+                output.push_str(&format!("  {}: {}\n", k, yaml_safe_string(v)));
             }
         }
         output.push_str("```\n\n");
@@ -63,11 +87,11 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str(&format!("```provider {}\n", provider.name));
         output.push_str(&format!("provider_type: {}\n", provider_type_to_string(&provider.provider_type)));
         output.push_str(&format!("api_key: {}\n", env_value_to_string(&provider.api_key)));
-        output.push_str(&format!("model: {}\n", provider.model));
+        output.push_str(&format!("model: {}\n", yaml_safe_string(&provider.model)));
         if !provider.options.is_empty() {
             output.push_str("options:\n");
             for (k, v) in &provider.options {
-                output.push_str(&format!("  {}: {}\n", k, v));
+                output.push_str(&format!("  {}: {}\n", k, yaml_safe_string(v)));
             }
         }
         output.push_str("```\n\n");
@@ -82,7 +106,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("    type: {}\n", field_type_to_string(&field.field_type)));
             output.push_str(&format!("    nullable: {}\n", field.nullable));
             if let Some(default) = &field.default {
-                output.push_str(&format!("    default: {}\n", default));
+                output.push_str(&format!("    default: {}\n", yaml_safe_string(default)));
             }
         }
         output.push_str(&format!("retention: {}\n", retention_to_string(&memory.retention)));
@@ -150,7 +174,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str("```cache\n");
         output.push_str(&format!("backend: {}\n", cache_backend_to_string(&cache.backend)));
         if let Some(path) = &cache.path {
-            output.push_str(&format!("path: {}\n", path));
+            output.push_str(&format!("path: {}\n", yaml_safe_string(path)));
         }
         output.push_str(&format!("size_mb: {}\n", cache.size_mb));
         output.push_str(&format!("default_freshness: {}\n", freshness_to_string(&cache.default_freshness)));
@@ -158,7 +182,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("max_entries: {}\n", max_entries));
         }
         if let Some(ttl) = &cache.ttl {
-            output.push_str(&format!("ttl: {}\n", ttl));
+            output.push_str(&format!("ttl: {}\n", yaml_safe_string(ttl)));
         }
         output.push_str("```\n\n");
     }
@@ -166,15 +190,16 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     for trajectory in trajectories {
         output.push_str(&format!("```trajectory {}\n", trajectory.name));
         if let Some(description) = &trajectory.description {
-            output.push_str(&format!("description: {}\n", description));
+            output.push_str(&format!("description: {}\n", yaml_safe_string(description)));
         }
-        output.push_str(&format!("agent_type: {}\n", trajectory.agent_type));
+        output.push_str(&format!("agent_type: {}\n", yaml_safe_string(&trajectory.agent_type)));
         output.push_str(&format!("token_budget: {}\n", trajectory.token_budget));
         output.push_str("memory_refs:\n");
         for mem_ref in &trajectory.memory_refs {
-            output.push_str(&format!("  - {}\n", mem_ref));
+            output.push_str(&format!("  - {}\n", yaml_safe_string(mem_ref)));
         }
         if let Some(metadata) = &trajectory.metadata {
+            // Serialize JSON value - it's already safe YAML if it's valid JSON
             output.push_str(&format!("metadata: {}\n", metadata));
         }
         output.push_str("```\n\n");
@@ -184,7 +209,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str(&format!("```agent {}\n", agent.name));
         output.push_str("capabilities:\n");
         for capability in &agent.capabilities {
-            output.push_str(&format!("  - {}\n", capability));
+            output.push_str(&format!("  - {}\n", yaml_safe_string(capability)));
         }
         output.push_str("constraints:\n");
         output.push_str(&format!("  max_concurrent: {}\n", agent.constraints.max_concurrent));
@@ -192,15 +217,15 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str("permissions:\n");
         output.push_str("  read:\n");
         for r in &agent.permissions.read {
-            output.push_str(&format!("    - {}\n", r));
+            output.push_str(&format!("    - {}\n", yaml_safe_string(r)));
         }
         output.push_str("  write:\n");
         for w in &agent.permissions.write {
-            output.push_str(&format!("    - {}\n", w));
+            output.push_str(&format!("    - {}\n", yaml_safe_string(w)));
         }
         output.push_str("  lock:\n");
         for l in &agent.permissions.lock {
-            output.push_str(&format!("    - {}\n", l));
+            output.push_str(&format!("    - {}\n", yaml_safe_string(l)));
         }
         output.push_str("```\n\n");
     }
@@ -227,7 +252,7 @@ fn provider_type_to_string(t: &ProviderType) -> &'static str {
 fn env_value_to_string(v: &EnvValue) -> String {
     match v {
         EnvValue::Env(var) => format!("env:{}", var),
-        EnvValue::Literal(s) => s.clone(),
+        EnvValue::Literal(s) => yaml_safe_string(s),
     }
 }
 
