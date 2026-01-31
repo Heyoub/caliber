@@ -8,6 +8,17 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 ## [Unreleased] (pre-0.6.0)
 
+### Added
+
+#### UI Package Completion (v0.4.8)
+- **Design tokens**: Added `@caliber/ui/tokens` CSS custom properties export
+  - Complete color palette (teal, coral, mint, lavender, purple, slate, navy, amber, pink)
+  - Semantic color aliases (bg-primary, text-primary, border-default, etc.)
+  - Typography tokens (font families, sizes, line heights)
+  - Spacing, border radius, shadows, transitions, and z-index scales
+- **Atoms export**: Enabled atoms components (Button, Badge, Spinner, Icon, Input, Toggle, Avatar, etc.)
+- **Molecules export**: Enabled molecules components (Dropdown, Modal, Accordion, Breadcrumb, etc.)
+
 ### Changed
 
 #### Technical Debt Cleanup (v0.4.7)
