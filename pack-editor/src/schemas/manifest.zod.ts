@@ -190,8 +190,7 @@ export const settingsSectionSchema = z
               embeddings: z.string(),
               format: z.string(),
             })
-          )
-          .optional(),
+          ),
       })
       .optional(),
   })
