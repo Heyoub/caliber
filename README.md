@@ -5,9 +5,10 @@
 
 A Postgres-native memory framework for AI agents, built as a multi-crate Rust workspace using pgrx.
 
-**Version:** 0.4.7
-**Architecture:** Multi-crate ECS (Entity-Component-System)
-**Language:** Rust (pgrx)
+**Version:** 0.5.0  
+**Status:** Production-ready  
+**Architecture:** Multi-crate ECS (Entity-Component-System)  
+**Language:** Rust + TypeScript
 
 ---
 
@@ -15,160 +16,100 @@ A Postgres-native memory framework for AI agents, built as a multi-crate Rust wo
 
 ### Prerequisites
 
-- **Rust** 1.75+ (install via [rustup](https://rustup.rs/))
-- **PostgreSQL** 18+ (for pgrx extension, optional for core development)
+- **Rust** 1.75+ ([install via rustup](https://rustup.rs/))
+- **PostgreSQL** 18+ (required - this is a Postgres-native framework)
+- **Bun** (for frontend development)
 - **Cargo** (comes with Rust)
 
-### WSL Notes (Windows)
-
-- Clone and run the repo from the Linux filesystem (e.g. `/home/<user>/projects/...`), not `/mnt/c`, for reliable file watching and performance.
-- Install build tooling and SSL headers if missing: `build-essential`, `pkg-config`, `libssl-dev` (and `clang` if you use crates that require it).
-- If file watching is flaky, increase inotify limits (e.g. `fs.inotify.max_user_watches`).
-
-### Build & Test (Without PostgreSQL)
+### 1. Clone & Install
 
 ```bash
-# Clone the repository (replace with your repo URL)
 git clone https://github.com/caliber-run/caliber.git
 cd caliber
 
-# Build all crates (excluding pgrx extension)
-cargo build --workspace --exclude caliber-pg
+# Install Rust dependencies
+cargo build --workspace
 
-# Run all tests (non-pgrx)
-TMPDIR=$PWD/target/tmp cargo test --workspace --exclude caliber-pg
-
-# Run with verbose output
-TMPDIR=$PWD/target/tmp cargo test --workspace --exclude caliber-pg -- --nocapture
-
-# Run clippy lints
-TMPDIR=$PWD/target/tmp cargo clippy --workspace --exclude caliber-pg -- -D warnings
-
-# (Optional) Install JS deps for SDK/landing work
+# Install JavaScript dependencies
 bun install
 ```
 
-## 🛡️ Security & Compliance Tooling
-
-- SBOM generation (SPDX JSON artifacts)
-- CodeQL (JS/TS) + Semgrep (multi-language) scanning
-- Gitleaks secret scanning
-- OSV vulnerability scanning
-- OpenSSF Scorecard
-
-See `docs/OPERATIONS_CHECKLIST.md` for operational guardrails.
-
-## 🤖 Agent Notes
-
-See `AGENTS.md` for repo-specific agent guidance and CI/log workflow.
-
-### Build with PostgreSQL (Full Extension)
+### 2. Setup PostgreSQL
 
 ```bash
-# Install pgrx CLI
+# Install pgrx CLI (first time only)
 cargo install cargo-pgrx
 
 # Initialize pgrx (downloads and configures PostgreSQL)
 cargo pgrx init
 
-# Build the extension
-cargo build -p caliber-pg --release
+# Install the caliber_pg extension
+cargo pgrx install --package caliber-pg
 
-# Package for deployment
-cargo pgrx package -p caliber-pg
-
-cargo pgrx test pg18 --package caliber-pg
-```
-
-Note: OpenAPI spec is generated on-demand via the `openapi` feature flag. Run `cargo run -p caliber-api --features openapi -- --openapi` to generate.
-
-Use `./scripts/test.sh` to run clippy, workspace tests, and pg18 pgrx tests in one pass.
-
-### Hello World (Postgres, low-level API)
-
-Requires pgvector and the `caliber_pg` extension to be installed in the target Postgres instance.
-
-```bash
+# Or use your existing PostgreSQL 18+ instance
 psql -c "CREATE EXTENSION vector;"
 psql -c "CREATE EXTENSION caliber_pg;"
 psql -c "SELECT caliber_init();"
-psql -c "SELECT caliber_trajectory_get(caliber_trajectory_create('hello-world', NULL, NULL));"
-psql -c "WITH t AS (SELECT caliber_trajectory_create('hello-world', NULL, NULL) AS id) SELECT caliber_scope_create(t.id, 'scope-1', NULL, 800) FROM t;"
-psql -c "WITH t AS (SELECT caliber_trajectory_create('hello-world', NULL, NULL) AS id) SELECT caliber_scope_get_current(t.id) FROM t;"
 ```
 
-Config is required for runtime operations; see `docs/QUICK_REFERENCE.md` for the full JSON shape.
+### 3. Configure Environment
 
----
+```bash
+# Copy example environment file
+cp .env.example .env
 
-## ⚠️ Production Deployment Notes (v0.4.7)
-
-### Cache Invalidation Options
-
-**v0.4.7** provides two cache invalidation strategies:
-
-1. **InMemoryChangeJournal** (default) - Single-instance only
-   - ✅ Zero external dependencies
-   - ✅ Microsecond latency
-   - ❌ Not distributed (cache inconsistency across multiple API instances)
-
-2. **EventDagChangeJournal** (NEW in v0.4.7) - Multi-instance ready
-   - ✅ Distributed coordination via event DAG
-   - ✅ No external infrastructure (LISTEN/NOTIFY, Redis, etc.)
-   - ⚠️ Poll-based (100ms typical latency)
-   - Uses the event log as a shared invalidation journal
-
-**Single-instance deployments** (recommended for most use cases):
-- Use `InMemoryChangeJournal` (default)
-- Deploy behind load balancer with session affinity if needed
-- Vertical scaling fully supported
-
-**Multi-instance deployments** (horizontal scaling):
-- Switch to `EventDagChangeJournal` for cache coordination
-- Accepts ~100ms invalidation propagation delay
-- See `caliber-storage/src/cache/watermark.rs` for setup
-
----
-
-## 📁 Project Structure
-
+# Edit with your settings
+# Required variables:
+# - DATABASE_URL=postgresql://user:pass@localhost/caliber
+# - JWT_SECRET=your-secret-key-here
 ```
-caliber/
-├── caliber-core/        # Entity types (data only, no behavior)
-├── caliber-storage/     # Storage trait + mock implementation
-├── caliber-pcp/         # Validation, checkpoints, recovery
-├── caliber-dsl/         # DSL parser → CaliberConfig
-├── caliber-pg/          # pgrx extension (requires PostgreSQL)
-├── caliber-api/         # REST/gRPC/WebSocket API server
-├── caliber-test-utils/  # Test generators, fixtures, assertions
-├── caliber-sdk/         # TypeScript SDK for REST/WebSocket APIs
-├── examples/            # Example programs and usage patterns
-├── docs/                # Specification documents
-├── fuzz/                # Fuzz testing targets (requires nightly)
-├── docker/              # Docker configs and compose files
-├── charts/              # Helm charts for Kubernetes
-├── terraform/           # Infrastructure as Code (AWS, Azure, GCP)
-├── landing/             # Marketing website (Astro + Svelte)
-├── .github/             # CI/CD workflows and issue templates
-├── .coderabbit.yaml     # CodeRabbit review bot config
-├── greptile.json        # Greptile review bot config
-├── Cargo.toml           # Workspace manifest
-├── DEVLOG.md            # Development timeline
-├── BENCHMARKS.md        # Performance benchmarks and comparisons
-├── CONTRIBUTING.md      # Contribution guidelines
-├── SECURITY.md          # Security policy and vulnerability reporting
-└── README.md            # This file
+
+### 4. Start Development Servers
+
+```bash
+# Terminal 1: Start API server
+make dev
+# Or: cargo run -p caliber-api
+
+# Terminal 2: Start Pack Editor (frontend)
+bun run dev:app
+
+# Terminal 3 (optional): Start landing page
+bun run dev:landing
 ```
+
+### 5. Verify
+
+- **API:** http://localhost:3000
+- **Pack Editor:** http://localhost:5173
+- **Landing:** http://localhost:4321
 
 ---
 
 ## 🏗️ Architecture
 
-CALIBER uses ECS (Entity-Component-System) architecture:
+### 7 Rust Crates
 
-- **Entities** (caliber-core): Pure data structures — Trajectory, Scope, Artifact, Note, Turn
-- **Components** (caliber-*): Behavior via traits — storage, validation, DSL compilation, API orchestration
-- **System** (caliber-pg): Wires everything together in PostgreSQL
+| Crate | Description |
+|-------|-------------|
+| **caliber-core** | Entities, context assembly, agent coordination, VAL traits |
+| **caliber-storage** | EventDag, cache invalidation, hybrid LMDB+cold storage |
+| **caliber-pcp** | Validation, checkpoints, harm reduction |
+| **caliber-dsl** | Markdown+YAML configuration parser |
+| **caliber-pg** | PostgreSQL extension (direct pgrx heap access) |
+| **caliber-api** | REST/gRPC/WebSocket server with multi-tenant isolation |
+| **caliber-test-utils** | Test fixtures, generators, property test helpers |
+
+### Frontend (TypeScript/Bun)
+
+| Package | Description |
+|---------|-------------|
+| **caliber-sdk** | TypeScript client with WebSocket streaming |
+| **app/** | SvelteKit Pack Editor (45+ Svelte 5 components) |
+| **packages/ui/** | Svelte 5 component library |
+| **landing/** | Astro marketing site |
+
+### Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -178,12 +119,14 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 │                              │                                  │
 │  PCP Protocol Layer (validation, checkpoints, harm reduction)   │
 │                              │                                  │
-│  CALIBER Components (ECS)                                       │
-│  caliber-core │ caliber-storage │ caliber-pcp │ caliber-dsl      │
+│  CALIBER Core (ECS)                                             │
+│  Entities + Context + Agents + VAL                              │
 │                              │                                  │
-│  pgrx Direct Storage (heap ops, no SQL in hot path)             │
+│  Storage Layer (EventDag + Cache)                               │
 │                              │                                  │
-│  PostgreSQL Storage Engine                                      │
+│  PostgreSQL Extension (pgrx direct heap access)                 │
+│                              │                                  │
+│  PostgreSQL 18+ Storage Engine                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -193,20 +136,147 @@ CALIBER uses ECS (Entity-Component-System) architecture:
 
 | Feature | Description |
 |---------|-------------|
+| **Postgres-Native** | Direct pgrx heap access, no SQL in hot path |
 | **Hierarchical Memory** | Trajectory → Scope → Artifact → Note |
-| **No SQL in Hot Path** | Direct pgrx heap operations for performance |
-| **VAL (Vector Abstraction)** | Provider-agnostic embeddings, any dimension |
-| **Multi-Agent Support** | Locks, messages, delegation, handoffs |
-| **Custom DSL** | Declarative configuration language |
-| **PCP Harm Reduction** | Validation, checkpoints, contradiction detection |
+| **Multi-Agent Coordination** | Locks, messages, delegation, handoffs |
+| **Vector Abstraction Layer** | Provider-agnostic embeddings, any dimension |
+| **Markdown Configuration** | YAML-based config in Markdown fences |
+| **Multi-Tenant Isolation** | Row-level security, tenant-scoped JWTs |
+| **Horizontal Scaling** | Event DAG-based cache coordination |
 | **Zero Defaults** | All configuration explicit — framework, not product |
 
 ---
 
-## 📊 Test Coverage
+## 📁 Project Structure
 
-Run `./scripts/test.sh` for the full local test matrix (clippy + workspace tests + pg18 pgrx tests).
-Set `DB_TESTS=1` with `CALIBER_DB_*` to include DB-backed API tests; the script bootstraps schema via `caliber_init` or the SQL bootstrap. Agent DB tests require the `caliber_pg` extension to be installed in that Postgres instance.
+```
+caliber/
+├── caliber-core/        # Entities, context, agents, VAL (consolidated)
+├── caliber-storage/     # EventDag, cache invalidation
+├── caliber-pcp/         # Validation, checkpoints
+├── caliber-dsl/         # Markdown+YAML parser
+├── caliber-pg/          # PostgreSQL extension (pgrx)
+├── caliber-api/         # REST/gRPC/WebSocket server
+├── caliber-test-utils/  # Test fixtures and generators
+├── caliber-sdk/         # TypeScript SDK
+├── app/                 # SvelteKit Pack Editor
+├── packages/ui/         # Svelte 5 component library
+├── landing/             # Astro marketing site
+├── examples/            # Example programs
+├── docs/                # Specification documents
+├── tests/               # Integration and E2E tests
+├── scripts/             # Build and test scripts
+├── docker/              # Docker configs
+├── .github/             # CI/CD workflows
+├── Cargo.toml           # Workspace manifest
+├── package.json         # Bun workspace
+└── README.md            # This file
+```
+
+---
+
+## 🧪 Development
+
+### Build Commands
+
+```bash
+# Build all Rust crates (fast - excludes heavy caliber-pg)
+cargo build --workspace --exclude caliber-pg
+
+# Build everything including caliber-pg (slower)
+cargo build --workspace
+
+# Build release binary
+cargo build --release -p caliber-api
+
+# Build frontend
+bun run build:app
+```
+
+### Test Commands
+
+```bash
+# Run all Rust tests (fast)
+cargo test --workspace --exclude caliber-pg
+
+# Run all tests including pgrx
+./scripts/test.sh
+
+# Run frontend tests
+bun test
+
+# Run E2E tests
+bun run test:e2e
+
+# Run property tests
+cargo test --workspace -- prop_
+
+# Run with coverage
+make coverage
+```
+
+### Dev Server Commands
+
+```bash
+# Start API server
+make dev
+cargo run -p caliber-api
+
+# Start API with auto-reload
+make dev-watch
+
+# Start Pack Editor
+bun run dev:app
+
+# Start all frontend servers
+bun run dev:all
+
+# Start landing page
+bun run dev:landing
+```
+
+### Linting & Formatting
+
+```bash
+# Run all linters
+make lint
+
+# Fix linting issues
+make lint-fix
+
+# Format code
+cargo fmt --all
+bunx biome format --write .
+```
+
+---
+
+## 🧪 Testing
+
+### Test Matrix
+
+| Test Type | Command | Description |
+|-----------|---------|-------------|
+| Unit | `cargo test --workspace` | Fast unit tests |
+| Property | `cargo test -- prop_` | Property-based tests (100+ iterations) |
+| Integration | `make test-integration` | DB-backed integration tests |
+| E2E | `bun run test:e2e` | End-to-end Playwright tests |
+| Fuzz | `make test-fuzz` | Fuzz testing |
+| Smoke | `make test-smoke` | Quick sanity checks |
+| Load | `make test-load` | k6 load tests |
+| Security | `make test-security` | OWASP security tests |
+
+### Test Coverage
+
+- **Rust:** 150+ unit tests, 15+ property tests
+- **TypeScript:** 80% coverage threshold (Vitest)
+- **Fuzz:** 462,947 inputs tested, 0 crashes
+- **E2E:** Playwright tests for critical paths
+
+Run full test suite:
+```bash
+make test-all
+```
 
 ---
 
@@ -215,21 +285,19 @@ Set `DB_TESTS=1` with `CALIBER_DB_*` to include DB-backed API tests; the script 
 | Document | Description |
 |----------|-------------|
 | [CALIBER_PCP_SPEC.md](docs/CALIBER_PCP_SPEC.md) | Core specification |
-| [DSL_PARSER.md](docs/DSL_PARSER.md) | Lexer, parser, AST |
-| [LLM_SERVICES.md](docs/LLM_SERVICES.md) | VAL + summarization |
-| [MULTI_AGENT_COORDINATION.md](docs/MULTI_AGENT_COORDINATION.md) | Agent coordination |
+| [CALIBER_API_REFERENCE.md](docs/CALIBER_API_REFERENCE.md) | API documentation |
+| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Quick reference guide |
 | [DEPENDENCY_GRAPH.md](docs/DEPENDENCY_GRAPH.md) | Type system reference |
-| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Cheat sheet |
-| [BENCHMARKS.md](BENCHMARKS.md) | Performance benchmarks and comparisons |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and workflow |
-| [SECURITY.md](SECURITY.md) | Security policy and vulnerability reporting |
-| [OPERATIONS_CHECKLIST.md](docs/OPERATIONS_CHECKLIST.md) | Production readiness checklist |
+| [OPERATIONS_CHECKLIST.md](docs/OPERATIONS_CHECKLIST.md) | Production readiness |
+| [BENCHMARKS.md](BENCHMARKS.md) | Performance benchmarks |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
+| [SECURITY.md](SECURITY.md) | Security policy |
 | [DEVLOG.md](DEVLOG.md) | Development timeline |
-| [examples/README.md](examples/README.md) | Example programs and usage patterns |
+| [AGENTS.md](AGENTS.md) | Agent development guide |
 
 ---
 
-## 🎯 Usage Example (Rust, high-level)
+## 🎯 Usage Example
 
 ```rust
 use caliber_core::{
@@ -287,80 +355,195 @@ fn main() -> CaliberResult<()> {
 }
 ```
 
+See [examples/](examples/) for more usage patterns.
+
 ---
 
-## 🧪 Running Tests
+## 🚀 Production Deployment
+
+### Cache Invalidation Strategies
+
+**Single-Instance (Default):**
+- Uses `InMemoryChangeJournal`
+- Zero external dependencies
+- Microsecond latency
+- Recommended for most deployments
+
+**Multi-Instance (Horizontal Scaling):**
+- Uses `EventDagChangeJournal`
+- Event DAG-based coordination
+- ~100ms invalidation propagation
+- No Redis/LISTEN/NOTIFY required
+
+See `caliber-storage/src/cache/watermark.rs` for configuration.
+
+### Environment Variables
 
 ```bash
-# All workspace tests (excludes pgrx extension)
-cargo test --workspace --exclude caliber-pg
+# Database
+DATABASE_URL=postgresql://user:pass@localhost/caliber
 
-# Specific crate
-cargo test -p caliber-core
+# Authentication
+JWT_SECRET=your-secret-key-here
+WORKOS_API_KEY=your-workos-key
+WORKOS_CLIENT_ID=your-client-id
 
-# Property tests only
-cargo test --workspace --exclude caliber-pg -- prop_
+# API Configuration
+CALIBER_API_BASE_URL=https://api.caliber.run
+CALIBER_CORS_ORIGINS=https://caliber.run,https://app.caliber.run
 
-# With output
-cargo test --workspace --exclude caliber-pg -- --nocapture
+# Rate Limiting
+CALIBER_RATE_LIMIT_ENABLED=true
+CALIBER_RATE_LIMIT_UNAUTHENTICATED=100
+CALIBER_RATE_LIMIT_AUTHENTICATED=1000
 
-# Examples (separate from workspace tests)
-cargo test --examples
-
-# Fuzz tests (requires nightly Rust)
-cargo +nightly fuzz run lexer_fuzz -- -max_total_time=60
-cargo +nightly fuzz run parser_fuzz -- -max_total_time=60
-
-# pgrx extension tests (requires PostgreSQL)
-cargo pgrx test -p caliber-pg
+# Multi-Tenant
+CALIBER_REQUIRE_TENANT_HEADER=true
 ```
 
-**Fuzz Testing Results:**
-- 462,947 adversarial inputs tested
-- 0 crashes (100% robust)
-- Validates DSL parser production-readiness
+### Docker Deployment
 
----
-
-## 💡 Examples
-
-See [examples/README.md](examples/README.md) for detailed usage examples:
-
-- **basic_trajectory.rs** - Complete workflow: Trajectory → Scope → Artifacts → Turns → Notes
-- More examples coming soon: context assembly, multi-agent coordination, vector search, DSL configuration
-
-Run examples with:
 ```bash
-cargo run --example basic_trajectory
+# Build images
+docker-compose -f docker/docker-compose.yml build
+
+# Start services
+docker-compose -f docker/docker-compose.yml up -d
+
+# View logs
+docker-compose -f docker/docker-compose.yml logs -f
+```
+
+### Kubernetes Deployment
+
+```bash
+# Install with Helm
+helm install caliber ./charts/caliber \
+  --set postgresql.enabled=true \
+  --set api.replicas=3
+
+# Upgrade
+helm upgrade caliber ./charts/caliber
 ```
 
 ---
 
-## 🔧 Development
+## 🛡️ Security & Compliance
 
-### Philosophy
+- **SBOM Generation** - SPDX JSON artifacts
+- **CodeQL Analysis** - JavaScript/TypeScript scanning
+- **Semgrep** - Multi-language security scanning
+- **Gitleaks** - Secret scanning
+- **OSV Scanner** - Vulnerability scanning
+- **OpenSSF Scorecard** - Security best practices
+- **SLSA Provenance** - Build attestations
 
-CALIBER is a **framework**, not a product. Every value must be explicitly configured:
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
-```rust
-// ❌ WRONG - We don't do this
-const DEFAULT_TOKEN_BUDGET: i32 = 8000;
+---
 
-// ✅ RIGHT - User must configure
-pub struct CaliberConfig {
-    pub token_budget: i32,  // Required, no default
-}
+## 🤖 Agent Development
+
+See [AGENTS.md](AGENTS.md) for:
+- Repository structure
+- CI/CD workflow
+- Test patterns
+- Architecture patterns
+
+---
+
+## 🔧 Troubleshooting
+
+### Build Issues
+
+**Problem:** `cargo build` fails with PostgreSQL errors
+
+**Solution:** Build without caliber-pg for faster iteration:
+```bash
+cargo build --workspace --exclude caliber-pg
 ```
 
-### Code Standards
+**Problem:** Cross-device link errors during tests
 
-- Use `CaliberResult<T>` for all fallible operations
-- No `unwrap()` in production code — use `?` operator
-- All public items have doc comments
-- Property tests for correctness properties
+**Solution:** Set TMPDIR:
+```bash
+TMPDIR=$PWD/target/tmp cargo test --workspace
+```
+
+### Database Issues
+
+**Problem:** Extension not found
+
+**Solution:** Install the extension:
+```bash
+cargo pgrx install --package caliber-pg
+psql -c "CREATE EXTENSION caliber_pg;"
+```
+
+**Problem:** Schema not initialized
+
+**Solution:** Run initialization:
+```bash
+psql -c "SELECT caliber_init();"
+```
+
+### Frontend Issues
+
+**Problem:** Port already in use
+
+**Solution:** Kill the process or use a different port:
+```bash
+lsof -ti:5173 | xargs kill -9
+# Or set PORT environment variable
+PORT=5174 bun run dev:app
+```
+
+---
+
+## 📊 Performance
+
+- **Latency:** < 10ms p95 for context assembly
+- **Throughput:** 1000+ req/s per instance
+- **Memory:** ~200MB baseline per API instance
+- **Storage:** Direct pgrx heap access (no SQL parsing overhead)
+
+See [BENCHMARKS.md](BENCHMARKS.md) for detailed performance analysis.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Code of conduct
+- Development workflow
+- Coding standards
+- Pull request process
 
 ---
 
 ## 📄 License
 
-This specification is released for implementation. Build cool shit. 🚀
+AGPL-3.0-or-later
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [pgrx](https://github.com/pgcentralfoundation/pgrx) - PostgreSQL extension framework
+- [Axum](https://github.com/tokio-rs/axum) - Web framework
+- [SvelteKit](https://kit.svelte.dev/) - Frontend framework
+- [Astro](https://astro.build/) - Static site generator
+
+---
+
+## 📞 Support
+
+- **Documentation:** [docs/](docs/)
+- **Issues:** [GitHub Issues](https://github.com/caliber-run/caliber/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/caliber-run/caliber/discussions)
+- **Security:** See [SECURITY.md](SECURITY.md)
+
+---
+
+**Built with ❤️ for the AI agent community**
