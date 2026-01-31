@@ -52,6 +52,23 @@ pub enum FenceKind {
 impl FromStr for FenceKind {
     type Err = PackError;
 
+    /// Parses a fence kind identifier into a `FenceKind`.
+    ///
+    /// Recognized case-sensitive identifiers: `"adapter"`, `"memory"`, `"policy"`, `"injection"`,
+    /// `"provider"`, `"cache"`, `"trajectory"`, `"agent"`, `"tool"`, `"rag"`, `"json"`, `"xml"`,
+    /// `"constraints"`, `"tools"`, and `"manifest"`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(FenceKind)` for a recognized identifier, `Err(PackError::Validation)` for unsupported input.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    /// let k = FenceKind::from_str("tool").unwrap();
+    /// assert_eq!(k, FenceKind::Tool);
+    /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "adapter" => Ok(FenceKind::Adapter),
@@ -78,6 +95,16 @@ impl FromStr for FenceKind {
 }
 
 impl std::fmt::Display for FenceKind {
+    /// Formats the FenceKind as its lowercase string representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use caliber_dsl::pack::markdown::FenceKind;
+    /// assert_eq!(format!("{}", FenceKind::Adapter), "adapter");
+    /// assert_eq!(format!("{}", FenceKind::Json), "json");
+    /// assert_eq!(format!("{}", FenceKind::Constraints), "constraints");
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             FenceKind::Adapter => "adapter",
@@ -123,6 +150,34 @@ pub fn parse_markdown_files(
     Ok(out)
 }
 
+/// Parse a pack markdown document into a structured MarkdownDoc, validating headings and fenced blocks and extracting constraints, tool references, and RAG configuration.
+///
+/// On success returns a MarkdownDoc containing the trimmed System and PCP sections, a list of User sections with their fenced blocks, and aggregated extracted metadata (constraints, validated tool refs, optional RAG config). On failure returns a PackError describing the first structural or validation issue encountered (missing or misordered headings, unterminated or invalid fenced blocks, invalid tool references, etc.).
+///
+/// # Examples
+///
+/// ```no_run
+/// let manifest = PackManifest::default();
+/// let content = r#"
+/// # System
+///
+/// system text
+///
+/// ## PCP
+///
+/// pcp text
+///
+/// ### User
+///
+/// user prompt
+/// ```constraints
+/// must not reveal secrets
+/// ```
+/// "#;
+///
+/// let doc = parse_markdown(&manifest, "prompt.md", content).unwrap();
+/// assert_eq!(doc.file, "prompt.md");
+/// ```
 fn parse_markdown(
     manifest: &PackManifest,
     file: &str,
@@ -352,6 +407,43 @@ pub struct ExtractedBlocks {
     pub rag_config: Option<String>,
 }
 
+/// Validates and extracts metadata from the fenced blocks in a user section.
+///
+/// This function walks the user's fenced blocks, validates block sequences and references,
+/// and collects extracted metadata into an `ExtractedBlocks` struct:
+/// - Tool blocks must contain a single `${...}` reference that matches a known tool ID; if followed by a JSON or XML block it is treated as a payload pair (payload must be a `${...}` ref when `strict_refs` is true).
+/// - Standalone JSON or XML blocks are invalid and produce an error.
+/// - Constraints blocks produce one extracted constraint per non-empty, non-comment line.
+/// - Tools blocks list tool IDs (one per line, optionally prefixed with `-`) which are validated against `tool_ids` and collected into `tool_refs`.
+/// - Rag blocks store their trimmed content as the optional `rag_config`.
+/// - New config kinds (Adapter, Memory, Policy, Injection, Provider, Cache, Trajectory, Agent, Manifest) are accepted and skipped for later processing.
+///
+/// Errors are returned as `PackError::Markdown` with file/line context for structural or validation failures.
+///
+/// # Returns
+///
+/// The collected `ExtractedBlocks` containing `constraints`, `tool_refs`, and optional `rag_config`.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::HashSet;
+///
+/// // Construct a simple user section with a constraints block
+/// let user = UserSection {
+///     content: String::new(),
+///     blocks: vec![FencedBlock {
+///         kind: FenceKind::Constraints,
+///         header_name: None,
+///         content: "must do X\n# comment\nmust not do Y\n".into(),
+///         line: 1,
+///     }],
+/// };
+///
+/// let tool_ids: HashSet<String> = HashSet::new();
+/// let extracted = validate_blocks("file.md", &user, &tool_ids, false).unwrap();
+/// assert_eq!(extracted.constraints, vec!["must do X".to_string(), "must not do Y".to_string()]);
+/// ```
 fn validate_blocks(
     file: &str,
     user: &UserSection,
@@ -471,11 +563,26 @@ fn validate_blocks(
     Ok(extracted)
 }
 
-/// Parse fence info string into kind and optional name.
+/// Parse a fence header string into a `FenceKind` and an optional header name.
 ///
-/// Supports two forms:
-/// - "kind name" (e.g., "adapter postgres_main") -> (Adapter, Some("postgres_main"))
-/// - "kind" only (e.g., "adapter") -> (Adapter, None)
+/// Accepts two forms: `"kind"` (e.g., `"adapter"`) or `"kind name"` (e.g., `"adapter postgres_main"`).
+///
+/// # Errors
+///
+/// Returns a `PackError::Validation` if the input is empty, contains more than two whitespace-separated tokens,
+/// or if the kind token is not a recognized `FenceKind`.
+///
+/// # Examples
+///
+/// ```
+/// let (kind, name) = parse_fence_info("adapter postgres_main").unwrap();
+/// assert_eq!(kind, FenceKind::Adapter);
+/// assert_eq!(name.as_deref(), Some("postgres_main"));
+///
+/// let (kind_only, none_name) = parse_fence_info("adapter").unwrap();
+/// assert_eq!(kind_only, FenceKind::Adapter);
+/// assert!(none_name.is_none());
+/// ```
 fn parse_fence_info(info: &str) -> Result<(FenceKind, Option<String>), PackError> {
     let parts: Vec<&str> = info.split_whitespace().collect();
 
@@ -500,6 +607,20 @@ fn parse_fence_info(info: &str) -> Result<(FenceKind, Option<String>), PackError
     }
 }
 
+/// Determine the Markdown heading level for a single line.
+///
+/// Returns `Some(1)`, `Some(2)`, or `Some(3)` when the line starts with `"# "`, `"## "`, or `"### "`
+/// respectively, and `None` for any other input.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(heading_level("# Title"), Some(1));
+/// assert_eq!(heading_level("## Subtitle"), Some(2));
+/// assert_eq!(heading_level("### Section"), Some(3));
+/// assert_eq!(heading_level("#### Too deep"), None);
+/// assert_eq!(heading_level("Not a heading"), None);
+/// ```
 fn heading_level(line: &str) -> Option<usize> {
     if line.starts_with("# ") {
         Some(1)

@@ -703,8 +703,25 @@ impl ErrorCollector {
         self.errors
     }
 
-    /// Convert multiple errors into a single ParseError for backwards compatibility.
-    /// Returns the first error with all other errors appended to the message.
+    /// Combine collected parse errors into a single ParseError for compatibility.
+    ///
+    /// If no errors were collected, returns `None`. If exactly one error exists, returns that
+    /// error unchanged. If multiple errors exist, returns a `ParseError` that uses the first
+    /// error's `line` and `column` and a combined `message` that lists all errors with their
+    /// index, line, column, and original message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut coll = ErrorCollector::new();
+    /// coll.add(ParseError { message: "a".into(), line: 1, column: 2 });
+    /// coll.add(ParseError { message: "b".into(), line: 3, column: 4 });
+    /// let combined = coll.into_single_error().unwrap();
+    /// assert!(combined.message.contains("a"));
+    /// assert!(combined.message.contains("b"));
+    /// assert_eq!(combined.line, 1);
+    /// assert_eq!(combined.column, 2);
+    /// ```
     pub fn into_single_error(self) -> Option<ParseError> {
         if self.errors.is_empty() {
             return None;
@@ -739,5 +756,4 @@ impl ErrorCollector {
         })
     }
 }
-
 
