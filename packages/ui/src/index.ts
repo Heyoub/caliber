@@ -17,14 +17,20 @@ export * from './types/index.js';
 export * from './organisms/index.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Future exports (as implemented):
+// Atoms (indivisible UI primitives)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Atoms (indivisible UI primitives)
-// export * from './atoms/index.js';
+export * from './atoms/index.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
 // Molecules (combinations of atoms)
-// export * from './molecules/index.js';
+// ─────────────────────────────────────────────────────────────────────────────
+
+export * from './molecules/index.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Future exports (as implemented):
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Templates (page-level layouts)
 // export * from './templates/index.js';
