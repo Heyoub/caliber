@@ -16,6 +16,7 @@ _No unreleased changes._
 
 ### Fixed
 - **Workspace versions**: All internal crate dependencies now correctly reference 0.5.0
+- **Doctest lint**: Removed invalid `#[test]` attribute from parser docstring
 
 ### Added
 
