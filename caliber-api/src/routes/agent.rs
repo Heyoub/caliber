@@ -508,7 +508,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("register_agent should succeed")
         .into_response();
 
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -525,7 +525,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap()
+        .expect("list_agents should succeed")
         .into_response();
 
         assert_eq!(list_response.status(), StatusCode::OK);
@@ -539,7 +539,7 @@ mod tests {
             PathId(created.agent_id),
         )
         .await
-        .unwrap()
+        .expect("agent_heartbeat should succeed")
         .into_response();
 
         assert_eq!(heartbeat_response.status(), StatusCode::OK);
@@ -553,7 +553,7 @@ mod tests {
             PathId(created.agent_id),
         )
         .await
-        .unwrap();
+        .expect("unregister_agent should succeed");
         assert_eq!(status, StatusCode::NO_CONTENT);
     }
 
@@ -584,7 +584,10 @@ mod tests {
         );
 
         // Append to DAG
-        event_dag.append(event.clone()).await.unwrap();
+        event_dag
+            .append(event.clone())
+            .await
+            .expect("event_dag append should succeed");
 
         // Query it back
         let retrieved = match event_dag.read(event_id).await {
@@ -660,7 +663,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("register_agent should succeed")
         .into_response();
 
         assert_eq!(create_response.status(), StatusCode::CREATED);
@@ -680,7 +683,10 @@ mod tests {
             json!({"agent_route": "register_agent", "test": true}),
         );
 
-        ctx.event_dag.append(test_event).await.unwrap();
+        ctx.event_dag
+            .append(test_event)
+            .await
+            .expect("event_dag append should succeed");
 
         // Verify event was recorded
         let retrieved = match ctx.event_dag.read(event_id).await {

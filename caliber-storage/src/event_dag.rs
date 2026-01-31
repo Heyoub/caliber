@@ -207,7 +207,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         from: EventId,
         limit: usize,
     ) -> Effect<Vec<Event<Self::Payload>>> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         // First verify the starting event exists
         if !events.contains_key(&from) {
@@ -223,7 +230,20 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         }
 
         // In this simple implementation, we return events with higher depth
-        let from_event = events.get(&from).unwrap();
+        let from_event = match events.get(&from) {
+            Some(e) => e,
+            None => {
+                return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
+                    error: DomainError::EntityNotFound {
+                        entity_type: "Event".to_string(),
+                        id: from,
+                    },
+                    source_event: from,
+                    position: DagPosition::root(),
+                    correlation_id: from,
+                })));
+            }
+        };
         let from_depth = from_event.header.position.depth;
 
         let mut result: Vec<Event<Self::Payload>> = events
@@ -238,7 +258,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     }
 
     async fn signal_upstream(&self, from: EventId, _signal: UpstreamSignal) -> Effect<()> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         if !events.contains_key(&from) {
             return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
@@ -260,7 +287,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         &self,
         correlation_id: EventId,
     ) -> Effect<Vec<Event<Self::Payload>>> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         let mut result: Vec<Event<Self::Payload>> = events
             .values()
@@ -273,8 +307,22 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     }
 
     async fn next_position(&self, parent: Option<EventId>, lane: u32) -> Effect<DagPosition> {
-        let events = self.events.read().unwrap();
-        let seq = self.next_sequence.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
+        let seq = match self.next_sequence.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: next_sequence".to_string(),
+                }))
+            }
+        };
 
         let depth = match parent {
             Some(parent_id) => match events.get(&parent_id) {
@@ -308,7 +356,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         max_depth: u32,
         limit: usize,
     ) -> Effect<Vec<Event<Self::Payload>>> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         let mut result: Vec<Event<Self::Payload>> = events
             .values()
@@ -326,7 +381,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     }
 
     async fn acknowledge(&self, event_id: EventId, _send_upstream: bool) -> Effect<()> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         if !events.contains_key(&event_id) {
             return Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
@@ -340,13 +402,36 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
             })));
         }
 
-        self.acknowledged.write().unwrap().insert(event_id);
+        match self.acknowledged.write() {
+            Ok(mut guard) => {
+                guard.insert(event_id);
+            }
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: acknowledged".to_string(),
+                }))
+            }
+        };
         Effect::Ok(())
     }
 
     async fn unacknowledged(&self, limit: usize) -> Effect<Vec<Event<Self::Payload>>> {
-        let events = self.events.read().unwrap();
-        let acknowledged = self.acknowledged.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
+        let acknowledged = match self.acknowledged.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: acknowledged".to_string(),
+                }))
+            }
+        };
 
         let mut result: Vec<Event<Self::Payload>> = events
             .values()
@@ -376,7 +461,14 @@ impl<P: Clone + Send + Sync + Serialize> InMemoryEventDag<P> {
         after_timestamp: i64,
         limit: usize,
     ) -> Effect<Vec<Event<P>>> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         let mut matching: Vec<Event<P>> = events
             .values()
@@ -403,7 +495,14 @@ impl<P: Clone + Send + Sync + Serialize> InMemoryEventDag<P> {
     /// * `Effect::Ok(false)` - Chain has broken links
     /// * `Effect::Err` - Event not found
     pub async fn verify_chain_integrity(&self, event_ids: &[EventId]) -> Effect<bool> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         for window in event_ids.windows(2) {
             let parent_id = window[0];
@@ -454,6 +553,15 @@ mod tests {
     use super::*;
     use caliber_core::{EventDagExt, EventHeader};
 
+    /// Helper to unwrap Effect in tests
+    fn unwrap_effect<T: std::fmt::Debug>(effect: Effect<T>, msg: &str) -> T {
+        match effect {
+            Effect::Ok(value) => value,
+            Effect::Err(e) => panic!("{}: {:?}", msg, e),
+            _ => panic!("{}: unexpected Effect variant (not Ok or Err)", msg),
+        }
+    }
+
     #[tokio::test]
     async fn test_append_and_read() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
@@ -461,11 +569,11 @@ mod tests {
         let event_id = dag.append_root("test payload".to_string()).await;
         assert!(event_id.is_ok());
 
-        let id = event_id.unwrap();
+        let id = unwrap_effect(event_id, "append_root should succeed");
         let read_result = dag.read(id).await;
         assert!(read_result.is_ok());
 
-        let event = read_result.unwrap();
+        let event = unwrap_effect(read_result, "read should succeed");
         assert_eq!(event.payload, "test payload");
     }
 
@@ -482,11 +590,11 @@ mod tests {
     async fn test_append_child() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
-        let root_id = dag.append_root("root".to_string()).await.unwrap();
+        let root_id = unwrap_effect(dag.append_root("root".to_string()).await, "append_root should succeed");
         let child_id = dag.append_child(root_id, "child".to_string()).await;
 
         assert!(child_id.is_ok());
-        let child = dag.read(child_id.unwrap()).await.unwrap();
+        let child = unwrap_effect(dag.read(unwrap_effect(child_id, "append_child should succeed")).await, "read should succeed");
         assert_eq!(child.header.position.depth, 1);
     }
 
@@ -495,7 +603,7 @@ mod tests {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
         // Create event requiring ack
-        let position = dag.next_position(None, 0).await.unwrap();
+        let position = unwrap_effect(dag.next_position(None, 0).await, "next_position should succeed");
         let event_id_val = Uuid::now_v7();
         let header = EventHeader::new(
             event_id_val,
@@ -511,17 +619,17 @@ mod tests {
             payload: "needs ack".to_string(),
             hash_chain: None,
         };
-        let event_id = dag.append(event).await.unwrap();
+        let event_id = unwrap_effect(dag.append(event).await, "append should succeed");
 
         // Should appear in unacknowledged
-        let unacked = dag.unacknowledged(10).await.unwrap();
+        let unacked = unwrap_effect(dag.unacknowledged(10).await, "unacknowledged should succeed");
         assert_eq!(unacked.len(), 1);
 
         // Acknowledge it
-        dag.acknowledge(event_id, false).await.unwrap();
+        unwrap_effect(dag.acknowledge(event_id, false).await, "acknowledge should succeed");
 
         // Should no longer appear
-        let unacked = dag.unacknowledged(10).await.unwrap();
+        let unacked = unwrap_effect(dag.unacknowledged(10).await, "unacknowledged should succeed");
         assert_eq!(unacked.len(), 0);
     }
 
@@ -530,10 +638,10 @@ mod tests {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
         // Create a few events
-        dag.append_root("event1".to_string()).await.unwrap();
-        dag.append_root("event2".to_string()).await.unwrap();
+        unwrap_effect(dag.append_root("event1".to_string()).await, "append_root should succeed");
+        unwrap_effect(dag.append_root("event2".to_string()).await, "append_root should succeed");
 
-        let found = dag.find_by_kind(EventKind::DATA, 0, 10, 100).await.unwrap();
+        let found = unwrap_effect(dag.find_by_kind(EventKind::DATA, 0, 10, 100).await, "find_by_kind should succeed");
         assert_eq!(found.len(), 2);
     }
 }

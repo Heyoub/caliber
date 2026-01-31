@@ -10,7 +10,8 @@
 //! Real provider implementations (OpenAI, Anthropic, Ollama) are in submodules.
 
 use crate::constants::{
-    DEFAULT_CIRCUIT_FAILURE_THRESHOLD, DEFAULT_CIRCUIT_SUCCESS_THRESHOLD, DEFAULT_CIRCUIT_TIMEOUT_SECS,
+    DEFAULT_CIRCUIT_FAILURE_THRESHOLD, DEFAULT_CIRCUIT_SUCCESS_THRESHOLD,
+    DEFAULT_CIRCUIT_TIMEOUT_SECS,
 };
 use async_trait::async_trait;
 use caliber_core::{

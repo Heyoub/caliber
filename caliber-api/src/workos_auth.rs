@@ -616,7 +616,10 @@ mod tests {
             "https://custom.workos.com",
         );
         assert_eq!(config.api_url, "https://custom.workos.com");
-        assert_eq!(config.sso_token_url(), "https://custom.workos.com/sso/token");
+        assert_eq!(
+            config.sso_token_url(),
+            "https://custom.workos.com/sso/token"
+        );
         assert_eq!(
             config.sso_authorize_url(),
             "https://custom.workos.com/sso/authorize"

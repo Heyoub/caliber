@@ -1085,7 +1085,7 @@ mod tests {
 
     #[test]
     fn test_production_validation_allows_secure_secret() {
-        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_lock = ENV_MUTEX.lock().expect("env mutex should not be poisoned");
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig {
             jwt_secret: JwtSecret::new(
@@ -1101,7 +1101,7 @@ mod tests {
 
     #[test]
     fn test_production_validation_rejects_insecure_default() {
-        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_lock = ENV_MUTEX.lock().expect("env mutex should not be poisoned");
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let _secret_guard = EnvVarGuard::set("CALIBER_JWT_SECRET", None);
         let config = AuthConfig::default(); // Uses insecure default
@@ -1112,7 +1112,7 @@ mod tests {
 
     #[test]
     fn test_production_validation_rejects_short_secret() {
-        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_lock = ENV_MUTEX.lock().expect("env mutex should not be poisoned");
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("production"));
         let config = AuthConfig {
             jwt_secret: JwtSecret::new("short".to_string()).expect("test secret should be valid"),
@@ -1125,7 +1125,7 @@ mod tests {
 
     #[test]
     fn test_production_validation_allows_development() {
-        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_lock = ENV_MUTEX.lock().expect("env mutex should not be poisoned");
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", Some("development"));
         let config = AuthConfig::default(); // Uses insecure default
 
@@ -1135,7 +1135,7 @@ mod tests {
 
     #[test]
     fn test_production_validation_without_env_var() {
-        let _env_lock = ENV_MUTEX.lock().unwrap();
+        let _env_lock = ENV_MUTEX.lock().expect("env mutex should not be poisoned");
         let _env_guard = EnvVarGuard::set("CALIBER_ENVIRONMENT", None);
         let config = AuthConfig::default(); // Uses insecure default
 

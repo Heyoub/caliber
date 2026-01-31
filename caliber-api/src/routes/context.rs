@@ -813,10 +813,12 @@ mod tests {
 
     #[test]
     fn test_context_format_serde() {
-        let json = serde_json::to_string(&ContextFormat::Markdown).unwrap();
+        let json =
+            serde_json::to_string(&ContextFormat::Markdown).expect("serialization should succeed");
         assert_eq!(json, "\"markdown\"");
 
-        let parsed: ContextFormat = serde_json::from_str("\"xml\"").unwrap();
+        let parsed: ContextFormat =
+            serde_json::from_str("\"xml\"").expect("deserialization should succeed");
         assert_eq!(parsed, ContextFormat::Xml);
     }
 
@@ -923,7 +925,7 @@ mod tests {
             .capabilities()
             .contains(&ProviderCapability::Embedding));
 
-        let response = adapter.ping().await.unwrap();
+        let response = adapter.ping().await.expect("ping should succeed");
         assert_eq!(response.provider_id, "test");
         assert_eq!(response.health, HealthStatus::Healthy);
     }

@@ -356,7 +356,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("register_agent should succeed")
         .into_response();
 
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -460,7 +460,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("send_message should succeed")
         .into_response();
         assert_eq!(send_response.status(), StatusCode::CREATED);
         let message: MessageResponse = response_json(send_response).await;
@@ -482,7 +482,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap()
+        .expect("list_messages should succeed")
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListMessagesResponse = response_json(list_response).await;
@@ -498,7 +498,7 @@ mod tests {
             PathId(message.message_id),
         )
         .await
-        .unwrap();
+        .expect("deliver_message should succeed");
         assert_eq!(deliver_status, StatusCode::NO_CONTENT);
 
         let ack_status = acknowledge_message(
@@ -508,7 +508,7 @@ mod tests {
             PathId(message.message_id),
         )
         .await
-        .unwrap();
+        .expect("acknowledge_message should succeed");
         assert_eq!(ack_status, StatusCode::NO_CONTENT);
     }
 }

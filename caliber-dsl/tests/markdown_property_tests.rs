@@ -155,8 +155,8 @@ fn arb_caliber_ast() -> impl Strategy<Value = CaliberAst> {
 
 const MINIMAL_MANIFEST: &str = r#"
 [meta]
-name = "test"
 version = "1.0"
+project = "test"
 
 [tools]
 bin = {}

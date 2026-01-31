@@ -424,7 +424,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn scope_list_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Scope>> {
-        let scopes = self.scopes.read().unwrap();
+        let scopes = self
+            .scopes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(scopes
             .values()
             .filter(|s| s.trajectory_id.as_uuid() == trajectory_id)
@@ -435,7 +438,10 @@ impl StorageTrait for MockStorage {
     // === Artifact Operations ===
 
     fn artifact_insert(&self, a: &Artifact) -> CaliberResult<()> {
-        let mut artifacts = self.artifacts.write().unwrap();
+        let mut artifacts = self
+            .artifacts
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         if artifacts.contains_key(&a.artifact_id.as_uuid()) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Artifact,
@@ -447,7 +453,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn artifact_get(&self, id: Uuid) -> CaliberResult<Option<Artifact>> {
-        let artifacts = self.artifacts.read().unwrap();
+        let artifacts = self
+            .artifacts
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(artifacts.get(&id).cloned())
     }
 
@@ -456,7 +465,10 @@ impl StorageTrait for MockStorage {
         trajectory_id: Uuid,
         artifact_type: ArtifactType,
     ) -> CaliberResult<Vec<Artifact>> {
-        let artifacts = self.artifacts.read().unwrap();
+        let artifacts = self
+            .artifacts
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(artifacts
             .values()
             .filter(|a| {
@@ -467,7 +479,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn artifact_query_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Artifact>> {
-        let artifacts = self.artifacts.read().unwrap();
+        let artifacts = self
+            .artifacts
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(artifacts
             .values()
             .filter(|a| a.scope_id.as_uuid() == scope_id)
@@ -476,7 +491,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn artifact_update(&self, id: Uuid, update: ArtifactUpdate) -> CaliberResult<()> {
-        let mut artifacts = self.artifacts.write().unwrap();
+        let mut artifacts = self
+            .artifacts
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         let artifact =
             artifacts
                 .get_mut(&id)
@@ -503,7 +521,10 @@ impl StorageTrait for MockStorage {
     // === Note Operations ===
 
     fn note_insert(&self, n: &Note) -> CaliberResult<()> {
-        let mut notes = self.notes.write().unwrap();
+        let mut notes = self
+            .notes
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         if notes.contains_key(&n.note_id.as_uuid()) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Note,
@@ -515,12 +536,18 @@ impl StorageTrait for MockStorage {
     }
 
     fn note_get(&self, id: Uuid) -> CaliberResult<Option<Note>> {
-        let notes = self.notes.read().unwrap();
+        let notes = self
+            .notes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(notes.get(&id).cloned())
     }
 
     fn note_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Note>> {
-        let notes = self.notes.read().unwrap();
+        let notes = self
+            .notes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(notes
             .values()
             .filter(|n| {
@@ -533,7 +560,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn note_update(&self, id: Uuid, update: NoteUpdate) -> CaliberResult<()> {
-        let mut notes = self.notes.write().unwrap();
+        let mut notes = self
+            .notes
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         let note = notes
             .get_mut(&id)
             .ok_or(CaliberError::Storage(StorageError::NotFound {
@@ -559,7 +589,10 @@ impl StorageTrait for MockStorage {
     // === Turn Operations ===
 
     fn turn_insert(&self, t: &Turn) -> CaliberResult<()> {
-        let mut turns = self.turns.write().unwrap();
+        let mut turns = self
+            .turns
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         if turns.contains_key(&t.turn_id.as_uuid()) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Turn,
@@ -571,7 +604,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn turn_get_by_scope(&self, scope_id: Uuid) -> CaliberResult<Vec<Turn>> {
-        let turns = self.turns.read().unwrap();
+        let turns = self
+            .turns
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         let mut result: Vec<Turn> = turns
             .values()
             .filter(|t| t.scope_id.as_uuid() == scope_id)
@@ -591,7 +627,10 @@ impl StorageTrait for MockStorage {
         let mut results: Vec<(Uuid, f32)> = Vec::new();
 
         // Search artifacts
-        let artifacts = self.artifacts.read().unwrap();
+        let artifacts = self
+            .artifacts
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         for artifact in artifacts.values() {
             if let Some(ref embedding) = artifact.embedding {
                 if let Ok(similarity) = query.cosine_similarity(embedding) {
@@ -601,7 +640,10 @@ impl StorageTrait for MockStorage {
         }
 
         // Search notes
-        let notes = self.notes.read().unwrap();
+        let notes = self
+            .notes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         for note in notes.values() {
             if let Some(ref embedding) = note.embedding {
                 if let Ok(similarity) = query.cosine_similarity(embedding) {
@@ -622,7 +664,10 @@ impl StorageTrait for MockStorage {
     // === Edge Operations (Battle Intel Feature 1) ===
 
     fn edge_insert(&self, e: &Edge) -> CaliberResult<()> {
-        let mut edges = self.edges.write().unwrap();
+        let mut edges = self
+            .edges
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         if edges.contains_key(&e.edge_id.as_uuid()) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Edge,
@@ -634,12 +679,18 @@ impl StorageTrait for MockStorage {
     }
 
     fn edge_get(&self, id: Uuid) -> CaliberResult<Option<Edge>> {
-        let edges = self.edges.read().unwrap();
+        let edges = self
+            .edges
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(edges.get(&id).cloned())
     }
 
     fn edge_query_by_type(&self, edge_type: EdgeType) -> CaliberResult<Vec<Edge>> {
-        let edges = self.edges.read().unwrap();
+        let edges = self
+            .edges
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(edges
             .values()
             .filter(|e| e.edge_type == edge_type)
@@ -648,7 +699,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn edge_query_by_trajectory(&self, trajectory_id: Uuid) -> CaliberResult<Vec<Edge>> {
-        let edges = self.edges.read().unwrap();
+        let edges = self
+            .edges
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(edges
             .values()
             .filter(|e| e.trajectory_id.map(|id| id.as_uuid()) == Some(trajectory_id))
@@ -657,7 +711,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn edge_query_by_participant(&self, entity_id: Uuid) -> CaliberResult<Vec<Edge>> {
-        let edges = self.edges.read().unwrap();
+        let edges = self
+            .edges
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(edges
             .values()
             .filter(|e| e.participants.iter().any(|p| p.entity_ref.id == entity_id))
@@ -668,7 +725,10 @@ impl StorageTrait for MockStorage {
     // === Note Abstraction Level Queries (Battle Intel Feature 2) ===
 
     fn note_query_by_abstraction_level(&self, level: AbstractionLevel) -> CaliberResult<Vec<Note>> {
-        let notes = self.notes.read().unwrap();
+        let notes = self
+            .notes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(notes
             .values()
             .filter(|n| n.abstraction_level == level)
@@ -677,7 +737,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn note_query_by_source_note(&self, source_note_id: Uuid) -> CaliberResult<Vec<Note>> {
-        let notes = self.notes.read().unwrap();
+        let notes = self
+            .notes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(notes
             .values()
             .filter(|n| {
@@ -808,13 +871,13 @@ mod tests {
         let storage = MockStorage::new();
         let trajectory = make_test_trajectory();
 
-        storage.trajectory_insert(&trajectory).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
         let retrieved = storage
             .trajectory_get(trajectory.trajectory_id.as_uuid())
-            .unwrap();
+            .expect("get should succeed");
 
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().trajectory_id, trajectory.trajectory_id);
+        assert_eq!(retrieved.expect("should have trajectory").trajectory_id, trajectory.trajectory_id);
     }
 
     #[test]
@@ -822,7 +885,7 @@ mod tests {
         let storage = MockStorage::new();
         let trajectory = make_test_trajectory();
 
-        storage.trajectory_insert(&trajectory).unwrap();
+        storage.trajectory_insert(&trajectory).expect("first insert should succeed");
         let result = storage.trajectory_insert(&trajectory);
 
         assert!(result.is_err());
@@ -833,7 +896,7 @@ mod tests {
         let storage = MockStorage::new();
         let trajectory = make_test_trajectory();
 
-        storage.trajectory_insert(&trajectory).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
         storage
             .trajectory_update(
                 trajectory.trajectory_id.as_uuid(),
@@ -842,12 +905,12 @@ mod tests {
                     ..Default::default()
                 },
             )
-            .unwrap();
+            .expect("update should succeed");
 
         let retrieved = storage
             .trajectory_get(trajectory.trajectory_id.as_uuid())
-            .unwrap()
-            .unwrap();
+            .expect("get should succeed")
+            .expect("should have trajectory");
         assert_eq!(retrieved.status, TrajectoryStatus::Completed);
     }
 
@@ -862,18 +925,18 @@ mod tests {
         let mut t3 = make_test_trajectory();
         t3.status = TrajectoryStatus::Active;
 
-        storage.trajectory_insert(&t1).unwrap();
-        storage.trajectory_insert(&t2).unwrap();
-        storage.trajectory_insert(&t3).unwrap();
+        storage.trajectory_insert(&t1).expect("insert should succeed");
+        storage.trajectory_insert(&t2).expect("insert should succeed");
+        storage.trajectory_insert(&t3).expect("insert should succeed");
 
         let active = storage
             .trajectory_list_by_status(TrajectoryStatus::Active)
-            .unwrap();
+            .expect("list should succeed");
         assert_eq!(active.len(), 2);
 
         let completed = storage
             .trajectory_list_by_status(TrajectoryStatus::Completed)
-            .unwrap();
+            .expect("list should succeed");
         assert_eq!(completed.len(), 1);
     }
 
@@ -887,12 +950,12 @@ mod tests {
         let trajectory = make_test_trajectory();
         let scope = make_test_scope(trajectory.trajectory_id);
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.scope_insert(&scope).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.scope_insert(&scope).expect("insert should succeed");
 
-        let retrieved = storage.scope_get(scope.scope_id.as_uuid()).unwrap();
+        let retrieved = storage.scope_get(scope.scope_id.as_uuid()).expect("get should succeed");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().scope_id, scope.scope_id);
+        assert_eq!(retrieved.expect("should have scope").scope_id, scope.scope_id);
     }
 
     #[test]
@@ -904,15 +967,15 @@ mod tests {
         scope1.is_active = false;
         let scope2 = make_test_scope(trajectory.trajectory_id);
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.scope_insert(&scope1).unwrap();
-        storage.scope_insert(&scope2).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.scope_insert(&scope1).expect("insert should succeed");
+        storage.scope_insert(&scope2).expect("insert should succeed");
 
         let current = storage
             .scope_get_current(trajectory.trajectory_id.as_uuid())
-            .unwrap();
+            .expect("get_current should succeed");
         assert!(current.is_some());
-        assert!(current.unwrap().is_active);
+        assert!(current.expect("should have current scope").is_active);
     }
 
     // ========================================================================
@@ -926,15 +989,15 @@ mod tests {
         let scope = make_test_scope(trajectory.trajectory_id);
         let artifact = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.scope_insert(&scope).unwrap();
-        storage.artifact_insert(&artifact).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.scope_insert(&scope).expect("insert should succeed");
+        storage.artifact_insert(&artifact).expect("insert should succeed");
 
         let retrieved = storage
             .artifact_get(artifact.artifact_id.as_uuid())
-            .unwrap();
+            .expect("get should succeed");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().artifact_id, artifact.artifact_id);
+        assert_eq!(retrieved.expect("should have artifact").artifact_id, artifact.artifact_id);
     }
 
     #[test]
@@ -950,15 +1013,15 @@ mod tests {
         let mut a3 = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
         a3.artifact_type = ArtifactType::Fact;
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.scope_insert(&scope).unwrap();
-        storage.artifact_insert(&a1).unwrap();
-        storage.artifact_insert(&a2).unwrap();
-        storage.artifact_insert(&a3).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.scope_insert(&scope).expect("insert should succeed");
+        storage.artifact_insert(&a1).expect("insert should succeed");
+        storage.artifact_insert(&a2).expect("insert should succeed");
+        storage.artifact_insert(&a3).expect("insert should succeed");
 
         let facts = storage
             .artifact_query_by_type(trajectory.trajectory_id.as_uuid(), ArtifactType::Fact)
-            .unwrap();
+            .expect("query should succeed");
         assert_eq!(facts.len(), 2);
     }
 
@@ -972,12 +1035,12 @@ mod tests {
         let trajectory = make_test_trajectory();
         let note = make_test_note(trajectory.trajectory_id);
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.note_insert(&note).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.note_insert(&note).expect("insert should succeed");
 
-        let retrieved = storage.note_get(note.note_id.as_uuid()).unwrap();
+        let retrieved = storage.note_get(note.note_id.as_uuid()).expect("get should succeed");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().note_id, note.note_id);
+        assert_eq!(retrieved.expect("should have note").note_id, note.note_id);
     }
 
     #[test]
@@ -989,14 +1052,14 @@ mod tests {
         let n1 = make_test_note(t1.trajectory_id);
         let n2 = make_test_note(t2.trajectory_id);
 
-        storage.trajectory_insert(&t1).unwrap();
-        storage.trajectory_insert(&t2).unwrap();
-        storage.note_insert(&n1).unwrap();
-        storage.note_insert(&n2).unwrap();
+        storage.trajectory_insert(&t1).expect("insert should succeed");
+        storage.trajectory_insert(&t2).expect("insert should succeed");
+        storage.note_insert(&n1).expect("insert should succeed");
+        storage.note_insert(&n2).expect("insert should succeed");
 
         let notes = storage
             .note_query_by_trajectory(t1.trajectory_id.as_uuid())
-            .unwrap();
+            .expect("query should succeed");
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].note_id, n1.note_id);
     }
@@ -1016,12 +1079,12 @@ mod tests {
         let mut t2 = make_test_turn(scope.scope_id);
         t2.sequence = 2;
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.scope_insert(&scope).unwrap();
-        storage.turn_insert(&t1).unwrap();
-        storage.turn_insert(&t2).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.scope_insert(&scope).expect("insert should succeed");
+        storage.turn_insert(&t1).expect("insert should succeed");
+        storage.turn_insert(&t2).expect("insert should succeed");
 
-        let turns = storage.turn_get_by_scope(scope.scope_id.as_uuid()).unwrap();
+        let turns = storage.turn_get_by_scope(scope.scope_id.as_uuid()).expect("query should succeed");
         assert_eq!(turns.len(), 2);
         assert_eq!(turns[0].sequence, 1);
         assert_eq!(turns[1].sequence, 2);
@@ -1053,14 +1116,14 @@ mod tests {
             "test".to_string(),
         ));
 
-        storage.trajectory_insert(&trajectory).unwrap();
-        storage.scope_insert(&scope).unwrap();
-        storage.artifact_insert(&a1).unwrap();
-        storage.artifact_insert(&a2).unwrap();
-        storage.artifact_insert(&a3).unwrap();
+        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage.scope_insert(&scope).expect("insert should succeed");
+        storage.artifact_insert(&a1).expect("insert should succeed");
+        storage.artifact_insert(&a2).expect("insert should succeed");
+        storage.artifact_insert(&a3).expect("insert should succeed");
 
         let query = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "test".to_string());
-        let results = storage.vector_search(&query, 2).unwrap();
+        let results = storage.vector_search(&query, 2).expect("search should succeed");
 
         assert_eq!(results.len(), 2);
         // First result should be the most similar (a1 with exact match)
@@ -1112,19 +1175,19 @@ mod prop_tests {
             let non_existent_id = Uuid::now_v7();
 
             // Trajectory not found
-            let result = storage.trajectory_get(non_existent_id).unwrap();
+            let result = storage.trajectory_get(non_existent_id).expect("get should succeed");
             prop_assert!(result.is_none(), "Non-existent trajectory should return None");
 
             // Scope not found
-            let result = storage.scope_get(non_existent_id).unwrap();
+            let result = storage.scope_get(non_existent_id).expect("get should succeed");
             prop_assert!(result.is_none(), "Non-existent scope should return None");
 
             // Artifact not found
-            let result = storage.artifact_get(non_existent_id).unwrap();
+            let result = storage.artifact_get(non_existent_id).expect("get should succeed");
             prop_assert!(result.is_none(), "Non-existent artifact should return None");
 
             // Note not found
-            let result = storage.note_get(non_existent_id).unwrap();
+            let result = storage.note_get(non_existent_id).expect("get should succeed");
             prop_assert!(result.is_none(), "Non-existent note should return None");
         }
 
@@ -1138,11 +1201,11 @@ mod prop_tests {
             let trajectory = make_trajectory_with_status(TrajectoryStatus::Active);
             let original_id = trajectory.trajectory_id;
 
-            storage.trajectory_insert(&trajectory).unwrap();
-            let retrieved = storage.trajectory_get(original_id.as_uuid()).unwrap();
+            storage.trajectory_insert(&trajectory).expect("insert should succeed");
+            let retrieved = storage.trajectory_get(original_id.as_uuid()).expect("get should succeed");
 
             prop_assert!(retrieved.is_some());
-            prop_assert_eq!(retrieved.unwrap().trajectory_id, original_id);
+            prop_assert_eq!(retrieved.expect("should have trajectory").trajectory_id, original_id);
         }
 
         /// Property: Update not-found returns error
@@ -1172,7 +1235,7 @@ mod prop_tests {
             let storage = MockStorage::new();
             let trajectory = make_trajectory_with_status(TrajectoryStatus::Active);
 
-            storage.trajectory_insert(&trajectory).unwrap();
+            storage.trajectory_insert(&trajectory).expect("first insert should succeed");
             let result = storage.trajectory_insert(&trajectory);
 
             prop_assert!(result.is_err(), "Duplicate insert should fail");
@@ -1186,7 +1249,7 @@ mod prop_tests {
             let storage = MockStorage::new();
             let query = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "test".to_string());
 
-            let results = storage.vector_search(&query, limit).unwrap();
+            let results = storage.vector_search(&query, limit).expect("search should succeed");
 
             prop_assert!(
                 results.len() <= limit as usize,

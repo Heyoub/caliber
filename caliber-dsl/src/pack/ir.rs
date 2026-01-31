@@ -5,7 +5,7 @@ use crate::compiler::{
     CompiledPackRoutingConfig, CompiledToolConfig, CompiledToolKind, CompiledToolsetConfig,
 };
 use crate::config::*;
-use crate::parser::ast::{Action, InjectionMode, Trigger};
+use crate::parser::ast::{Action, InjectionMode, MemoryDef, Trigger};
 use crate::parser::AdapterDef as AstAdapterDef;
 use crate::parser::InjectionDef as AstInjectionDef;
 use crate::parser::{AdapterType, CaliberAst, Definition, PolicyDef, PolicyRule};
@@ -23,6 +23,7 @@ pub struct PackIr {
     pub policies: Vec<PolicyDef>,
     pub injections: Vec<AstInjectionDef>,
     pub providers: Vec<AstProviderDef>,
+    pub memories: Vec<MemoryDef>,
 }
 
 impl PackIr {
@@ -44,6 +45,7 @@ impl PackIr {
         let md_policies = extract_policies_from_markdown(&markdown)?;
         let md_injections = extract_injections_from_markdown(&markdown)?;
         let md_providers = extract_providers_from_markdown(&markdown)?;
+        let md_memories = extract_memories_from_markdown(&markdown)?;
 
         // Check for duplicates within Markdown configs
         check_markdown_duplicates(&md_adapters, &md_policies, &md_injections, &md_providers)?;
@@ -110,6 +112,7 @@ impl PackIr {
             policies,
             injections,
             providers,
+            memories: md_memories,
         })
     }
 }
@@ -792,6 +795,9 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
     for provider in &ir.providers {
         defs.push(Definition::Provider(provider.clone()));
     }
+    for memory in &ir.memories {
+        defs.push(Definition::Memory(memory.clone()));
+    }
     CaliberAst {
         version: ir
             .manifest
@@ -944,4 +950,25 @@ fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstPr
     }
 
     Ok(providers)
+}
+
+/// Extract memory definitions from Markdown fence blocks
+fn extract_memories_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<MemoryDef>, PackError> {
+    let mut memories = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Memory {
+                    let memory = parse_memory_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    memories.push(memory);
+                }
+            }
+        }
+    }
+
+    Ok(memories)
 }

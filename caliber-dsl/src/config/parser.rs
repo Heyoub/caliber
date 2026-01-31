@@ -532,7 +532,7 @@ fn validate_adapter_config(config: &AdapterConfig) -> Result<(), ConfigError> {
 
 fn parse_adapter_type(s: &str) -> Result<AdapterType, ConfigError> {
     match s.to_lowercase().as_str() {
-        "postgres" => Ok(AdapterType::Postgres),
+        "postgres" | "postgresql" => Ok(AdapterType::Postgres),
         "redis" => Ok(AdapterType::Redis),
         "memory" => Ok(AdapterType::Memory),
         other => Err(ConfigError::UnknownAdapter(other.to_string())),
@@ -559,33 +559,38 @@ fn parse_retention(s: &str) -> Result<Retention, ConfigError> {
         "persistent" => Ok(Retention::Persistent),
         "session" => Ok(Retention::Session),
         "scope" => Ok(Retention::Scope),
-        other if other.starts_with("duration:") => {
-            Ok(Retention::Duration(other["duration:".len()..].to_string()))
+        other => {
+            if let Some(duration) = other.strip_prefix("duration:") {
+                Ok(Retention::Duration(duration.to_string()))
+            } else if let Some(max_str) = other.strip_prefix("max:") {
+                let count = max_str
+                    .parse()
+                    .map_err(|_| ConfigError::InvalidValue("Invalid max count".to_string()))?;
+                Ok(Retention::Max(count))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown retention '{}'",
+                    other
+                )))
+            }
         }
-        other if other.starts_with("max:") => {
-            let count = other["max:".len()..]
-                .parse()
-                .map_err(|_| ConfigError::InvalidValue("Invalid max count".to_string()))?;
-            Ok(Retention::Max(count))
-        }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown retention '{}'",
-            other
-        ))),
     }
 }
 
 fn parse_lifecycle(s: &str) -> Result<Lifecycle, ConfigError> {
     match s.to_lowercase().as_str() {
         "explicit" => Ok(Lifecycle::Explicit),
-        other if other.starts_with("autoclose:") => {
-            let trigger = parse_trigger(other["autoclose:".len()..].trim())?;
-            Ok(Lifecycle::AutoClose(trigger))
+        other => {
+            if let Some(autoclose_str) = other.strip_prefix("autoclose:") {
+                let trigger = parse_trigger(autoclose_str.trim())?;
+                Ok(Lifecycle::AutoClose(trigger))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown lifecycle '{}'",
+                    other
+                )))
+            }
         }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown lifecycle '{}'",
-            other
-        ))),
     }
 }
 
@@ -596,13 +601,16 @@ fn parse_trigger(s: &str) -> Result<Trigger, ConfigError> {
         "scope_close" => Ok(Trigger::ScopeClose),
         "turn_end" => Ok(Trigger::TurnEnd),
         "manual" => Ok(Trigger::Manual),
-        other if other.starts_with("schedule:") => {
-            Ok(Trigger::Schedule(other["schedule:".len()..].to_string()))
+        other => {
+            if let Some(schedule_str) = other.strip_prefix("schedule:") {
+                Ok(Trigger::Schedule(schedule_str.to_string()))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown trigger '{}'",
+                    other
+                )))
+            }
         }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown trigger '{}'",
-            other
-        ))),
     }
 }
 
@@ -626,16 +634,17 @@ fn parse_field_type(s: &str) -> Result<FieldType, ConfigError> {
         "bool" => Ok(FieldType::Bool),
         "timestamp" => Ok(FieldType::Timestamp),
         "json" => Ok(FieldType::Json),
-        other if other.starts_with("embedding:") => {
-            let dim = other["embedding:".len()..]
-                .parse()
-                .ok();
-            Ok(FieldType::Embedding(dim))
+        other => {
+            if let Some(dim_str) = other.strip_prefix("embedding:") {
+                let dim = dim_str.parse().ok();
+                Ok(FieldType::Embedding(dim))
+            } else {
+                Err(ConfigError::InvalidValue(format!(
+                    "Unknown field type '{}'",
+                    other
+                )))
+            }
         }
-        other => Err(ConfigError::InvalidValue(format!(
-            "Unknown field type '{}'",
-            other
-        ))),
     }
 }
 
@@ -663,10 +672,61 @@ fn parse_index_type(s: &str) -> Result<IndexType, ConfigError> {
 }
 
 fn parse_modifier(s: String) -> Result<ModifierDef, ConfigError> {
-    // Placeholder - proper parsing needed
-    Ok(ModifierDef::Embeddable {
-        provider: s,
-    })
+    let s_lower = s.to_lowercase();
+
+    if let Some(provider) = s_lower.strip_prefix("embeddable:") {
+        Ok(ModifierDef::Embeddable {
+            provider: provider.to_string(),
+        })
+    } else if let Some(style_str) = s_lower.strip_prefix("summarizable:") {
+        let style = match style_str {
+            "brief" => SummaryStyle::Brief,
+            "detailed" => SummaryStyle::Detailed,
+            other => {
+                return Err(ConfigError::InvalidValue(format!(
+                    "invalid summary style '{}', expected 'brief' or 'detailed'",
+                    other
+                )))
+            }
+        };
+        Ok(ModifierDef::Summarizable {
+            style,
+            on_triggers: vec![], // Default to empty triggers
+        })
+    } else if let Some(mode_str) = s_lower.strip_prefix("lockable:") {
+        let mode = match mode_str {
+            "exclusive" => LockMode::Exclusive,
+            "shared" => LockMode::Shared,
+            other => {
+                return Err(ConfigError::InvalidValue(format!(
+                    "invalid lock mode '{}', expected 'exclusive' or 'shared'",
+                    other
+                )))
+            }
+        };
+        Ok(ModifierDef::Lockable { mode })
+    } else if s_lower == "embeddable" {
+        // Default embeddable with empty provider
+        Ok(ModifierDef::Embeddable {
+            provider: String::new(),
+        })
+    } else if s_lower == "summarizable" {
+        // Default summarizable with brief style
+        Ok(ModifierDef::Summarizable {
+            style: SummaryStyle::Brief,
+            on_triggers: vec![],
+        })
+    } else if s_lower == "lockable" {
+        // Default lockable with exclusive mode
+        Ok(ModifierDef::Lockable {
+            mode: LockMode::Exclusive,
+        })
+    } else {
+        Err(ConfigError::InvalidValue(format!(
+            "invalid modifier '{}', expected 'embeddable', 'summarizable', or 'lockable'",
+            s
+        )))
+    }
 }
 
 fn parse_policy_rule(config: PolicyRuleConfig) -> Result<PolicyRule, ConfigError> {

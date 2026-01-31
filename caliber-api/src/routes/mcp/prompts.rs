@@ -213,7 +213,7 @@ mod tests {
         let mut args = HashMap::new();
         let id = Uuid::now_v7();
         args.insert("id".to_string(), id.to_string());
-        let parsed = parse_uuid(&args, "id").unwrap();
+        let parsed = parse_uuid(&args, "id").expect("parse_uuid should succeed");
         assert_eq!(parsed, id);
     }
 

@@ -92,7 +92,7 @@ connection: "postgresql://localhost/test"
 "#;
         let result = parse_markdown_source(source);
         assert!(result.is_ok());
-        let ast = result.unwrap();
+        let ast = result.expect("adapter block should parse successfully");
         assert!(!ast.definitions.is_empty());
     }
 }

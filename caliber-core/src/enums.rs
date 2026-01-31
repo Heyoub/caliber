@@ -1186,7 +1186,7 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: EntityType = string.parse().unwrap();
+            let restored: EntityType = string.parse().expect("EntityType roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1202,7 +1202,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: TrajectoryStatus = string.parse().unwrap();
+            let restored: TrajectoryStatus =
+                string.parse().expect("TrajectoryStatus roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1219,7 +1220,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: AgentStatus = string.parse().unwrap();
+            let restored: AgentStatus =
+                string.parse().expect("AgentStatus roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1249,7 +1251,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: ArtifactType = string.parse().unwrap();
+            let restored: ArtifactType =
+                string.parse().expect("ArtifactType roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1269,7 +1272,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: ExtractionMethod = string.parse().unwrap();
+            let restored: ExtractionMethod =
+                string.parse().expect("ExtractionMethod roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1292,7 +1296,7 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: NoteType = string.parse().unwrap();
+            let restored: NoteType = string.parse().expect("NoteType roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1314,7 +1318,7 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: EdgeType = string.parse().unwrap();
+            let restored: EdgeType = string.parse().expect("EdgeType roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1329,7 +1333,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: AbstractionLevel = string.parse().unwrap();
+            let restored: AbstractionLevel =
+                string.parse().expect("AbstractionLevel roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1344,7 +1349,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: EvolutionPhase = string.parse().unwrap();
+            let restored: EvolutionPhase =
+                string.parse().expect("EvolutionPhase roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1360,7 +1366,7 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: TurnRole = string.parse().unwrap();
+            let restored: TurnRole = string.parse().expect("TurnRole roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1375,7 +1381,8 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: OutcomeStatus = string.parse().unwrap();
+            let restored: OutcomeStatus =
+                string.parse().expect("OutcomeStatus roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1388,31 +1395,43 @@ mod tests {
     fn test_abstraction_level_aliases() {
         // "raw" and "l0" should both parse to Raw
         assert_eq!(
-            "raw".parse::<AbstractionLevel>().unwrap(),
+            "raw"
+                .parse::<AbstractionLevel>()
+                .expect("parsing 'raw' should succeed"),
             AbstractionLevel::Raw
         );
         assert_eq!(
-            "l0".parse::<AbstractionLevel>().unwrap(),
+            "l0"
+                .parse::<AbstractionLevel>()
+                .expect("parsing 'l0' should succeed"),
             AbstractionLevel::Raw
         );
 
         // "summary" and "l1" should both parse to Summary
         assert_eq!(
-            "summary".parse::<AbstractionLevel>().unwrap(),
+            "summary"
+                .parse::<AbstractionLevel>()
+                .expect("parsing 'summary' should succeed"),
             AbstractionLevel::Summary
         );
         assert_eq!(
-            "l1".parse::<AbstractionLevel>().unwrap(),
+            "l1"
+                .parse::<AbstractionLevel>()
+                .expect("parsing 'l1' should succeed"),
             AbstractionLevel::Summary
         );
 
         // "principle" and "l2" should both parse to Principle
         assert_eq!(
-            "principle".parse::<AbstractionLevel>().unwrap(),
+            "principle"
+                .parse::<AbstractionLevel>()
+                .expect("parsing 'principle' should succeed"),
             AbstractionLevel::Principle
         );
         assert_eq!(
-            "l2".parse::<AbstractionLevel>().unwrap(),
+            "l2"
+                .parse::<AbstractionLevel>()
+                .expect("parsing 'l2' should succeed"),
             AbstractionLevel::Principle
         );
     }
@@ -1420,19 +1439,27 @@ mod tests {
     #[test]
     fn test_trajectory_status_aliases() {
         assert_eq!(
-            "completed".parse::<TrajectoryStatus>().unwrap(),
+            "completed"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'completed' should succeed"),
             TrajectoryStatus::Completed
         );
         assert_eq!(
-            "complete".parse::<TrajectoryStatus>().unwrap(),
+            "complete"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'complete' should succeed"),
             TrajectoryStatus::Completed
         );
         assert_eq!(
-            "failed".parse::<TrajectoryStatus>().unwrap(),
+            "failed"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'failed' should succeed"),
             TrajectoryStatus::Failed
         );
         assert_eq!(
-            "failure".parse::<TrajectoryStatus>().unwrap(),
+            "failure"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'failure' should succeed"),
             TrajectoryStatus::Failed
         );
     }
@@ -1440,19 +1467,27 @@ mod tests {
     #[test]
     fn test_evolution_phase_aliases() {
         assert_eq!(
-            "frozen".parse::<EvolutionPhase>().unwrap(),
+            "frozen"
+                .parse::<EvolutionPhase>()
+                .expect("parsing 'frozen' should succeed"),
             EvolutionPhase::Frozen
         );
         assert_eq!(
-            "freeze".parse::<EvolutionPhase>().unwrap(),
+            "freeze"
+                .parse::<EvolutionPhase>()
+                .expect("parsing 'freeze' should succeed"),
             EvolutionPhase::Frozen
         );
         assert_eq!(
-            "evolving".parse::<EvolutionPhase>().unwrap(),
+            "evolving"
+                .parse::<EvolutionPhase>()
+                .expect("parsing 'evolving' should succeed"),
             EvolutionPhase::Evolving
         );
         assert_eq!(
-            "evolve".parse::<EvolutionPhase>().unwrap(),
+            "evolve"
+                .parse::<EvolutionPhase>()
+                .expect("parsing 'evolve' should succeed"),
             EvolutionPhase::Evolving
         );
     }
@@ -1505,13 +1540,16 @@ mod tests {
 
     #[test]
     fn test_agent_status_from_db_str() {
-        assert_eq!(AgentStatus::from_db_str("idle").unwrap(), AgentStatus::Idle);
         assert_eq!(
-            AgentStatus::from_db_str("ACTIVE").unwrap(),
+            AgentStatus::from_db_str("idle").expect("parsing 'idle' should succeed"),
+            AgentStatus::Idle
+        );
+        assert_eq!(
+            AgentStatus::from_db_str("ACTIVE").expect("parsing 'ACTIVE' should succeed"),
             AgentStatus::Active
         );
         assert_eq!(
-            AgentStatus::from_db_str("Blocked").unwrap(),
+            AgentStatus::from_db_str("Blocked").expect("parsing 'Blocked' should succeed"),
             AgentStatus::Blocked
         );
         assert!(AgentStatus::from_db_str("invalid").is_err());
@@ -1554,23 +1592,33 @@ mod tests {
     #[test]
     fn test_parse_case_insensitive() {
         assert_eq!(
-            "ACTIVE".parse::<TrajectoryStatus>().unwrap(),
+            "ACTIVE"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'ACTIVE' should succeed"),
             TrajectoryStatus::Active
         );
         assert_eq!(
-            "active".parse::<TrajectoryStatus>().unwrap(),
+            "active"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'active' should succeed"),
             TrajectoryStatus::Active
         );
         assert_eq!(
-            "Active".parse::<TrajectoryStatus>().unwrap(),
+            "Active"
+                .parse::<TrajectoryStatus>()
+                .expect("parsing 'Active' should succeed"),
             TrajectoryStatus::Active
         );
         assert_eq!(
-            "TRAJECTORY".parse::<EntityType>().unwrap(),
+            "TRAJECTORY"
+                .parse::<EntityType>()
+                .expect("parsing 'TRAJECTORY' should succeed"),
             EntityType::Trajectory
         );
         assert_eq!(
-            "trajectory".parse::<EntityType>().unwrap(),
+            "trajectory"
+                .parse::<EntityType>()
+                .expect("parsing 'trajectory' should succeed"),
             EntityType::Trajectory
         );
     }

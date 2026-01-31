@@ -19,8 +19,8 @@ use std::path::PathBuf;
 /// Minimal manifest for testing (no TOML-based configs)
 const MINIMAL_MANIFEST: &str = r#"
 [meta]
-name = "test"
 version = "1.0"
+project = "test"
 
 [tools]
 bin = {}
@@ -91,7 +91,7 @@ model: "{}"
     fn with_policy(mut self, name: &str, trigger: &str, actions: &[&str]) -> Self {
         let actions_yaml = actions
             .iter()
-            .map(|a| format!("  - type: {}\n    target: test", a))
+            .map(|a| format!("      - type: {}\n        target: test", a))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -116,6 +116,18 @@ mode: {}
 priority: {}
 ```"#,
             source, target, mode, priority
+        ));
+        self
+    }
+
+    fn with_memory(mut self, name: &str) -> Self {
+        self.fence_blocks.push(format!(
+            r#"```memory {}
+memory_type: working
+retention: session
+lifecycle: explicit
+```"#,
+            name
         ));
         self
     }
@@ -241,6 +253,7 @@ fn test_parse_policy_with_multiple_actions() {
 #[test]
 fn test_parse_injection_with_priority() {
     let input = TestPackBuilder::new()
+        .with_memory("memories.notes")  // Add memory for injection to reference
         .with_injection("memories.notes", "context.main", "full", 100)
         .build();
 
@@ -483,6 +496,7 @@ fn test_parse_mixed_config_types() {
         .with_adapter("db", "postgres", "conn")
         .with_provider("ai", "openai", "env:KEY", "gpt-4")
         .with_policy("cleanup", "scope_close", &["summarize"])
+        .with_memory("notes")  // Add memory for injection to reference
         .with_injection("notes", "context", "full", 100)
         .build();
 
@@ -566,6 +580,7 @@ fn test_injection_mode_parsing() {
 
     for (mode_str, expected_mode) in modes {
         let input = TestPackBuilder::new()
+            .with_memory("test")  // Add memory for injection to reference
             .with_raw_fence(&format!(r#"```injection
 source: "test"
 target: "test"
@@ -574,7 +589,7 @@ priority: 100
 ```"#, mode_str))
             .build();
 
-        let output = compose_pack(input).unwrap_or_else(|_| panic!("Failed to parse mode: {}", mode_str));
+        let output = compose_pack(input).unwrap_or_else(|e| panic!("Failed to parse mode '{}': {:?}", mode_str, e));
 
         let injection = output.ast.definitions.iter()
             .find_map(|d| if let Definition::Injection(i) = d { Some(i) } else { None })
@@ -634,8 +649,8 @@ fn test_toml_and_markdown_merge() {
     // This test verifies TOML configs and Markdown configs merge correctly
     let manifest_with_adapter = r#"
 [meta]
-name = "test"
 version = "1.0"
+project = "test"
 
 [tools]
 bin = {}
@@ -649,7 +664,7 @@ prompts = {}
 [injections]
 
 [adapters.toml_adapter]
-adapter_type = "postgres"
+type = "postgres"
 connection = "from_toml"
 "#;
 

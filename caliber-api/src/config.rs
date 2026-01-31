@@ -7,9 +7,9 @@
 use crate::constants::{
     DEFAULT_CONTEXT_MAX_ARTIFACTS, DEFAULT_CONTEXT_MAX_NOTES, DEFAULT_CONTEXT_MAX_SUMMARIES,
     DEFAULT_CONTEXT_MAX_TURNS, DEFAULT_CORS_MAX_AGE_SECS, DEFAULT_GRAPHQL_TOKEN_BUDGET,
-    DEFAULT_IDEMPOTENCY_MAX_BODY_SIZE, DEFAULT_IDEMPOTENCY_TTL_SECS, DEFAULT_RATE_LIMIT_AUTHENTICATED,
-    DEFAULT_RATE_LIMIT_BURST, DEFAULT_RATE_LIMIT_UNAUTHENTICATED, DEFAULT_REST_TOKEN_BUDGET,
-    DEFAULT_WEBHOOK_SIGNATURE_TOLERANCE_SECS,
+    DEFAULT_IDEMPOTENCY_MAX_BODY_SIZE, DEFAULT_IDEMPOTENCY_TTL_SECS,
+    DEFAULT_RATE_LIMIT_AUTHENTICATED, DEFAULT_RATE_LIMIT_BURST, DEFAULT_RATE_LIMIT_UNAUTHENTICATED,
+    DEFAULT_REST_TOKEN_BUDGET, DEFAULT_WEBHOOK_SIGNATURE_TOLERANCE_SECS,
 };
 use std::time::Duration;
 
@@ -78,8 +78,8 @@ impl EndpointsConfig {
         let api_base_url = std::env::var("CALIBER_API_BASE_URL")
             .unwrap_or_else(|_| "http://localhost:3000".to_string());
 
-        let domain = std::env::var("CALIBER_DOMAIN")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        let domain =
+            std::env::var("CALIBER_DOMAIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
 
         let docs_url = std::env::var("CALIBER_DOCS_URL")
             .unwrap_or_else(|_| "http://localhost:3000/docs".to_string());

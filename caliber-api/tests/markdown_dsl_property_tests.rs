@@ -54,8 +54,8 @@ Test
 adapter_type: postgres
 connection: "postgres://localhost:5432/caliber"
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Provider config
         r#"
 # System
@@ -68,8 +68,8 @@ provider_type: openai
 api_key: env:OPENAI_API_KEY
 model: "gpt-4"
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Policy config
         r#"
 # System
@@ -84,8 +84,8 @@ rules:
       - type: summarize
         target: scope
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Injection config
         r#"
 # System
@@ -99,8 +99,8 @@ target: "context"
 mode: full
 priority: 10
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Mixed configs
         r#"
 # System
@@ -118,8 +118,8 @@ provider_type: openai
 api_key: env:KEY
 model: "gpt-4"
 ```
-"#.to_string(),
-
+"#
+        .to_string(),
         // Case preservation test
         r#"
 # System
@@ -131,7 +131,8 @@ Test
 adapter_type: postgres
 connection: "PostgreSQL://LocalHost/DB"
 ```
-"#.to_string(),
+"#
+        .to_string(),
     ];
 
     prop::sample::select(samples)
@@ -330,8 +331,7 @@ connection: "test://conn"
     assert!(parsed.valid, "Should be valid");
 
     let ast_json = parsed.ast.expect("AST should be present");
-    let ast: CaliberAst =
-        serde_json::from_value(ast_json).expect("Should deserialize AST");
+    let ast: CaliberAst = serde_json::from_value(ast_json).expect("Should deserialize AST");
 
     let adapter = ast
         .definitions
@@ -376,12 +376,10 @@ connection: "conn"
     .expect("Parse should succeed");
 
     let response = response.into_response();
-    let parsed: ValidateDslResponse = extract_json(response)
-        .await
-        .expect("Should deserialize");
+    let parsed: ValidateDslResponse = extract_json(response).await.expect("Should deserialize");
 
-    let ast: CaliberAst = serde_json::from_value(parsed.ast.unwrap())
-        .expect("Should deserialize AST");
+    let ast: CaliberAst =
+        serde_json::from_value(parsed.ast.unwrap()).expect("Should deserialize AST");
 
     let adapter = ast
         .definitions
@@ -392,7 +390,10 @@ connection: "conn"
         })
         .expect("Adapter should exist");
 
-    assert_eq!(adapter.name, "MAIN_DATABASE", "All caps should be preserved");
+    assert_eq!(
+        adapter.name, "MAIN_DATABASE",
+        "All caps should be preserved"
+    );
 }
 
 #[tokio::test]
@@ -422,12 +423,10 @@ model: "gpt-4"
     .expect("Parse should succeed");
 
     let response = response.into_response();
-    let parsed: ValidateDslResponse = extract_json(response)
-        .await
-        .expect("Should deserialize");
+    let parsed: ValidateDslResponse = extract_json(response).await.expect("Should deserialize");
 
-    let ast: CaliberAst = serde_json::from_value(parsed.ast.unwrap())
-        .expect("Should deserialize AST");
+    let ast: CaliberAst =
+        serde_json::from_value(parsed.ast.unwrap()).expect("Should deserialize AST");
 
     let provider = ast
         .definitions
