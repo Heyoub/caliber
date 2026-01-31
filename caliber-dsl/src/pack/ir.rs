@@ -27,6 +27,36 @@ pub struct PackIr {
 }
 
 impl PackIr {
+    /// Constructs a PackIr by validating the provided manifest, extracting configurations from
+    /// Markdown fence blocks, checking for duplicates, and merging TOML- and Markdown-derived
+    /// definitions into a single intermediate representation.
+    ///
+    /// This performs the following high-level steps:
+    /// - Validates profiles, toolsets, agents, injections, and routing declared in the manifest.
+    /// - Builds adapters, policies, injections, and providers from the TOML manifest.
+    /// - Extracts adapters, policies, injections, and providers from Markdown fence blocks.
+    /// - Checks for duplicates within Markdown and across TOML vs Markdown (adapters, policies,
+    ///   providers, and injections). Duplicate definitions cause a validation error.
+    /// - Merges Markdown-derived definitions into the TOML-derived lists and returns the merged IR.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Self)` containing the manifest, the original Markdown documents, and the merged lists of
+    /// adapters, policies, injections, and providers on success; `Err(PackError)` if validation,
+    /// TOML parsing, or Markdown extraction fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct a PackIr from a manifest and any Markdown docs.
+    /// // (The concrete construction of `manifest` and `markdown` depends on your crate's API.)
+    /// # use crate::ir::{PackIr, PackManifest, MarkdownDoc};
+    /// # fn build_manifest() -> PackManifest { unimplemented!() }
+    /// # fn load_markdown() -> Vec<MarkdownDoc> { Vec::new() }
+    /// let manifest = build_manifest();
+    /// let markdown = load_markdown();
+    /// let pack_ir = PackIr::new(manifest, markdown).expect("manifest and markdown must be valid");
+    /// ```
     pub fn new(manifest: PackManifest, markdown: Vec<MarkdownDoc>) -> Result<Self, PackError> {
         validate_profiles(&manifest)?;
         validate_toolsets(&manifest)?;
@@ -781,6 +811,20 @@ fn profile_key(ret: &str, idx: &str, emb: &str, fmt: &str) -> String {
     )
 }
 
+/// Builds a Caliber AST from a pack intermediate representation.
+///
+/// The resulting AST contains definitions for adapters, policies, injections, and providers
+/// extracted from the given `PackIr`. The AST version is taken from `ir.manifest.meta.version`
+/// if present; otherwise `"1.0"` is used.
+///
+/// # Examples
+///
+/// ```
+/// // Construct a minimal PackIr (fields elided for brevity) and convert it.
+/// // let ir = PackIr { manifest: ..., markdown: vec![], adapters: vec![], policies: vec![], injections: vec![], providers: vec![] };
+/// // let ast = ast_from_ir(&ir);
+/// // assert_eq!(ast.version, "1.0");
+/// ```
 pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
     let mut defs: Vec<Definition> = Vec::new();
     for a in &ir.adapters {
@@ -813,7 +857,24 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
 // MARKDOWN CONFIG EXTRACTION (NEW)
 // ============================================================================
 
-/// Check for duplicate definitions within Markdown configs
+/// Validates that Markdown-extracted adapters, policies, injections, and providers contain no duplicate definitions.
+///
+/// Returns an error if any adapter, policy, or provider name appears more than once, or if any injection's (source, target) pair is duplicated.
+///
+/// # Errors
+///
+/// Returns `PackError::Validation` with a descriptive message for the first duplicate encountered.
+///
+/// # Examples
+///
+/// ```
+/// // Accepts empty collections when there are no duplicates
+/// let adapters: Vec<_> = vec![];
+/// let policies: Vec<_> = vec![];
+/// let injections: Vec<_> = vec![];
+/// let providers: Vec<_> = vec![];
+/// assert!(check_markdown_duplicates(&adapters, &policies, &injections, &providers).is_ok());
+/// ```
 fn check_markdown_duplicates(
     adapters: &[AstAdapterDef],
     policies: &[PolicyDef],
@@ -868,7 +929,23 @@ fn check_markdown_duplicates(
     Ok(())
 }
 
-/// Extract adapter definitions from Markdown fence blocks
+/// Extracts adapter definitions from Markdown fence blocks.
+///
+/// Scans the provided Markdown documents for fence blocks marked as adapter definitions,
+/// parses each matching block into an `AstAdapterDef`, and returns the collected adapters.
+///
+/// # Returns
+///
+/// `Ok(Vec<AstAdapterDef>)` containing all adapter definitions found in the markdown documents;
+/// `Err(PackError)` if any adapter fence fails to parse.
+///
+/// # Examples
+///
+/// ```
+/// let docs: Vec<MarkdownDoc> = Vec::new();
+/// let adapters = extract_adapters_from_markdown(&docs).unwrap();
+/// assert!(adapters.is_empty());
+/// ```
 fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAdapterDef>, PackError> {
     let mut adapters = Vec::new();
 
@@ -889,7 +966,23 @@ fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAda
     Ok(adapters)
 }
 
-/// Extract policy definitions from Markdown fence blocks
+/// Extracts policy definitions from Markdown fence blocks.
+///
+/// Scans each MarkdownDoc and its users' fence blocks for those with FenceKind::Policy,
+/// parses each policy block via `parse_policy_block`, and returns the collected `PolicyDef` entries.
+///
+/// # Errors
+///
+/// Returns a `PackError` if parsing or validation of any encountered policy block fails.
+///
+/// # Examples
+///
+/// ```
+/// // assume `markdown_docs` is a Vec<MarkdownDoc> parsed elsewhere
+/// let policies = extract_policies_from_markdown(&markdown_docs).unwrap();
+/// // each policy should have a non-empty name
+/// assert!(policies.iter().all(|p| !p.name.is_empty()));
+/// ```
 fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<PolicyDef>, PackError> {
     let mut policies = Vec::new();
 
@@ -910,7 +1003,14 @@ fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<Policy
     Ok(policies)
 }
 
-/// Extract injection definitions from Markdown fence blocks
+/// Extracts injection definitions from Markdown fence blocks.
+///
+/// # Examples
+///
+/// ```
+/// let injections = extract_injections_from_markdown(&[]).unwrap();
+/// assert!(injections.is_empty());
+/// ```
 fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstInjectionDef>, PackError> {
     let mut injections = Vec::new();
 
@@ -931,7 +1031,22 @@ fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstI
     Ok(injections)
 }
 
-/// Extract provider definitions from Markdown fence blocks
+/// Parse provider definitions from Markdown fence blocks and return their AST representations.
+///
+/// Scans each MarkdownDoc's users and fence blocks for Provider fences, parses each provider
+/// block into an `AstProviderDef`, and collects the results.
+///
+/// # Errors
+///
+/// Returns a `PackError` if parsing any provider fence fails.
+///
+/// # Examples
+///
+/// ```
+/// let docs: Vec<MarkdownDoc> = vec![]; // no provider fences
+/// let providers = extract_providers_from_markdown(&docs).unwrap();
+/// assert!(providers.is_empty());
+/// ```
 fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstProviderDef>, PackError> {
     let mut providers = Vec::new();
 
@@ -952,7 +1067,7 @@ fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstPr
     Ok(providers)
 }
 
-/// Extract memory definitions from Markdown fence blocks
+/// Extract memory definitions from Markdown fence blocks.
 fn extract_memories_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<MemoryDef>, PackError> {
     let mut memories = Vec::new();
 

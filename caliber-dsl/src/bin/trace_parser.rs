@@ -8,6 +8,16 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Traces the Pack Markdown parsing pipeline for a given Markdown file and prints the intermediate and canonical outputs.
+///
+/// Reads a Markdown file specified as the first command-line argument, displays the input content, parses it into a pack AST using the Pack parser, prints the AST and basic metadata (version and definition count), then converts the AST back to canonical Markdown and prints the result. Exits with a non-zero status if no file path is provided or the file cannot be read; parse errors are printed but do not change the process exit in this binary.
+///
+/// # Examples
+///
+/// ```sh
+/// # Run the tracer on a Markdown file
+/// cargo run --bin trace_parser prompts/main.md
+/// ```
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 

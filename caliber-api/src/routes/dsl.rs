@@ -32,21 +32,35 @@ use crate::utils::parse_markdown_source;
 // ROUTE HANDLERS
 // ============================================================================
 
-/// POST /api/v1/dsl/validate - Validate DSL source
+/// Validate a DSL Markdown source and return either its parsed AST or parse diagnostics.
+///
+/// Validates that the provided request source is not empty; if empty, the request is rejected with a missing-field error. On successful parsing the response contains `valid: true` and `ast` set to the serialized AST. On parse failure the response contains `valid: false` and a single `ParseErrorResponse` with `line: 0`, `column: 0`, and `message` set to the parser error string.
+///
+/// # Examples
+///
+/// ```no_run
+/// use axum::Json;
+/// use crate::api::ValidateDslRequest;
+///
+/// // Construct a request with DSL source and send it to the handler.
+/// let req = ValidateDslRequest { source: "# Example DSL".into() };
+/// // Calling the handler requires a `State<DbClient>`; in integration tests provide a test DbClient.
+/// // let response = tokio::runtime::Runtime::new().unwrap().block_on(validate_dsl(state, Json(req)));
+/// ```
 #[utoipa::path(
-    post,
-    path = "/api/v1/dsl/validate",
-    tag = "DSL",
-    request_body = ValidateDslRequest,
-    responses(
-        (status = 200, description = "Validation result", body = ValidateDslResponse),
-        (status = 400, description = "Invalid request", body = ApiError),
-        (status = 401, description = "Unauthorized", body = ApiError),
-    ),
-    security(
-        ("api_key" = []),
-        ("bearer_auth" = [])
-    )
+post,
+path = "/api/v1/dsl/validate",
+tag = "DSL",
+request_body = ValidateDslRequest,
+responses(
+(status = 200, description = "Validation result", body = ValidateDslResponse),
+(status = 400, description = "Invalid request", body = ApiError),
+(status = 401, description = "Unauthorized", body = ApiError),
+),
+security(
+("api_key" = []),
+("bearer_auth" = [])
+)
 )]
 pub async fn validate_dsl(
     State(db): State<DbClient>,
@@ -88,21 +102,34 @@ pub async fn validate_dsl(
     }
 }
 
-/// POST /api/v1/dsl/parse - Parse DSL source
+/// Parses DSL Markdown source and returns a validation response containing the AST or parse errors.
+///
+/// On success the response's `ast` field contains the parsed Abstract Syntax Tree (AST) serialized as JSON.
+/// On failure the response includes one or more `ParseErrorResponse` entries with error messages (line and column are set to 0 for parse errors produced by the internal pack parser).
+///
+/// # Examples
+///
+/// ```
+/// // Prefer using the HTTP endpoint in integration tests; for local parsing the helper can be used:
+/// let source = "# My DSL\n...";
+/// let ast = parse_markdown_source(source).expect("should parse");
+/// let ast_json = serde_json::to_value(&ast).unwrap();
+/// assert!(ast_json.is_object());
+/// ```
 #[utoipa::path(
-    post,
-    path = "/api/v1/dsl/parse",
-    tag = "DSL",
-    request_body = ValidateDslRequest,
-    responses(
-        (status = 200, description = "Parse result with AST", body = ValidateDslResponse),
-        (status = 400, description = "Invalid request", body = ApiError),
-        (status = 401, description = "Unauthorized", body = ApiError),
-    ),
-    security(
-        ("api_key" = []),
-        ("bearer_auth" = [])
-    )
+post,
+path = "/api/v1/dsl/parse",
+tag = "DSL",
+request_body = ValidateDslRequest,
+responses(
+(status = 200, description = "Parse result with AST", body = ValidateDslResponse),
+(status = 400, description = "Invalid request", body = ApiError),
+(status = 401, description = "Unauthorized", body = ApiError),
+),
+security(
+("api_key" = []),
+("bearer_auth" = [])
+)
 )]
 pub async fn parse_dsl(
     State(db): State<DbClient>,
@@ -144,21 +171,37 @@ pub async fn parse_dsl(
     }
 }
 
-/// POST /api/v1/dsl/compile - Compile DSL source to runtime configuration
+/// Compile a Markdown DSL source into a runtime configuration.
+///
+/// Parses the provided Markdown DSL into an AST and attempts to compile that AST into a runtime
+/// configuration. On success the handler returns a JSON representation of the compiled config;
+/// on failure it returns structured compilation or parse errors.
+///
+/// # Examples
+///
+/// ```
+/// // Demonstrates the core operations performed by the handler:
+/// // parse the Markdown DSL into an AST and compile it into a runtime config.
+/// let source = "# config\n\n; a minimal DSL sample";
+/// let ast = parse_markdown_source(source).expect("failed to parse DSL");
+/// let config = caliber_dsl::DslCompiler::compile(&ast).expect("failed to compile DSL");
+/// let compiled_json = serde_json::to_value(&config).expect("failed to serialize compiled config");
+/// assert!(compiled_json.is_object());
+/// ```
 #[utoipa::path(
-    post,
-    path = "/api/v1/dsl/compile",
-    tag = "DSL",
-    request_body = CompileDslRequest,
-    responses(
-        (status = 200, description = "Compilation result", body = CompileDslResponse),
-        (status = 400, description = "Invalid request", body = ApiError),
-        (status = 401, description = "Unauthorized", body = ApiError),
-    ),
-    security(
-        ("api_key" = []),
-        ("bearer_auth" = [])
-    )
+post,
+path = "/api/v1/dsl/compile",
+tag = "DSL",
+request_body = CompileDslRequest,
+responses(
+(status = 200, description = "Compilation result", body = CompileDslResponse),
+(status = 400, description = "Invalid request", body = ApiError),
+(status = 401, description = "Unauthorized", body = ApiError),
+),
+security(
+("api_key" = []),
+("bearer_auth" = [])
+)
 )]
 pub async fn compile_dsl(
     State(_db): State<DbClient>,
@@ -345,23 +388,43 @@ fn compile_error_type(err: &caliber_dsl::CompileError) -> String {
     }
 }
 
-/// POST /api/v1/dsl/deploy - Deploy a DSL configuration
+/// Save a DSL configuration for the authenticated tenant, optionally activating it.
 ///
-/// This endpoint parses, compiles, saves, and optionally activates a DSL configuration.
+/// Parses and compiles either a raw DSL source or a submitted pack, persists the resulting
+/// configuration with the next version number, stores the pack (if provided), and—when
+/// requested—deploys the configuration. Returns metadata about the created configuration
+/// (id, name, version, status, and a human-readable message).
+///
+/// # Examples
+///
+/// ```no_run
+/// use crate::api::dsl::DeployDslRequest;
+///
+/// let req = DeployDslRequest {
+///     name: "example-config".into(),
+///     source: "service example { }".into(),
+///     pack: None,
+///     activate: false,
+///     notes: None,
+/// };
+///
+/// // Invoking the handler requires application State and authenticated context;
+/// // the above illustrates constructing the request payload.
+/// ```
 #[utoipa::path(
-    post,
-    path = "/api/v1/dsl/deploy",
-    tag = "DSL",
-    request_body = DeployDslRequest,
-    responses(
-        (status = 201, description = "Configuration deployed", body = DeployDslResponse),
-        (status = 400, description = "Invalid DSL or compilation error", body = ApiError),
-        (status = 401, description = "Unauthorized", body = ApiError),
-    ),
-    security(
-        ("api_key" = []),
-        ("bearer_auth" = [])
-    )
+post,
+path = "/api/v1/dsl/deploy",
+tag = "DSL",
+request_body = DeployDslRequest,
+responses(
+(status = 201, description = "Configuration deployed", body = DeployDslResponse),
+(status = 400, description = "Invalid DSL or compilation error", body = ApiError),
+(status = 401, description = "Unauthorized", body = ApiError),
+),
+security(
+("api_key" = []),
+("bearer_auth" = [])
+)
 )]
 pub async fn deploy_dsl(
     State(db): State<DbClient>,

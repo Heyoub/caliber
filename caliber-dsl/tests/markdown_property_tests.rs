@@ -19,7 +19,25 @@ use std::path::PathBuf;
 // ARBITRATORS (Generate Random AST Nodes)
 // ============================================================================
 
-/// Generate arbitrary adapter type
+/// Creates a proptest Strategy that produces arbitrary `AdapterType` values.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// // `arb_adapter_type()` produces a `Strategy<Value = AdapterType>`
+/// let mut runner = proptest::test_runner::TestRunner::default();
+/// let tree = crate::tests::markdown_property_tests::arb_adapter_type()
+///     .new_tree(&mut runner)
+///     .unwrap();
+/// let value = tree.current();
+/// // `value` will be one of the AdapterType variants (Postgres, Redis, Memory)
+/// match value {
+///     crate::ast::AdapterType::Postgres
+///     | crate::ast::AdapterType::Redis
+///     | crate::ast::AdapterType::Memory => {}
+/// }
+/// ```
 fn arb_adapter_type() -> impl Strategy<Value = AdapterType> {
     prop_oneof![
         Just(AdapterType::Postgres),
@@ -28,7 +46,20 @@ fn arb_adapter_type() -> impl Strategy<Value = AdapterType> {
     ]
 }
 
-/// Generate arbitrary provider type
+/// Generates a proptest Strategy that yields arbitrary `ProviderType` values.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// use crate::ast::ProviderType; // adjust path as needed
+///
+/// proptest!(|(pt in super::arb_provider_type())| {
+///     match pt {
+///         ProviderType::OpenAI | ProviderType::Anthropic | ProviderType::Custom => {}
+///     }
+/// });
+/// ```
 fn arb_provider_type() -> impl Strategy<Value = ProviderType> {
     prop_oneof![
         Just(ProviderType::OpenAI),
@@ -37,7 +68,25 @@ fn arb_provider_type() -> impl Strategy<Value = ProviderType> {
     ]
 }
 
-/// Generate arbitrary trigger
+/// Creates a proptest Strategy that generates random `Trigger` values.
+///
+/// The strategy yields any of the fixed trigger variants (TaskStart, TaskEnd,
+/// ScopeClose, TurnEnd, Manual) or a `Schedule` with a lowercase alphanumeric
+/// identifier (letters, digits, and underscores).
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// // produce one example value from the strategy
+/// let mut runner = proptest::test_runner::TestRunner::default();
+/// let value = super::arb_trigger().new_tree(&mut runner).unwrap().current();
+/// // value is a Trigger; pattern-match to inspect it
+/// match value {
+///     crate::Trigger::Schedule(s) => assert!(s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')),
+///     _ => (), // other fixed variants are also valid
+/// }
+/// ```
 fn arb_trigger() -> impl Strategy<Value = Trigger> {
     prop_oneof![
         Just(Trigger::TaskStart),
@@ -49,7 +98,19 @@ fn arb_trigger() -> impl Strategy<Value = Trigger> {
     ]
 }
 
-/// Generate arbitrary injection mode
+/// Strategy that generates arbitrary `InjectionMode` values for property-based tests.
+///
+/// Produces a mix of the defined modes (Full, Summary), as well as numeric variants
+/// (`TopK` with a value from 1 to 99, and `Relevant` with a float between 0.0 and 1.0).
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// // Obtain a strategy to use in proptest tests
+/// let strat = crate::arb_injection_mode();
+/// // `strat` implements `Strategy<Value = InjectionMode>` and can be used with proptest!
+/// ```
 fn arb_injection_mode() -> impl Strategy<Value = InjectionMode> {
     prop_oneof![
         Just(InjectionMode::Full),
@@ -59,7 +120,29 @@ fn arb_injection_mode() -> impl Strategy<Value = InjectionMode> {
     ]
 }
 
-/// Generate arbitrary action
+/// Generates an arbitrary `Action` variant with a lowercase, underscore-separated name suitable for property tests.
+///
+/// The strategy yields one of `Action::Summarize`, `Action::Checkpoint`, `Action::ExtractArtifacts`,
+/// or `Action::Notify`, each carrying a name matching the regex `[a-z_]+`.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+///
+/// proptest! {
+///     |(action in crate::arb_action())| {
+///         match action {
+///             Action::Summarize(name)
+///             | Action::Checkpoint(name)
+///             | Action::ExtractArtifacts(name)
+///             | Action::Notify(name) => {
+///                 assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
+///             }
+///         }
+///     }
+/// }
+/// ```
 fn arb_action() -> impl Strategy<Value = Action> {
     prop_oneof![
         "[a-z_]+".prop_map(Action::Summarize),
@@ -69,7 +152,23 @@ fn arb_action() -> impl Strategy<Value = Action> {
     ]
 }
 
-/// Generate arbitrary adapter definition
+/// Generates an arbitrary `AdapterDef` for use in property-based tests.
+///
+/// The strategy produces `AdapterDef` values with:
+/// - a name matching `[a-zA-Z][a-zA-Z0-9_]*`,
+/// - a randomly chosen adapter type from `arb_adapter_type()`,
+/// - a connection string matching a simple URL pattern like `scheme://host/path`,
+/// and an empty `options` vector.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// let strat = arb_adapter_def();
+/// let mut runner = proptest::test_runner::TestRunner::default();
+/// let adapter = strat.new_tree(&mut runner).unwrap().current();
+/// assert!(!adapter.name.is_empty());
+/// ```
 fn arb_adapter_def() -> impl Strategy<Value = AdapterDef> {
     (
         "[a-zA-Z][a-zA-Z0-9_]*",
@@ -84,7 +183,29 @@ fn arb_adapter_def() -> impl Strategy<Value = AdapterDef> {
         })
 }
 
-/// Generate arbitrary provider definition
+/// Creates a proptest Strategy that generates arbitrary `ProviderDef` instances.
+///
+/// Generated fields:
+/// - `name`: an identifier starting with an ASCII letter followed by letters, digits, or underscores.
+/// - `provider_type`: a randomly chosen provider type variant.
+/// - `api_key`: an `EnvValue::Literal` containing a lowercase alphabetic key.
+/// - `model`: an alphanumeric/hyphen model string.
+/// - `options`: an empty vector.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// let strategy = crate::arb_provider_def();
+/// proptest!(|(p in strategy)| {
+///     // basic sanity checks
+///     assert!(!p.name.is_empty());
+///     match p.api_key {
+///         crate::EnvValue::Literal(ref k) => assert!(k.chars().all(|c| c.is_ascii_lowercase())),
+///         _ => panic!("expected literal api key"),
+///     }
+/// });
+/// ```
 fn arb_provider_def() -> impl Strategy<Value = ProviderDef> {
     (
         "[a-zA-Z][a-zA-Z0-9_]*",
@@ -101,7 +222,23 @@ fn arb_provider_def() -> impl Strategy<Value = ProviderDef> {
         })
 }
 
-/// Generate arbitrary policy definition
+/// Generates an arbitrary PolicyDef suitable for property-based tests.
+///
+/// The produced PolicyDef has a name matching `[A-Za-z][A-Za-z0-9_]*`, a randomly chosen trigger,
+/// and 1–2 actions wrapped in a single PolicyRule.
+///
+/// # Examples
+///
+/// ```
+/// use proptest::prelude::*;
+/// // `arb_policy_def()` yields a `Strategy<Value = PolicyDef>`
+/// proptest!(|(policy in arb_policy_def())| {
+///     // `policy` is a generated PolicyDef instance
+///     assert!(!policy.name.is_empty());
+///     assert_eq!(policy.rules.len(), 1);
+///     assert!(!policy.rules[0].actions.is_empty());
+/// });
+/// ```
 fn arb_policy_def() -> impl Strategy<Value = PolicyDef> {
     (
         "[a-zA-Z][a-zA-Z0-9_]*",
@@ -114,7 +251,7 @@ fn arb_policy_def() -> impl Strategy<Value = PolicyDef> {
         })
 }
 
-/// Generate arbitrary memory definition
+/// Generate arbitrary memory definition.
 #[allow(dead_code)]
 fn arb_memory_def() -> impl Strategy<Value = MemoryDef> {
     "[a-zA-Z][a-zA-Z0-9_]*".prop_map(|name| MemoryDef {
@@ -131,7 +268,10 @@ fn arb_memory_def() -> impl Strategy<Value = MemoryDef> {
     })
 }
 
-/// Generate arbitrary injection definition with a matching memory
+/// Generate arbitrary injection definition with a matching memory.
+///
+/// Returns both a MemoryDef and InjectionDef where the injection's source
+/// matches the memory's name, satisfying validation requirements.
 fn arb_injection_with_memory() -> impl Strategy<Value = (MemoryDef, InjectionDef)> {
     (
         "[a-z][a-z0-9_]*",
@@ -164,8 +304,13 @@ fn arb_injection_with_memory() -> impl Strategy<Value = (MemoryDef, InjectionDef
         })
 }
 
-/// Generate arbitrary CaliberAst with 1-3 definitions
-/// Note: Injections are paired with memories to satisfy validation
+/// Generates an arbitrary CaliberAst containing 1 to 3 random definitions.
+///
+/// The produced AST always has `version` set to `"1.0"`. Each definition is randomly
+/// chosen from Adapter, Provider, Policy, or Injection and populated by the corresponding
+/// arbitrary generators.
+///
+/// Note: Injections are paired with memories to satisfy validation requirements.
 fn arb_caliber_ast() -> impl Strategy<Value = CaliberAst> {
     // Generate non-injection definitions
     let non_injection_defs = prop::collection::vec(
@@ -237,6 +382,22 @@ Generated test
 {content}
 "#;
 
+/// Parses a Markdown string into a Caliber AST using a minimal in-memory pack context.
+///
+/// This builds a PackInput with a minimal manifest and a single "test.md" file containing
+/// the provided Markdown, then invokes compose_pack to produce the resulting AST.
+///
+/// # Returns
+///
+/// `Ok(CaliberAst)` with the parsed AST on success, `Err(String)` with a diagnostic message on failure.
+///
+/// # Examples
+///
+/// ```
+/// let md = "# Adapter: my_db\n\nadapter_type: Postgres\nconnection: postgres://user:pass@localhost/db";
+/// let ast = parse_markdown_to_ast(md).expect("failed to parse markdown to AST");
+/// assert_eq!(ast.version, "1.0");
+/// ```
 fn parse_markdown_to_ast(markdown: &str) -> Result<CaliberAst, String> {
     let input = PackInput {
         root: PathBuf::from("."),
@@ -425,6 +586,35 @@ connection: "conn"
 // SPECIFIC CASE TESTS (Known Problematic Cases)
 // ============================================================================
 
+/// Regression test ensuring adapter names preserve their original casing through a Markdown
+/// round-trip.
+///
+/// Constructs a CaliberAst containing an adapter named "oN", converts it to canonical Markdown,
+/// parses that Markdown back into an AST, and asserts the parsed adapter retains the exact
+/// casing "oN".
+///
+/// # Examples
+///
+/// ```
+/// // Build AST with mixed-case adapter name and verify round-trip preserves case.
+/// let ast = CaliberAst {
+///     version: "1.0".to_string(),
+///     definitions: vec![Definition::Adapter(AdapterDef {
+///         name: "oN".to_string(),
+///         adapter_type: AdapterType::Postgres,
+///         connection: "test://conn".to_string(),
+///         options: vec![],
+///     })],
+/// };
+///
+/// let markdown = ast_to_markdown(&ast);
+/// let full_markdown = MARKDOWN_TEMPLATE.replace("{content}", &markdown);
+/// let ast_prime = parse_markdown_to_ast(&full_markdown).expect("Parse should succeed");
+/// let adapter = ast_prime.definitions.iter()
+///     .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+///     .expect("Adapter should exist");
+/// assert_eq!(adapter.name, "oN");
+/// ```
 #[test]
 fn test_case_bug_regression() {
     // This is the EXACT case that failed with the old parser
@@ -472,6 +662,29 @@ fn test_all_caps_name() {
     assert_eq!(adapter.name, "MAIN_DB");
 }
 
+/// Ensures a provider name with mixed/camel case preserves exact casing after
+/// converting the AST to canonical Markdown and parsing it back.
+///
+/// # Examples
+///
+/// ```
+/// // Round-trip through the canonical Markdown should keep the provider name unchanged.
+/// let ast = CaliberAst {
+///     version: "1.0".to_string(),
+///     definitions: vec![Definition::Provider(ProviderDef {
+///         name: "MyOpenAiProvider".to_string(),
+///         provider_type: ProviderType::OpenAI,
+///         api_key: EnvValue::Literal("key".to_string()),
+///         model: "gpt-4".to_string(),
+///         options: vec![],
+///     })],
+/// };
+/// let markdown = ast_to_markdown(&ast);
+/// let full_markdown = MARKDOWN_TEMPLATE.replace("{content}", &markdown);
+/// let ast_prime = parse_markdown_to_ast(&full_markdown).unwrap();
+/// let provider = ast_prime.definitions[0].as_provider().unwrap();
+/// assert_eq!(provider.name, "MyOpenAiProvider");
+/// ```
 #[test]
 fn test_camel_case_name() {
     let ast = CaliberAst {
@@ -503,6 +716,22 @@ trait DefinitionExt {
 }
 
 impl DefinitionExt for Definition {
+    /// Returns a reference to the inner AdapterDef when this Definition is an Adapter.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&AdapterDef)` if the variant is `Definition::Adapter`, `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use caliber_dsl::{Definition, AdapterDef};
+    /// let def: Definition = /* construct a Definition::Adapter or other variant */ unimplemented!();
+    /// if let Some(adapter) = def.as_adapter() {
+    ///     // use `adapter` which is a `&AdapterDef`
+    ///     let _name = &adapter.name;
+    /// }
+    /// ```
     fn as_adapter(&self) -> Option<&AdapterDef> {
         if let Definition::Adapter(a) = self {
             Some(a)
@@ -511,6 +740,25 @@ impl DefinitionExt for Definition {
         }
     }
 
+    /// Get a reference to the provider payload when the definition is a Provider.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&ProviderDef)` if this definition is a Provider, `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let provider = ProviderDef {
+    ///     name: "p".into(),
+    ///     provider_type: ProviderType::OpenAI,
+    ///     api_key: Literal::String("key".into()),
+    ///     model: "gpt-4".into(),
+    ///     options: Default::default(),
+    /// };
+    /// let def = Definition::Provider(provider.clone());
+    /// assert_eq!(def.as_provider(), Some(&provider));
+    /// ```
     fn as_provider(&self) -> Option<&ProviderDef> {
         if let Definition::Provider(p) = self {
             Some(p)

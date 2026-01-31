@@ -3,8 +3,10 @@
 
 use crate::parser::ast::*;
 
-/// Quote a string value if it could be misinterpreted by YAML
-/// YAML special values: null, true, false, ~, -, numbers, strings starting with special chars
+/// Quote a string value if it could be misinterpreted by YAML.
+///
+/// YAML special values include: null, true, false, ~, -, numbers, and strings
+/// starting with special characters like !, &, *, >, |, {, [, :, #, @, `.
 fn yaml_safe_string(s: &str) -> String {
     if s.is_empty() {
         return "\"\"".to_string();
@@ -27,7 +29,12 @@ fn yaml_safe_string(s: &str) -> String {
     }
 }
 
-/// Convert AST to canonical Markdown format
+/// Generate a deterministic, canonical Markdown representation of a Caliber AST.
+///
+/// The output is a stable, round-trip friendly Markdown snapshot that serializes
+/// adapters, providers, memories, policies, injections, caches, trajectories,
+/// and agents in a deterministic order and format. Certain definition kinds
+/// (e.g., Evolution, SummarizationPolicy) are omitted.
 pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     let mut output = String::new();
 
@@ -233,6 +240,16 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     output
 }
 
+/// Converts an AdapterType into its canonical lowercase name used in the Markdown output.
+///
+/// The returned string is the exact identifier emitted in code fences (for example, `"postgres"`, `"redis"`, or `"memory"`).
+///
+/// # Examples
+///
+/// ```
+/// let s = adapter_type_to_string(&AdapterType::Postgres);
+/// assert_eq!(s, "postgres");
+/// ```
 fn adapter_type_to_string(t: &AdapterType) -> &'static str {
     match t {
         AdapterType::Postgres => "postgres",
@@ -241,6 +258,19 @@ fn adapter_type_to_string(t: &AdapterType) -> &'static str {
     }
 }
 
+/// Convert a ProviderType into its canonical lowercase identifier.
+///
+/// Returns the canonical string representation for the given provider type:
+/// - `openai` for ProviderType::OpenAI
+/// - `anthropic` for ProviderType::Anthropic
+/// - `custom` for ProviderType::Custom
+///
+/// # Examples
+///
+/// ```
+/// let s = provider_type_to_string(&ProviderType::OpenAI);
+/// assert_eq!(s, "openai");
+/// ```
 fn provider_type_to_string(t: &ProviderType) -> &'static str {
     match t {
         ProviderType::OpenAI => "openai",
@@ -249,6 +279,17 @@ fn provider_type_to_string(t: &ProviderType) -> &'static str {
     }
 }
 
+/// Converts an EnvValue into its canonical string representation for Markdown output.
+///
+/// # Examples
+///
+/// ```
+/// let e = EnvValue::Env("API_KEY".into());
+/// assert_eq!(env_value_to_string(&e), "env:API_KEY");
+///
+/// let l = EnvValue::Literal("plain".into());
+/// assert_eq!(env_value_to_string(&l), "plain");
+/// ```
 fn env_value_to_string(v: &EnvValue) -> String {
     match v {
         EnvValue::Env(var) => format!("env:{}", var),
@@ -256,6 +297,27 @@ fn env_value_to_string(v: &EnvValue) -> String {
     }
 }
 
+/// Convert a MemoryType enum to its canonical string identifier.
+///
+/// The returned string is the stable, canonical name used in the generated Markdown
+/// (for example, "ephemeral", "working", "episodic", "semantic", "procedural", or "meta").
+///
+/// # Examples
+///
+/// ```
+/// let s = memory_type_to_string(&MemoryType::Semantic);
+/// assert_eq!(s, "semantic");
+/// Convert a MemoryType enum to its canonical string identifier.
+///
+/// The returned string is the stable, canonical name used in the generated Markdown
+/// (for example, "ephemeral", "working", "episodic", "semantic", "procedural", or "meta").
+///
+/// # Examples
+///
+/// ```
+/// let s = memory_type_to_string(&MemoryType::Semantic);
+/// assert_eq!(s, "semantic");
+/// ```
 fn memory_type_to_string(t: &MemoryType) -> &'static str {
     match t {
         MemoryType::Ephemeral => "ephemeral",
@@ -267,6 +329,23 @@ fn memory_type_to_string(t: &MemoryType) -> &'static str {
     }
 }
 
+/// Converts a FieldType into its canonical string representation used in the Markdown output.
+///
+/// The produced strings are the stable, round-trip-friendly names used by the printer:
+/// primitives like "int", "text", and "bool"; parametrized forms such as `embedding`
+/// or `embedding(<dim>)`; enums as `enum(a, b, c)`; and arrays as `array(<inner>)`.
+///
+/// # Examples
+///
+/// ```
+/// use crate::config::ast::FieldType;
+///
+/// assert_eq!(field_type_to_string(&FieldType::Int), "int");
+/// assert_eq!(field_type_to_string(&FieldType::Embedding(Some(128))), "embedding(128)");
+/// assert_eq!(field_type_to_string(&FieldType::Embedding(None)), "embedding");
+/// assert_eq!(field_type_to_string(&FieldType::Enum(vec!["A".into(), "B".into()])), "enum(A, B)");
+/// assert_eq!(field_type_to_string(&FieldType::Array(Box::new(FieldType::Text))), "array(text)");
+/// ```
 fn field_type_to_string(t: &FieldType) -> String {
     match t {
         FieldType::Uuid => "uuid".to_string(),
@@ -288,6 +367,16 @@ fn field_type_to_string(t: &FieldType) -> String {
     }
 }
 
+/// Convert a Retention value into its canonical string form.
+///
+/// Produces one of: "persistent", "session", "scope", "duration(<n>)", or "max(<n>)" depending on the variant.
+///
+/// # Examples
+///
+/// ```
+/// let s = retention_to_string(&Retention::Duration(3600));
+/// assert_eq!(s, "duration(3600)");
+/// ```
 fn retention_to_string(r: &Retention) -> String {
     match r {
         Retention::Persistent => "persistent".to_string(),
@@ -298,6 +387,23 @@ fn retention_to_string(r: &Retention) -> String {
     }
 }
 
+/// Formats a Lifecycle value into its canonical string representation.
+///
+/// The returned string is the canonical form used in the markdown output, e.g. `"explicit"` or
+/// `"auto_close(<trigger>)"` where `<trigger>` is the trigger's string form.
+///
+/// # Examples
+///
+/// ```
+/// use crate::config::ast::{Lifecycle, Trigger};
+/// // Explicit lifecycle
+/// let s = crate::config::markdown_printer::lifecycle_to_string(&Lifecycle::Explicit);
+/// assert_eq!(s, "explicit");
+///
+/// // AutoClose lifecycle with a trigger
+/// let s2 = crate::config::markdown_printer::lifecycle_to_string(&Lifecycle::AutoClose(Trigger::TaskEnd));
+/// assert_eq!(s2, format!("auto_close({})", crate::config::markdown_printer::trigger_to_string(&Trigger::TaskEnd)));
+/// ```
 fn lifecycle_to_string(l: &Lifecycle) -> String {
     match l {
         Lifecycle::Explicit => "explicit".to_string(),
@@ -305,6 +411,9 @@ fn lifecycle_to_string(l: &Lifecycle) -> String {
     }
 }
 
+/// Maps a Trigger variant to its canonical string representation.
+///
+/// Schedule triggers preserve their parameter (e.g., `schedule:5m`) for round-trip fidelity.
 fn trigger_to_string(t: &Trigger) -> String {
     match t {
         Trigger::TaskStart => "task_start".to_string(),
@@ -316,6 +425,15 @@ fn trigger_to_string(t: &Trigger) -> String {
     }
 }
 
+/// Convert an IndexType variant to its canonical lowercase string representation.
+///
+/// # Examples
+///
+/// ```
+/// // Assuming IndexType is in scope:
+/// let s = index_type_to_string(&IndexType::Hnsw);
+/// assert_eq!(s, "hnsw");
+/// ```
 fn index_type_to_string(t: &IndexType) -> &'static str {
     match t {
         IndexType::Btree => "btree",
@@ -326,6 +444,29 @@ fn index_type_to_string(t: &IndexType) -> &'static str {
     }
 }
 
+/// Formats a ModifierDef into a stable, human-readable string representation.
+///
+/// The output is a compact, deterministic string describing the modifier and its parameters:
+/// - Embeddable => `embeddable(provider: <provider>)`
+/// - Summarizable => `summarizable(style: <brief|detailed>, on: [<triggers>])`
+/// - Lockable => `lockable(mode: <exclusive|shared>)`
+///
+/// # Examples
+///
+/// ```
+/// let emb = ModifierDef::Embeddable { provider: "openai".to_string() };
+/// assert_eq!(modifier_to_string(&emb), "embeddable(provider: openai)");
+///
+/// let sum = ModifierDef::Summarizable {
+///     style: SummaryStyle::Brief,
+///     on_triggers: vec![Trigger::TaskStart, Trigger::TurnEnd],
+/// };
+/// let s = modifier_to_string(&sum);
+/// assert!(s.starts_with("summarizable(style: brief, on: ["));
+///
+/// let lock = ModifierDef::Lockable { mode: LockMode::Exclusive };
+/// assert_eq!(modifier_to_string(&lock), "lockable(mode: exclusive)");
+/// ```
 fn modifier_to_string(m: &ModifierDef) -> String {
     match m {
         ModifierDef::Embeddable { provider } => format!("embeddable(provider: {})", provider),
@@ -350,7 +491,7 @@ fn modifier_to_string(m: &ModifierDef) -> String {
     }
 }
 
-/// Convert action to YAML format (for policy rules)
+/// Convert action to YAML format (for policy rules).
 fn action_to_yaml(a: &Action) -> String {
     match a {
         Action::Summarize(target) => format!("      - type: summarize\n        target: {}\n", target),
@@ -369,6 +510,7 @@ fn action_to_yaml(a: &Action) -> String {
     }
 }
 
+/// Converts an Action into its canonical string representation.
 #[allow(dead_code)]
 fn action_to_string(a: &Action) -> String {
     match a {
@@ -388,6 +530,17 @@ fn action_to_string(a: &Action) -> String {
     }
 }
 
+/// Formats an InjectionMode into its canonical string representation.
+///
+/// The returned string is the canonical textual form used in the Markdown output
+/// (for example: "full", "summary", "topk(n)", or "relevant(n)").
+///
+/// # Examples
+///
+/// ```
+/// let s = injection_mode_to_string(&InjectionMode::TopK(5));
+/// assert_eq!(s, "topk(5)");
+/// ```
 fn injection_mode_to_string(m: &InjectionMode) -> String {
     match m {
         InjectionMode::Full => "full".to_string(),
@@ -397,6 +550,32 @@ fn injection_mode_to_string(m: &InjectionMode) -> String {
     }
 }
 
+/// Formats a filter expression into a canonical, human-readable string.
+///
+/// The output uses operators `==`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `regex`, and `in`.
+/// String values are quoted, numbers and booleans are unquoted, `null` is rendered as `null`,
+/// special values are rendered as `current_trajectory`, `current_scope`, or `now`, and arrays
+/// are simplified to `[...]`. `AND`/`OR` combine sub-expressions and are wrapped in
+/// parentheses; `NOT` prefixes a single sub-expression.
+///
+/// # Examples
+///
+/// ```
+/// let expr = FilterExpr::And(vec![
+///     FilterExpr::Comparison {
+///         field: "age".into(),
+///         op: CompareOp::Gt,
+///         value: FilterValue::Number(18.0),
+///     },
+///     FilterExpr::Comparison {
+///         field: "active".into(),
+///         op: CompareOp::Eq,
+///         value: FilterValue::Bool(true),
+///     },
+/// ]);
+/// let s = filter_expr_to_string(&expr);
+/// assert_eq!(s, "(age > 18 AND active == true)");
+/// ```
 fn filter_expr_to_string(f: &FilterExpr) -> String {
     match f {
         FilterExpr::Comparison { field, op, value } => {
@@ -441,6 +620,17 @@ fn filter_expr_to_string(f: &FilterExpr) -> String {
     }
 }
 
+/// Converts a CacheBackendType into its canonical lowercase string used in the Markdown output.
+///
+/// # Examples
+///
+/// ```
+/// use crate::config::markdown_printer::cache_backend_to_string;
+/// use crate::config::ast::CacheBackendType;
+///
+/// assert_eq!(cache_backend_to_string(&CacheBackendType::Lmdb), "lmdb");
+/// assert_eq!(cache_backend_to_string(&CacheBackendType::Memory), "memory");
+/// ```
 fn cache_backend_to_string(b: &CacheBackendType) -> &'static str {
     match b {
         CacheBackendType::Lmdb => "lmdb",
@@ -448,6 +638,21 @@ fn cache_backend_to_string(b: &CacheBackendType) -> &'static str {
     }
 }
 
+/// Converts a `FreshnessDef` into its canonical string representation.
+///
+/// The result is either `"best_effort(max_staleness: <n>)"` for `BestEffort` or `"strict"` for `Strict`.
+///
+/// # Examples
+///
+/// ```
+/// use caliber_dsl::config::ast::FreshnessDef;
+///
+/// assert_eq!(super::freshness_to_string(&FreshnessDef::Strict), "strict");
+/// assert_eq!(
+///     super::freshness_to_string(&FreshnessDef::BestEffort { max_staleness: 42 }),
+///     "best_effort(max_staleness: 42)"
+/// );
+/// ```
 fn freshness_to_string(f: &FreshnessDef) -> String {
     match f {
         FreshnessDef::BestEffort { max_staleness } => format!("best_effort(max_staleness: {})", max_staleness),
