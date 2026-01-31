@@ -96,6 +96,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --exclude caliber-pg --all-targets --all-features -- -D warnings
 
+      - name: Check unused dependencies
+        run: |
+          cargo install cargo-machete
+          cargo machete || echo "::warning::Unused dependencies detected"
+
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bunx biome check .
@@ -139,6 +144,14 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Check coverage regression
+        run: |
+          if [ -f .ci/coverage-baseline.txt ]; then
+            python3 scripts/ci/coverage_check.py lcov.info .ci/coverage-baseline.txt
+          else
+            echo "No coverage baseline found, skipping regression check"
+          fi
 
   # Consolidated TypeScript/JavaScript tests
   test-ts:
