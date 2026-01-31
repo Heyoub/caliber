@@ -45,8 +45,59 @@ impl PackIr {
         let md_injections = extract_injections_from_markdown(&markdown)?;
         let md_providers = extract_providers_from_markdown(&markdown)?;
 
-        // Merge: Markdown takes precedence over TOML
-        // For now, just append. TODO: Handle duplicates properly
+        // Check for duplicates within Markdown configs
+        check_markdown_duplicates(&md_adapters, &md_policies, &md_injections, &md_providers)?;
+
+        // Merge: Check for duplicates before merging
+        // Default behavior: ERROR on duplicates (no silent override)
+
+        // Check adapter duplicates
+        let toml_adapter_names: HashSet<_> = adapters.iter().map(|a| &a.name).collect();
+        for md_adapter in &md_adapters {
+            if toml_adapter_names.contains(&md_adapter.name) {
+                return Err(PackError::Validation(format!(
+                    "Duplicate adapter name '{}' found in both TOML and Markdown",
+                    md_adapter.name
+                )));
+            }
+        }
+
+        // Check policy duplicates
+        let toml_policy_names: HashSet<_> = policies.iter().map(|p| &p.name).collect();
+        for md_policy in &md_policies {
+            if toml_policy_names.contains(&md_policy.name) {
+                return Err(PackError::Validation(format!(
+                    "Duplicate policy name '{}' found in both TOML and Markdown",
+                    md_policy.name
+                )));
+            }
+        }
+
+        // Check provider duplicates
+        let toml_provider_names: HashSet<_> = providers.iter().map(|p| &p.name).collect();
+        for md_provider in &md_providers {
+            if toml_provider_names.contains(&md_provider.name) {
+                return Err(PackError::Validation(format!(
+                    "Duplicate provider name '{}' found in both TOML and Markdown",
+                    md_provider.name
+                )));
+            }
+        }
+
+        // Check injection duplicates (by source, target tuple since no name field)
+        let toml_injection_keys: HashSet<_> =
+            injections.iter().map(|i| (&i.source, &i.target)).collect();
+        for md_injection in &md_injections {
+            let key = (&md_injection.source, &md_injection.target);
+            if toml_injection_keys.contains(&key) {
+                return Err(PackError::Validation(format!(
+                    "Duplicate injection (source: '{}', target: '{}') found in both TOML and Markdown",
+                    md_injection.source, md_injection.target
+                )));
+            }
+        }
+
+        // All clear - merge configs
         adapters.extend(md_adapters);
         policies.extend(md_policies);
         injections.extend(md_injections);
@@ -705,6 +756,61 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
 // ============================================================================
 // MARKDOWN CONFIG EXTRACTION (NEW)
 // ============================================================================
+
+/// Check for duplicate definitions within Markdown configs
+fn check_markdown_duplicates(
+    adapters: &[AstAdapterDef],
+    policies: &[PolicyDef],
+    injections: &[AstInjectionDef],
+    providers: &[AstProviderDef],
+) -> Result<(), PackError> {
+    // Check for duplicate adapter names
+    let mut adapter_names = HashSet::new();
+    for adapter in adapters {
+        if !adapter_names.insert(&adapter.name) {
+            return Err(PackError::Validation(format!(
+                "Duplicate adapter name '{}' found in Markdown configs",
+                adapter.name
+            )));
+        }
+    }
+
+    // Check for duplicate policy names
+    let mut policy_names = HashSet::new();
+    for policy in policies {
+        if !policy_names.insert(&policy.name) {
+            return Err(PackError::Validation(format!(
+                "Duplicate policy name '{}' found in Markdown configs",
+                policy.name
+            )));
+        }
+    }
+
+    // Check for duplicate provider names
+    let mut provider_names = HashSet::new();
+    for provider in providers {
+        if !provider_names.insert(&provider.name) {
+            return Err(PackError::Validation(format!(
+                "Duplicate provider name '{}' found in Markdown configs",
+                provider.name
+            )));
+        }
+    }
+
+    // Check for duplicate injection (source, target) tuples
+    let mut injection_keys = HashSet::new();
+    for injection in injections {
+        let key = (&injection.source, &injection.target);
+        if !injection_keys.insert(key) {
+            return Err(PackError::Validation(format!(
+                "Duplicate injection (source: '{}', target: '{}') found in Markdown configs",
+                injection.source, injection.target
+            )));
+        }
+    }
+
+    Ok(())
+}
 
 /// Extract adapter definitions from Markdown fence blocks
 fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAdapterDef>, PackError> {
