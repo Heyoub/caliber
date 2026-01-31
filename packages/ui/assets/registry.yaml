@@ -1,0 +1,306 @@
+# Asset Registry - CALIBER/ForgeStack
+# Centralized registry for all icons, images, SVGs, and animations
+# Extracted from Vue reference files
+
+icons:
+  # Navigation Icons
+  navigation:
+    - id: menu
+      lucide: Menu
+      description: "Hamburger menu icon"
+    - id: chevronRight
+      lucide: ChevronRight
+      description: "Right chevron for expandable sections"
+    - id: chevronDown
+      lucide: ChevronDown
+      description: "Down chevron for dropdowns"
+    - id: arrowRight
+      lucide: ArrowRight
+      description: "Right arrow for navigation/CTAs"
+    - id: arrowDown
+      lucide: ArrowDown
+      description: "Down arrow for scroll indicators"
+    - id: home
+      lucide: Home
+      description: "Home navigation"
+    - id: layoutPanelLeft
+      lucide: LayoutPanelLeft
+      description: "Layout panel icon"
+
+  # File/Document Icons
+  files:
+    - id: fileText
+      lucide: FileText
+      description: "Generic file/document"
+    - id: briefcase
+      lucide: Briefcase
+      description: "Cases/business documents"
+    - id: archive
+      lucide: Archive
+      description: "Projects/archived items"
+    - id: notebook
+      lucide: Notebook
+      description: "Notes and notebooks"
+    - id: bookOpen
+      lucide: BookOpen
+      description: "Knowledge base"
+    - id: uploadCloud
+      lucide: UploadCloud
+      description: "File upload"
+    - id: clipboard
+      lucide: Clipboard
+      description: "Copy to clipboard"
+
+  # Action Icons
+  actions:
+    - id: settings
+      lucide: Settings
+      description: "Settings/preferences"
+    - id: logOut
+      lucide: LogOut
+      description: "Logout action"
+    - id: trash2
+      lucide: Trash2
+      description: "Delete/clear action"
+    - id: send
+      lucide: Send
+      description: "Send message"
+    - id: mic
+      lucide: Mic
+      description: "Voice input"
+    - id: play
+      lucide: Play
+      description: "Play/start"
+    - id: xCircle
+      lucide: XCircle
+      description: "Close/cancel"
+    - id: check
+      lucide: Check
+      description: "Confirm/success"
+    - id: checkCircle
+      lucide: CheckCircle
+      description: "Completed status"
+    - id: plus
+      lucide: Plus
+      description: "Add new item"
+    - id: loader2
+      lucide: Loader2
+      description: "Loading spinner"
+
+  # Feature Icons
+  features:
+    - id: sparkles
+      lucide: Sparkles
+      description: "AI/magic features"
+    - id: lightbulb
+      lucide: Lightbulb
+      description: "Ideas/SuperThink mode"
+    - id: globe
+      lucide: Globe
+      description: "Web/research"
+    - id: clock
+      lucide: Clock
+      description: "Time/Deep Work mode"
+    - id: brain
+      lucide: Brain
+      description: "Cognitive/AI features"
+    - id: bolt
+      lucide: Bolt
+      description: "Quick actions/features"
+    - id: zap
+      lucide: Zap
+      description: "Speed/efficiency"
+    - id: target
+      lucide: Target
+      description: "Goals/objectives"
+    - id: barChart
+      lucide: BarChart
+      description: "Analytics/stats"
+    - id: shield
+      lucide: Shield
+      description: "Security/privacy"
+    - id: keySquare
+      lucide: KeySquare
+      description: "Ownership/keys"
+    - id: split
+      lucide: Split
+      description: "Branching/options"
+
+  # Communication Icons
+  communication:
+    - id: messageSquare
+      lucide: MessageSquare
+      description: "Chat/messages"
+    - id: user
+      lucide: User
+      description: "User avatar"
+    - id: bot
+      lucide: Bot
+      description: "AI assistant"
+
+  # Calendar/Time Icons
+  calendar:
+    - id: calendar
+      lucide: Calendar
+      description: "Calendar/dates"
+    - id: calendarDays
+      lucide: CalendarDays
+      description: "Calendar with days"
+    - id: sun
+      lucide: Sun
+      description: "Morning/day"
+    - id: map
+      lucide: Map
+      description: "Journey/roadmap"
+    - id: mapPin
+      lucide: MapPin
+      description: "Location/milestone"
+
+  # Utility Icons
+  utility:
+    - id: star
+      lucide: Star
+      description: "Favorites/ratings"
+    - id: rocket
+      lucide: Rocket
+      description: "Launch/getting started"
+    - id: layout
+      lucide: LayoutDashboardIcon
+      description: "Dashboard layout"
+    - id: cloud
+      lucide: Cloud
+      description: "Cloud services"
+    - id: server
+      lucide: Server
+      description: "On-premise/server"
+
+images:
+  # Brand Images
+  brand:
+    - id: logo
+      path: "/IMG/AXLG.svg"
+      alt: "ForgeStack Logo"
+      description: "Main brand logo SVG"
+    - id: emiLogo
+      path: "/IMG/CouncilChat.png"
+      alt: "Emi Ai Logo"
+      description: "Emi AI chat logo"
+    - id: scrollArrow
+      path: "/IMG/arrow down.gif"
+      alt: "Scroll down"
+      description: "Animated scroll indicator"
+
+  # Background/Decorative
+  decorative:
+    - id: techAnimation
+      path: "/IMG/axisra-tech-animation.svg"
+      alt: ""
+      description: "Animated SVG background"
+    - id: techAnimationAlt
+      path: "/IMG/axisra-tech-animation copy.svg"
+      alt: ""
+      description: "Alternative animated SVG background"
+
+animations:
+  # CSS Animations
+  css:
+    - id: float
+      keyframes: |
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(15px); }
+      duration: "2s"
+      timing: "ease-in-out"
+      iteration: "infinite"
+    - id: pulseSlow
+      keyframes: |
+        0%, 100% { opacity: 0.9; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.02); }
+      duration: "5s"
+      timing: "cubic-bezier(0.4, 0, 0.6, 1)"
+      iteration: "infinite"
+    - id: gradientFlow
+      keyframes: |
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      duration: "6s"
+      timing: "ease"
+      iteration: "infinite"
+    - id: textPulse
+      keyframes: |
+        50% { opacity: 0.7; }
+      duration: "2s"
+      timing: "cubic-bezier(0.4, 0, 0.6, 1)"
+      iteration: "infinite"
+    - id: dotFlashing
+      keyframes: |
+        0% { background-color: #9880ff; }
+        50%, 100% { background-color: rgba(152, 128, 255, 0.2); }
+      duration: "1s"
+      timing: "linear"
+      iteration: "infinite alternate"
+    - id: blobMove
+      keyframes: |
+        0%, 100% {
+          border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+          transform: translate(-10px, 10px) scale(1.05);
+        }
+        25% {
+          border-radius: 40% 60% 70% 30% / 50% 60% 30% 60%;
+          transform: translate(10px, 10px) scale(1.1);
+        }
+        50% {
+          border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+          transform: translate(10px, -10px) scale(1.05);
+        }
+        75% {
+          border-radius: 40% 30% 50% 60% / 30% 40% 60% 50%;
+          transform: translate(-10px, -10px) scale(1.1);
+        }
+      duration: "20s"
+      timing: "ease-in-out"
+      iteration: "infinite"
+    - id: pulseGlow
+      keyframes: |
+        0%, 100% { opacity: 0.4; filter: blur(12px); }
+        50% { opacity: 0.7; filter: blur(18px); }
+      duration: "4s"
+      timing: "ease-in-out"
+      iteration: "infinite"
+
+  # Transition Presets
+  transitions:
+    - id: default
+      duration: "300ms"
+      timing: "cubic-bezier(0.4, 0, 0.2, 1)"
+    - id: fast
+      duration: "150ms"
+      timing: "cubic-bezier(0.4, 0, 0.2, 1)"
+    - id: slow
+      duration: "500ms"
+      timing: "cubic-bezier(0.4, 0, 0.2, 1)"
+    - id: spring
+      duration: "300ms"
+      timing: "cubic-bezier(0.34, 1.56, 0.64, 1)"
+
+gradients:
+  # Brand Gradients
+  brand:
+    - id: primary
+      value: "linear-gradient(90deg, hsl(var(--coral-500)), hsl(var(--teal-500)) 33%, hsl(var(--mint-500)) 66%, hsl(var(--lavender-500)))"
+      description: "Main brand gradient"
+    - id: textGradient
+      value: "linear-gradient(to right, hsl(var(--teal-500)), hsl(var(--mint-500)), hsl(var(--lavender-500)))"
+      description: "Text gradient for highlights"
+    - id: backgroundGlow
+      value: "linear-gradient(to br, rgba(168, 85, 247, 0.3), rgba(6, 182, 212, 0.2), rgba(245, 158, 66, 0.3))"
+      description: "Background glow effect"
+
+  # UI Gradients
+  ui:
+    - id: glassOverlay
+      value: "linear-gradient(to bottom, rgba(255,255,255,0.1), transparent)"
+      description: "Glass effect overlay"
+    - id: glassmorphic
+      value: "linear-gradient(to top, rgba(15, 23, 42, 0.4) 0%, rgba(15, 23, 42, 0.2) 40%, rgba(15, 23, 42, 0.05) 100%)"
+      description: "Glassmorphic effect"

@@ -1,0 +1,36 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// @caliber/ui - Shared Design System
+// "Tailwind meets Cosmic Atomic" - expressive, typed, aspect-oriented
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export * from './types/index.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Organisms
+// Complex, self-contained sections with business logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+export * from './organisms/index.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Future exports (as implemented):
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Atoms (indivisible UI primitives)
+// export * from './atoms/index.js';
+
+// Molecules (combinations of atoms)
+// export * from './molecules/index.js';
+
+// Templates (page-level layouts)
+// export * from './templates/index.js';
+
+// Tokens (CSS custom properties)
+// export * from './tokens/index.js';
+
+// Utilities
+// export * from './utils/index.js';

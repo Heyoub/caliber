@@ -1,0 +1,132 @@
+# Landing Page Content - CALIBER/ForgeStack
+# All hardcoded text extracted from Vue reference files
+
+hero:
+  badge: "Cognitive-First Business Platform"
+  title:
+    prefix: "Software That Feels Like"
+    highlight: "Thinking"
+  scrollAlt: "Scroll down"
+
+invitation:
+  title:
+    line1:
+      text: "Your mind deserves"
+      highlight: "better."
+    line2:
+      text: "Your business deserves"
+      highlight: "better."
+    line3:
+      prefix: "Ready to"
+      suffix: "reclaim it?"
+  form:
+    emailLabel: "Work Email"
+    emailPlaceholder: "Your email address"
+    companySizeLabel: "Company Size"
+    companySizePlaceholder: "Select team size"
+    companySizeOptions:
+      - value: "1-10"
+        label: "1-10 employees"
+      - value: "11-50"
+        label: "11-50 employees"
+      - value: "51-200"
+        label: "51-200 employees"
+      - value: "201+"
+        label: "201+ employees"
+    submitButton: "Private Beta, Coming July 2025!"
+    disclaimer: "14-day free trial - No credit card required"
+  testimonial:
+    title: "We Want To Hear From You!"
+    quote: "Join the ForgeStack Beta - help us shape smarter, human-first tools for small business. Your feedback builds the future."
+    author: "The ForgeStack Team"
+  links:
+    demo:
+      title: "Watch a demo"
+      subtitle: "See ForgeStack in action (4 min)"
+    contact:
+      title: "Contact our team"
+      subtitle: "Get personalized guidance"
+
+journey:
+  badge: "A Day in the Life"
+  title:
+    prefix: "Your Day with"
+    highlight: "ForgeStack"
+  subtitle: "Experience how a cognitive-first platform transforms your daily workflow by adapting to your natural thought process."
+  timeline:
+    - time: "9:00 AM"
+      title: "Morning Focus"
+      description: "The Crown bar captures your \"draft an email to Sarah about project timeline\" command. AI drafts it while you review today's priorities in your Focus quadrant."
+      status: "Complete"
+      mockup:
+        commandPlaceholder: "/email Sarah about timeline"
+        sidebarTitle: "Today's Focus"
+    - time: "1:00 PM"
+      title: "Client Meeting Notes"
+      description: "Your meeting notes are automatically linked to the client contact. One click transforms discussion points into actionable tasks and project milestones."
+      status: "In Progress"
+      mockup:
+        title: "Acme Corp Meeting Notes"
+        subtitle: "Just now - Auto-linked to Client #342"
+        tags:
+          - "Deadline"
+          - "Budget"
+          - "Scope"
+        actionButton: "Transform to Tasks"
+    - time: "4:00 PM"
+      title: "Deep Work Session"
+      description: "While working on a complex proposal, the Dock keeps essential context visible - the client's requirements, similar past projects, and resource availability."
+      status: "Upcoming"
+      mockup:
+        contextItems:
+          - "Context"
+          - "Reference"
+          - "Tools"
+    - time: "6:00 PM"
+      title: "Day Wrap-Up"
+      description: "AI summarizes the day's progress and proposes tomorrow's focus areas. Your completed project work automatically generates invoices for approval."
+      status: "Upcoming"
+      mockup:
+        summaryTitle: "Daily Summary & Tomorrow's Plan"
+        accomplishmentsTitle: "Today's Accomplishments"
+        invoiceCount: "2 invoices ready"
+        invoiceTotal: "$3,240 total"
+
+choicePoint:
+  badge: "Your Cognitive Journey"
+  title:
+    prefix: "What"
+    highlight: "Matters Most"
+    suffix: "to You?"
+  subtitle: "Everyone's cognitive journey is different. Choose the path that resonates with your biggest challenge."
+  placeholder: "Select a path above to see tailored features."
+  paths:
+    focus:
+      title: "Focus & Flow"
+      description: "I want to stay in my creative zone with AI assistance that enhances my natural workflow, not dictates it."
+      features:
+        - "AI that anticipates needs"
+        - "Seamless context switching"
+      button: "Explore This Path"
+    ownership:
+      title: "Owning My Tools"
+      description: "I want to break free from endless subscriptions and own my technology infrastructure with more privacy."
+      features:
+        - "Own your data and tools"
+        - "No more SaaS lock-in"
+      button: "Explore This Path"
+
+stats:
+  cognitiveLoad:
+    text: "A cognitive sanctuary for small-business work - software that reduces effort instead of demanding more."
+  switchCost:
+    text: "Businesses reduce cognitive switch-cost by 42% and reclaim 3 hours daily"
+
+forgeStack:
+  hero:
+    title: "ForgeStack"
+    subtitle: "Our tool think with you; not at you."
+
+cta:
+  title: "Get Started"
+  subtitle: "Transform your workflow today"
