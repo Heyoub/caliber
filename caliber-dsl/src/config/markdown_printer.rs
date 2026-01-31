@@ -293,8 +293,18 @@ fn env_value_to_string(v: &EnvValue) -> String {
 /// ```
 /// let s = memory_type_to_string(&MemoryType::Semantic);
 /// assert_eq!(s, "semantic");
+/// Convert a MemoryType enum to its canonical string identifier.
+///
+/// The returned string is the stable, canonical name used in the generated Markdown
+/// (for example, "ephemeral", "working", "episodic", "semantic", "procedural", or "meta").
+///
+/// # Examples
+///
 /// ```
-fn
+/// let s = memory_type_to_string(&MemoryType::Semantic);
+/// assert_eq!(s, "semantic");
+/// ```
+fn memory_type_to_string(t: &MemoryType) -> &'static str {
 fn memory_type_to_string(t: &MemoryType) -> &'static str {
     match t {
         MemoryType::Ephemeral => "ephemeral",
