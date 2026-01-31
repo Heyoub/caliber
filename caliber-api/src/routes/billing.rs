@@ -18,6 +18,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    config::EndpointsConfig,
     db::DbClient,
     error::{ApiError, ApiResult},
     middleware::AuthExtractor,
@@ -149,10 +150,12 @@ pub struct BillingState {
     pub api_key: Option<String>,
     /// LemonSqueezy webhook secret
     pub webhook_secret: Option<String>,
+    /// Endpoints configuration for URLs
+    pub endpoints: EndpointsConfig,
 }
 
 impl BillingState {
-    pub fn new(db: DbClient) -> Self {
+    pub fn new(db: DbClient, endpoints: EndpointsConfig) -> Self {
         let store_id = std::env::var("LEMONSQUEEZY_STORE_ID").ok();
         let api_key = std::env::var("LEMONSQUEEZY_API_KEY").ok();
         let webhook_secret = std::env::var("LEMONSQUEEZY_WEBHOOK_SECRET").ok();
@@ -163,7 +166,21 @@ impl BillingState {
             store_id,
             api_key,
             webhook_secret,
+            endpoints,
         }
+    }
+
+    /// Get the LemonSqueezy checkouts API URL.
+    fn checkouts_url(&self) -> String {
+        format!("{}/v1/checkouts", self.endpoints.lemonsqueezy_api_url)
+    }
+
+    /// Get the LemonSqueezy customer API URL.
+    fn customer_url(&self, customer_id: &str) -> String {
+        format!(
+            "{}/v1/customers/{}",
+            self.endpoints.lemonsqueezy_api_url, customer_id
+        )
     }
 }
 
@@ -255,6 +272,9 @@ pub async fn create_checkout(
     });
 
     // Build checkout URL with custom data
+    let redirect_url = req
+        .success_url
+        .unwrap_or_else(|| state.endpoints.billing_success_redirect());
     let checkout_data = serde_json::json!({
         "data": {
             "type": "checkouts",
@@ -266,7 +286,7 @@ pub async fn create_checkout(
                     }
                 },
                 "product_options": {
-                    "redirect_url": req.success_url.unwrap_or_else(|| "https://caliber.run/dashboard/settings".to_string()),
+                    "redirect_url": redirect_url,
                 }
             },
             "relationships": {
@@ -289,7 +309,7 @@ pub async fn create_checkout(
     // Call LemonSqueezy API to create checkout
     let response = state
         .http_client
-        .post("https://api.lemonsqueezy.com/v1/checkouts")
+        .post(&state.checkouts_url())
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/vnd.api+json")
         .json(&checkout_data)
@@ -361,10 +381,7 @@ pub async fn get_portal_url(
     // Get customer portal URL from LemonSqueezy
     let response = state
         .http_client
-        .get(format!(
-            "https://api.lemonsqueezy.com/v1/customers/{}",
-            customer_id
-        ))
+        .get(&state.customer_url(&customer_id))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await

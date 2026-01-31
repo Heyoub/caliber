@@ -9,6 +9,9 @@
 //! The pure traits (`EmbeddingProvider`, `SummarizationProvider`) live in `caliber_core::llm`.
 //! Real provider implementations (OpenAI, Anthropic, Ollama) are in submodules.
 
+use crate::constants::{
+    DEFAULT_CIRCUIT_FAILURE_THRESHOLD, DEFAULT_CIRCUIT_SUCCESS_THRESHOLD, DEFAULT_CIRCUIT_TIMEOUT_SECS,
+};
 use async_trait::async_trait;
 use caliber_core::{
     CaliberError, CaliberResult, CircuitState, EmbeddingVector, HealthStatus, LlmError,
@@ -212,9 +215,42 @@ pub struct CircuitBreakerConfig {
 impl Default for CircuitBreakerConfig {
     fn default() -> Self {
         Self {
-            failure_threshold: 5,
-            success_threshold: 3,
-            timeout: Duration::from_secs(30),
+            failure_threshold: DEFAULT_CIRCUIT_FAILURE_THRESHOLD,
+            success_threshold: DEFAULT_CIRCUIT_SUCCESS_THRESHOLD,
+            timeout: Duration::from_secs(DEFAULT_CIRCUIT_TIMEOUT_SECS),
+        }
+    }
+}
+
+impl CircuitBreakerConfig {
+    /// Create CircuitBreakerConfig from environment variables.
+    ///
+    /// # Environment Variables
+    /// - `CALIBER_CIRCUIT_FAILURE_THRESHOLD`: Number of failures before opening (default: 5)
+    /// - `CALIBER_CIRCUIT_SUCCESS_THRESHOLD`: Successes needed to close from half-open (default: 3)
+    /// - `CALIBER_CIRCUIT_TIMEOUT_SECS`: How long circuit stays open (default: 30)
+    pub fn from_env() -> Self {
+        let failure_threshold = std::env::var("CALIBER_CIRCUIT_FAILURE_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_CIRCUIT_FAILURE_THRESHOLD);
+
+        let success_threshold = std::env::var("CALIBER_CIRCUIT_SUCCESS_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_CIRCUIT_SUCCESS_THRESHOLD);
+
+        let timeout = Duration::from_secs(
+            std::env::var("CALIBER_CIRCUIT_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_CIRCUIT_TIMEOUT_SECS),
+        );
+
+        Self {
+            failure_threshold,
+            success_threshold,
+            timeout,
         }
     }
 }
