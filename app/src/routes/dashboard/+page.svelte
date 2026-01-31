@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
    * Dashboard Page
-   * Thin stats UI - pulls from API and displays
+   * Thin stats UI - pulls from real API endpoints at localhost:3000
    */
   import { DashboardLayout } from '$layouts';
   import { Card, Badge, Spinner, Icon } from '@caliber/ui';
-  import { apiClient, type DashboardStats } from '$api/client';
+  import { apiClient, type DashboardStats, type HealthResponse } from '$api/client';
 
   // Content strings
   const content = {
@@ -13,10 +13,12 @@
     subtitle: 'Overview of your AI agent memory usage',
     stats: {
       trajectories: 'Trajectories',
+      agents: 'Active Agents',
       scopes: 'Active Scopes',
       events: 'Total Events',
       storage: 'Storage Used',
     },
+    apiStatus: 'API Status',
     recentActivity: 'Recent Activity',
     quickActions: 'Quick Actions',
     actions: {
@@ -26,11 +28,18 @@
     },
   };
 
-  // Fetch dashboard stats
+  // State for dashboard data
   let stats = $state<DashboardStats | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
 
+  // Derived state for agent counts
+  let activeAgentCount = $derived(
+    stats?.agents?.filter((a) => a.status === 'active').length ?? 0
+  );
+  let totalAgentCount = $derived(stats?.agents?.length ?? 0);
+
+  // Load stats on mount
   $effect(() => {
     loadStats();
   });
@@ -42,9 +51,14 @@
       stats = await apiClient.getDashboardStats();
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load stats';
+      console.error('Dashboard load error:', e);
     } finally {
       loading = false;
     }
+  }
+
+  async function refreshStats() {
+    await loadStats();
   }
 
   function formatNumber(num: number): string {
@@ -59,29 +73,112 @@
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;
   }
+
+  function formatUptime(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    return `${Math.floor(seconds / 86400)}d`;
+  }
+
+  function getHealthColor(status: string | undefined): 'teal' | 'coral' | 'amber' {
+    switch (status) {
+      case 'healthy':
+        return 'teal';
+      case 'unhealthy':
+        return 'coral';
+      case 'degraded':
+        return 'amber';
+      default:
+        return 'coral';
+    }
+  }
+
+  function formatTimestamp(timestamp: string): string {
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      const seconds = Math.floor(diff / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      if (days > 0) return `${days}d ago`;
+      if (hours > 0) return `${hours}h ago`;
+      if (minutes > 0) return `${minutes}m ago`;
+      return 'just now';
+    } catch {
+      return timestamp;
+    }
+  }
 </script>
 
 <DashboardLayout>
   <div class="dashboard">
     <!-- Header -->
     <header class="dashboard-header">
-      <h1 class="dashboard-title">{content.title}</h1>
-      <p class="dashboard-subtitle">{content.subtitle}</p>
+      <div class="header-content">
+        <h1 class="dashboard-title">{content.title}</h1>
+        <p class="dashboard-subtitle">{content.subtitle}</p>
+      </div>
+      <button class="refresh-btn" onclick={refreshStats} disabled={loading}>
+        <Icon name="refresh-cw" size="sm" />
+        Refresh
+      </button>
     </header>
 
     <!-- Stats Grid -->
     {#if loading}
       <div class="loading-container">
         <Spinner size="lg" color="teal" />
+        <p class="loading-text">Connecting to API...</p>
       </div>
     {:else if error}
       <Card color="coral" glass="medium" border="subtle">
         <div class="error-message">
           <Icon name="alert-circle" color="coral" />
-          <span>{error}</span>
+          <div class="error-content">
+            <span class="error-title">Connection Error</span>
+            <span class="error-detail">{error}</span>
+            <button class="retry-btn" onclick={refreshStats}>
+              Try Again
+            </button>
+          </div>
         </div>
       </Card>
     {:else if stats}
+      <!-- API Health Status -->
+      <section class="api-status">
+        <h2 class="section-title">{content.apiStatus}</h2>
+        <Card glass="medium" border="subtle">
+          <div class="health-card">
+            <div class="health-indicator {stats.apiHealth?.status ?? 'unhealthy'}">
+              <Icon name={stats.apiHealth?.status === 'healthy' ? 'check-circle' : 'alert-circle'} size="lg" />
+            </div>
+            <div class="health-info">
+              <span class="health-status">
+                {#if stats.apiHealth}
+                  <Badge color={getHealthColor(stats.apiHealth.status)} size="sm">
+                    {stats.apiHealth.status}
+                  </Badge>
+                {:else}
+                  <Badge color="coral" size="sm">offline</Badge>
+                {/if}
+              </span>
+              {#if stats.apiHealth?.details}
+                <span class="health-details">
+                  v{stats.apiHealth.details.version} |
+                  uptime: {formatUptime(stats.apiHealth.details.uptime_seconds)} |
+                  db: {stats.apiHealth.details.database.latency_ms ?? 0}ms
+                </span>
+              {/if}
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      <!-- Stats Grid -->
       <div class="stats-grid">
         <Card glass="medium" border="subtle" hover="lift">
           <div class="stat-card">
@@ -98,6 +195,18 @@
         <Card glass="medium" border="subtle" hover="lift">
           <div class="stat-card">
             <div class="stat-icon purple">
+              <Icon name="users" size="lg" />
+            </div>
+            <div class="stat-content">
+              <span class="stat-value">{activeAgentCount}/{totalAgentCount}</span>
+              <span class="stat-label">{content.stats.agents}</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card glass="medium" border="subtle" hover="lift">
+          <div class="stat-card">
+            <div class="stat-icon pink">
               <Icon name="layers" size="lg" />
             </div>
             <div class="stat-content">
@@ -109,7 +218,7 @@
 
         <Card glass="medium" border="subtle" hover="lift">
           <div class="stat-card">
-            <div class="stat-icon pink">
+            <div class="stat-icon amber">
               <Icon name="activity" size="lg" />
             </div>
             <div class="stat-content">
@@ -118,19 +227,39 @@
             </div>
           </div>
         </Card>
-
-        <Card glass="medium" border="subtle" hover="lift">
-          <div class="stat-card">
-            <div class="stat-icon amber">
-              <Icon name="database" size="lg" />
-            </div>
-            <div class="stat-content">
-              <span class="stat-value">{formatBytes(stats.storageUsedBytes)}</span>
-              <span class="stat-label">{content.stats.storage}</span>
-            </div>
-          </div>
-        </Card>
       </div>
+
+      <!-- Agents List -->
+      {#if stats.agents && stats.agents.length > 0}
+        <section class="agents-section">
+          <h2 class="section-title">Registered Agents</h2>
+          <div class="agents-list">
+            {#each stats.agents as agent}
+              <Card glass="light" border="subtle">
+                <div class="agent-item">
+                  <div class="agent-info">
+                    <span class="agent-type">{agent.agent_type}</span>
+                    <Badge
+                      color={agent.status === 'active' ? 'teal' : agent.status === 'idle' ? 'purple' : 'amber'}
+                      size="sm"
+                    >
+                      {agent.status}
+                    </Badge>
+                  </div>
+                  <div class="agent-details">
+                    <span class="agent-capabilities">
+                      {agent.capabilities.slice(0, 3).join(', ')}{agent.capabilities.length > 3 ? '...' : ''}
+                    </span>
+                    <span class="agent-heartbeat">
+                      Last seen: {formatTimestamp(agent.last_heartbeat)}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            {/each}
+          </div>
+        </section>
+      {/if}
 
       <!-- Quick Actions -->
       <section class="quick-actions">
@@ -158,7 +287,7 @@
                   {activity.type}
                 </Badge>
                 <span class="activity-name">{activity.name}</span>
-                <span class="activity-time">{activity.timestamp}</span>
+                <span class="activity-time">{formatTimestamp(activity.timestamp)}</span>
               </div>
             {/each}
           </div>
@@ -175,7 +304,14 @@
   }
 
   .dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
     margin-bottom: var(--space-8);
+  }
+
+  .header-content {
+    flex: 1;
   }
 
   .dashboard-title {
@@ -192,17 +328,182 @@
     margin: 0;
   }
 
+  .refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: hsl(var(--slate-800) / 0.5);
+    border: 1px solid hsl(var(--slate-700));
+    border-radius: var(--radius-md);
+    color: hsl(var(--text-secondary));
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-default);
+  }
+
+  .refresh-btn:hover:not(:disabled) {
+    background: hsl(var(--slate-700) / 0.5);
+    border-color: hsl(var(--slate-600));
+    color: hsl(var(--text-primary));
+  }
+
+  .refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .loading-container {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
     padding: var(--space-16) 0;
+  }
+
+  .loading-text {
+    color: hsl(var(--text-muted));
+    font-size: var(--text-sm);
+    margin: 0;
   }
 
   .error-message {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-3);
     color: hsl(var(--coral-400));
+  }
+
+  .error-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .error-title {
+    font-weight: 600;
+    color: hsl(var(--coral-400));
+  }
+
+  .error-detail {
+    font-size: var(--text-sm);
+    color: hsl(var(--text-secondary));
+  }
+
+  .retry-btn {
+    align-self: flex-start;
+    padding: var(--space-2) var(--space-4);
+    background: hsl(var(--coral-500) / 0.2);
+    border: 1px solid hsl(var(--coral-500) / 0.4);
+    border-radius: var(--radius-md);
+    color: hsl(var(--coral-400));
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-default);
+  }
+
+  .retry-btn:hover {
+    background: hsl(var(--coral-500) / 0.3);
+    border-color: hsl(var(--coral-500) / 0.6);
+  }
+
+  /* API Status Section */
+  .api-status {
+    margin-bottom: var(--space-6);
+  }
+
+  .health-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+
+  .health-indicator {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+  }
+
+  .health-indicator.healthy {
+    background: hsl(var(--teal-500) / 0.15);
+    color: hsl(var(--teal-400));
+  }
+
+  .health-indicator.unhealthy {
+    background: hsl(var(--coral-500) / 0.15);
+    color: hsl(var(--coral-400));
+  }
+
+  .health-indicator.degraded {
+    background: hsl(var(--amber-500) / 0.15);
+    color: hsl(var(--amber-400));
+  }
+
+  .health-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .health-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .health-details {
+    font-size: var(--text-xs);
+    color: hsl(var(--text-muted));
+  }
+
+  /* Agents Section */
+  .agents-section {
+    margin-bottom: var(--space-8);
+  }
+
+  .agents-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .agent-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .agent-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .agent-type {
+    font-weight: 600;
+    color: hsl(var(--text-primary));
+    font-size: var(--text-sm);
+  }
+
+  .agent-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .agent-capabilities {
+    font-size: var(--text-xs);
+    color: hsl(var(--text-secondary));
+  }
+
+  .agent-heartbeat {
+    font-size: var(--text-xs);
+    color: hsl(var(--text-muted));
   }
 
   .stats-grid {

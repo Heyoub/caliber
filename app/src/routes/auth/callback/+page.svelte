@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { handleAuthCallback } from '$stores/auth';
+  import { handleAuthCallback, getToken } from '$stores/auth';
   import { Spinner } from '@caliber/ui';
 
   let error = $state<string | null>(null);
@@ -11,7 +11,16 @@
     const result = handleAuthCallback($page.url.searchParams);
 
     if (result.success) {
-      // Get return URL from state or default to dashboard
+      // Set cookie for server-side auth (SSR support)
+      const token = getToken();
+      if (token) {
+        // Set secure cookie in production, lax in dev
+        const isSecure = window.location.protocol === 'https:';
+        const secureFlag = isSecure ? '; Secure' : '';
+        document.cookie = `caliber_token=${token}; path=/; max-age=3600; SameSite=Lax${secureFlag}`;
+      }
+
+      // Get return URL from query params or default to dashboard
       const returnUrl = $page.url.searchParams.get('return_url') || '/dashboard';
       goto(returnUrl);
     } else {

@@ -18,17 +18,33 @@ import type {
   SendMessageRequest,
   StreamEvent,
   StreamEventType,
+  HealthResponse,
+  ListTrajectoriesResponse,
+  ListAgentsResponse,
+  ApiTrajectoryResponse,
+  ApiAgentResponse,
 } from './types';
 
 // Re-export types for convenience
-export type { DashboardStats, Trajectory, Scope, Event, AssistantResponse };
+export type {
+  DashboardStats,
+  Trajectory,
+  Scope,
+  Event,
+  AssistantResponse,
+  HealthResponse,
+  ListTrajectoriesResponse,
+  ListAgentsResponse,
+  ApiTrajectoryResponse,
+  ApiAgentResponse,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** API base URL - defaults to relative path for same-origin */
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+/** API base URL - defaults to localhost:3000 for development */
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 /** WebSocket base URL */
 const WS_BASE =
@@ -506,22 +522,133 @@ export function streamChatResponse(
 
 export const apiClient = {
   // ═══════════════════════════════════════════════════════════════════════
+  // HEALTH CHECK
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Check API health (no auth required).
+   */
+  getHealth: async (): Promise<HealthResponse> => {
+    // Health endpoints don't require auth, use direct fetch
+    const response = await fetch(`${API_BASE}/health/ready`);
+    if (!response.ok) {
+      throw CaliberApiError.fromHttpStatus(response.status, 'Health check failed');
+    }
+    return response.json();
+  },
+
+  /**
+   * Simple ping check (no auth required).
+   */
+  ping: async (): Promise<string> => {
+    const response = await fetch(`${API_BASE}/health/ping`);
+    if (!response.ok) {
+      throw CaliberApiError.fromHttpStatus(response.status, 'Ping failed');
+    }
+    return response.text();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // REAL API ENDPOINTS (caliber-api)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * List trajectories from caliber-api.
+   */
+  listTrajectories: async (params?: {
+    status?: string;
+    agent_id?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ListTrajectoriesResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.agent_id) searchParams.set('agent_id', params.agent_id);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.offset) searchParams.set('offset', String(params.offset));
+
+    const queryString = searchParams.toString();
+    const endpoint = `/api/v1/trajectories${queryString ? `?${queryString}` : ''}`;
+
+    return apiFetch<ListTrajectoriesResponse>(endpoint, {}, { retries: 2 });
+  },
+
+  /**
+   * Get a trajectory by ID from caliber-api.
+   */
+  getTrajectoryById: async (id: string): Promise<ApiTrajectoryResponse> => {
+    return apiFetch<ApiTrajectoryResponse>(`/api/v1/trajectories/${id}`, {}, { retries: 2 });
+  },
+
+  /**
+   * List agents from caliber-api.
+   */
+  listAgents: async (params?: {
+    agent_type?: string;
+    status?: string;
+    active_only?: boolean;
+  }): Promise<ListAgentsResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.agent_type) searchParams.set('agent_type', params.agent_type);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.active_only !== undefined) searchParams.set('active_only', String(params.active_only));
+
+    const queryString = searchParams.toString();
+    const endpoint = `/api/v1/agents${queryString ? `?${queryString}` : ''}`;
+
+    return apiFetch<ListAgentsResponse>(endpoint, {}, { retries: 2 });
+  },
+
+  /**
+   * Get an agent by ID from caliber-api.
+   */
+  getAgentById: async (id: string): Promise<ApiAgentResponse> => {
+    return apiFetch<ApiAgentResponse>(`/api/v1/agents/${id}`, {}, { retries: 2 });
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
   // DASHBOARD
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
-   * Get dashboard statistics.
+   * Get dashboard statistics by aggregating real API data.
    */
   getDashboardStats: async (): Promise<DashboardStats> => {
-    const response = await apiFetch<ApiResponse<DashboardStats>>(
-      '/dashboard/stats',
-      {},
-      {
-        retries: 2,
-        retryOn: [ApiErrorCode.ServerError, ApiErrorCode.NetworkError],
-      }
-    );
-    return response.data;
+    // Fetch real data from multiple endpoints in parallel
+    const [healthResult, trajectoriesResult, agentsResult] = await Promise.allSettled([
+      apiClient.getHealth(),
+      apiClient.listTrajectories({ limit: 100 }),
+      apiClient.listAgents(),
+    ]);
+
+    const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+    const trajectories = trajectoriesResult.status === 'fulfilled'
+      ? trajectoriesResult.value.trajectories
+      : [];
+    const agents = agentsResult.status === 'fulfilled'
+      ? agentsResult.value.agents
+      : [];
+
+    // Build recent activity from trajectories
+    const recentActivity = trajectories
+      .slice(0, 10)
+      .map((t) => ({
+        id: t.trajectory_id,
+        type: 'trajectory' as const,
+        name: t.name,
+        action: 'created' as const,
+        timestamp: t.created_at,
+      }));
+
+    return {
+      trajectoryCount: trajectories.length,
+      scopeCount: 0, // Would need scope listing endpoint
+      eventCount: 0, // Would need event counting
+      storageUsedBytes: 0, // Not available from current API
+      recentActivity,
+      apiHealth: health,
+      agents,
+    };
   },
 
   // ═══════════════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { isAuthenticated } from '$stores/auth';
+  import { isAuthenticated, storeAuth, parseToken } from '$stores/auth';
   import { Button, Spinner } from '@caliber/ui';
 
   let isLoading = $state(false);
@@ -13,6 +13,12 @@
 
   // API base URL - in production this would come from env
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+  // Auth provider - 'workos' for production SSO, 'local' for dev bypass
+  const AUTH_PROVIDER = import.meta.env.VITE_AUTH_PROVIDER || 'workos';
+
+  // Show dev login in dev mode OR when auth provider is 'local'
+  const showDevLogin = $derived(import.meta.env.DEV || AUTH_PROVIDER === 'local');
 
   onMount(() => {
     // If already authenticated, redirect
@@ -26,36 +32,70 @@
     error = null;
 
     // Build the SSO authorize URL with redirect back to our callback
-    const callbackUrl = `${window.location.origin}/auth/callback`;
+    // Include return_url in the callback so we can redirect after auth
+    const callbackUrl = `${window.location.origin}/auth/callback?return_url=${encodeURIComponent(returnUrl)}`;
     const authUrl = `${API_URL}/auth/sso/authorize?redirect_uri=${encodeURIComponent(callbackUrl)}`;
 
     // Redirect to WorkOS SSO
     window.location.href = authUrl;
   }
 
-  function handleDevLogin() {
-    // For development: create a mock token
-    if (import.meta.env.DEV) {
-      const mockToken = btoa(JSON.stringify({
-        user_id: 'dev-user-123',
-        email: 'dev@caliber.run',
-        first_name: 'Dev',
-        last_name: 'User',
-        organization_id: 'dev-tenant',
-        exp: Math.floor(Date.now() / 1000) + 3600
-      }));
-      const fakeJwt = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${mockToken}.dev-signature`;
+  async function handleDevLogin() {
+    // For development: request a dev token from the API
+    if (!showDevLogin) return;
 
-      // Store and redirect
-      localStorage.setItem('caliber_token', fakeJwt);
-      localStorage.setItem('caliber_user', JSON.stringify({
-        id: 'dev-user-123',
-        email: 'dev@caliber.run',
-        firstName: 'Dev',
-        lastName: 'User',
-        tenantId: 'dev-tenant'
-      }));
+    isLoading = true;
+    error = null;
+
+    try {
+      // Try to get a dev token from the API's dev auth endpoint
+      const response = await fetch(`${API_URL}/auth/dev/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'dev@caliber.run',
+          name: 'Dev User',
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const user = parseToken(data.access_token);
+        if (user) {
+          storeAuth(data.access_token, user);
+          // Set cookie for server-side auth
+          document.cookie = `caliber_token=${data.access_token}; path=/; max-age=3600; SameSite=Lax`;
+          goto(returnUrl);
+          return;
+        }
+      }
+    } catch {
+      // API dev endpoint not available, fall back to mock token
+    }
+
+    // Fallback: create a mock token (works for frontend-only testing)
+    const now = Math.floor(Date.now() / 1000);
+    const mockPayload = {
+      user_id: 'dev-user-123',
+      email: 'dev@caliber.run',
+      first_name: 'Dev',
+      last_name: 'User',
+      organization_id: '00000000-0000-0000-0000-000000000001',
+      iat: now,
+      exp: now + 3600,
+    };
+    const mockToken = btoa(JSON.stringify(mockPayload));
+    const fakeJwt = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${mockToken}.dev-signature`;
+
+    const user = parseToken(fakeJwt);
+    if (user) {
+      storeAuth(fakeJwt, user);
+      // Set cookie for server-side auth
+      document.cookie = `caliber_token=${fakeJwt}; path=/; max-age=3600; SameSite=Lax`;
       goto(returnUrl);
+    } else {
+      error = 'Failed to create dev session';
+      isLoading = false;
     }
   }
 </script>
@@ -93,8 +133,8 @@
         {/if}
       </Button>
 
-      {#if import.meta.env.DEV}
-        <button class="dev-login" onclick={handleDevLogin}>
+      {#if showDevLogin}
+        <button class="dev-login" onclick={handleDevLogin} disabled={isLoading}>
           Dev Login (skip SSO)
         </button>
       {/if}

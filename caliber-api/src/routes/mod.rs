@@ -18,6 +18,7 @@ pub mod billing;
 pub mod config;
 pub mod context;
 pub mod delegation;
+pub mod dev_auth;
 pub mod dsl;
 pub mod edge;
 pub mod generic;
@@ -392,6 +393,11 @@ impl SecureRouterBuilder {
             }
         }
 
+        // Add dev auth routes (only in development mode)
+        if dev_auth::is_dev_auth_enabled() {
+            router = router.nest("/auth/dev", dev_auth::create_router());
+        }
+
         // Add YAML endpoint if openapi feature is enabled
         #[cfg(feature = "openapi")]
         {
@@ -633,6 +639,11 @@ pub fn create_api_router_unauthenticated(
             router = router.nest("/auth/sso", sso::create_router());
             router = router.nest("/workos", workos_webhooks::create_router());
         }
+    }
+
+    // Add dev auth routes (only in development mode)
+    if dev_auth::is_dev_auth_enabled() {
+        router = router.nest("/auth/dev", dev_auth::create_router());
     }
 
     #[cfg(feature = "openapi")]

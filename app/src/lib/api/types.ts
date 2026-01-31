@@ -104,6 +104,81 @@ export interface AssistantResponse {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// HEALTH CHECK
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type HealthStatus = 'healthy' | 'unhealthy' | 'degraded';
+
+export interface ComponentHealth {
+  status: HealthStatus;
+  latency_ms?: number;
+  error?: string;
+}
+
+export interface HealthDetails {
+  database: ComponentHealth;
+  version: string;
+  uptime_seconds: number;
+}
+
+export interface HealthResponse {
+  status: HealthStatus;
+  message?: string;
+  details?: HealthDetails;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// API TRAJECTORY RESPONSE (from caliber-api)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ApiTrajectoryResponse {
+  trajectory_id: string;
+  tenant_id: string;
+  parent_trajectory_id?: string;
+  agent_id?: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'completed' | 'failed' | 'paused';
+  created_at: string;
+  updated_at: string;
+  metadata?: Record<string, unknown>;
+  _links?: Record<string, { href: string }>;
+}
+
+export interface ListTrajectoriesResponse {
+  trajectories: ApiTrajectoryResponse[];
+  total: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// API AGENT RESPONSE (from caliber-api)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ApiAgentResponse {
+  agent_id: string;
+  tenant_id: string;
+  agent_type: string;
+  capabilities: string[];
+  memory_access: {
+    read: Array<{ memory_type: string; scope: string; filter?: Record<string, unknown> }>;
+    write: Array<{ memory_type: string; scope: string; filter?: Record<string, unknown> }>;
+  };
+  can_delegate_to: string[];
+  reports_to?: string;
+  status: 'idle' | 'active' | 'blocked' | 'failed' | 'offline';
+  current_trajectory_id?: string;
+  current_scope_id?: string;
+  last_heartbeat: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListAgentsResponse {
+  agents: ApiAgentResponse[];
+  total: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -113,6 +188,8 @@ export interface DashboardStats {
   eventCount: number;
   storageUsedBytes: number;
   recentActivity: ActivityItem[];
+  apiHealth: HealthResponse | null;
+  agents: ApiAgentResponse[];
 }
 
 export interface ActivityItem {

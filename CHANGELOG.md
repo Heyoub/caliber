@@ -38,6 +38,9 @@ This release represents a major consolidation and simplification of the CALIBER 
 - **Unused imports**: Cleaned up leftover imports in db.rs from removed code
 - **Clippy lint**: Fixed needless borrow in workos_auth.rs
 - **CI**: Pin bun to 1.3.6, fix scorecard-action version (v1.15.0 → v2.4.0)
+- **tsconfig**: Remove paths config (use kit.alias instead per SvelteKit docs)
+- **Auth**: Wire up dev auth bypass and SSO flow with proper token handling
+- **CRLF**: Fix Windows line endings in .env and config files
 
 ### Changed
 - **CI Pipeline**: Optimized from 22+ jobs to 12 jobs (~1h 30m → ~20min for PRs)
@@ -52,6 +55,10 @@ This release represents a major consolidation and simplification of the CALIBER 
 - **SvelteKit App** (`app/`): Full-featured frontend application
   - Login page with WorkOS SSO integration and dev bypass
   - Auth callback handling with token management
+  - Dashboard settings page with theme toggle and API config
+  - Dashboard stats page with real-time API data
+  - API client wired to backend health, trajectories, agents endpoints
+- **Dev Auth Endpoint** (`POST /auth/dev/token`): Generate JWT tokens for development without SSO
   - Dashboard, Editor, and Playground routes
   - API client with typed errors, retry logic, WebSocket streaming
 - **Design Tokens** (`@caliber/ui/tokens`): CSS custom properties export
