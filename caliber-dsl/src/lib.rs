@@ -1,31 +1,35 @@
 //! CALIBER DSL - Domain Specific Language Parser & Compiler
 //!
-//! This crate provides a lexer, parser, compiler, and pretty-printer for the CALIBER DSL.
-//! The DSL is used to define memory types, policies, adapters, and injection rules.
+//! This crate provides a Markdown-based configuration parser, compiler, and pretty-printer.
+//! Configurations are defined in Markdown fence blocks with YAML payloads.
 //!
 //! Architecture:
 //! ```text
-//! DSL Source (.caliber file)
+//! Markdown Source (.md files)
 //!     ↓
-//! Lexer (tokenize)
+//! Pack Markdown Parser (fence blocks)
 //!     ↓
-//! Parser (build AST)
+//! Config Parser (YAML → AST)
 //!     ↓
 //! Compiler (validate + transform)
 //!     ↓
 //! CompiledConfig (runtime-ready)
 //!     ↓
-//! Pretty-Printer (for round-trip testing)
+//! Markdown Printer (for round-trip testing)
 //! ```
 
 pub mod compiler;
-pub mod lexer;
+pub mod config;
 pub mod pack;
 pub mod parser;
 pub mod pretty_printer;
 
 // Re-export key types for convenience
 pub use compiler::*;
-pub use lexer::*;
+pub use config::{
+    ast_to_markdown, parse_adapter_block, parse_agent_block, parse_cache_block,
+    parse_injection_block, parse_memory_block, parse_policy_block, parse_provider_block,
+    parse_trajectory_block, ConfigError,
+};
 pub use pack::{compose_pack, PackError, PackInput, PackMarkdownFile, PackOutput};
 pub use parser::*;

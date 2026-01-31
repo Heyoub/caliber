@@ -1406,7 +1406,6 @@ impl Default for DslCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse;
 
     #[test]
     fn test_parse_duration() {
@@ -1448,15 +1447,20 @@ mod tests {
 
     #[test]
     fn test_compile_undefined_agent_reference() {
-        let source = r#"
-            caliber: "1.0" {
-                trajectory "t1" {
-                    agent_type: "missing"
-                    token_budget: 1000
-                }
-            }
-        "#;
-        let ast = parse(source).unwrap();
+        // Construct AST directly instead of parsing
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![
+                Definition::Trajectory(TrajectoryDef {
+                    name: "t1".to_string(),
+                    description: None,
+                    agent_type: "missing".to_string(), // Reference to non-existent agent
+                    token_budget: 1000,
+                    memory_refs: vec![],
+                    metadata: None,
+                }),
+            ],
+        };
         let err = DslCompiler::compile(&ast).unwrap_err();
         assert!(matches!(
             err,
@@ -1466,18 +1470,26 @@ mod tests {
 
     #[test]
     fn test_compile_undefined_memory_reference() {
-        let source = r#"
-            caliber: "1.0" {
-                agent "worker" {
-                }
-                trajectory "t1" {
-                    agent_type: "worker"
-                    token_budget: 1000
-                    memory_refs: [notes]
-                }
-            }
-        "#;
-        let ast = parse(source).unwrap();
+        // Construct AST directly instead of parsing
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![
+                Definition::Agent(AgentDef {
+                    name: "worker".to_string(),
+                    capabilities: vec![],
+                    constraints: AgentConstraints::default(),
+                    permissions: PermissionMatrix::default(),
+                }),
+                Definition::Trajectory(TrajectoryDef {
+                    name: "t1".to_string(),
+                    description: None,
+                    agent_type: "worker".to_string(),
+                    token_budget: 1000,
+                    memory_refs: vec!["notes".to_string()], // Reference to non-existent memory
+                    metadata: None,
+                }),
+            ],
+        };
         let err = DslCompiler::compile(&ast).unwrap_err();
         assert!(matches!(
             err,
@@ -1487,17 +1499,26 @@ mod tests {
 
     #[test]
     fn test_compile_invalid_token_budget() {
-        let source = r#"
-            caliber: "1.0" {
-                agent "worker" {
-                }
-                trajectory "t1" {
-                    agent_type: "worker"
-                    token_budget: 0
-                }
-            }
-        "#;
-        let ast = parse(source).unwrap();
+        // Construct AST directly instead of parsing
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![
+                Definition::Agent(AgentDef {
+                    name: "worker".to_string(),
+                    capabilities: vec![],
+                    constraints: AgentConstraints::default(),
+                    permissions: PermissionMatrix::default(),
+                }),
+                Definition::Trajectory(TrajectoryDef {
+                    name: "t1".to_string(),
+                    description: None,
+                    agent_type: "worker".to_string(),
+                    token_budget: 0, // Invalid: must be > 0
+                    memory_refs: vec![],
+                    metadata: None,
+                }),
+            ],
+        };
         let err = DslCompiler::compile(&ast).unwrap_err();
         assert!(matches!(
             err,
@@ -1507,17 +1528,19 @@ mod tests {
 
     #[test]
     fn test_compile_invalid_evolution_benchmark_queries() {
-        let source = r#"
-            caliber: "1.0" {
-                evolve "config" {
-                    baseline: "base"
-                    candidates: ["c1"]
-                    benchmark_queries: 0
-                    metrics: ["latency"]
-                }
-            }
-        "#;
-        let ast = parse(source).unwrap();
+        // Construct AST directly instead of parsing
+        let ast = CaliberAst {
+            version: "1.0".to_string(),
+            definitions: vec![
+                Definition::Evolution(EvolutionDef {
+                    name: "config".to_string(),
+                    baseline: "base".to_string(),
+                    candidates: vec!["c1".to_string()],
+                    benchmark_queries: 0, // Invalid: must be > 0
+                    metrics: vec!["latency".to_string()],
+                }),
+            ],
+        };
         let err = DslCompiler::compile(&ast).unwrap_err();
         assert!(matches!(
             err,

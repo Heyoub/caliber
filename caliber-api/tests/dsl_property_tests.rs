@@ -15,7 +15,7 @@ use caliber_api::{
     routes::dsl,
     types::{ValidateDslRequest, ValidateDslResponse},
 };
-use caliber_dsl::{pretty_print, CaliberAst};
+use caliber_dsl::{ast_to_markdown, CaliberAst};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde::de::DeserializeOwned;
@@ -115,7 +115,7 @@ proptest! {
                 .map_err(|e| TestCaseError::fail(format!("Failed to deserialize AST: {}", e)))?;
 
             // Pretty-print and parse again via API
-            let pretty = pretty_print(&ast);
+            let pretty = ast_to_markdown(&ast);
             let reparsed: ValidateDslResponse = extract_json(
                 dsl::parse_dsl(
                     State(db.clone()),

@@ -2,6 +2,7 @@
 
 use super::ir::{MarkdownError, PackError};
 use super::schema::{PackManifest, ToolsSection};
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct MarkdownDoc {
@@ -23,9 +24,86 @@ pub struct UserSection {
     pub blocks: Vec<FencedBlock>,
 }
 
+/// Supported fence block types (single source of truth)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FenceKind {
+    // Config types (NEW)
+    Adapter,
+    Memory,
+    Policy,
+    Injection,
+    Provider,
+    Cache,
+    Trajectory,
+    Agent,
+
+    // Existing types
+    Tool,
+    Rag,
+    Json,
+    Xml,
+    Constraints,
+    Tools,
+
+    // Metadata
+    Manifest,
+}
+
+impl FromStr for FenceKind {
+    type Err = PackError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "adapter" => Ok(FenceKind::Adapter),
+            "memory" => Ok(FenceKind::Memory),
+            "policy" => Ok(FenceKind::Policy),
+            "injection" => Ok(FenceKind::Injection),
+            "provider" => Ok(FenceKind::Provider),
+            "cache" => Ok(FenceKind::Cache),
+            "trajectory" => Ok(FenceKind::Trajectory),
+            "agent" => Ok(FenceKind::Agent),
+            "tool" => Ok(FenceKind::Tool),
+            "rag" => Ok(FenceKind::Rag),
+            "json" => Ok(FenceKind::Json),
+            "xml" => Ok(FenceKind::Xml),
+            "constraints" => Ok(FenceKind::Constraints),
+            "tools" => Ok(FenceKind::Tools),
+            "manifest" => Ok(FenceKind::Manifest),
+            other => Err(PackError::Validation(format!(
+                "unsupported fence type '{}'",
+                other
+            ))),
+        }
+    }
+}
+
+impl std::fmt::Display for FenceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            FenceKind::Adapter => "adapter",
+            FenceKind::Memory => "memory",
+            FenceKind::Policy => "policy",
+            FenceKind::Injection => "injection",
+            FenceKind::Provider => "provider",
+            FenceKind::Cache => "cache",
+            FenceKind::Trajectory => "trajectory",
+            FenceKind::Agent => "agent",
+            FenceKind::Tool => "tool",
+            FenceKind::Rag => "rag",
+            FenceKind::Json => "json",
+            FenceKind::Xml => "xml",
+            FenceKind::Constraints => "constraints",
+            FenceKind::Tools => "tools",
+            FenceKind::Manifest => "manifest",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FencedBlock {
-    pub tag: String,
+    pub kind: FenceKind,
+    pub header_name: Option<String>,
     pub content: String,
     pub line: usize,
 }
@@ -177,17 +255,26 @@ fn parse_markdown(
         }
 
         if line.trim_start().starts_with("```") {
-            let tag = line.trim().trim_start_matches("```").trim().to_string();
-            if tag.is_empty() {
+            let info = line.trim().trim_start_matches("```").trim();
+            if info.is_empty() {
                 return Err(PackError::Markdown(MarkdownError {
                     file: file.to_string(),
                     line: line_no,
                     column: 1,
-                    message: "fenced block must have a tag".into(),
+                    message: "fenced block must have a type".into(),
                 }));
             }
+            let (kind, header_name) = parse_fence_info(info).map_err(|e| {
+                MarkdownError {
+                    file: file.to_string(),
+                    line: line_no,
+                    column: 1,
+                    message: e.to_string(),
+                }
+            })?;
             in_block = Some(FencedBlock {
-                tag,
+                kind,
+                header_name,
                 content: String::new(),
                 line: line_no,
             });
@@ -275,8 +362,8 @@ fn validate_blocks(
     let mut i = 0;
     while i < user.blocks.len() {
         let block = &user.blocks[i];
-        match block.tag.as_str() {
-            "tool" => {
+        match block.kind {
+            FenceKind::Tool => {
                 let tool_ref = block.content.trim();
                 if !is_ref(tool_ref) {
                     return Err(PackError::Markdown(MarkdownError {
@@ -301,7 +388,7 @@ fn validate_blocks(
                 // payload pairing
                 if i + 1 < user.blocks.len() {
                     let next = &user.blocks[i + 1];
-                    if next.tag == "json" || next.tag == "xml" {
+                    if next.kind == FenceKind::Json || next.kind == FenceKind::Xml {
                         if strict_refs && !is_ref(next.content.trim()) {
                             return Err(PackError::Markdown(MarkdownError {
                                 file: file.to_string(),
@@ -316,7 +403,7 @@ fn validate_blocks(
                 }
                 i += 1;
             }
-            "json" | "xml" => {
+            FenceKind::Json | FenceKind::Xml => {
                 return Err(PackError::Markdown(MarkdownError {
                     file: file.to_string(),
                     line: block.line,
@@ -325,7 +412,7 @@ fn validate_blocks(
                 }));
             }
             // Extended block types for agent metadata extraction
-            "constraints" => {
+            FenceKind::Constraints => {
                 // Extract constraints as individual lines
                 for line in block.content.lines() {
                     let trimmed = line.trim();
@@ -335,7 +422,7 @@ fn validate_blocks(
                 }
                 i += 1;
             }
-            "tools" => {
+            FenceKind::Tools => {
                 // Extract tool references, validate against known tool IDs
                 for line in block.content.lines() {
                     let trimmed = line.trim().trim_start_matches('-').trim();
@@ -357,7 +444,7 @@ fn validate_blocks(
                 }
                 i += 1;
             }
-            "rag" => {
+            FenceKind::Rag => {
                 // Extract RAG configuration as-is
                 let content = block.content.trim();
                 if !content.is_empty() {
@@ -365,17 +452,52 @@ fn validate_blocks(
                 }
                 i += 1;
             }
-            _ => {
-                return Err(PackError::Markdown(MarkdownError {
-                    file: file.to_string(),
-                    line: block.line,
-                    column: 1,
-                    message: format!("invalid fenced block tag '{}'", block.tag),
-                }));
+            // New config types - accept for now (will be processed later)
+            FenceKind::Adapter
+            | FenceKind::Memory
+            | FenceKind::Policy
+            | FenceKind::Injection
+            | FenceKind::Provider
+            | FenceKind::Cache
+            | FenceKind::Trajectory
+            | FenceKind::Agent
+            | FenceKind::Manifest => {
+                // Allow new config types to pass through validation
+                // They will be processed in the config parser layer
+                i += 1;
             }
         }
     }
     Ok(extracted)
+}
+
+/// Parse fence info string into kind and optional name.
+///
+/// Supports two forms:
+/// - "kind name" (e.g., "adapter postgres_main") -> (Adapter, Some("postgres_main"))
+/// - "kind" only (e.g., "adapter") -> (Adapter, None)
+fn parse_fence_info(info: &str) -> Result<(FenceKind, Option<String>), PackError> {
+    let parts: Vec<&str> = info.split_whitespace().collect();
+
+    match parts.as_slice() {
+        [] => Err(PackError::Validation(
+            "fence block must have a type".to_string(),
+        )),
+        [kind_str] => {
+            // Form B: "kind" only
+            let kind = FenceKind::from_str(kind_str)?;
+            Ok((kind, None))
+        }
+        [kind_str, name] => {
+            // Form A: "kind name"
+            let kind = FenceKind::from_str(kind_str)?;
+            Ok((kind, Some(name.to_string())))
+        }
+        _ => Err(PackError::Validation(format!(
+            "invalid fence header '{}' (expected 'kind' or 'kind name')",
+            info
+        ))),
+    }
 }
 
 fn heading_level(line: &str) -> Option<usize> {

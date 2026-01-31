@@ -12,12 +12,46 @@ use axum::{body::to_bytes, extract::State, response::IntoResponse, Json};
 use caliber_api::db::DbClient;
 use caliber_api::routes::dsl;
 use caliber_api::types::{ValidateDslRequest, ValidateDslResponse};
-use caliber_dsl::{parse, pretty_print, CaliberAst};
+use caliber_dsl::{ast_to_markdown, compose_pack, CaliberAst, PackInput, PackMarkdownFile};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 
 #[path = "support/db.rs"]
 mod test_db_support;
+
+fn parse_markdown(source: &str) -> Result<CaliberAst, String> {
+    let manifest = r#"
+[meta]
+name = "test"
+version = "1.0"
+
+[tools]
+bin = {}
+prompts = {}
+
+[profiles]
+[agents]
+[toolsets]
+[adapters]
+[providers]
+[policies]
+[injections]
+"#;
+
+    let input = PackInput {
+        root: PathBuf::from("."),
+        manifest: manifest.to_string(),
+        markdowns: vec![PackMarkdownFile {
+            path: PathBuf::from("test.md"),
+            content: source.to_string(),
+        }],
+        contracts: HashMap::new(),
+    };
+
+    compose_pack(input).map(|output| output.ast).map_err(|e| e.to_string())
+}
 
 async fn call_parse_endpoint(db: DbClient, source: String) -> Result<ValidateDslResponse, String> {
     let response = dsl::parse_dsl(State(db), Json(ValidateDslRequest { source }))
@@ -115,11 +149,11 @@ proptest! {
             let api_ast: CaliberAst = serde_json::from_value(ast_json)
                 .map_err(|e| TestCaseError::fail(format!("AST JSON should deserialize into CaliberAst: {}", e)))?;
 
-            let pretty = pretty_print(&api_ast);
-            let reparsed = parse(&pretty)
-                .map_err(|e| TestCaseError::fail(format!("Pretty-printed DSL should parse: {}", e)))?;
-            let original = parse(&source)
-                .map_err(|e| TestCaseError::fail(format!("Original DSL should parse: {}", e)))?;
+            let pretty = ast_to_markdown(&api_ast);
+            let reparsed = parse_markdown(&pretty)
+                .map_err(|e| TestCaseError::fail(format!("Pretty-printed Markdown should parse: {}", e)))?;
+            let original = parse_markdown(&source)
+                .map_err(|e| TestCaseError::fail(format!("Original Markdown should parse: {}", e)))?;
 
             prop_assert_eq!(reparsed, original);
             Ok::<(), TestCaseError>(())
