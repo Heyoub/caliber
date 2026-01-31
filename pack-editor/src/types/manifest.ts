@@ -42,7 +42,7 @@ export interface DefaultsSection {
 export interface SettingsSection {
   matrix?: {
     enforce_profiles_only?: boolean;
-    allowed?: Array<{
+    allowed: Array<{
       name: string;
       retention: string;
       index: string;
