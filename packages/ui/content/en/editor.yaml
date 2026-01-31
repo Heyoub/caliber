@@ -1,0 +1,125 @@
+# Editor/Chat Content - CALIBER/ForgeStack
+# All editor and chat-related text extracted from Vue reference files
+
+chat:
+  header:
+    title: "Emi Ai"
+    guestMode: "(Guest Mode)"
+    guestSubtitle: "Limited access. Sign in for full features."
+    defaultSubtitle: "Let's talk business"
+    speedDial: "Speed Dial"
+    sendingBadge: "Sending..."
+
+  input:
+    placeholder: "Type a message..."
+    guestMode: "Guest mode."
+    signupPrompt: "Sign up"
+    signupSuffix: "for full features."
+
+  modes:
+    standard:
+      title: "Standard Mode"
+      label: "Standard"
+    superThink:
+      title: "SuperThink Mode"
+      label: "SuperThink"
+    deepResearch:
+      title: "Deep Research Mode"
+      label: "DeepResearch"
+    deepWork:
+      title: "Deep Work Mode"
+      label: "DeepWork"
+
+  heuristics:
+    intent:
+      label: "Intent:"
+      options:
+        - value: "GeneralQuery"
+          label: "General Query"
+        - value: "PlanStrategy"
+          label: "Plan Strategy"
+        - value: "ExecuteTask"
+          label: "Execute Task"
+        - value: "Learn"
+          label: "Learn"
+        - value: "Troubleshoot"
+          label: "Troubleshoot"
+    scope:
+      label: "Scope:"
+      options:
+        - value: "CurrentMessageOnly"
+          label: "Current Message"
+        - value: "CurrentConversation"
+          label: "This Conversation"
+        - value: "CurrentDocument"
+          label: "Active Document"
+        - value: "EntireProject"
+          label: "Entire Project"
+        - value: "Global"
+          label: "Global Knowledge"
+    urgency:
+      label: "Urgency:"
+      options:
+        - value: "low"
+          label: "Low"
+        - value: "normal"
+          label: "Normal"
+        - value: "high"
+          label: "High"
+
+  actions:
+    clearChat: "Clear Chat"
+    uploadDocuments: "Upload Documents"
+    enhancePrompt: "Enhance Prompt"
+    startVoice: "Start Voice Input"
+    stopRecording: "Stop Recording"
+    stopListening: "Stop Listening"
+    processing: "Processing..."
+    stopAISpeaking: "Stop AI Speaking"
+    copyToClipboard: "Copy to clipboard"
+    copying: "Copying..."
+
+  dragDrop:
+    dropText: "Drop files to upload"
+
+  processing:
+    message: "Processing..."
+
+  views:
+    prompts:
+      title: "Prompt Library"
+      placeholder: "Prompt library component will go here."
+    templates:
+      title: "Templates"
+    reasoning:
+      title: "Council Reasoning"
+    history:
+      title: "Chat History"
+    documents:
+      title: "Document Analysis"
+
+templateLibrary:
+  title: "Template Library"
+  restoreDefaults: "Restore Defaults"
+  loading: "Loading templates..."
+  error: "Error: {message}"
+  addToQuick: "Add to Quick Templates"
+  removeFromQuick: "Remove from Quick Templates"
+
+message:
+  labels:
+    user: "User"
+    assistant: "Assistant"
+  typing: "Typing..."
+
+promptEnhancer:
+  suggestions:
+    prefix: "--- Prompt Enhancement Suggestions ---"
+    roleClarity: "- Define a role for the AI (e.g., 'Act as a [ROLE]...')."
+    taskArticulation: "- Ensure the task is a single, explicit objective."
+    contextBlock: "- Provide necessary context, data, or examples for the AI (e.g., use placeholders like [CONTEXT])."
+    constraints: "- Specify constraints like word count, tone, or output structure."
+    outputFormat: "- Clearly state the desired output format (e.g., table, JSON, bullet points)."
+    successCriteria: "- Include success criteria or a mini-rubric (e.g., 'It's good when...')."
+    iterationHook: "- Add an iteration hook (e.g., 'Ask for clarification if anything is unclear.')."
+    looksGood: "(Basic prompt structure looks reasonable.)"

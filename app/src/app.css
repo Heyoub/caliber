@@ -1,0 +1,90 @@
+/**
+ * CALIBER App - Global Styles
+ * Imports design tokens from @caliber/ui
+ */
+
+/* Import design tokens from shared UI package */
+@import '@caliber/ui/tokens';
+
+/* Base reset and app styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: hsl(var(--bg-primary));
+  color: hsl(var(--text-primary));
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid hsl(var(--teal-500));
+  outline-offset: 2px;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--slate-900));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--slate-700));
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--slate-600));
+}
+
+/* Selection styles */
+::selection {
+  background: hsl(var(--teal-500) / 0.3);
+  color: hsl(var(--text-primary));
+}
+
+/* Link defaults */
+a {
+  color: hsl(var(--teal-400));
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Code defaults */
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* Utility classes */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

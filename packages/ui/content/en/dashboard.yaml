@@ -1,0 +1,56 @@
+# Dashboard Content - CALIBER/ForgeStack
+# All dashboard-related text extracted from Vue reference files
+
+page:
+  title: "Emi Dashboard"
+  welcome: "Welcome to your Emi dashboard. Content will go here."
+
+sidebar:
+  brand: "Council AI"
+  sections:
+    chats:
+      title: "Chats"
+      newChat: "+ New Chat"
+    cases:
+      title: "Cases"
+    projects:
+      title: "Projects"
+    knowledgeBase:
+      title: "Knowledge Base"
+  footer:
+    settings: "Settings"
+    logout: "Logout"
+    greeting: "Hi, {name}"
+    links:
+      support: "Support"
+      terms: "Terms"
+
+navigation:
+  menu:
+    title: "Menu"
+    items:
+      - text: "Emi"
+        href: "/emi"
+      - text: "Support"
+        href: "/s"
+      - text: "Account"
+        href: "/a"
+  logout:
+    title: "Log-out"
+    text: "Log-out"
+
+mobile:
+  menuAriaLabel: "Toggle mobile menu"
+  links:
+    dashboard: "Dashboard"
+    forgeStack: "ForgeStack"
+    emiChat: "Emi Chat"
+    support: "Support"
+    account: "Account"
+
+views:
+  chat: "Chat"
+  prompts: "Prompts"
+  templates: "Templates"
+  history: "History"
+  documents: "Docs"

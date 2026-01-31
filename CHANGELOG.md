@@ -57,6 +57,44 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 ### Added
 
+#### Pack Editor UI (v0.5.0)
+- **Svelte 5 Component Library** (`packages/ui`): 45+ production components
+  - Atoms: Button, Badge, Spinner, Toggle, Avatar, Input, Label, Checkbox, Card, CircularRings, HamburgerButton, StyledHeading
+  - Molecules: Dropdown, Tabs, Tooltip, SearchInput, Accordion, PromptButtons
+  - Organisms: NeuralAnimation, ParallaxHero, GridAnimation, IcosahedronAnimation, HexScroll
+  - Uses Svelte 5 runes: `$props()`, `$state()`, `$derived()`, `$effect()`
+  - Three.js integration for 3D animations
+- **SvelteKit Application** (`app/`): Memory browser and AI assistant interface
+  - API client with typed errors, retry logic, WebSocket streaming
+  - Memory store with full CRUD for trajectories, scopes, events
+  - Format detection utilities (markdown, yaml, json, xml, csv, toml, latex)
+  - KaTeX utilities for LaTeX math rendering
+- **Test Infrastructure**: Vitest with 80% coverage thresholds
+  - Custom matchers: `toHaveGlowEffect()`, `toBeAccessible()`
+  - Mock utilities for stores, API, MCP client
+- **Monorepo Workspaces**: Added `packages/*` and `app` to bun workspaces
+  - Central `node_modules` via bun workspace hoisting
+  - Scripts: `dev:app`, `dev:ui`, `build:app`, `build:ui`, `test:app`, `test:ui`
+
+### Removed
+
+#### Vue Migration Complete (v0.5.0)
+- **47 Vue files deleted**: Fully migrated to Svelte 5 components
+  - `docs/*.vue` (44 reference files)
+  - `pack-editor/src/components/ui/*.vue` (3 component files)
+- **`.gitignore` updated**: `*.vue` now blocked to prevent future Vue imports
+
+#### TUI Removal (v0.4.6)
+- **caliber-tui crate deleted**: Terminal UI was a thin wrapper (~4,500 lines) with zero unique business logic
+  - All TUI functionality was just rendering API responses in ratatui
+  - No features lost: TypeScript SDK provides complete programmatic access
+  - Reduces CI time by eliminating TUI tests and property tests
+  - Removes ~4,500 lines of maintenance burden
+  - Dependencies removed: ratatui, crossterm, tui-textarea, reqwest, tokio-tungstenite
+- **Documentation cleaned**: Removed TUI references from README, AGENTS.md, DEPENDENCY_GRAPH.md, issue templates, and PR template
+
+### Added
+
 #### Markdown-Based Configuration (v0.4.6)
 - **Custom DSL replaced with Markdown**: Config files now use YAML frontmatter in fenced code blocks
   - All 8 config types supported: Agent, Adapter, Memory, Policy, Injection, Tool, Prompt, Pack

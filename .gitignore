@@ -43,19 +43,30 @@ yarn-debug.log*
 yarn-error.log*
 .github/.logs/*
 pgvector/
-# Node (for landing page and SDKs)
+# Node
 node_modules/
 .npm
 .yarn/
+.pnpm-store/
+bun.lockb
+
+# Landing page
 landing/dist/
 landing/.astro/
+
+# SvelteKit / App
+app/.svelte-kit/
+app/build/
+packages/ui/dist/
 
 # Generated SDKs
 sdks/
 caliber-sdk/src/generated/
 caliber-sdk/dist/
-caliber-sdk/node_modules/
 openapi.json
+
+# Vue (deprecated - migrated to Svelte)
+*.vue
 
 # Python (for potential SDK)
 __pycache__/
