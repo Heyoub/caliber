@@ -5,7 +5,7 @@ use crate::compiler::{
     CompiledPackRoutingConfig, CompiledToolConfig, CompiledToolKind, CompiledToolsetConfig,
 };
 use crate::config::*;
-use crate::parser::ast::{Action, InjectionMode, Trigger};
+use crate::parser::ast::{Action, InjectionMode, MemoryDef, Trigger};
 use crate::parser::AdapterDef as AstAdapterDef;
 use crate::parser::InjectionDef as AstInjectionDef;
 use crate::parser::{AdapterType, CaliberAst, Definition, PolicyDef, PolicyRule};
@@ -23,6 +23,7 @@ pub struct PackIr {
     pub policies: Vec<PolicyDef>,
     pub injections: Vec<AstInjectionDef>,
     pub providers: Vec<AstProviderDef>,
+    pub memories: Vec<MemoryDef>,
 }
 
 impl PackIr {
@@ -74,6 +75,7 @@ impl PackIr {
         let md_policies = extract_policies_from_markdown(&markdown)?;
         let md_injections = extract_injections_from_markdown(&markdown)?;
         let md_providers = extract_providers_from_markdown(&markdown)?;
+        let md_memories = extract_memories_from_markdown(&markdown)?;
 
         // Check for duplicates within Markdown configs
         check_markdown_duplicates(&md_adapters, &md_policies, &md_injections, &md_providers)?;
@@ -140,6 +142,7 @@ impl PackIr {
             policies,
             injections,
             providers,
+            memories: md_memories,
         })
     }
 }
@@ -239,6 +242,8 @@ fn validate_toolsets(manifest: &PackManifest) -> Result<(), PackError> {
 fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<(), PackError> {
     let toolsets: HashSet<String> = manifest.toolsets.keys().cloned().collect();
     let profiles: HashSet<String> = manifest.profiles.keys().cloned().collect();
+    let adapters: HashSet<String> = manifest.adapters.keys().cloned().collect();
+    let formats: HashSet<String> = manifest.formats.keys().cloned().collect();
     let md_paths: HashSet<String> = markdown.iter().map(|m| m.file.clone()).collect();
 
     for (name, agent) in &manifest.agents {
@@ -250,6 +255,40 @@ fn validate_agents(manifest: &PackManifest, markdown: &[MarkdownDoc]) -> Result<
                 agent.profile,
                 profiles.iter().collect::<Vec<_>>()
             )));
+        }
+
+        // Validate adapter reference exists (if specified)
+        if let Some(ref adapter_name) = agent.adapter {
+            if !adapters.contains(adapter_name) {
+                return Err(PackError::Validation(format!(
+                    "agent '{}' references unknown adapter '{}'. Available adapters: {:?}",
+                    name,
+                    adapter_name,
+                    adapters.iter().collect::<Vec<_>>()
+                )));
+            }
+        }
+
+        // Validate format reference exists (if specified)
+        if let Some(ref format_name) = agent.format {
+            if !formats.contains(format_name) {
+                return Err(PackError::Validation(format!(
+                    "agent '{}' references unknown format '{}'. Available formats: {:?}",
+                    name,
+                    format_name,
+                    formats.iter().collect::<Vec<_>>()
+                )));
+            }
+        }
+
+        // Validate token_budget is positive (if specified)
+        if let Some(budget) = agent.token_budget {
+            if budget <= 0 {
+                return Err(PackError::Validation(format!(
+                    "agent '{}' has invalid token_budget '{}'. Must be greater than 0.",
+                    name, budget
+                )));
+            }
         }
 
         // Validate toolset references
@@ -477,6 +516,11 @@ pub fn compile_toolsets(manifest: &PackManifest) -> Vec<CompiledToolsetConfig> {
 }
 
 /// Compile pack agent bindings to toolsets with extracted markdown metadata.
+///
+/// This function transforms manifest agent definitions into runtime-ready
+/// configurations, combining TOML settings with markdown-extracted metadata.
+/// All reference validations (profile, adapter, format, toolsets) have been
+/// performed during the IR validation phase.
 pub fn compile_pack_agents(
     manifest: &PackManifest,
     markdown_docs: &[super::MarkdownDoc],
@@ -510,8 +554,23 @@ pub fn compile_pack_agents(
                 None => (Vec::new(), Vec::new(), None),
             };
 
+            // PROFILE INHERITANCE: Resolve format from agent or profile
+            let profile_def = manifest.profiles.get(&agent.profile);
+            let resolved_format = agent
+                .format
+                .clone()
+                .or_else(|| profile_def.map(|p| p.format.clone()))
+                .unwrap_or_else(|| "markdown".to_string());
+
             CompiledPackAgentConfig {
                 name: name.clone(),
+                enabled: agent.enabled.unwrap_or(true),
+                profile: agent.profile.clone(),
+                adapter: agent.adapter.clone(),
+                format: agent.format.clone(),
+                resolved_format,
+                token_budget: agent.token_budget,
+                prompt_md: agent.prompt_md.clone(),
                 toolsets: agent.toolsets.clone(),
                 extracted_constraints: constraints,
                 extracted_tool_refs: tool_refs,
@@ -780,6 +839,9 @@ pub fn ast_from_ir(ir: &PackIr) -> CaliberAst {
     for provider in &ir.providers {
         defs.push(Definition::Provider(provider.clone()));
     }
+    for memory in &ir.memories {
+        defs.push(Definition::Memory(memory.clone()));
+    }
     CaliberAst {
         version: ir
             .manifest
@@ -1003,4 +1065,25 @@ fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstPr
     }
 
     Ok(providers)
+}
+
+/// Extract memory definitions from Markdown fence blocks.
+fn extract_memories_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<MemoryDef>, PackError> {
+    let mut memories = Vec::new();
+
+    for doc in markdown {
+        for user in &doc.users {
+            for block in &user.blocks {
+                if block.kind == FenceKind::Memory {
+                    let memory = parse_memory_block(
+                        block.header_name.clone(),
+                        &block.content,
+                    )?;
+                    memories.push(memory);
+                }
+            }
+        }
+    }
+
+    Ok(memories)
 }

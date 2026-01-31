@@ -385,7 +385,7 @@ mod tests {
             _tenant_id: Uuid,
         ) -> CaliberResult<Option<(T, chrono::DateTime<Utc>)>> {
             // For testing, always return None (cache miss)
-            let mut stats = self.stats.write().unwrap();
+            let mut stats = self.stats.write().expect("test lock should not be poisoned");
             stats.misses += 1;
             Ok(None)
         }
@@ -428,7 +428,7 @@ mod tests {
         }
 
         async fn stats(&self) -> CaliberResult<super::super::traits::CacheStats> {
-            Ok(self.stats.read().unwrap().clone())
+            Ok(self.stats.read().expect("test lock should not be poisoned").clone())
         }
     }
 
@@ -447,7 +447,7 @@ mod tests {
         fn insert(&self, artifact: Artifact) {
             self.artifacts
                 .write()
-                .unwrap()
+                .expect("test lock should not be poisoned")
                 .insert(artifact.artifact_id.as_uuid(), artifact);
         }
     }
@@ -459,7 +459,7 @@ mod tests {
             entity_id: Uuid,
             _tenant_id: Uuid,
         ) -> CaliberResult<Option<Artifact>> {
-            Ok(self.artifacts.read().unwrap().get(&entity_id).cloned())
+            Ok(self.artifacts.read().expect("test lock should not be poisoned").get(&entity_id).cloned())
         }
     }
 
@@ -512,10 +512,10 @@ mod tests {
                 &storage,
             )
             .await
-            .unwrap();
+            .expect("cache get should succeed");
 
         assert!(result.is_some());
-        let cache_read = result.unwrap();
+        let cache_read = result.expect("result should be Some");
         assert!(cache_read.was_cache_miss());
         assert_eq!(cache_read.into_value().artifact_id, artifact.artifact_id);
     }
@@ -543,7 +543,7 @@ mod tests {
                 &storage,
             )
             .await
-            .unwrap();
+            .expect("cache get should succeed");
 
         assert!(result.is_some());
     }
@@ -563,7 +563,7 @@ mod tests {
         let result = read_through
             .get::<Artifact, _>(non_existent_id, tenant_id, Freshness::Consistent, &storage)
             .await
-            .unwrap();
+            .expect("cache get should succeed");
 
         assert!(result.is_none());
     }

@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.4"
+version = "0.4.7"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/caliber-run/caliber"
@@ -55,12 +55,12 @@ futures-util = "0.3"
 toml = "0.8"
 
 # Internal crates
-caliber-core = { path = "caliber-core", version = "0.4.4" }
-caliber-storage = { path = "caliber-storage", version = "0.4.4" }
-caliber-pcp = { path = "caliber-pcp", version = "0.4.4" }
-caliber-dsl = { path = "caliber-dsl", version = "0.4.4" }
-caliber-test-utils = { path = "caliber-test-utils", version = "0.4.4" }
-caliber-api = { path = "caliber-api", version = "0.4.4" }
+caliber-core = { path = "caliber-core", version = "0.4.7" }
+caliber-storage = { path = "caliber-storage", version = "0.4.7" }
+caliber-pcp = { path = "caliber-pcp", version = "0.4.7" }
+caliber-dsl = { path = "caliber-dsl", version = "0.4.7" }
+caliber-test-utils = { path = "caliber-test-utils", version = "0.4.7" }
+caliber-api = { path = "caliber-api", version = "0.4.7" }
 
 # === PROFILE OPTIMIZATIONS ===
 

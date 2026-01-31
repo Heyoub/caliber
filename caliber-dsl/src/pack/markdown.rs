@@ -70,7 +70,8 @@ impl FromStr for FenceKind {
     /// assert_eq!(k, FenceKind::Tool);
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        // Case-insensitive matching for fence types
+        match s.to_lowercase().as_str() {
             "adapter" => Ok(FenceKind::Adapter),
             "memory" => Ok(FenceKind::Memory),
             "policy" => Ok(FenceKind::Policy),
@@ -210,7 +211,7 @@ fn parse_markdown(
         if let Some(block) = &mut in_block {
             if line.trim_start().starts_with("```") {
                 // close
-                let finished = in_block.take().unwrap();
+                let finished = in_block.take().expect("in_block verified as Some above");
                 if let Section::User = section {
                     if let Some(u) = &mut current_user {
                         u.blocks.push(finished);

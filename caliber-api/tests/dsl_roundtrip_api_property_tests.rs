@@ -13,10 +13,10 @@ use caliber_api::db::DbClient;
 use caliber_api::routes::dsl;
 use caliber_api::types::{ValidateDslRequest, ValidateDslResponse};
 use caliber_dsl::{ast_to_markdown, compose_pack, CaliberAst, PackInput, PackMarkdownFile};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[path = "support/db.rs"]
 mod test_db_support;
@@ -64,7 +64,9 @@ prompts = {}
         contracts: HashMap::new(),
     };
 
-    compose_pack(input).map(|output| output.ast).map_err(|e| e.to_string())
+    compose_pack(input)
+        .map(|output| output.ast)
+        .map_err(|e| e.to_string())
 }
 
 /// Invoke the DSL parse endpoint with the given database client and DSL source string.

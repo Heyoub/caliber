@@ -433,22 +433,22 @@ mod tests {
         let entity_id = Uuid::now_v7();
 
         // Initial watermark should be 0
-        let w0 = journal.current_watermark(tenant_id).await.unwrap();
+        let w0 = journal.current_watermark(tenant_id).await.expect("current_watermark should succeed");
         assert_eq!(w0.sequence, 0);
 
         // Record a change
         let w1 = journal
             .record_change(tenant_id, EntityType::Artifact, entity_id)
             .await
-            .unwrap();
+            .expect("record_change should succeed");
         assert_eq!(w1.sequence, 1);
 
         // Changes since w0 should be true
-        let has_changes = journal.changes_since(tenant_id, &w0, &[]).await.unwrap();
+        let has_changes = journal.changes_since(tenant_id, &w0, &[]).await.expect("changes_since should succeed");
         assert!(has_changes);
 
         // Changes since w1 should be false
-        let has_changes = journal.changes_since(tenant_id, &w1, &[]).await.unwrap();
+        let has_changes = journal.changes_since(tenant_id, &w1, &[]).await.expect("changes_since should succeed");
         assert!(!has_changes);
     }
 
@@ -458,26 +458,26 @@ mod tests {
         let tenant_id = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
-        let w0 = journal.current_watermark(tenant_id).await.unwrap();
+        let w0 = journal.current_watermark(tenant_id).await.expect("current_watermark should succeed");
 
         // Record an Artifact change
         journal
             .record_change(tenant_id, EntityType::Artifact, entity_id)
             .await
-            .unwrap();
+            .expect("record_change should succeed");
 
         // Changes for Artifact type should be true
         let has_artifact_changes = journal
             .changes_since(tenant_id, &w0, &[EntityType::Artifact])
             .await
-            .unwrap();
+            .expect("changes_since should succeed");
         assert!(has_artifact_changes);
 
         // Changes for Note type should be false
         let has_note_changes = journal
             .changes_since(tenant_id, &w0, &[EntityType::Note])
             .await
-            .unwrap();
+            .expect("changes_since should succeed");
         assert!(!has_note_changes);
     }
 
@@ -488,21 +488,21 @@ mod tests {
         let tenant_b = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
-        let w0_a = journal.current_watermark(tenant_a).await.unwrap();
-        let w0_b = journal.current_watermark(tenant_b).await.unwrap();
+        let w0_a = journal.current_watermark(tenant_a).await.expect("current_watermark should succeed");
+        let w0_b = journal.current_watermark(tenant_b).await.expect("current_watermark should succeed");
 
         // Record change for tenant A
         journal
             .record_change(tenant_a, EntityType::Artifact, entity_id)
             .await
-            .unwrap();
+            .expect("record_change should succeed");
 
         // Tenant A should see changes
-        let has_changes_a = journal.changes_since(tenant_a, &w0_a, &[]).await.unwrap();
+        let has_changes_a = journal.changes_since(tenant_a, &w0_a, &[]).await.expect("changes_since should succeed");
         assert!(has_changes_a);
 
         // Tenant B should not see changes
-        let has_changes_b = journal.changes_since(tenant_b, &w0_b, &[]).await.unwrap();
+        let has_changes_b = journal.changes_since(tenant_b, &w0_b, &[]).await.expect("changes_since should succeed");
         assert!(!has_changes_b);
     }
 }

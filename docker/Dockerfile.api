@@ -25,7 +25,6 @@ COPY caliber-storage ./caliber-storage
 COPY caliber-pg ./caliber-pg
 COPY caliber-api ./caliber-api
 COPY caliber-test-utils ./caliber-test-utils
-COPY caliber-tui ./caliber-tui
 
 # Remove pgrx git patches
 RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
@@ -81,7 +80,6 @@ COPY caliber-storage ./caliber-storage
 COPY caliber-pg ./caliber-pg
 COPY caliber-api ./caliber-api
 COPY caliber-test-utils ./caliber-test-utils
-COPY caliber-tui ./caliber-tui
 
 # Remove pgrx git patches
 RUN sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml

@@ -418,7 +418,8 @@ mod tests {
     fn test_lock_mode_roundtrip() {
         for mode in [LockMode::Exclusive, LockMode::Shared] {
             let db_str = mode.as_db_str();
-            let parsed = LockMode::from_db_str(db_str).unwrap();
+            let parsed =
+                LockMode::from_db_str(db_str).expect("LockMode roundtrip should succeed");
             assert_eq!(mode, parsed);
         }
     }
@@ -453,7 +454,9 @@ mod tests {
             is_active: true,
         };
 
-        let acquired = stored.into_acquired(now).unwrap();
+        let acquired = stored
+            .into_acquired(now)
+            .expect("active lock should convert to acquired");
         assert_eq!(acquired.lock_id(), data.lock_id);
     }
 

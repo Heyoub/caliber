@@ -508,7 +508,7 @@ mod tests {
             Json(trajectory_req),
         )
         .await
-        .unwrap()
+        .expect("create_trajectory should succeed")
         .into_response();
         assert_eq!(trajectory_response.status(), StatusCode::CREATED);
         let trajectory: TrajectoryResponse = response_json(trajectory_response).await;
@@ -530,7 +530,7 @@ mod tests {
             Json(note_req),
         )
         .await
-        .unwrap()
+        .expect("create_note should succeed")
         .into_response();
         assert_eq!(note_response.status(), StatusCode::CREATED);
         let note: NoteResponse = response_json(note_response).await;
@@ -548,7 +548,7 @@ mod tests {
             }),
         )
         .await
-        .unwrap()
+        .expect("list_notes should succeed")
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListNotesResponse = response_json(list_response).await;
@@ -557,10 +557,10 @@ mod tests {
         ctx.db
             .delete::<NoteResponse>(note.note_id, ctx.auth.tenant_id)
             .await
-            .unwrap();
+            .expect("delete note should succeed");
         ctx.db
             .delete::<TrajectoryResponse>(trajectory.trajectory_id, ctx.auth.tenant_id)
             .await
-            .unwrap();
+            .expect("delete trajectory should succeed");
     }
 }

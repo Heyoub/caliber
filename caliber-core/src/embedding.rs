@@ -115,7 +115,9 @@ mod tests {
     fn test_cosine_similarity_identical_vectors() {
         let a = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "model".to_string());
         let b = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "model".to_string());
-        let sim = a.cosine_similarity(&b).unwrap();
+        let sim = a
+            .cosine_similarity(&b)
+            .expect("identical vectors should compute similarity");
         assert!((sim - 1.0).abs() < 1e-6);
     }
 
@@ -123,7 +125,9 @@ mod tests {
     fn test_cosine_similarity_orthogonal_vectors() {
         let a = EmbeddingVector::new(vec![1.0, 0.0], "model".to_string());
         let b = EmbeddingVector::new(vec![0.0, 1.0], "model".to_string());
-        let sim = a.cosine_similarity(&b).unwrap();
+        let sim = a
+            .cosine_similarity(&b)
+            .expect("orthogonal vectors should compute similarity");
         assert!(sim.abs() < 1e-6);
     }
 
@@ -131,7 +135,9 @@ mod tests {
     fn test_cosine_similarity_zero_vector_returns_zero() {
         let a = EmbeddingVector::new(vec![0.0, 0.0], "model".to_string());
         let b = EmbeddingVector::new(vec![1.0, 0.0], "model".to_string());
-        let sim = a.cosine_similarity(&b).unwrap();
+        let sim = a
+            .cosine_similarity(&b)
+            .expect("zero vector should compute similarity");
         assert_eq!(sim, 0.0);
     }
 
@@ -139,7 +145,9 @@ mod tests {
     fn test_cosine_similarity_dimension_mismatch() {
         let a = EmbeddingVector::new(vec![1.0, 0.0], "model".to_string());
         let b = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "model".to_string());
-        let err = a.cosine_similarity(&b).unwrap_err();
+        let err = a
+            .cosine_similarity(&b)
+            .expect_err("dimension mismatch should return error");
         assert!(matches!(
             err,
             CaliberError::Vector(VectorError::DimensionMismatch {
@@ -153,7 +161,9 @@ mod tests {
     fn test_cosine_similarity_opposite_vectors() {
         let a = EmbeddingVector::new(vec![1.0, 0.0], "model".to_string());
         let b = EmbeddingVector::new(vec![-1.0, 0.0], "model".to_string());
-        let sim = a.cosine_similarity(&b).unwrap();
+        let sim = a
+            .cosine_similarity(&b)
+            .expect("opposite vectors should compute similarity");
         assert!((sim + 1.0).abs() < 1e-6);
     }
 
@@ -161,7 +171,9 @@ mod tests {
     fn test_cosine_similarity_scaled_vectors() {
         let a = EmbeddingVector::new(vec![1.0, 2.0, 3.0], "model".to_string());
         let b = EmbeddingVector::new(vec![2.0, 4.0, 6.0], "model".to_string());
-        let sim = a.cosine_similarity(&b).unwrap();
+        let sim = a
+            .cosine_similarity(&b)
+            .expect("scaled vectors should compute similarity");
         assert!((sim - 1.0).abs() < 1e-6);
     }
 
@@ -169,8 +181,12 @@ mod tests {
     fn test_cosine_similarity_is_symmetric() {
         let a = EmbeddingVector::new(vec![1.0, 2.0], "model".to_string());
         let b = EmbeddingVector::new(vec![3.0, 4.0], "model".to_string());
-        let ab = a.cosine_similarity(&b).unwrap();
-        let ba = b.cosine_similarity(&a).unwrap();
+        let ab = a
+            .cosine_similarity(&b)
+            .expect("similarity should compute successfully");
+        let ba = b
+            .cosine_similarity(&a)
+            .expect("similarity should compute successfully");
         assert!((ab - ba).abs() < 1e-6);
     }
 

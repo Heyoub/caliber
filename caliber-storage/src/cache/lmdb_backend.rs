@@ -466,8 +466,8 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_backend() -> (LmdbCacheBackend, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
-        let backend = LmdbCacheBackend::new(temp_dir.path(), 10).unwrap();
+        let temp_dir = TempDir::new().expect("TempDir creation should succeed");
+        let backend = LmdbCacheBackend::new(temp_dir.path(), 10).expect("backend creation should succeed");
         (backend, temp_dir)
     }
 
@@ -552,15 +552,15 @@ mod tests {
         let trajectory = make_test_trajectory(trajectory_id);
         let cached_at = Utc::now();
 
-        backend.put(&trajectory, cached_at).await.unwrap();
+        backend.put(&trajectory, cached_at).await.expect("put should succeed");
 
         let cached = backend
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_some());
 
-        let (value, retrieved_cached_at) = cached.unwrap();
+        let (value, retrieved_cached_at) = cached.expect("cached should be Some");
         assert_eq!(value.trajectory_id, trajectory.trajectory_id);
         assert_eq!(value.name, trajectory.name);
         // Timestamps should be close (within 1 second due to millisecond precision)
@@ -577,7 +577,7 @@ mod tests {
         let cached = backend
             .get::<caliber_core::Trajectory>(entity_id, tenant_id)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_none());
     }
 
@@ -589,21 +589,21 @@ mod tests {
         let trajectory_id = Uuid::now_v7();
         let trajectory = make_test_trajectory(trajectory_id);
 
-        backend.put(&trajectory, Utc::now()).await.unwrap();
+        backend.put(&trajectory, Utc::now()).await.expect("put should succeed");
         assert!(backend
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
-            .unwrap()
+            .expect("get should succeed")
             .is_some());
 
         backend
             .delete::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
-            .unwrap();
+            .expect("delete should succeed");
         assert!(backend
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), trajectory_id)
             .await
-            .unwrap()
+            .expect("get should succeed")
             .is_none());
     }
 
@@ -617,20 +617,20 @@ mod tests {
 
         // Create trajectory for tenant1
         let trajectory = make_test_trajectory(tenant1);
-        backend.put(&trajectory, Utc::now()).await.unwrap();
+        backend.put(&trajectory, Utc::now()).await.expect("put should succeed");
 
         // Try to retrieve under tenant2 (same entity_id, different tenant)
         let cached = backend
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant2)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_none(), "Tenant2 should not see tenant1's data");
 
         // Verify tenant1 can still retrieve
         let cached = backend
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant1)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_some(), "Tenant1 should still see their data");
     }
 
@@ -646,22 +646,22 @@ mod tests {
         // Store multiple items under tenant1
         for _ in 0..5 {
             let artifact = make_test_artifact(tenant1, scope_id);
-            backend.put(&artifact, Utc::now()).await.unwrap();
+            backend.put(&artifact, Utc::now()).await.expect("put should succeed");
         }
 
         // Store item under tenant2
         let t2_trajectory = make_test_trajectory(tenant2);
-        backend.put(&t2_trajectory, Utc::now()).await.unwrap();
+        backend.put(&t2_trajectory, Utc::now()).await.expect("put should succeed");
 
         // Invalidate tenant1
-        let deleted = backend.invalidate_tenant(tenant1).await.unwrap();
+        let deleted = backend.invalidate_tenant(tenant1).await.expect("invalidate_tenant should succeed");
         assert_eq!(deleted, 5);
 
         // Tenant2's data should still exist
         let cached = backend
             .get::<caliber_core::Trajectory>(t2_trajectory.trajectory_id.as_uuid(), tenant2)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_some(), "Tenant2's data should not be affected");
     }
 
@@ -678,25 +678,25 @@ mod tests {
         for _ in 0..3 {
             let artifact = make_test_artifact(tenant_id, scope_id);
             artifact_ids.push(artifact.artifact_id.as_uuid());
-            backend.put(&artifact, Utc::now()).await.unwrap();
+            backend.put(&artifact, Utc::now()).await.expect("put should succeed");
         }
 
         // Store a note
         let note = make_test_note(tenant_id);
-        backend.put(&note, Utc::now()).await.unwrap();
+        backend.put(&note, Utc::now()).await.expect("put should succeed");
 
         // Invalidate only artifacts
         let deleted = backend
             .invalidate_entity_type(tenant_id, EntityType::Artifact)
             .await
-            .unwrap();
+            .expect("invalidate_entity_type should succeed");
         assert_eq!(deleted, 3);
 
         // Note should still exist
         let cached = backend
             .get::<caliber_core::Note>(note.note_id.as_uuid(), tenant_id)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_some(), "Note should not be affected");
 
         // Artifacts should be gone
@@ -704,7 +704,7 @@ mod tests {
             let cached = backend
                 .get::<caliber_core::Artifact>(artifact_id, tenant_id)
                 .await
-                .unwrap();
+                .expect("get should succeed");
             assert!(cached.is_none(), "Artifact should be deleted");
         }
     }
@@ -723,7 +723,7 @@ mod tests {
             .await;
 
         // Put
-        backend.put(&trajectory, Utc::now()).await.unwrap();
+        backend.put(&trajectory, Utc::now()).await.expect("put should succeed");
 
         // Hit
         let _ = backend
@@ -733,7 +733,7 @@ mod tests {
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant_id)
             .await;
 
-        let stats = backend.stats().await.unwrap();
+        let stats = backend.stats().await.expect("stats should succeed");
         assert_eq!(stats.misses, 1);
         assert_eq!(stats.hits, 2);
         assert_eq!(stats.entry_count, 1);
@@ -749,7 +749,7 @@ mod tests {
 
         // Generate hits for tenant1
         let t1 = make_test_trajectory(tenant1);
-        backend.put(&t1, Utc::now()).await.unwrap();
+        backend.put(&t1, Utc::now()).await.expect("put should succeed");
         let _ = backend
             .get::<caliber_core::Trajectory>(t1.trajectory_id.as_uuid(), tenant1)
             .await;
@@ -787,18 +787,18 @@ mod tests {
         let mut trajectory = make_test_trajectory(tenant_id);
 
         // Store initial version
-        backend.put(&trajectory, Utc::now()).await.unwrap();
+        backend.put(&trajectory, Utc::now()).await.expect("put should succeed");
 
         // Modify and store again
         trajectory.name = "Updated Name".to_string();
-        backend.put(&trajectory, Utc::now()).await.unwrap();
+        backend.put(&trajectory, Utc::now()).await.expect("put should succeed");
 
         // Verify the updated version is returned
         let cached = backend
             .get::<caliber_core::Trajectory>(trajectory.trajectory_id.as_uuid(), tenant_id)
             .await
-            .unwrap();
+            .expect("get should succeed");
         assert!(cached.is_some());
-        assert_eq!(cached.unwrap().0.name, "Updated Name");
+        assert_eq!(cached.expect("cached should be Some").0.name, "Updated Name");
     }
 }

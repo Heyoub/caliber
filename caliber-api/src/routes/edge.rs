@@ -262,10 +262,10 @@ mod tests {
     #[test]
     fn test_create_edge_request_weight_range() {
         let req = sample_request(2, Some(1.1));
-        assert!(req.weight.unwrap() > 1.0);
+        assert!(req.weight.expect("weight should be Some") > 1.0);
 
         let req = sample_request(2, Some(-0.1));
-        assert!(req.weight.unwrap() < 0.0);
+        assert!(req.weight.expect("weight should be Some") < 0.0);
     }
 
     struct DbTestContext {
@@ -377,7 +377,7 @@ mod tests {
             Json(req),
         )
         .await
-        .unwrap()
+        .expect("create_edge should succeed")
         .into_response();
         assert_eq!(create_response.status(), StatusCode::CREATED);
         let edge: EdgeResponse = response_json(create_response).await;
@@ -388,7 +388,7 @@ mod tests {
             PathId(edge.edge_id),
         )
         .await
-        .unwrap()
+        .expect("get_edge should succeed")
         .into_response();
         assert_eq!(get_response.status(), StatusCode::OK);
 
@@ -398,7 +398,7 @@ mod tests {
             axum::extract::Path(trajectory.trajectory_id.as_uuid()),
         )
         .await
-        .unwrap()
+        .expect("list_edges_by_participant should succeed")
         .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListEdgesResponse = response_json(list_response).await;

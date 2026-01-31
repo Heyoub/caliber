@@ -293,7 +293,7 @@ mod tests {
             .db
             .tenant_create("test-summarization", None, None)
             .await
-            .unwrap();
+            .expect("tenant_create should succeed");
         let _auth = AuthContext::new("test-user".to_string(), tenant_id, vec![], AuthMethod::Jwt);
 
         let traj_req = CreateTrajectoryRequest {
@@ -322,21 +322,21 @@ mod tests {
 
         let create_response = create_policy(State(ctx.db.clone()), Json(req))
             .await
-            .unwrap()
+            .expect("create_policy should succeed")
             .into_response();
         assert_eq!(create_response.status(), StatusCode::CREATED);
         let policy: SummarizationPolicyResponse = response_json(create_response).await;
 
         let get_response = get_policy(State(ctx.db.clone()), PathId(policy.policy_id))
             .await
-            .unwrap()
+            .expect("get_policy should succeed")
             .into_response();
         assert_eq!(get_response.status(), StatusCode::OK);
 
         let list_response =
             list_policies_by_trajectory(State(ctx.db.clone()), PathId(trajectory.trajectory_id))
                 .await
-                .unwrap()
+                .expect("list_policies_by_trajectory should succeed")
                 .into_response();
         assert_eq!(list_response.status(), StatusCode::OK);
         let list: ListSummarizationPoliciesResponse = response_json(list_response).await;
@@ -347,7 +347,7 @@ mod tests {
 
         let delete_response = delete_policy(State(ctx.db.clone()), PathId(policy.policy_id))
             .await
-            .unwrap()
+            .expect("delete_policy should succeed")
             .into_response();
         assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
 

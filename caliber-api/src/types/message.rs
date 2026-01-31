@@ -22,7 +22,7 @@ pub struct SendMessageRequest {
     /// Agent type to receive (for broadcast)
     pub to_agent_type: Option<String>,
     /// Type of message
-    pub message_type: String,
+    pub message_type: MessageType,
     /// Message payload (JSON serialized)
     pub payload: String,
     /// Related trajectory (if any)
@@ -35,7 +35,7 @@ pub struct SendMessageRequest {
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub artifact_ids: Vec<ArtifactId>,
     /// Message priority
-    pub priority: String,
+    pub priority: MessagePriority,
     /// When the message expires (optional)
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "date-time"))]
     pub expires_at: Option<Timestamp>,

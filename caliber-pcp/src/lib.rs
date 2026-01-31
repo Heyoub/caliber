@@ -1908,7 +1908,7 @@ mod tests {
     #[test]
     fn test_recall_service_add_and_recall() {
         let config = make_test_caliber_config();
-        let mut service = RecallService::new(config).unwrap();
+        let mut service = RecallService::new(config).expect("RecallService creation should succeed");
 
         let traj_id = TrajectoryId::now_v7();
         let scope_id = ScopeId::now_v7();
@@ -1923,7 +1923,7 @@ mod tests {
 
         service.add_commit(commit);
 
-        let results = service.recall_previous(Some(traj_id), None, 10).unwrap();
+        let results = service.recall_previous(Some(traj_id), None, 10).expect("recall_previous should succeed");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].query, "query");
     }
@@ -1931,7 +1931,7 @@ mod tests {
     #[test]
     fn test_recall_service_search() {
         let config = make_test_caliber_config();
-        let mut service = RecallService::new(config).unwrap();
+        let mut service = RecallService::new(config).expect("RecallService creation should succeed");
 
         service.add_commit(MemoryCommit::new(
             TrajectoryId::now_v7(),
@@ -1949,7 +1949,7 @@ mod tests {
             "standard".to_string(),
         ));
 
-        let results = service.search_interactions("weather", 10).unwrap();
+        let results = service.search_interactions("weather", 10).expect("search_interactions should succeed");
         assert_eq!(results.len(), 1);
         assert!(results[0].query.contains("weather"));
     }
@@ -2011,21 +2011,21 @@ mod tests {
     #[test]
     fn test_pcp_runtime_new() {
         let config = make_test_pcp_config();
-        let runtime = PCPRuntime::new(config).unwrap();
+        let runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
         assert!(runtime.config().recovery.enabled);
     }
 
     #[test]
     fn test_validate_context_integrity() {
         let config = make_test_pcp_config();
-        let runtime = PCPRuntime::new(config).unwrap();
+        let runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let scope = make_test_scope();
         let artifacts = vec![make_test_artifact("test content")];
 
         let result = runtime
             .validate_context_integrity(&scope, &artifacts, 1000)
-            .unwrap();
+            .expect("validate_context_integrity should succeed");
         assert!(result.valid);
     }
 
@@ -2033,14 +2033,14 @@ mod tests {
     fn test_validate_context_dosage_exceeded() {
         let mut config = make_test_pcp_config();
         config.dosage.max_tokens_per_scope = 100;
-        let runtime = PCPRuntime::new(config).unwrap();
+        let runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let scope = make_test_scope();
         let artifacts = vec![];
 
         let result = runtime
             .validate_context_integrity(&scope, &artifacts, 1000)
-            .unwrap();
+            .expect("validate_context_integrity should succeed");
         // Should have a warning about dosage
         assert!(result
             .issues
@@ -2055,7 +2055,7 @@ mod tests {
     #[test]
     fn test_create_checkpoint() {
         let config = make_test_pcp_config();
-        let mut runtime = PCPRuntime::new(config).unwrap();
+        let mut runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let scope = make_test_scope();
         let artifacts = vec![make_test_artifact("test")];
@@ -2063,7 +2063,7 @@ mod tests {
 
         let checkpoint = runtime
             .create_checkpoint(&scope, &artifacts, &note_ids)
-            .unwrap();
+            .expect("create_checkpoint should succeed");
 
         assert_eq!(checkpoint.scope_id, scope.scope_id);
         assert_eq!(checkpoint.state.artifact_ids.len(), 1);
@@ -2073,15 +2073,15 @@ mod tests {
     #[test]
     fn test_recover_from_checkpoint() {
         let config = make_test_pcp_config();
-        let mut runtime = PCPRuntime::new(config).unwrap();
+        let mut runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let scope = make_test_scope();
-        let checkpoint = runtime.create_checkpoint(&scope, &[], &[]).unwrap();
+        let checkpoint = runtime.create_checkpoint(&scope, &[], &[]).expect("create_checkpoint should succeed");
 
-        let result = runtime.recover_from_checkpoint(&checkpoint).unwrap();
+        let result = runtime.recover_from_checkpoint(&checkpoint).expect("recover_from_checkpoint should succeed");
         assert!(result.success);
         assert!(result.recovered_scope.is_some());
-        assert_eq!(result.recovered_scope.unwrap().scope_id, scope.scope_id);
+        assert_eq!(result.recovered_scope.expect("recovered_scope should be present").scope_id, scope.scope_id);
     }
 
     // ========================================================================
@@ -2091,23 +2091,23 @@ mod tests {
     #[test]
     fn test_lint_artifact_passes() {
         let config = make_test_pcp_config();
-        let runtime = PCPRuntime::new(config).unwrap();
+        let runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let artifact = make_test_artifact("test content");
-        let result = runtime.lint_artifact(&artifact, &[]).unwrap();
+        let result = runtime.lint_artifact(&artifact, &[]).expect("lint_artifact should succeed");
         assert!(result.passed);
     }
 
     #[test]
     fn test_lint_artifact_duplicate() {
         let config = make_test_pcp_config();
-        let runtime = PCPRuntime::new(config).unwrap();
+        let runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let artifact1 = make_test_artifact("same content");
         let mut artifact2 = make_test_artifact("same content");
         artifact2.artifact_id = ArtifactId::now_v7(); // Different ID, same content
 
-        let result = runtime.lint_artifact(&artifact2, &[artifact1]).unwrap();
+        let result = runtime.lint_artifact(&artifact2, &[artifact1]).expect("lint_artifact should succeed");
         assert!(!result.passed);
         assert!(result
             .issues
@@ -2195,7 +2195,7 @@ mod prop_tests {
             mode in arb_mode()
         ) {
             let config = make_test_caliber_config();
-            let mut service = RecallService::new(config).unwrap();
+            let mut service = RecallService::new(config).expect("RecallService creation should succeed");
 
             let traj_id = TrajectoryId::now_v7();
             let scope_id = ScopeId::now_v7();
@@ -2212,7 +2212,7 @@ mod prop_tests {
             service.add_commit(commit);
 
             // Recall the commit
-            let results = service.recall_previous(Some(traj_id), Some(scope_id), 10).unwrap();
+            let results = service.recall_previous(Some(traj_id), Some(scope_id), 10).expect("recall_previous should succeed");
 
             // Verify query and response are preserved
             prop_assert!(!results.is_empty(), "Should have at least one result");
@@ -2239,7 +2239,7 @@ mod prop_tests {
             mode in arb_mode()
         ) {
             let config = make_test_caliber_config();
-            let mut service = RecallService::new(config).unwrap();
+            let mut service = RecallService::new(config).expect("RecallService creation should succeed");
 
             // Create commits with different modes
             let traj_id = TrajectoryId::now_v7();
@@ -2265,7 +2265,7 @@ mod prop_tests {
             service.add_commit(test_commit);
 
             // Recall decisions
-            let decisions = service.recall_decisions(None, 100).unwrap();
+            let decisions = service.recall_decisions(None, 100).expect("recall_decisions should succeed");
 
             // Verify filtering
             for decision in &decisions {
@@ -2328,7 +2328,7 @@ mod prop_tests {
             num_commits in 1usize..10
         ) {
             let config = make_test_caliber_config();
-            let mut service = RecallService::new(config).unwrap();
+            let mut service = RecallService::new(config).expect("RecallService creation should succeed");
 
             let scope_id = ScopeId::now_v7();
             let traj_id = TrajectoryId::now_v7();
@@ -2348,7 +2348,7 @@ mod prop_tests {
             }
 
             // Get scope history
-            let history = service.get_scope_history(scope_id).unwrap();
+            let history = service.get_scope_history(scope_id).expect("get_scope_history should succeed");
 
             prop_assert_eq!(history.interaction_count as usize, num_commits);
             prop_assert_eq!(history.total_tokens, (num_commits as i64) * 300);

@@ -3,25 +3,38 @@
 
 use crate::parser::ast::*;
 
+/// Quote a string value if it could be misinterpreted by YAML.
+///
+/// YAML special values include: null, true, false, ~, -, numbers, and strings
+/// starting with special characters like !, &, *, >, |, {, [, :, #, @, `.
+fn yaml_safe_string(s: &str) -> String {
+    if s.is_empty() {
+        return "\"\"".to_string();
+    }
+
+    // Check if it needs quoting
+    let needs_quoting = s == "-" || s == "~" || s == "null" || s == "true" || s == "false"
+        || s.starts_with('-') || s.starts_with('!') || s.starts_with('&')
+        || s.starts_with('*') || s.starts_with('>') || s.starts_with('|')
+        || s.starts_with('{') || s.starts_with('[') || s.starts_with(':')
+        || s.starts_with('#') || s.starts_with('@') || s.starts_with('`')
+        || s.contains(':') || s.contains('\n')
+        || s.parse::<f64>().is_ok(); // Looks like a number
+
+    if needs_quoting {
+        // Use double quotes and escape any internal quotes
+        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        s.to_string()
+    }
+}
+
 /// Generate a deterministic, canonical Markdown representation of a Caliber AST.
 ///
 /// The output is a stable, round-trip friendly Markdown snapshot that serializes
 /// adapters, providers, memories, policies, injections, caches, trajectories,
 /// and agents in a deterministic order and format. Certain definition kinds
 /// (e.g., Evolution, SummarizationPolicy) are omitted.
-///
-/// # Returns
-///
-/// `String` containing the canonical Markdown representation of `ast`.
-///
-/// # Examples
-///
-/// ```
-/// // Create an empty/default AST and render it to Markdown.
-/// let ast = CaliberAst::default();
-/// let md = ast_to_markdown(&ast);
-/// assert_eq!(md, "");
-/// ```
 pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     let mut output = String::new();
 
@@ -67,11 +80,11 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     for adapter in adapters {
         output.push_str(&format!("```adapter {}\n", adapter.name));
         output.push_str(&format!("adapter_type: {}\n", adapter_type_to_string(&adapter.adapter_type)));
-        output.push_str(&format!("connection: {}\n", adapter.connection));
+        output.push_str(&format!("connection: {}\n", yaml_safe_string(&adapter.connection)));
         if !adapter.options.is_empty() {
             output.push_str("options:\n");
             for (k, v) in &adapter.options {
-                output.push_str(&format!("  {}: {}\n", k, v));
+                output.push_str(&format!("  {}: {}\n", k, yaml_safe_string(v)));
             }
         }
         output.push_str("```\n\n");
@@ -81,11 +94,11 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str(&format!("```provider {}\n", provider.name));
         output.push_str(&format!("provider_type: {}\n", provider_type_to_string(&provider.provider_type)));
         output.push_str(&format!("api_key: {}\n", env_value_to_string(&provider.api_key)));
-        output.push_str(&format!("model: {}\n", provider.model));
+        output.push_str(&format!("model: {}\n", yaml_safe_string(&provider.model)));
         if !provider.options.is_empty() {
             output.push_str("options:\n");
             for (k, v) in &provider.options {
-                output.push_str(&format!("  {}: {}\n", k, v));
+                output.push_str(&format!("  {}: {}\n", k, yaml_safe_string(v)));
             }
         }
         output.push_str("```\n\n");
@@ -100,7 +113,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("    type: {}\n", field_type_to_string(&field.field_type)));
             output.push_str(&format!("    nullable: {}\n", field.nullable));
             if let Some(default) = &field.default {
-                output.push_str(&format!("    default: {}\n", default));
+                output.push_str(&format!("    default: {}\n", yaml_safe_string(default)));
             }
         }
         output.push_str(&format!("retention: {}\n", retention_to_string(&memory.retention)));
@@ -143,7 +156,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("  - trigger: {}\n", trigger_to_string(&rule.trigger)));
             output.push_str("    actions:\n");
             for action in &rule.actions {
-                output.push_str(&format!("      - {}\n", action_to_string(action)));
+                output.push_str(&action_to_yaml(action));
             }
         }
         output.push_str("```\n\n");
@@ -168,7 +181,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str("```cache\n");
         output.push_str(&format!("backend: {}\n", cache_backend_to_string(&cache.backend)));
         if let Some(path) = &cache.path {
-            output.push_str(&format!("path: {}\n", path));
+            output.push_str(&format!("path: {}\n", yaml_safe_string(path)));
         }
         output.push_str(&format!("size_mb: {}\n", cache.size_mb));
         output.push_str(&format!("default_freshness: {}\n", freshness_to_string(&cache.default_freshness)));
@@ -176,7 +189,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("max_entries: {}\n", max_entries));
         }
         if let Some(ttl) = &cache.ttl {
-            output.push_str(&format!("ttl: {}\n", ttl));
+            output.push_str(&format!("ttl: {}\n", yaml_safe_string(ttl)));
         }
         output.push_str("```\n\n");
     }
@@ -184,15 +197,16 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     for trajectory in trajectories {
         output.push_str(&format!("```trajectory {}\n", trajectory.name));
         if let Some(description) = &trajectory.description {
-            output.push_str(&format!("description: {}\n", description));
+            output.push_str(&format!("description: {}\n", yaml_safe_string(description)));
         }
-        output.push_str(&format!("agent_type: {}\n", trajectory.agent_type));
+        output.push_str(&format!("agent_type: {}\n", yaml_safe_string(&trajectory.agent_type)));
         output.push_str(&format!("token_budget: {}\n", trajectory.token_budget));
         output.push_str("memory_refs:\n");
         for mem_ref in &trajectory.memory_refs {
-            output.push_str(&format!("  - {}\n", mem_ref));
+            output.push_str(&format!("  - {}\n", yaml_safe_string(mem_ref)));
         }
         if let Some(metadata) = &trajectory.metadata {
+            // Serialize JSON value - it's already safe YAML if it's valid JSON
             output.push_str(&format!("metadata: {}\n", metadata));
         }
         output.push_str("```\n\n");
@@ -202,7 +216,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str(&format!("```agent {}\n", agent.name));
         output.push_str("capabilities:\n");
         for capability in &agent.capabilities {
-            output.push_str(&format!("  - {}\n", capability));
+            output.push_str(&format!("  - {}\n", yaml_safe_string(capability)));
         }
         output.push_str("constraints:\n");
         output.push_str(&format!("  max_concurrent: {}\n", agent.constraints.max_concurrent));
@@ -210,15 +224,15 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str("permissions:\n");
         output.push_str("  read:\n");
         for r in &agent.permissions.read {
-            output.push_str(&format!("    - {}\n", r));
+            output.push_str(&format!("    - {}\n", yaml_safe_string(r)));
         }
         output.push_str("  write:\n");
         for w in &agent.permissions.write {
-            output.push_str(&format!("    - {}\n", w));
+            output.push_str(&format!("    - {}\n", yaml_safe_string(w)));
         }
         output.push_str("  lock:\n");
         for l in &agent.permissions.lock {
-            output.push_str(&format!("    - {}\n", l));
+            output.push_str(&format!("    - {}\n", yaml_safe_string(l)));
         }
         output.push_str("```\n\n");
     }
@@ -279,7 +293,7 @@ fn provider_type_to_string(t: &ProviderType) -> &'static str {
 fn env_value_to_string(v: &EnvValue) -> String {
     match v {
         EnvValue::Env(var) => format!("env:{}", var),
-        EnvValue::Literal(s) => s.clone(),
+        EnvValue::Literal(s) => yaml_safe_string(s),
     }
 }
 
@@ -304,7 +318,6 @@ fn env_value_to_string(v: &EnvValue) -> String {
 /// let s = memory_type_to_string(&MemoryType::Semantic);
 /// assert_eq!(s, "semantic");
 /// ```
-fn memory_type_to_string(t: &MemoryType) -> &'static str {
 fn memory_type_to_string(t: &MemoryType) -> &'static str {
     match t {
         MemoryType::Ephemeral => "ephemeral",
@@ -392,38 +405,23 @@ fn retention_to_string(r: &Retention) -> String {
 /// assert_eq!(s2, format!("auto_close({})", crate::config::markdown_printer::trigger_to_string(&Trigger::TaskEnd)));
 /// ```
 fn lifecycle_to_string(l: &Lifecycle) -> String {
-/// ```
-fn lifecycle_to_string(l: &Lifecycle) -> String {
     match l {
         Lifecycle::Explicit => "explicit".to_string(),
         Lifecycle::AutoClose(trigger) => format!("auto_close({})", trigger_to_string(trigger)),
     }
 }
 
-/// Maps a Trigger variant to its canonical lowercase identifier used in generated Markdown.
+/// Maps a Trigger variant to its canonical string representation.
 ///
-/// The returned string is a stable, human-readable name for the trigger (for example `"task_start"`, `"manual"`, or `"schedule"`).
-///
-/// # Examples
-///
-/// ```
-/// let s = trigger_to_string(&Trigger::TaskStart);
-/// assert_eq!(s, "task_start");
-///
-/// let s = trigger_to_string(&Trigger::Manual);
-/// assert_eq!(s, "manual");
-///
-/// let s = trigger_to_string(&Trigger::Schedule(None)); // Schedule simplified to "schedule"
-/// assert_eq!(s, "schedule");
-/// ```
-fn trigger_to_string(t: &Trigger) -> &'static str {
+/// Schedule triggers preserve their parameter (e.g., `schedule:5m`) for round-trip fidelity.
+fn trigger_to_string(t: &Trigger) -> String {
     match t {
-        Trigger::TaskStart => "task_start",
-        Trigger::TaskEnd => "task_end",
-        Trigger::ScopeClose => "scope_close",
-        Trigger::TurnEnd => "turn_end",
-        Trigger::Manual => "manual",
-        Trigger::Schedule(_) => "schedule", // Simplified for now
+        Trigger::TaskStart => "task_start".to_string(),
+        Trigger::TaskEnd => "task_end".to_string(),
+        Trigger::ScopeClose => "scope_close".to_string(),
+        Trigger::TurnEnd => "turn_end".to_string(),
+        Trigger::Manual => "manual".to_string(),
+        Trigger::Schedule(s) => format!("schedule:{}", s),
     }
 }
 
@@ -493,20 +491,27 @@ fn modifier_to_string(m: &ModifierDef) -> String {
     }
 }
 
-/// Converts an Action into its canonical string representation for Markdown.
-///
-/// The returned string is a stable, human-readable expression representing the action
-/// (e.g., `summarize(target)`, `prune(target: foo, criteria: ...)`, `inject(target: x, mode: full)`).
-///
-/// # Examples
-///
-/// ```
-/// let s = action_to_string(&Action::Summarize("conversation".into()));
-/// assert_eq!(s, "summarize(conversation)");
-///
-/// let i = action_to_string(&Action::Inject { target: "mem".into(), mode: InjectionMode::Full });
-/// assert_eq!(i, "inject(target: mem, mode: full)");
-/// ```
+/// Convert action to YAML format (for policy rules).
+fn action_to_yaml(a: &Action) -> String {
+    match a {
+        Action::Summarize(target) => format!("      - type: summarize\n        target: {}\n", target),
+        Action::ExtractArtifacts(target) => format!("      - type: extract_artifacts\n        target: {}\n", target),
+        Action::Checkpoint(target) => format!("      - type: checkpoint\n        target: {}\n", target),
+        Action::Prune { target, criteria } => {
+            format!("      - type: prune\n        target: {}\n        criteria: {}\n", target, filter_expr_to_string(criteria))
+        }
+        Action::Notify(msg) => format!("      - type: notify\n        target: {}\n", msg),
+        Action::Inject { target, mode } => {
+            format!("      - type: inject\n        target: {}\n        mode: {}\n", target, injection_mode_to_string(mode))
+        }
+        Action::AutoSummarize { source_level, target_level, create_edges } => {
+            format!("      - type: auto_summarize\n        source_level: {:?}\n        target_level: {:?}\n        create_edges: {}\n", source_level, target_level, create_edges)
+        }
+    }
+}
+
+/// Converts an Action into its canonical string representation.
+#[allow(dead_code)]
 fn action_to_string(a: &Action) -> String {
     match a {
         Action::Summarize(target) => format!("summarize({})", target),
@@ -540,8 +545,8 @@ fn injection_mode_to_string(m: &InjectionMode) -> String {
     match m {
         InjectionMode::Full => "full".to_string(),
         InjectionMode::Summary => "summary".to_string(),
-        InjectionMode::TopK(k) => format!("topk({})", k),
-        InjectionMode::Relevant(threshold) => format!("relevant({})", threshold),
+        InjectionMode::TopK(k) => format!("topk:{}", k),
+        InjectionMode::Relevant(threshold) => format!("relevant:{}", threshold),
     }
 }
 

@@ -232,3 +232,83 @@ impl CaliberConfig {
 }
 
 // ============================================================================
+// CONTEXT ASSEMBLY DEFAULTS
+// ============================================================================
+
+/// Default values for context assembly operations.
+///
+/// These can be used by API layers to provide sensible defaults when
+/// request parameters are not specified.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ContextAssemblyDefaults {
+    /// Default token budget for REST endpoints
+    pub rest_token_budget: i32,
+    /// Default token budget for GraphQL endpoints
+    pub graphql_token_budget: i32,
+    /// Maximum number of notes to include by default
+    pub max_notes: usize,
+    /// Maximum number of artifacts to include by default
+    pub max_artifacts: usize,
+    /// Maximum number of conversation turns to include by default
+    pub max_turns: usize,
+    /// Maximum number of scope summaries to include by default
+    pub max_summaries: usize,
+}
+
+impl Default for ContextAssemblyDefaults {
+    fn default() -> Self {
+        Self {
+            rest_token_budget: 8000,
+            graphql_token_budget: 4096,
+            max_notes: 10,
+            max_artifacts: 5,
+            max_turns: 20,
+            max_summaries: 5,
+        }
+    }
+}
+
+impl ContextAssemblyDefaults {
+    /// Create from environment variables with fallback to defaults.
+    ///
+    /// Environment variables:
+    /// - `CALIBER_CONTEXT_REST_TOKEN_BUDGET`: Default token budget for REST (default: 8000)
+    /// - `CALIBER_CONTEXT_GRAPHQL_TOKEN_BUDGET`: Default token budget for GraphQL (default: 4096)
+    /// - `CALIBER_CONTEXT_MAX_NOTES`: Maximum notes to include (default: 10)
+    /// - `CALIBER_CONTEXT_MAX_ARTIFACTS`: Maximum artifacts to include (default: 5)
+    /// - `CALIBER_CONTEXT_MAX_TURNS`: Maximum turns to include (default: 20)
+    /// - `CALIBER_CONTEXT_MAX_SUMMARIES`: Maximum summaries to include (default: 5)
+    pub fn from_env() -> Self {
+        let defaults = Self::default();
+
+        Self {
+            rest_token_budget: std::env::var("CALIBER_CONTEXT_REST_TOKEN_BUDGET")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.rest_token_budget),
+            graphql_token_budget: std::env::var("CALIBER_CONTEXT_GRAPHQL_TOKEN_BUDGET")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.graphql_token_budget),
+            max_notes: std::env::var("CALIBER_CONTEXT_MAX_NOTES")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.max_notes),
+            max_artifacts: std::env::var("CALIBER_CONTEXT_MAX_ARTIFACTS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.max_artifacts),
+            max_turns: std::env::var("CALIBER_CONTEXT_MAX_TURNS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.max_turns),
+            max_summaries: std::env::var("CALIBER_CONTEXT_MAX_SUMMARIES")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(defaults.max_summaries),
+        }
+    }
+}
+
+// =============================================================================
