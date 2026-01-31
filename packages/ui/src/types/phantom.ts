@@ -161,9 +161,7 @@ export interface Form<S, T extends Record<string, unknown> = Record<string, unkn
 /**
  * Creates an unvalidated form with initial values.
  */
-export function createForm<T extends Record<string, unknown>>(
-  initial: T
-): Form<Unvalidated, T> {
+export function createForm<T extends Record<string, unknown>>(initial: T): Form<Unvalidated, T> {
   const touched = Object.keys(initial).reduce(
     (acc, key) => ({ ...acc, [key]: false }),
     {} as Record<keyof T, boolean>
@@ -250,14 +248,20 @@ export function createConnection<T>(url: string): Connection<Disconnected, T> {
       return {
         url,
         state: 'connected',
-        async connect() { return this; },
-        async disconnect() { return createConnection<T>(url); },
+        async connect() {
+          return this;
+        },
+        async disconnect() {
+          return createConnection<T>(url);
+        },
         send: async () => {},
-        receive: async () => ({} as T),
+        receive: async () => ({}) as T,
         onMessage: () => {},
       } as Connection<Connected, T>;
     },
-    async disconnect() { return this; },
+    async disconnect() {
+      return this;
+    },
     send: undefined as never,
     receive: undefined as never,
     onMessage: undefined as never,
@@ -323,15 +327,21 @@ export function createResource<T>(
       const handle = await acquireFn();
       return {
         handle,
-        async acquire() { return this; },
+        async acquire() {
+          return this;
+        },
         async release() {
           await releaseFn(handle);
           return createResource(acquireFn, releaseFn);
         },
-        use(fn) { fn(handle); },
+        use(fn) {
+          fn(handle);
+        },
       } as Resource<Acquired, T>;
     },
-    async release() { return this; },
+    async release() {
+      return this;
+    },
     use: undefined as never,
   };
 }
@@ -417,45 +427,43 @@ export type Transition<From, To, T, Args extends unknown[] = []> = (
 /**
  * Example: Document workflow states.
  */
-export interface DocumentDraft { readonly _state: 'draft'; }
-export interface DocumentReview { readonly _state: 'review'; }
-export interface DocumentApproved { readonly _state: 'approved'; }
-export interface DocumentPublished { readonly _state: 'published'; }
-export interface DocumentArchived { readonly _state: 'archived'; }
+export interface DocumentDraft {
+  readonly _state: 'draft';
+}
+export interface DocumentReview {
+  readonly _state: 'review';
+}
+export interface DocumentApproved {
+  readonly _state: 'approved';
+}
+export interface DocumentPublished {
+  readonly _state: 'published';
+}
+export interface DocumentArchived {
+  readonly _state: 'archived';
+}
 
 /**
  * Document workflow with typed transitions.
  */
 export interface DocumentWorkflow<S> extends StateMachine<S, { content: string }> {
   /** Submit for review - only from draft */
-  submitForReview: S extends DocumentDraft
-    ? () => DocumentWorkflow<DocumentReview>
-    : never;
+  submitForReview: S extends DocumentDraft ? () => DocumentWorkflow<DocumentReview> : never;
 
   /** Approve - only from review */
-  approve: S extends DocumentReview
-    ? () => DocumentWorkflow<DocumentApproved>
-    : never;
+  approve: S extends DocumentReview ? () => DocumentWorkflow<DocumentApproved> : never;
 
   /** Reject back to draft - only from review */
-  reject: S extends DocumentReview
-    ? (reason: string) => DocumentWorkflow<DocumentDraft>
-    : never;
+  reject: S extends DocumentReview ? (reason: string) => DocumentWorkflow<DocumentDraft> : never;
 
   /** Publish - only from approved */
-  publish: S extends DocumentApproved
-    ? () => DocumentWorkflow<DocumentPublished>
-    : never;
+  publish: S extends DocumentApproved ? () => DocumentWorkflow<DocumentPublished> : never;
 
   /** Archive - from published */
-  archive: S extends DocumentPublished
-    ? () => DocumentWorkflow<DocumentArchived>
-    : never;
+  archive: S extends DocumentPublished ? () => DocumentWorkflow<DocumentArchived> : never;
 
   /** Edit - back to draft from review or approved */
-  edit: S extends DocumentReview | DocumentApproved
-    ? () => DocumentWorkflow<DocumentDraft>
-    : never;
+  edit: S extends DocumentReview | DocumentApproved ? () => DocumentWorkflow<DocumentDraft> : never;
 }
 
 /**
@@ -484,10 +492,18 @@ export function createDocument(content: string): DocumentWorkflow<DocumentDraft>
 /**
  * Capability markers for access control.
  */
-export interface CanRead { readonly _canRead: true; }
-export interface CanWrite { readonly _canWrite: true; }
-export interface CanDelete { readonly _canDelete: true; }
-export interface CanAdmin { readonly _canAdmin: true; }
+export interface CanRead {
+  readonly _canRead: true;
+}
+export interface CanWrite {
+  readonly _canWrite: true;
+}
+export interface CanDelete {
+  readonly _canDelete: true;
+}
+export interface CanAdmin {
+  readonly _canAdmin: true;
+}
 
 /**
  * Full access includes all capabilities.
@@ -534,10 +550,14 @@ export function protect<C, T>(data: T): ProtectedResource<C, T> {
   return {
     data,
     read: (() => data) as ProtectedResource<C, T>['read'],
-    write: ((partial: Partial<T>) =>
-      protect<C, T>({ ...data, ...partial })) as ProtectedResource<C, T>['write'],
+    write: ((partial: Partial<T>) => protect<C, T>({ ...data, ...partial })) as ProtectedResource<
+      C,
+      T
+    >['write'],
     delete: (() => {}) as ProtectedResource<C, T>['delete'],
-    grantAccess: (<NewC>() =>
-      protect<NewC, T>(data)) as unknown as ProtectedResource<C, T>['grantAccess'],
+    grantAccess: (<NewC>() => protect<NewC, T>(data)) as unknown as ProtectedResource<
+      C,
+      T
+    >['grantAccess'],
   };
 }

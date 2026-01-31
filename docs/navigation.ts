@@ -23,10 +23,9 @@ export async function navigate(path: string) {
 
     // Update URL
     window.history.pushState({}, '', path);
-    
+
     // Dispatch Astro navigation event
     window.dispatchEvent(new CustomEvent('astro:page-load'));
-    
   } catch (error) {
     console.warn('Navigation error:', error);
     throw error;

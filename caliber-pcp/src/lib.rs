@@ -1908,7 +1908,8 @@ mod tests {
     #[test]
     fn test_recall_service_add_and_recall() {
         let config = make_test_caliber_config();
-        let mut service = RecallService::new(config).expect("RecallService creation should succeed");
+        let mut service =
+            RecallService::new(config).expect("RecallService creation should succeed");
 
         let traj_id = TrajectoryId::now_v7();
         let scope_id = ScopeId::now_v7();
@@ -1923,7 +1924,9 @@ mod tests {
 
         service.add_commit(commit);
 
-        let results = service.recall_previous(Some(traj_id), None, 10).expect("recall_previous should succeed");
+        let results = service
+            .recall_previous(Some(traj_id), None, 10)
+            .expect("recall_previous should succeed");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].query, "query");
     }
@@ -1931,7 +1934,8 @@ mod tests {
     #[test]
     fn test_recall_service_search() {
         let config = make_test_caliber_config();
-        let mut service = RecallService::new(config).expect("RecallService creation should succeed");
+        let mut service =
+            RecallService::new(config).expect("RecallService creation should succeed");
 
         service.add_commit(MemoryCommit::new(
             TrajectoryId::now_v7(),
@@ -1949,7 +1953,9 @@ mod tests {
             "standard".to_string(),
         ));
 
-        let results = service.search_interactions("weather", 10).expect("search_interactions should succeed");
+        let results = service
+            .search_interactions("weather", 10)
+            .expect("search_interactions should succeed");
         assert_eq!(results.len(), 1);
         assert!(results[0].query.contains("weather"));
     }
@@ -2076,12 +2082,22 @@ mod tests {
         let mut runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let scope = make_test_scope();
-        let checkpoint = runtime.create_checkpoint(&scope, &[], &[]).expect("create_checkpoint should succeed");
+        let checkpoint = runtime
+            .create_checkpoint(&scope, &[], &[])
+            .expect("create_checkpoint should succeed");
 
-        let result = runtime.recover_from_checkpoint(&checkpoint).expect("recover_from_checkpoint should succeed");
+        let result = runtime
+            .recover_from_checkpoint(&checkpoint)
+            .expect("recover_from_checkpoint should succeed");
         assert!(result.success);
         assert!(result.recovered_scope.is_some());
-        assert_eq!(result.recovered_scope.expect("recovered_scope should be present").scope_id, scope.scope_id);
+        assert_eq!(
+            result
+                .recovered_scope
+                .expect("recovered_scope should be present")
+                .scope_id,
+            scope.scope_id
+        );
     }
 
     // ========================================================================
@@ -2094,7 +2110,9 @@ mod tests {
         let runtime = PCPRuntime::new(config).expect("PCPRuntime creation should succeed");
 
         let artifact = make_test_artifact("test content");
-        let result = runtime.lint_artifact(&artifact, &[]).expect("lint_artifact should succeed");
+        let result = runtime
+            .lint_artifact(&artifact, &[])
+            .expect("lint_artifact should succeed");
         assert!(result.passed);
     }
 
@@ -2107,7 +2125,9 @@ mod tests {
         let mut artifact2 = make_test_artifact("same content");
         artifact2.artifact_id = ArtifactId::now_v7(); // Different ID, same content
 
-        let result = runtime.lint_artifact(&artifact2, &[artifact1]).expect("lint_artifact should succeed");
+        let result = runtime
+            .lint_artifact(&artifact2, &[artifact1])
+            .expect("lint_artifact should succeed");
         assert!(!result.passed);
         assert!(result
             .issues

@@ -120,9 +120,7 @@ export class ContentLoader {
    */
   async loadAll(): Promise<LoadResult<ContentStore>> {
     const namespaces: ContentNamespace[] = ['landing', 'dashboard', 'editor', 'common'];
-    const results = await Promise.all(
-      namespaces.map(ns => this.loadNamespace(ns))
-    );
+    const results = await Promise.all(namespaces.map((ns) => this.loadNamespace(ns)));
 
     const errors: string[] = [];
     const data: Partial<ContentStore> = {};
@@ -132,7 +130,7 @@ export class ContentLoader {
       if (result.success && result.data) {
         (data as Record<string, unknown>)[namespaces[i]] = result.data;
       }
-      errors.push(...result.errors.map(e => `[${namespaces[i]}] ${e}`));
+      errors.push(...result.errors.map((e) => `[${namespaces[i]}] ${e}`));
     }
 
     const success = namespaces.every((_, i) => results[i].success);
@@ -354,14 +352,11 @@ export function resolveContentPath<T>(
 /**
  * Find an icon by ID in the registry
  */
-export function findIcon(
-  registry: AssetRegistry,
-  id: IconId
-): IconDefinition | undefined {
+export function findIcon(registry: AssetRegistry, id: IconId): IconDefinition | undefined {
   const categories = Object.keys(registry.icons) as IconCategory[];
 
   for (const category of categories) {
-    const icon = registry.icons[category].find(i => i.id === id);
+    const icon = registry.icons[category].find((i) => i.id === id);
     if (icon) return icon;
   }
 
@@ -371,14 +366,11 @@ export function findIcon(
 /**
  * Find an image by ID in the registry
  */
-export function findImage(
-  registry: AssetRegistry,
-  id: AssetId
-): ImageDefinition | undefined {
-  const brandImage = registry.images.brand.find(i => i.id === id);
+export function findImage(registry: AssetRegistry, id: AssetId): ImageDefinition | undefined {
+  const brandImage = registry.images.brand.find((i) => i.id === id);
   if (brandImage) return brandImage;
 
-  return registry.images.decorative.find(i => i.id === id);
+  return registry.images.decorative.find((i) => i.id === id);
 }
 
 /**
@@ -399,10 +391,7 @@ export function getIconsByCategory(
  * Interpolate variables in a content string
  * Supports {variable} syntax
  */
-export function interpolate(
-  template: string,
-  variables: Record<string, string | number>
-): string {
+export function interpolate(template: string, variables: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (match, key) => {
     return key in variables ? String(variables[key]) : match;
   });

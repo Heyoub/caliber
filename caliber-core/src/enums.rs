@@ -801,8 +801,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: EntityType =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored, "Failed for {:?}", original);
@@ -823,8 +822,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: TrajectoryStatus =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -846,8 +844,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: AgentStatus =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -882,8 +879,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: ArtifactType =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -908,8 +904,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: ExtractionMethod =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -937,8 +932,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: NoteType =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -965,8 +959,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: EdgeType =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -986,8 +979,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: AbstractionLevel =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1007,8 +999,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: EvolutionPhase =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1030,8 +1021,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: SummarizationTrigger =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1054,8 +1044,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: MemoryCategory =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1076,8 +1065,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: TurnRole =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1097,8 +1085,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: OutcomeStatus =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1122,8 +1109,7 @@ mod tests {
         ];
 
         for original in variants {
-            let json =
-                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
             let restored: FieldType =
                 serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
@@ -1202,8 +1188,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: TrajectoryStatus =
-                string.parse().expect("TrajectoryStatus roundtrip should succeed");
+            let restored: TrajectoryStatus = string
+                .parse()
+                .expect("TrajectoryStatus roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1220,8 +1207,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: AgentStatus =
-                string.parse().expect("AgentStatus roundtrip should succeed");
+            let restored: AgentStatus = string
+                .parse()
+                .expect("AgentStatus roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1251,8 +1239,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: ArtifactType =
-                string.parse().expect("ArtifactType roundtrip should succeed");
+            let restored: ArtifactType = string
+                .parse()
+                .expect("ArtifactType roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1272,8 +1261,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: ExtractionMethod =
-                string.parse().expect("ExtractionMethod roundtrip should succeed");
+            let restored: ExtractionMethod = string
+                .parse()
+                .expect("ExtractionMethod roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1333,8 +1323,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: AbstractionLevel =
-                string.parse().expect("AbstractionLevel roundtrip should succeed");
+            let restored: AbstractionLevel = string
+                .parse()
+                .expect("AbstractionLevel roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1349,8 +1340,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: EvolutionPhase =
-                string.parse().expect("EvolutionPhase roundtrip should succeed");
+            let restored: EvolutionPhase = string
+                .parse()
+                .expect("EvolutionPhase roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1381,8 +1373,9 @@ mod tests {
 
         for original in variants {
             let string = original.to_string();
-            let restored: OutcomeStatus =
-                string.parse().expect("OutcomeStatus roundtrip should succeed");
+            let restored: OutcomeStatus = string
+                .parse()
+                .expect("OutcomeStatus roundtrip should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1401,8 +1394,7 @@ mod tests {
             AbstractionLevel::Raw
         );
         assert_eq!(
-            "l0"
-                .parse::<AbstractionLevel>()
+            "l0".parse::<AbstractionLevel>()
                 .expect("parsing 'l0' should succeed"),
             AbstractionLevel::Raw
         );
@@ -1415,8 +1407,7 @@ mod tests {
             AbstractionLevel::Summary
         );
         assert_eq!(
-            "l1"
-                .parse::<AbstractionLevel>()
+            "l1".parse::<AbstractionLevel>()
                 .expect("parsing 'l1' should succeed"),
             AbstractionLevel::Summary
         );
@@ -1429,8 +1420,7 @@ mod tests {
             AbstractionLevel::Principle
         );
         assert_eq!(
-            "l2"
-                .parse::<AbstractionLevel>()
+            "l2".parse::<AbstractionLevel>()
                 .expect("parsing 'l2' should succeed"),
             AbstractionLevel::Principle
         );

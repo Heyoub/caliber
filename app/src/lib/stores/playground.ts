@@ -344,5 +344,8 @@ export const playgroundStore = createPlaygroundStore();
 
 // Derived stores for convenience
 export const playgroundFiles = derived(playgroundStore, ($playground) => $playground.files);
-export const isPlaygroundInitialized = derived(playgroundStore, ($playground) => $playground.isInitialized);
+export const isPlaygroundInitialized = derived(
+  playgroundStore,
+  ($playground) => $playground.isInitialized
+);
 export const playgroundError = derived(playgroundStore, ($playground) => $playground.error);

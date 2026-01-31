@@ -297,7 +297,15 @@ export interface ListRootsResult {
 // LOGGING
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type LogLevel = 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency';
+export type LogLevel =
+  | 'debug'
+  | 'info'
+  | 'notice'
+  | 'warning'
+  | 'error'
+  | 'critical'
+  | 'alert'
+  | 'emergency';
 
 export interface SetLevelParams {
   level: LogLevel;

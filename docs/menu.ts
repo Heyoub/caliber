@@ -1,6 +1,6 @@
 // Menu state and utilities
 export const menuState = {
-  isOpen: false
+  isOpen: false,
 };
 
 // Toggle body scroll
@@ -22,13 +22,11 @@ const focusableSelector = [
   'input:not([disabled])',
   'select:not([disabled])',
   'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])'
+  '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
 export function trapFocus(element: HTMLElement) {
-  const focusableElements = Array.from(
-    element.querySelectorAll<HTMLElement>(focusableSelector)
-  );
+  const focusableElements = Array.from(element.querySelectorAll<HTMLElement>(focusableSelector));
 
   if (focusableElements.length === 0) return () => {};
 

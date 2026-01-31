@@ -200,10 +200,7 @@ export async function renderDisplayMath(expression: string): Promise<KatexRender
 /**
  * Synchronous render (only works if KaTeX is already loaded)
  */
-export function renderLatexSync(
-  expression: string,
-  options: KatexOptions = {}
-): KatexRenderResult {
+export function renderLatexSync(expression: string, options: KatexOptions = {}): KatexRenderResult {
   if (!katexModule) {
     return {
       html: `<span class="katex-loading">${escapeHtml(expression)}</span>`,
@@ -252,9 +249,7 @@ export function findMathExpressions(text: string): Array<{
   }> = [];
 
   // Sort delimiters by length (longest first) to avoid partial matches
-  const sortedDelimiters = [...DELIMITERS].sort(
-    (a, b) => b.left.length - a.left.length
-  );
+  const sortedDelimiters = [...DELIMITERS].sort((a, b) => b.left.length - a.left.length);
 
   let pos = 0;
   while (pos < text.length) {

@@ -515,7 +515,12 @@ mod tests {
             &self,
             event_id: EventId,
         ) -> Result<Option<Event<Self::Payload>>, ColdStorageError> {
-            Ok(self.events.read().expect("test lock should not be poisoned").get(&event_id).cloned())
+            Ok(self
+                .events
+                .read()
+                .expect("test lock should not be poisoned")
+                .get(&event_id)
+                .cloned())
         }
 
         async fn walk_ancestors(
@@ -538,7 +543,10 @@ mod tests {
             &self,
             correlation_id: EventId,
         ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
-            let events = self.events.read().expect("test lock should not be poisoned");
+            let events = self
+                .events
+                .read()
+                .expect("test lock should not be poisoned");
             Ok(events
                 .values()
                 .filter(|e| e.header.correlation_id == correlation_id)
@@ -553,7 +561,10 @@ mod tests {
             max_depth: u32,
             limit: usize,
         ) -> Result<Vec<Event<Self::Payload>>, ColdStorageError> {
-            let events = self.events.read().expect("test lock should not be poisoned");
+            let events = self
+                .events
+                .read()
+                .expect("test lock should not be poisoned");
             Ok(events
                 .values()
                 .filter(|e| {
@@ -578,7 +589,10 @@ mod tests {
         }
 
         async fn next_sequence(&self) -> Result<u64, ColdStorageError> {
-            let mut seq = self.sequence.write().expect("test lock should not be poisoned");
+            let mut seq = self
+                .sequence
+                .write()
+                .expect("test lock should not be poisoned");
             *seq += 1;
             Ok(*seq)
         }

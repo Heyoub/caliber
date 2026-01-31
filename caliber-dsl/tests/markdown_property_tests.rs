@@ -277,7 +277,7 @@ fn arb_injection_with_memory() -> impl Strategy<Value = (MemoryDef, InjectionDef
         "[a-z][a-z0-9_]*",
         "[a-z_]+",
         arb_injection_mode(),
-        0..899i32,  // Pack injections max priority is 899
+        0..899i32, // Pack injections max priority is 899
     )
         .prop_map(|(source, target, mode, priority)| {
             let memory = MemoryDef {
@@ -633,13 +633,24 @@ fn test_case_bug_regression() {
 
     let ast_prime = parse_markdown_to_ast(&full_markdown).expect("Parse should succeed");
 
-    let adapter = ast_prime.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = ast_prime
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .expect("Adapter should exist");
 
     // OLD PARSER: Would fail here (adapter.name == "on")
     // NEW PARSER: Passes (adapter.name == "oN")
-    assert_eq!(adapter.name, "oN", "Case regression test: 'oN' should not become 'on'");
+    assert_eq!(
+        adapter.name, "oN",
+        "Case regression test: 'oN' should not become 'on'"
+    );
 }
 
 #[test]

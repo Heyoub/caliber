@@ -31,7 +31,8 @@ export type { DashboardStats, Trajectory, Scope, Event, AssistantResponse };
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 /** WebSocket base URL */
-const WS_BASE = import.meta.env.VITE_WS_URL ||
+const WS_BASE =
+  import.meta.env.VITE_WS_URL ||
   (typeof window !== 'undefined'
     ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
     : 'ws://localhost:3000/ws');
@@ -90,16 +91,35 @@ export class CaliberApiError extends Error {
     this.retryable = options.retryable ?? false;
   }
 
-  static fromHttpStatus(status: number, message?: string, details?: Record<string, unknown>): CaliberApiError {
-    const errorMap: Record<number, { code: ApiErrorCodeType; retryable: boolean; defaultMessage: string }> = {
-      400: { code: ApiErrorCode.ValidationError, retryable: false, defaultMessage: 'Invalid request' },
-      401: { code: ApiErrorCode.Unauthorized, retryable: false, defaultMessage: 'Authentication required' },
+  static fromHttpStatus(
+    status: number,
+    message?: string,
+    details?: Record<string, unknown>
+  ): CaliberApiError {
+    const errorMap: Record<
+      number,
+      { code: ApiErrorCodeType; retryable: boolean; defaultMessage: string }
+    > = {
+      400: {
+        code: ApiErrorCode.ValidationError,
+        retryable: false,
+        defaultMessage: 'Invalid request',
+      },
+      401: {
+        code: ApiErrorCode.Unauthorized,
+        retryable: false,
+        defaultMessage: 'Authentication required',
+      },
       403: { code: ApiErrorCode.Forbidden, retryable: false, defaultMessage: 'Access denied' },
       404: { code: ApiErrorCode.NotFound, retryable: false, defaultMessage: 'Resource not found' },
       429: { code: ApiErrorCode.RateLimit, retryable: true, defaultMessage: 'Rate limit exceeded' },
       500: { code: ApiErrorCode.ServerError, retryable: true, defaultMessage: 'Server error' },
       502: { code: ApiErrorCode.ServerError, retryable: true, defaultMessage: 'Bad gateway' },
-      503: { code: ApiErrorCode.ServerError, retryable: true, defaultMessage: 'Service unavailable' },
+      503: {
+        code: ApiErrorCode.ServerError,
+        retryable: true,
+        defaultMessage: 'Service unavailable',
+      },
       504: { code: ApiErrorCode.ServerError, retryable: true, defaultMessage: 'Gateway timeout' },
     };
 
@@ -143,7 +163,9 @@ export class CaliberApiError extends Error {
 
 export type RequestInterceptor = (config: RequestConfig) => RequestConfig | Promise<RequestConfig>;
 export type ResponseInterceptor = <T>(response: T) => T | Promise<T>;
-export type ErrorInterceptor = (error: CaliberApiError) => CaliberApiError | Promise<CaliberApiError>;
+export type ErrorInterceptor = (
+  error: CaliberApiError
+) => CaliberApiError | Promise<CaliberApiError>;
 
 interface RequestConfig {
   url: string;
@@ -297,7 +319,7 @@ async function apiFetch<T>(
         return undefined as T;
       }
 
-      let result = await response.json() as T;
+      let result = (await response.json()) as T;
 
       // Apply response interceptors
       for (const interceptor of responseInterceptors) {
@@ -311,7 +333,9 @@ async function apiFetch<T>(
       if (error instanceof CaliberApiError) {
         apiError = error;
       } else {
-        apiError = CaliberApiError.networkError(error instanceof Error ? error.message : 'Unknown error');
+        apiError = CaliberApiError.networkError(
+          error instanceof Error ? error.message : 'Unknown error'
+        );
       }
 
       // Apply error interceptors
@@ -438,11 +462,13 @@ export function streamChatResponse(
           options.onChunk(event.data as string);
           break;
         case 'tool_call':
-          options.onToolCall?.(event.data as {
-            id: string;
-            name: string;
-            arguments: Record<string, unknown>;
-          });
+          options.onToolCall?.(
+            event.data as {
+              id: string;
+              name: string;
+              arguments: Record<string, unknown>;
+            }
+          );
           break;
         case 'complete':
           options.onComplete(event.data as AssistantResponse);
@@ -487,10 +513,14 @@ export const apiClient = {
    * Get dashboard statistics.
    */
   getDashboardStats: async (): Promise<DashboardStats> => {
-    const response = await apiFetch<ApiResponse<DashboardStats>>('/dashboard/stats', {}, {
-      retries: 2,
-      retryOn: [ApiErrorCode.ServerError, ApiErrorCode.NetworkError],
-    });
+    const response = await apiFetch<ApiResponse<DashboardStats>>(
+      '/dashboard/stats',
+      {},
+      {
+        retries: 2,
+        retryOn: [ApiErrorCode.ServerError, ApiErrorCode.NetworkError],
+      }
+    );
     return response.data;
   },
 
@@ -502,9 +532,13 @@ export const apiClient = {
    * Get all trajectories.
    */
   getTrajectories: async (): Promise<Trajectory[]> => {
-    const response = await apiFetch<ApiResponse<Trajectory[]>>('/trajectories', {}, {
-      retries: 2,
-    });
+    const response = await apiFetch<ApiResponse<Trajectory[]>>(
+      '/trajectories',
+      {},
+      {
+        retries: 2,
+      }
+    );
     return response.data;
   },
 
@@ -526,9 +560,13 @@ export const apiClient = {
    * Get a single trajectory.
    */
   getTrajectory: async (id: string): Promise<Trajectory> => {
-    const response = await apiFetch<ApiResponse<Trajectory>>(`/trajectories/${id}`, {}, {
-      retries: 2,
-    });
+    const response = await apiFetch<ApiResponse<Trajectory>>(
+      `/trajectories/${id}`,
+      {},
+      {
+        retries: 2,
+      }
+    );
     return response.data;
   },
 
@@ -775,13 +813,13 @@ export const apiClient = {
   /**
    * List resources matching a pattern.
    */
-  listResources: async (pattern?: string): Promise<Array<{ uri: string; name: string; mimeType: string }>> => {
+  listResources: async (
+    pattern?: string
+  ): Promise<Array<{ uri: string; name: string; mimeType: string }>> => {
     const query = pattern ? `?pattern=${encodeURIComponent(pattern)}` : '';
-    const response = await apiFetch<ApiResponse<Array<{ uri: string; name: string; mimeType: string }>>>(
-      `/resources/list${query}`,
-      {},
-      { retries: 2 }
-    );
+    const response = await apiFetch<
+      ApiResponse<Array<{ uri: string; name: string; mimeType: string }>>
+    >(`/resources/list${query}`, {}, { retries: 2 });
     return response.data;
   },
 };

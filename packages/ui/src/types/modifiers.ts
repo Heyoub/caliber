@@ -63,14 +63,14 @@ export type Spacing = (typeof SPACING_VALUES)[number];
  * Each color has semantic meaning in the CALIBER design system.
  */
 export const COLOR_PALETTE = [
-  'teal',    // Primary - memory, scopes
-  'coral',   // Accent - warnings, highlights
-  'purple',  // Secondary - AI, intelligence
-  'pink',    // Accent - ephemeral, turns
-  'mint',    // Success - confirmations
-  'amber',   // Rust accent - semantic, notes
-  'slate',   // Neutral - backgrounds, borders
-  'ghost',   // Transparent with subtle hover
+  'teal', // Primary - memory, scopes
+  'coral', // Accent - warnings, highlights
+  'purple', // Secondary - AI, intelligence
+  'pink', // Accent - ephemeral, turns
+  'mint', // Success - confirmations
+  'amber', // Rust accent - semantic, notes
+  'slate', // Neutral - backgrounds, borders
+  'ghost', // Transparent with subtle hover
 ] as const;
 
 /**
@@ -380,10 +380,18 @@ export type ShadowSize = Size | 'none';
  * Placement options for tooltips, popovers, etc.
  */
 export const PLACEMENTS = [
-  'top', 'top-start', 'top-end',
-  'bottom', 'bottom-start', 'bottom-end',
-  'left', 'left-start', 'left-end',
-  'right', 'right-start', 'right-end',
+  'top',
+  'top-start',
+  'top-end',
+  'bottom',
+  'bottom-start',
+  'bottom-end',
+  'left',
+  'left-start',
+  'left-end',
+  'right',
+  'right-start',
+  'right-end',
 ] as const;
 
 /**
@@ -615,10 +623,7 @@ export function isColorToken(value: unknown): value is ColorToken {
   const [palette, intensityStr] = parts;
   const intensity = parseInt(intensityStr, 10);
 
-  return (
-    isColorPalette(palette) &&
-    COLOR_INTENSITIES.includes(intensity as ColorIntensity)
-  );
+  return isColorPalette(palette) && COLOR_INTENSITIES.includes(intensity as ColorIntensity);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -1720,7 +1720,11 @@ mod tests {
         goal.start();
         assert_eq!(goal.status, GoalStatus::Active);
         assert!(goal.started_at.is_some());
-        assert!(goal.started_at.expect("started_at should be set after start") >= before_start);
+        assert!(
+            goal.started_at
+                .expect("started_at should be set after start")
+                >= before_start
+        );
 
         goal.achieve();
         assert_eq!(goal.status, GoalStatus::Achieved);
@@ -1792,7 +1796,11 @@ mod tests {
         plan.start();
         assert_eq!(plan.status, PlanStatus::InProgress);
         assert!(plan.started_at.is_some());
-        assert!(plan.started_at.expect("started_at should be set after start") >= before_start);
+        assert!(
+            plan.started_at
+                .expect("started_at should be set after start")
+                >= before_start
+        );
 
         let cost = PlanCost::new(10, 100);
         plan.complete(Some(cost.clone()));
@@ -1988,8 +1996,8 @@ mod tests {
 
     #[test]
     fn test_message_type_parsing_variants_and_errors() {
-        let underscored = MessageType::from_db_str("task_delegation")
-            .expect("underscore variant should parse");
+        let underscored =
+            MessageType::from_db_str("task_delegation").expect("underscore variant should parse");
         assert_eq!(underscored, MessageType::TaskDelegation);
 
         let mixed = MessageType::from_db_str("Coordination_Signal")
@@ -2020,8 +2028,8 @@ mod tests {
             HandoffReason::from_db_str("failed").expect("failed alias should parse to Failure");
         assert_eq!(failed, HandoffReason::Failure);
 
-        let load = HandoffReason::from_db_str("load_balancing")
-            .expect("underscore variant should parse");
+        let load =
+            HandoffReason::from_db_str("load_balancing").expect("underscore variant should parse");
         assert_eq!(load, HandoffReason::LoadBalancing);
 
         let err = HandoffReason::from_db_str("nonsense")

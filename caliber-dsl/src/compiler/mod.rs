@@ -1463,7 +1463,9 @@ mod tests {
     #[test]
     fn test_duplicate_detection() {
         let mut registry = NameRegistry::default();
-        registry.register("adapter", "pg").expect("first registration should succeed");
+        registry
+            .register("adapter", "pg")
+            .expect("first registration should succeed");
         let err = registry.register("adapter", "pg").unwrap_err();
         assert!(matches!(err, CompileError::DuplicateDefinition { .. }));
     }
@@ -1479,16 +1481,14 @@ mod tests {
         // Construct AST directly instead of parsing
         let ast = CaliberAst {
             version: "1.0".to_string(),
-            definitions: vec![
-                Definition::Trajectory(TrajectoryDef {
-                    name: "t1".to_string(),
-                    description: None,
-                    agent_type: "missing".to_string(), // Reference to non-existent agent
-                    token_budget: 1000,
-                    memory_refs: vec![],
-                    metadata: None,
-                }),
-            ],
+            definitions: vec![Definition::Trajectory(TrajectoryDef {
+                name: "t1".to_string(),
+                description: None,
+                agent_type: "missing".to_string(), // Reference to non-existent agent
+                token_budget: 1000,
+                memory_refs: vec![],
+                metadata: None,
+            })],
         };
         let err = DslCompiler::compile(&ast).unwrap_err();
         assert!(matches!(
@@ -1560,15 +1560,13 @@ mod tests {
         // Construct AST directly instead of parsing
         let ast = CaliberAst {
             version: "1.0".to_string(),
-            definitions: vec![
-                Definition::Evolution(EvolutionDef {
-                    name: "config".to_string(),
-                    baseline: "base".to_string(),
-                    candidates: vec!["c1".to_string()],
-                    benchmark_queries: 0, // Invalid: must be > 0
-                    metrics: vec!["latency".to_string()],
-                }),
-            ],
+            definitions: vec![Definition::Evolution(EvolutionDef {
+                name: "config".to_string(),
+                baseline: "base".to_string(),
+                candidates: vec!["c1".to_string()],
+                benchmark_queries: 0, // Invalid: must be > 0
+                metrics: vec!["latency".to_string()],
+            })],
         };
         let err = DslCompiler::compile(&ast).unwrap_err();
         assert!(matches!(

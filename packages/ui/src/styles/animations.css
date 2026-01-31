@@ -20,7 +20,8 @@
 }
 
 @keyframes gradient-x {
-  0%, 100% {
+  0%,
+  100% {
     background-position: 0% 50%;
   }
   50% {
@@ -52,7 +53,8 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes glow-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 20px var(--glow-color, hsl(var(--teal-500) / 0.25));
     opacity: 0.8;
   }
@@ -63,7 +65,8 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.6;
     transform: scale(1);
   }
@@ -74,12 +77,13 @@
 }
 
 @keyframes text-glow {
-  0%, 100% {
+  0%,
+  100% {
     text-shadow: 0 0 10px var(--glow-color, hsl(var(--teal-400)));
   }
   50% {
-    text-shadow: 0 0 20px var(--glow-color, hsl(var(--teal-400))),
-                 0 0 40px var(--glow-color, hsl(var(--teal-400)));
+    text-shadow: 0 0 20px var(--glow-color, hsl(var(--teal-400))), 0 0 40px
+      var(--glow-color, hsl(var(--teal-400)));
   }
 }
 
@@ -123,18 +127,13 @@
 }
 
 .animate-shine::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: -100%;
   width: 50%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
   animation: shine 3s ease-in-out infinite;
 }
 
@@ -143,7 +142,8 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {
@@ -152,7 +152,8 @@
 }
 
 @keyframes float-hero {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) rotate(0deg);
   }
   25% {
@@ -167,7 +168,8 @@
 }
 
 @keyframes float-slow {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) translateX(0);
   }
   25% {
@@ -304,7 +306,8 @@
 }
 
 @keyframes spring-bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   40% {
@@ -331,7 +334,8 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes blob-morph {
-  0%, 100% {
+  0%,
+  100% {
     border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
   }
   25% {
@@ -346,7 +350,8 @@
 }
 
 @keyframes blob-float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
   }
   25% {
@@ -373,7 +378,8 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes wiggle {
-  0%, 100% {
+  0%,
+  100% {
     transform: rotate(0deg);
   }
   25% {
@@ -385,13 +391,21 @@
 }
 
 @keyframes shake {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateX(0);
   }
-  10%, 30%, 50%, 70%, 90% {
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
     transform: translateX(-5px);
   }
-  20%, 40%, 60%, 80% {
+  20%,
+  40%,
+  60%,
+  80% {
     transform: translateX(5px);
   }
 }
@@ -413,7 +427,8 @@
     transform: scale(1);
     opacity: 1;
   }
-  75%, 100% {
+  75%,
+  100% {
     transform: scale(2);
     opacity: 0;
   }
@@ -443,10 +458,12 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @keyframes typewriter-cursor {
-  0%, 50% {
+  0%,
+  50% {
     opacity: 1;
   }
-  51%, 100% {
+  51%,
+  100% {
     opacity: 0;
   }
 }
@@ -515,18 +532,13 @@
 }
 
 .laser-effect::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(79, 209, 197, 0.4),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(79, 209, 197, 0.4), transparent);
   animation: laser-scan 2s ease-in-out infinite;
 }
 
@@ -534,20 +546,44 @@
    UTILITY CLASSES FOR ANIMATION DELAYS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.animation-delay-100 { animation-delay: 100ms; }
-.animation-delay-200 { animation-delay: 200ms; }
-.animation-delay-300 { animation-delay: 300ms; }
-.animation-delay-400 { animation-delay: 400ms; }
-.animation-delay-500 { animation-delay: 500ms; }
-.animation-delay-700 { animation-delay: 700ms; }
-.animation-delay-1000 { animation-delay: 1000ms; }
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+.animation-delay-300 {
+  animation-delay: 300ms;
+}
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+.animation-delay-500 {
+  animation-delay: 500ms;
+}
+.animation-delay-700 {
+  animation-delay: 700ms;
+}
+.animation-delay-1000 {
+  animation-delay: 1000ms;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    UTILITY CLASSES FOR ANIMATION DURATIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.animation-duration-fast { animation-duration: 150ms; }
-.animation-duration-normal { animation-duration: 300ms; }
-.animation-duration-slow { animation-duration: 500ms; }
-.animation-duration-slower { animation-duration: 700ms; }
-.animation-duration-slowest { animation-duration: 1000ms; }
+.animation-duration-fast {
+  animation-duration: 150ms;
+}
+.animation-duration-normal {
+  animation-duration: 300ms;
+}
+.animation-duration-slow {
+  animation-duration: 500ms;
+}
+.animation-duration-slower {
+  animation-duration: 700ms;
+}
+.animation-duration-slowest {
+  animation-duration: 1000ms;
+}

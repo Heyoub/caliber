@@ -131,12 +131,10 @@ export const usePackStore = defineStore('pack', {
     },
 
     // --- Active file ---
-    activeFile: (state) =>
-      state.files.find((f) => f.path === state.activeFilePath),
+    activeFile: (state) => state.files.find((f) => f.path === state.activeFilePath),
 
     // --- Validation status ---
-    isValid: (state) =>
-      state.validationStage === 'ready' && state.diagnostics.length === 0,
+    isValid: (state) => state.validationStage === 'ready' && state.diagnostics.length === 0,
     hasErrors: (state) => state.diagnostics.length > 0,
 
     // --- File tree structure ---
@@ -168,13 +166,10 @@ export const usePackStore = defineStore('pack', {
         this.activeVersion = history.active_version;
 
         // Determine version to load
-        const targetVersion =
-          version ?? history.active_version ?? history.versions[0]?.version;
+        const targetVersion = version ?? history.active_version ?? history.versions[0]?.version;
         if (!targetVersion) throw new Error('No versions found');
 
-        const versionInfo = history.versions.find(
-          (v) => v.version === targetVersion
-        );
+        const versionInfo = history.versions.find((v) => v.version === targetVersion);
         if (!versionInfo) throw new Error(`Version ${targetVersion} not found`);
 
         // Load full version content
@@ -187,9 +182,7 @@ export const usePackStore = defineStore('pack', {
         this.manifestSource = pack.manifest;
         this.files = [
           createEditorFile('cal.toml', pack.manifest, 'toml'),
-          ...pack.files.map((f) =>
-            createEditorFile(f.path, f.content, getFileLanguage(f.path))
-          ),
+          ...pack.files.map((f) => createEditorFile(f.path, f.content, getFileLanguage(f.path))),
         ];
         this.activeFilePath = 'cal.toml';
         this.isDirty = false;
@@ -229,9 +222,7 @@ export const usePackStore = defineStore('pack', {
       this.manifestSource = manifest;
       this.files = [
         createEditorFile('cal.toml', manifest, 'toml'),
-        ...files.map((f) =>
-          createEditorFile(f.path, f.content, getFileLanguage(f.path))
-        ),
+        ...files.map((f) => createEditorFile(f.path, f.content, getFileLanguage(f.path))),
       ];
       this.activeFilePath = 'cal.toml';
       this.isDirty = false;
@@ -264,7 +255,7 @@ export const usePackStore = defineStore('pack', {
     /**
      * Add a new file
      */
-  addFile(path: string, content: string = '') {
+    addFile(path: string, content: string = '') {
       const language = getFileLanguage(path);
       this.files.push(createEditorFile(path, content, language, true));
       this.isDirty = true;
@@ -403,8 +394,7 @@ export const usePackStore = defineStore('pack', {
         // Check prompt file exists
         const promptPath = agent.prompt_md;
         const promptExists =
-          filePaths.has(promptPath) ||
-          Array.from(filePaths).some((p) => p.endsWith(promptPath));
+          filePaths.has(promptPath) || Array.from(filePaths).some((p) => p.endsWith(promptPath));
         if (!promptExists) {
           errors.push({
             file: 'cal.toml',
@@ -607,10 +597,7 @@ function buildFileTree(files: EditorFile[]): FileTreeNode[] {
   return root;
 }
 
-function buildDependencyGraph(
-  manifest: PackManifest,
-  files: EditorFile[]
-): DependencyEdge[] {
+function buildDependencyGraph(manifest: PackManifest, files: EditorFile[]): DependencyEdge[] {
   const edges: DependencyEdge[] = [];
 
   // Agents depend on profiles, adapters, toolsets, and files

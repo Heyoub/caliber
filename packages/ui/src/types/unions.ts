@@ -92,12 +92,7 @@ export interface ToolResultBlock {
  * Union of all MCP content block types.
  * Use pattern matching (switch/if) on the 'type' discriminant.
  */
-export type ContentBlock =
-  | TextBlock
-  | ImageBlock
-  | ResourceBlock
-  | ToolUseBlock
-  | ToolResultBlock;
+export type ContentBlock = TextBlock | ImageBlock | ResourceBlock | ToolUseBlock | ToolResultBlock;
 
 /**
  * Extract the discriminant values as a union type.
@@ -145,11 +140,7 @@ export interface LinkButton {
 /**
  * Union of all button variant types.
  */
-export type ButtonVariant =
-  | SolidButton
-  | OutlineButton
-  | GhostButton
-  | LinkButton;
+export type ButtonVariant = SolidButton | OutlineButton | GhostButton | LinkButton;
 
 /**
  * Button variant discriminant values.
@@ -271,11 +262,7 @@ export interface DiffMode {
 /**
  * Union of all editor modes.
  */
-export type EditorMode =
-  | EditMode
-  | PreviewMode
-  | SplitMode
-  | DiffMode;
+export type EditorMode = EditMode | PreviewMode | SplitMode | DiffMode;
 
 /**
  * Editor mode discriminant values.
@@ -342,13 +329,7 @@ export interface CsvFile {
 /**
  * Union of all supported file types.
  */
-export type FileType =
-  | MarkdownFile
-  | YamlFile
-  | TomlFile
-  | JsonFile
-  | XmlFile
-  | CsvFile;
+export type FileType = MarkdownFile | YamlFile | TomlFile | JsonFile | XmlFile | CsvFile;
 
 /**
  * File type discriminant values.
@@ -453,11 +434,7 @@ export interface GridLayout {
 /**
  * Union of all layout variants.
  */
-export type LayoutVariant =
-  | FullLayout
-  | SidebarLayout
-  | ThreePanelLayout
-  | GridLayout;
+export type LayoutVariant = FullLayout | SidebarLayout | ThreePanelLayout | GridLayout;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ASYNC OPERATION STATES
@@ -500,11 +477,7 @@ export interface FailureState {
  * Generic async state - represents any async operation.
  * This is a "Result" type pattern from Rust.
  */
-export type AsyncState<T> =
-  | IdleState
-  | LoadingState
-  | SuccessState<T>
-  | FailureState;
+export type AsyncState<T> = IdleState | LoadingState | SuccessState<T> | FailureState;
 
 /**
  * Type guard for success state.
@@ -642,10 +615,7 @@ export function isErr<T, E>(result: Result<T, E>): result is Err<E> {
 /**
  * Maps over a Result.
  */
-export function mapResult<T, U, E>(
-  result: Result<T, E>,
-  fn: (value: T) => U
-): Result<U, E> {
+export function mapResult<T, U, E>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> {
   return isOk(result) ? ok(fn(result.value)) : result;
 }
 

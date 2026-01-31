@@ -464,8 +464,8 @@ mod tests {
             HandoffStatus::Completed,
         ] {
             let db_str = status.as_db_str();
-            let parsed = HandoffStatus::from_db_str(db_str)
-                .expect("HandoffStatus roundtrip should succeed");
+            let parsed =
+                HandoffStatus::from_db_str(db_str).expect("HandoffStatus roundtrip should succeed");
             assert_eq!(status, parsed);
         }
     }

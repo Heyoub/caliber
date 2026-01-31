@@ -197,7 +197,13 @@ export const assistantStore = createAssistantStore();
 // Derived stores for convenience
 export const messages = derived(assistantStore, ($assistant) => $assistant.messages);
 export const isStreaming = derived(assistantStore, ($assistant) => $assistant.isStreaming);
-export const pendingToolCalls = derived(assistantStore, ($assistant) => $assistant.pendingToolCalls);
-export const activeTrajectory = derived(assistantStore, ($assistant) => $assistant.activeTrajectory);
+export const pendingToolCalls = derived(
+  assistantStore,
+  ($assistant) => $assistant.pendingToolCalls
+);
+export const activeTrajectory = derived(
+  assistantStore,
+  ($assistant) => $assistant.activeTrajectory
+);
 export const activeScope = derived(assistantStore, ($assistant) => $assistant.activeScope);
 export const assistantError = derived(assistantStore, ($assistant) => $assistant.error);

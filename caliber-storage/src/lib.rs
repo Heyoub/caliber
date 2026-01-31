@@ -871,13 +871,18 @@ mod tests {
         let storage = MockStorage::new();
         let trajectory = make_test_trajectory();
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         let retrieved = storage
             .trajectory_get(trajectory.trajectory_id.as_uuid())
             .expect("get should succeed");
 
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.expect("should have trajectory").trajectory_id, trajectory.trajectory_id);
+        assert_eq!(
+            retrieved.expect("should have trajectory").trajectory_id,
+            trajectory.trajectory_id
+        );
     }
 
     #[test]
@@ -885,7 +890,9 @@ mod tests {
         let storage = MockStorage::new();
         let trajectory = make_test_trajectory();
 
-        storage.trajectory_insert(&trajectory).expect("first insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("first insert should succeed");
         let result = storage.trajectory_insert(&trajectory);
 
         assert!(result.is_err());
@@ -896,7 +903,9 @@ mod tests {
         let storage = MockStorage::new();
         let trajectory = make_test_trajectory();
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage
             .trajectory_update(
                 trajectory.trajectory_id.as_uuid(),
@@ -925,9 +934,15 @@ mod tests {
         let mut t3 = make_test_trajectory();
         t3.status = TrajectoryStatus::Active;
 
-        storage.trajectory_insert(&t1).expect("insert should succeed");
-        storage.trajectory_insert(&t2).expect("insert should succeed");
-        storage.trajectory_insert(&t3).expect("insert should succeed");
+        storage
+            .trajectory_insert(&t1)
+            .expect("insert should succeed");
+        storage
+            .trajectory_insert(&t2)
+            .expect("insert should succeed");
+        storage
+            .trajectory_insert(&t3)
+            .expect("insert should succeed");
 
         let active = storage
             .trajectory_list_by_status(TrajectoryStatus::Active)
@@ -950,12 +965,19 @@ mod tests {
         let trajectory = make_test_trajectory();
         let scope = make_test_scope(trajectory.trajectory_id);
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage.scope_insert(&scope).expect("insert should succeed");
 
-        let retrieved = storage.scope_get(scope.scope_id.as_uuid()).expect("get should succeed");
+        let retrieved = storage
+            .scope_get(scope.scope_id.as_uuid())
+            .expect("get should succeed");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.expect("should have scope").scope_id, scope.scope_id);
+        assert_eq!(
+            retrieved.expect("should have scope").scope_id,
+            scope.scope_id
+        );
     }
 
     #[test]
@@ -967,9 +989,15 @@ mod tests {
         scope1.is_active = false;
         let scope2 = make_test_scope(trajectory.trajectory_id);
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
-        storage.scope_insert(&scope1).expect("insert should succeed");
-        storage.scope_insert(&scope2).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
+        storage
+            .scope_insert(&scope1)
+            .expect("insert should succeed");
+        storage
+            .scope_insert(&scope2)
+            .expect("insert should succeed");
 
         let current = storage
             .scope_get_current(trajectory.trajectory_id.as_uuid())
@@ -989,15 +1017,22 @@ mod tests {
         let scope = make_test_scope(trajectory.trajectory_id);
         let artifact = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage.scope_insert(&scope).expect("insert should succeed");
-        storage.artifact_insert(&artifact).expect("insert should succeed");
+        storage
+            .artifact_insert(&artifact)
+            .expect("insert should succeed");
 
         let retrieved = storage
             .artifact_get(artifact.artifact_id.as_uuid())
             .expect("get should succeed");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.expect("should have artifact").artifact_id, artifact.artifact_id);
+        assert_eq!(
+            retrieved.expect("should have artifact").artifact_id,
+            artifact.artifact_id
+        );
     }
 
     #[test]
@@ -1013,7 +1048,9 @@ mod tests {
         let mut a3 = make_test_artifact(trajectory.trajectory_id, scope.scope_id);
         a3.artifact_type = ArtifactType::Fact;
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage.scope_insert(&scope).expect("insert should succeed");
         storage.artifact_insert(&a1).expect("insert should succeed");
         storage.artifact_insert(&a2).expect("insert should succeed");
@@ -1035,10 +1072,14 @@ mod tests {
         let trajectory = make_test_trajectory();
         let note = make_test_note(trajectory.trajectory_id);
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage.note_insert(&note).expect("insert should succeed");
 
-        let retrieved = storage.note_get(note.note_id.as_uuid()).expect("get should succeed");
+        let retrieved = storage
+            .note_get(note.note_id.as_uuid())
+            .expect("get should succeed");
         assert!(retrieved.is_some());
         assert_eq!(retrieved.expect("should have note").note_id, note.note_id);
     }
@@ -1052,8 +1093,12 @@ mod tests {
         let n1 = make_test_note(t1.trajectory_id);
         let n2 = make_test_note(t2.trajectory_id);
 
-        storage.trajectory_insert(&t1).expect("insert should succeed");
-        storage.trajectory_insert(&t2).expect("insert should succeed");
+        storage
+            .trajectory_insert(&t1)
+            .expect("insert should succeed");
+        storage
+            .trajectory_insert(&t2)
+            .expect("insert should succeed");
         storage.note_insert(&n1).expect("insert should succeed");
         storage.note_insert(&n2).expect("insert should succeed");
 
@@ -1079,12 +1124,16 @@ mod tests {
         let mut t2 = make_test_turn(scope.scope_id);
         t2.sequence = 2;
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage.scope_insert(&scope).expect("insert should succeed");
         storage.turn_insert(&t1).expect("insert should succeed");
         storage.turn_insert(&t2).expect("insert should succeed");
 
-        let turns = storage.turn_get_by_scope(scope.scope_id.as_uuid()).expect("query should succeed");
+        let turns = storage
+            .turn_get_by_scope(scope.scope_id.as_uuid())
+            .expect("query should succeed");
         assert_eq!(turns.len(), 2);
         assert_eq!(turns[0].sequence, 1);
         assert_eq!(turns[1].sequence, 2);
@@ -1116,14 +1165,18 @@ mod tests {
             "test".to_string(),
         ));
 
-        storage.trajectory_insert(&trajectory).expect("insert should succeed");
+        storage
+            .trajectory_insert(&trajectory)
+            .expect("insert should succeed");
         storage.scope_insert(&scope).expect("insert should succeed");
         storage.artifact_insert(&a1).expect("insert should succeed");
         storage.artifact_insert(&a2).expect("insert should succeed");
         storage.artifact_insert(&a3).expect("insert should succeed");
 
         let query = EmbeddingVector::new(vec![1.0, 0.0, 0.0], "test".to_string());
-        let results = storage.vector_search(&query, 2).expect("search should succeed");
+        let results = storage
+            .vector_search(&query, 2)
+            .expect("search should succeed");
 
         assert_eq!(results.len(), 2);
         // First result should be the most similar (a1 with exact match)

@@ -2,8 +2,8 @@
 //!
 //! Usage: cargo run --bin trace_parser <markdown-file>
 
-use caliber_dsl::pack::{compose_pack, PackInput, PackMarkdownFile};
 use caliber_dsl::config::ast_to_markdown;
+use caliber_dsl::pack::{compose_pack, PackInput, PackMarkdownFile};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;

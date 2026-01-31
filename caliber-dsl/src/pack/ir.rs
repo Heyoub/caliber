@@ -946,17 +946,16 @@ fn check_markdown_duplicates(
 /// let adapters = extract_adapters_from_markdown(&docs).unwrap();
 /// assert!(adapters.is_empty());
 /// ```
-fn extract_adapters_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstAdapterDef>, PackError> {
+fn extract_adapters_from_markdown(
+    markdown: &[MarkdownDoc],
+) -> Result<Vec<AstAdapterDef>, PackError> {
     let mut adapters = Vec::new();
 
     for doc in markdown {
         for user in &doc.users {
             for block in &user.blocks {
                 if block.kind == FenceKind::Adapter {
-                    let adapter = parse_adapter_block(
-                        block.header_name.clone(),
-                        &block.content,
-                    )?;
+                    let adapter = parse_adapter_block(block.header_name.clone(), &block.content)?;
                     adapters.push(adapter);
                 }
             }
@@ -990,10 +989,7 @@ fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<Policy
         for user in &doc.users {
             for block in &user.blocks {
                 if block.kind == FenceKind::Policy {
-                    let policy = parse_policy_block(
-                        block.header_name.clone(),
-                        &block.content,
-                    )?;
+                    let policy = parse_policy_block(block.header_name.clone(), &block.content)?;
                     policies.push(policy);
                 }
             }
@@ -1011,17 +1007,17 @@ fn extract_policies_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<Policy
 /// let injections = extract_injections_from_markdown(&[]).unwrap();
 /// assert!(injections.is_empty());
 /// ```
-fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstInjectionDef>, PackError> {
+fn extract_injections_from_markdown(
+    markdown: &[MarkdownDoc],
+) -> Result<Vec<AstInjectionDef>, PackError> {
     let mut injections = Vec::new();
 
     for doc in markdown {
         for user in &doc.users {
             for block in &user.blocks {
                 if block.kind == FenceKind::Injection {
-                    let injection = parse_injection_block(
-                        block.header_name.clone(),
-                        &block.content,
-                    )?;
+                    let injection =
+                        parse_injection_block(block.header_name.clone(), &block.content)?;
                     injections.push(injection);
                 }
             }
@@ -1047,17 +1043,16 @@ fn extract_injections_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstI
 /// let providers = extract_providers_from_markdown(&docs).unwrap();
 /// assert!(providers.is_empty());
 /// ```
-fn extract_providers_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<AstProviderDef>, PackError> {
+fn extract_providers_from_markdown(
+    markdown: &[MarkdownDoc],
+) -> Result<Vec<AstProviderDef>, PackError> {
     let mut providers = Vec::new();
 
     for doc in markdown {
         for user in &doc.users {
             for block in &user.blocks {
                 if block.kind == FenceKind::Provider {
-                    let provider = parse_provider_block(
-                        block.header_name.clone(),
-                        &block.content,
-                    )?;
+                    let provider = parse_provider_block(block.header_name.clone(), &block.content)?;
                     providers.push(provider);
                 }
             }
@@ -1075,10 +1070,7 @@ fn extract_memories_from_markdown(markdown: &[MarkdownDoc]) -> Result<Vec<Memory
         for user in &doc.users {
             for block in &user.blocks {
                 if block.kind == FenceKind::Memory {
-                    let memory = parse_memory_block(
-                        block.header_name.clone(),
-                        &block.content,
-                    )?;
+                    let memory = parse_memory_block(block.header_name.clone(), &block.content)?;
                     memories.push(memory);
                 }
             }

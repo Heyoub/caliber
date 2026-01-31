@@ -309,10 +309,7 @@ export function isCSSValue(v: unknown): v is CSSValue<string> {
  * Adds two CSS values of the same unit type.
  * Returns a new value with the sum.
  */
-export function addCSS<U extends string>(
-  a: CSSValue<U>,
-  b: CSSValue<U>
-): CSSValue<U> {
+export function addCSS<U extends string>(a: CSSValue<U>, b: CSSValue<U>): CSSValue<U> {
   const unit = a.value.replace(/[\d.-]/g, '');
   return {
     value: `${a.raw + b.raw}${unit}`,
@@ -323,10 +320,7 @@ export function addCSS<U extends string>(
 /**
  * Multiplies a CSS value by a scalar.
  */
-export function scaleCSS<U extends string>(
-  v: CSSValue<U>,
-  factor: number
-): CSSValue<U> {
+export function scaleCSS<U extends string>(v: CSSValue<U>, factor: number): CSSValue<U> {
   const unit = v.value.replace(/[\d.-]/g, '');
   return {
     value: `${v.raw * factor}${unit}`,

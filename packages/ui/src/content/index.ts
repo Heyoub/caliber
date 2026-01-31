@@ -81,10 +81,7 @@ export async function initializeContent(config?: Partial<LoaderConfig>): Promise
   initializationPromise = (async () => {
     const loader = getContentLoader(config);
 
-    const [contentResult, assetResult] = await Promise.all([
-      loader.loadAll(),
-      loader.loadAssets(),
-    ]);
+    const [contentResult, assetResult] = await Promise.all([loader.loadAll(), loader.loadAssets()]);
 
     if (!contentResult.success || !contentResult.data) {
       console.error('Failed to load content:', contentResult.errors);
@@ -172,10 +169,7 @@ export function useContent<P extends string>(path: P): ContentValue<P> {
  * const text = getContent('landing.hero.badge', 'Default Badge');
  * ```
  */
-export function getContent<P extends string, F>(
-  path: P,
-  fallback: F
-): ContentValue<P> | F {
+export function getContent<P extends string, F>(path: P, fallback: F): ContentValue<P> | F {
   try {
     return useContent(path);
   } catch {
@@ -214,9 +208,7 @@ export function useContentInterpolated<P extends string>(
  * console.log(landing.hero.title.prefix);
  * ```
  */
-export function useNamespace<N extends ContentNamespace>(
-  namespace: N
-): ContentStore[N] {
+export function useNamespace<N extends ContentNamespace>(namespace: N): ContentStore[N] {
   const store = requireContentStore();
   return store[namespace];
 }
@@ -234,18 +226,9 @@ export function useNamespace<N extends ContentNamespace>(
  * // { id: 'menu', lucide: 'Menu', description: 'Hamburger menu icon' }
  * ```
  */
-export function useAsset(
-  type: 'icons',
-  id: IconId | string
-): IconDefinition;
-export function useAsset(
-  type: 'images',
-  id: AssetId | string
-): ImageDefinition;
-export function useAsset(
-  type: 'icons' | 'images',
-  id: string
-): IconDefinition | ImageDefinition {
+export function useAsset(type: 'icons', id: IconId | string): IconDefinition;
+export function useAsset(type: 'images', id: AssetId | string): ImageDefinition;
+export function useAsset(type: 'icons' | 'images', id: string): IconDefinition | ImageDefinition {
   const registry = requireAssetRegistry();
 
   if (type === 'icons') {
@@ -430,10 +413,7 @@ export async function preloadContent(
 /**
  * Hydrate content from server-rendered data
  */
-export function hydrateContent(
-  content: ContentStore,
-  assets: AssetRegistry
-): void {
+export function hydrateContent(content: ContentStore, assets: AssetRegistry): void {
   contentStore = content;
   assetRegistry = assets;
 }

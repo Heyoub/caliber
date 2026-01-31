@@ -433,7 +433,10 @@ mod tests {
         let entity_id = Uuid::now_v7();
 
         // Initial watermark should be 0
-        let w0 = journal.current_watermark(tenant_id).await.expect("current_watermark should succeed");
+        let w0 = journal
+            .current_watermark(tenant_id)
+            .await
+            .expect("current_watermark should succeed");
         assert_eq!(w0.sequence, 0);
 
         // Record a change
@@ -444,11 +447,17 @@ mod tests {
         assert_eq!(w1.sequence, 1);
 
         // Changes since w0 should be true
-        let has_changes = journal.changes_since(tenant_id, &w0, &[]).await.expect("changes_since should succeed");
+        let has_changes = journal
+            .changes_since(tenant_id, &w0, &[])
+            .await
+            .expect("changes_since should succeed");
         assert!(has_changes);
 
         // Changes since w1 should be false
-        let has_changes = journal.changes_since(tenant_id, &w1, &[]).await.expect("changes_since should succeed");
+        let has_changes = journal
+            .changes_since(tenant_id, &w1, &[])
+            .await
+            .expect("changes_since should succeed");
         assert!(!has_changes);
     }
 
@@ -458,7 +467,10 @@ mod tests {
         let tenant_id = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
-        let w0 = journal.current_watermark(tenant_id).await.expect("current_watermark should succeed");
+        let w0 = journal
+            .current_watermark(tenant_id)
+            .await
+            .expect("current_watermark should succeed");
 
         // Record an Artifact change
         journal
@@ -488,8 +500,14 @@ mod tests {
         let tenant_b = TenantId::now_v7();
         let entity_id = Uuid::now_v7();
 
-        let w0_a = journal.current_watermark(tenant_a).await.expect("current_watermark should succeed");
-        let w0_b = journal.current_watermark(tenant_b).await.expect("current_watermark should succeed");
+        let w0_a = journal
+            .current_watermark(tenant_a)
+            .await
+            .expect("current_watermark should succeed");
+        let w0_b = journal
+            .current_watermark(tenant_b)
+            .await
+            .expect("current_watermark should succeed");
 
         // Record change for tenant A
         journal
@@ -498,11 +516,17 @@ mod tests {
             .expect("record_change should succeed");
 
         // Tenant A should see changes
-        let has_changes_a = journal.changes_since(tenant_a, &w0_a, &[]).await.expect("changes_since should succeed");
+        let has_changes_a = journal
+            .changes_since(tenant_a, &w0_a, &[])
+            .await
+            .expect("changes_since should succeed");
         assert!(has_changes_a);
 
         // Tenant B should not see changes
-        let has_changes_b = journal.changes_since(tenant_b, &w0_b, &[]).await.expect("changes_since should succeed");
+        let has_changes_b = journal
+            .changes_since(tenant_b, &w0_b, &[])
+            .await
+            .expect("changes_since should succeed");
         assert!(!has_changes_b);
     }
 }

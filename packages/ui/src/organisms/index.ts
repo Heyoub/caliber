@@ -87,34 +87,27 @@ export type {
   HoverEffect,
   StyledProps,
   AspectFlags,
-
   // MCP types
   ToolCall,
   ToolCallStatusLiteral,
   ToolResult,
-
   // Chat types
   ChatMessageData,
-
   // Editor types
   EditorTab,
   EditorPosition,
   FileFormat,
   FileFormatLiteral,
-
   // Tree types
   TreeNode,
   TreeNodeValue,
-
   // Diff types
   DiffLine,
   DiffLineType,
   DiffViewMode,
-
   // Graph types
   GraphNode,
   GraphEdge,
-
   // CMS types
-  CMSContent
+  CMSContent,
 } from '../types/index.js';

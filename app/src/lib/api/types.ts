@@ -74,13 +74,7 @@ export interface ToolCall {
   timestamp: string;
 }
 
-export type ToolCallStatus =
-  | 'pending'
-  | 'approved'
-  | 'running'
-  | 'success'
-  | 'error'
-  | 'rejected';
+export type ToolCallStatus = 'pending' | 'approved' | 'running' | 'success' | 'error' | 'rejected';
 
 export interface ToolResult {
   content: string | Record<string, unknown>;

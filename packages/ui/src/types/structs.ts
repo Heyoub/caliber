@@ -914,7 +914,8 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     border: 'border-[hsl(var(--teal-700))]',
     shadow: 'shadow-[0_0_8px_hsl(var(--teal-400)_/_0.4)]',
     gradient: 'from-[hsl(var(--teal-300))] via-[hsl(var(--teal-500))] to-[hsl(var(--teal-700))]',
-    pressGradient: 'from-[hsl(var(--teal-700))] via-[hsl(var(--teal-500))] to-[hsl(var(--teal-300))]',
+    pressGradient:
+      'from-[hsl(var(--teal-700))] via-[hsl(var(--teal-500))] to-[hsl(var(--teal-300))]',
     glow: 'hsl(var(--teal-400))',
     outerGlow: 'rgba(45, 212, 191, 0.4)',
   },
@@ -925,7 +926,8 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     border: 'border-[hsl(var(--coral-300))]',
     shadow: 'shadow-[0_0_8px_hsl(var(--coral-400)_/_0.4)]',
     gradient: 'from-[hsl(var(--coral-300))] via-[hsl(var(--coral-500))] to-[hsl(var(--coral-700))]',
-    pressGradient: 'from-[hsl(var(--coral-700))] via-[hsl(var(--coral-500))] to-[hsl(var(--coral-300))]',
+    pressGradient:
+      'from-[hsl(var(--coral-700))] via-[hsl(var(--coral-500))] to-[hsl(var(--coral-300))]',
     glow: 'hsl(var(--coral-400))',
     outerGlow: 'rgba(255, 129, 112, 0.4)',
   },
@@ -935,8 +937,10 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     text: 'text-white',
     border: 'border-[hsl(var(--purple-700))]',
     shadow: 'shadow-[0_0_8px_hsl(var(--purple-400)_/_0.4)]',
-    gradient: 'from-[hsl(var(--purple-300))] via-[hsl(var(--purple-500))] to-[hsl(var(--purple-700))]',
-    pressGradient: 'from-[hsl(var(--purple-700))] via-[hsl(var(--purple-500))] to-[hsl(var(--purple-300))]',
+    gradient:
+      'from-[hsl(var(--purple-300))] via-[hsl(var(--purple-500))] to-[hsl(var(--purple-700))]',
+    pressGradient:
+      'from-[hsl(var(--purple-700))] via-[hsl(var(--purple-500))] to-[hsl(var(--purple-300))]',
     glow: 'hsl(var(--purple-400))',
     outerGlow: 'rgba(167, 139, 250, 0.4)',
   },
@@ -947,7 +951,8 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     border: 'border-[hsl(var(--pink-700))]',
     shadow: 'shadow-[0_0_8px_hsl(var(--pink-400)_/_0.4)]',
     gradient: 'from-[hsl(var(--pink-300))] via-[hsl(var(--pink-500))] to-[hsl(var(--pink-700))]',
-    pressGradient: 'from-[hsl(var(--pink-700))] via-[hsl(var(--pink-500))] to-[hsl(var(--pink-300))]',
+    pressGradient:
+      'from-[hsl(var(--pink-700))] via-[hsl(var(--pink-500))] to-[hsl(var(--pink-300))]',
     glow: 'hsl(var(--pink-400))',
     outerGlow: 'rgba(236, 72, 153, 0.4)',
   },
@@ -958,7 +963,8 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     border: 'border-[hsl(var(--mint-700))]',
     shadow: 'shadow-[0_0_8px_hsl(var(--mint-400)_/_0.4)]',
     gradient: 'from-[hsl(var(--mint-300))] via-[hsl(var(--mint-500))] to-[hsl(var(--mint-700))]',
-    pressGradient: 'from-[hsl(var(--mint-700))] via-[hsl(var(--mint-500))] to-[hsl(var(--mint-300))]',
+    pressGradient:
+      'from-[hsl(var(--mint-700))] via-[hsl(var(--mint-500))] to-[hsl(var(--mint-300))]',
     glow: 'hsl(var(--mint-400))',
     outerGlow: 'rgba(110, 231, 183, 0.4)',
   },
@@ -969,7 +975,8 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     border: 'border-[hsl(var(--amber-700))]',
     shadow: 'shadow-[0_0_8px_hsl(var(--amber-400)_/_0.4)]',
     gradient: 'from-[hsl(var(--amber-300))] via-[hsl(var(--amber-500))] to-[hsl(var(--amber-700))]',
-    pressGradient: 'from-[hsl(var(--amber-700))] via-[hsl(var(--amber-500))] to-[hsl(var(--amber-300))]',
+    pressGradient:
+      'from-[hsl(var(--amber-700))] via-[hsl(var(--amber-500))] to-[hsl(var(--amber-300))]',
     glow: 'hsl(var(--amber-400))',
     outerGlow: 'rgba(251, 191, 36, 0.4)',
   },
@@ -980,7 +987,8 @@ export const COLOR_CONFIGS: Record<string, ColorConfig> = {
     border: 'border-[hsl(var(--slate-500))]',
     shadow: 'shadow-[0_0_8px_rgba(51,65,85,0.4)]',
     gradient: 'from-[hsl(var(--slate-500))] via-[hsl(var(--slate-700))] to-[hsl(var(--slate-900))]',
-    pressGradient: 'from-[hsl(var(--slate-900))] via-[hsl(var(--slate-700))] to-[hsl(var(--slate-500))]',
+    pressGradient:
+      'from-[hsl(var(--slate-900))] via-[hsl(var(--slate-700))] to-[hsl(var(--slate-500))]',
     glow: 'hsl(var(--slate-400))',
     outerGlow: 'rgba(51, 65, 85, 0.4)',
   },

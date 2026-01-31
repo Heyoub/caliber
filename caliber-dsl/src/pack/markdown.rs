@@ -320,13 +320,11 @@ fn parse_markdown(
                     message: "fenced block must have a type".into(),
                 }));
             }
-            let (kind, header_name) = parse_fence_info(info).map_err(|e| {
-                MarkdownError {
-                    file: file.to_string(),
-                    line: line_no,
-                    column: 1,
-                    message: e.to_string(),
-                }
+            let (kind, header_name) = parse_fence_info(info).map_err(|e| MarkdownError {
+                file: file.to_string(),
+                line: line_no,
+                column: 1,
+                message: e.to_string(),
             })?;
             in_block = Some(FencedBlock {
                 kind,

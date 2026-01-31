@@ -37,9 +37,7 @@ export const defaultsSectionSchema = z
 
 export const routingSectionSchema = z
   .object({
-    strategy: z
-      .enum(['first', 'round_robin', 'random', 'least_latency'])
-      .optional(),
+    strategy: z.enum(['first', 'round_robin', 'random', 'least_latency']).optional(),
     embedding_provider: z.string().optional(),
     summarization_provider: z.string().optional(),
   })
@@ -88,9 +86,7 @@ export const policyDefSchema = z
 
 export const injectionDefSchema = z
   .object({
-    entity_type: z
-      .enum(['note', 'notes', 'artifact', 'artifacts'])
-      .optional(),
+    entity_type: z.enum(['note', 'notes', 'artifact', 'artifacts']).optional(),
     source: z.string(),
     target: z.string(),
     mode: z.enum(['full', 'summary', 'topk', 'relevant']),
@@ -103,8 +99,7 @@ export const injectionDefSchema = z
   .refine(
     (data) => {
       if (data.mode === 'topk' && data.top_k === undefined) return false;
-      if (data.mode === 'relevant' && data.threshold === undefined)
-        return false;
+      if (data.mode === 'relevant' && data.threshold === undefined) return false;
       return true;
     },
     { message: 'topk mode requires top_k, relevant mode requires threshold' }
@@ -181,16 +176,15 @@ export const settingsSectionSchema = z
     matrix: z
       .object({
         enforce_profiles_only: z.boolean().optional(),
-        allowed: z
-          .array(
-            z.object({
-              name: z.string(),
-              retention: z.string(),
-              index: z.string(),
-              embeddings: z.string(),
-              format: z.string(),
-            })
-          ),
+        allowed: z.array(
+          z.object({
+            name: z.string(),
+            retention: z.string(),
+            index: z.string(),
+            embeddings: z.string(),
+            format: z.string(),
+          })
+        ),
       })
       .optional(),
   })

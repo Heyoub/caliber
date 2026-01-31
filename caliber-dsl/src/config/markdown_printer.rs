@@ -13,12 +13,25 @@ fn yaml_safe_string(s: &str) -> String {
     }
 
     // Check if it needs quoting
-    let needs_quoting = s == "-" || s == "~" || s == "null" || s == "true" || s == "false"
-        || s.starts_with('-') || s.starts_with('!') || s.starts_with('&')
-        || s.starts_with('*') || s.starts_with('>') || s.starts_with('|')
-        || s.starts_with('{') || s.starts_with('[') || s.starts_with(':')
-        || s.starts_with('#') || s.starts_with('@') || s.starts_with('`')
-        || s.contains(':') || s.contains('\n')
+    let needs_quoting = s == "-"
+        || s == "~"
+        || s == "null"
+        || s == "true"
+        || s == "false"
+        || s.starts_with('-')
+        || s.starts_with('!')
+        || s.starts_with('&')
+        || s.starts_with('*')
+        || s.starts_with('>')
+        || s.starts_with('|')
+        || s.starts_with('{')
+        || s.starts_with('[')
+        || s.starts_with(':')
+        || s.starts_with('#')
+        || s.starts_with('@')
+        || s.starts_with('`')
+        || s.contains(':')
+        || s.contains('\n')
         || s.parse::<f64>().is_ok(); // Looks like a number
 
     if needs_quoting {
@@ -58,7 +71,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             Definition::Cache(c) => caches.push(c),
             Definition::Trajectory(t) => trajectories.push(t),
             Definition::Agent(a) => agents.push(a),
-            _ => {}, // Evolution, SummarizationPolicy not implemented yet
+            _ => {} // Evolution, SummarizationPolicy not implemented yet
         }
     }
 
@@ -70,17 +83,24 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     trajectories.sort_by(|a, b| a.name.cmp(&b.name));
     agents.sort_by(|a, b| a.name.cmp(&b.name));
     caches.sort_by(|a, b| a.backend.cmp(&b.backend)); // Cache has no name, sort by backend
-    // Injections have no name field - sort by (source, target) tuple
+                                                      // Injections have no name field - sort by (source, target) tuple
     injections.sort_by(|a, b| {
-        a.source.cmp(&b.source)
+        a.source
+            .cmp(&b.source)
             .then_with(|| a.target.cmp(&b.target))
     });
 
     // Generate Markdown for each type
     for adapter in adapters {
         output.push_str(&format!("```adapter {}\n", adapter.name));
-        output.push_str(&format!("adapter_type: {}\n", adapter_type_to_string(&adapter.adapter_type)));
-        output.push_str(&format!("connection: {}\n", yaml_safe_string(&adapter.connection)));
+        output.push_str(&format!(
+            "adapter_type: {}\n",
+            adapter_type_to_string(&adapter.adapter_type)
+        ));
+        output.push_str(&format!(
+            "connection: {}\n",
+            yaml_safe_string(&adapter.connection)
+        ));
         if !adapter.options.is_empty() {
             output.push_str("options:\n");
             for (k, v) in &adapter.options {
@@ -92,8 +112,14 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
 
     for provider in providers {
         output.push_str(&format!("```provider {}\n", provider.name));
-        output.push_str(&format!("provider_type: {}\n", provider_type_to_string(&provider.provider_type)));
-        output.push_str(&format!("api_key: {}\n", env_value_to_string(&provider.api_key)));
+        output.push_str(&format!(
+            "provider_type: {}\n",
+            provider_type_to_string(&provider.provider_type)
+        ));
+        output.push_str(&format!(
+            "api_key: {}\n",
+            env_value_to_string(&provider.api_key)
+        ));
         output.push_str(&format!("model: {}\n", yaml_safe_string(&provider.model)));
         if !provider.options.is_empty() {
             output.push_str("options:\n");
@@ -106,18 +132,30 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
 
     for memory in memories {
         output.push_str(&format!("```memory {}\n", memory.name));
-        output.push_str(&format!("memory_type: {}\n", memory_type_to_string(&memory.memory_type)));
+        output.push_str(&format!(
+            "memory_type: {}\n",
+            memory_type_to_string(&memory.memory_type)
+        ));
         output.push_str("schema:\n");
         for field in &memory.schema {
             output.push_str(&format!("  - name: {}\n", field.name));
-            output.push_str(&format!("    type: {}\n", field_type_to_string(&field.field_type)));
+            output.push_str(&format!(
+                "    type: {}\n",
+                field_type_to_string(&field.field_type)
+            ));
             output.push_str(&format!("    nullable: {}\n", field.nullable));
             if let Some(default) = &field.default {
                 output.push_str(&format!("    default: {}\n", yaml_safe_string(default)));
             }
         }
-        output.push_str(&format!("retention: {}\n", retention_to_string(&memory.retention)));
-        output.push_str(&format!("lifecycle: {}\n", lifecycle_to_string(&memory.lifecycle)));
+        output.push_str(&format!(
+            "retention: {}\n",
+            retention_to_string(&memory.retention)
+        ));
+        output.push_str(&format!(
+            "lifecycle: {}\n",
+            lifecycle_to_string(&memory.lifecycle)
+        ));
         if let Some(parent) = &memory.parent {
             output.push_str(&format!("parent: {}\n", parent));
         }
@@ -125,7 +163,10 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str("indexes:\n");
             for index in &memory.indexes {
                 output.push_str(&format!("  - field: {}\n", index.field));
-                output.push_str(&format!("    type: {}\n", index_type_to_string(&index.index_type)));
+                output.push_str(&format!(
+                    "    type: {}\n",
+                    index_type_to_string(&index.index_type)
+                ));
             }
         }
         if !memory.inject_on.is_empty() {
@@ -153,7 +194,10 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str(&format!("```policy {}\n", policy.name));
         output.push_str("rules:\n");
         for rule in &policy.rules {
-            output.push_str(&format!("  - trigger: {}\n", trigger_to_string(&rule.trigger)));
+            output.push_str(&format!(
+                "  - trigger: {}\n",
+                trigger_to_string(&rule.trigger)
+            ));
             output.push_str("    actions:\n");
             for action in &rule.actions {
                 output.push_str(&action_to_yaml(action));
@@ -166,7 +210,10 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         output.push_str("```injection\n");
         output.push_str(&format!("source: {}\n", injection.source));
         output.push_str(&format!("target: {}\n", injection.target));
-        output.push_str(&format!("mode: {}\n", injection_mode_to_string(&injection.mode)));
+        output.push_str(&format!(
+            "mode: {}\n",
+            injection_mode_to_string(&injection.mode)
+        ));
         output.push_str(&format!("priority: {}\n", injection.priority));
         if let Some(max_tokens) = injection.max_tokens {
             output.push_str(&format!("max_tokens: {}\n", max_tokens));
@@ -179,12 +226,18 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
 
     for cache in caches {
         output.push_str("```cache\n");
-        output.push_str(&format!("backend: {}\n", cache_backend_to_string(&cache.backend)));
+        output.push_str(&format!(
+            "backend: {}\n",
+            cache_backend_to_string(&cache.backend)
+        ));
         if let Some(path) = &cache.path {
             output.push_str(&format!("path: {}\n", yaml_safe_string(path)));
         }
         output.push_str(&format!("size_mb: {}\n", cache.size_mb));
-        output.push_str(&format!("default_freshness: {}\n", freshness_to_string(&cache.default_freshness)));
+        output.push_str(&format!(
+            "default_freshness: {}\n",
+            freshness_to_string(&cache.default_freshness)
+        ));
         if let Some(max_entries) = cache.max_entries {
             output.push_str(&format!("max_entries: {}\n", max_entries));
         }
@@ -199,7 +252,10 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
         if let Some(description) = &trajectory.description {
             output.push_str(&format!("description: {}\n", yaml_safe_string(description)));
         }
-        output.push_str(&format!("agent_type: {}\n", yaml_safe_string(&trajectory.agent_type)));
+        output.push_str(&format!(
+            "agent_type: {}\n",
+            yaml_safe_string(&trajectory.agent_type)
+        ));
         output.push_str(&format!("token_budget: {}\n", trajectory.token_budget));
         output.push_str("memory_refs:\n");
         for mem_ref in &trajectory.memory_refs {
@@ -219,7 +275,10 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
             output.push_str(&format!("  - {}\n", yaml_safe_string(capability)));
         }
         output.push_str("constraints:\n");
-        output.push_str(&format!("  max_concurrent: {}\n", agent.constraints.max_concurrent));
+        output.push_str(&format!(
+            "  max_concurrent: {}\n",
+            agent.constraints.max_concurrent
+        ));
         output.push_str(&format!("  timeout_ms: {}\n", agent.constraints.timeout_ms));
         output.push_str("permissions:\n");
         output.push_str("  read:\n");
@@ -475,7 +534,8 @@ fn modifier_to_string(m: &ModifierDef) -> String {
                 SummaryStyle::Brief => "brief",
                 SummaryStyle::Detailed => "detailed",
             };
-            let triggers_str = on_triggers.iter()
+            let triggers_str = on_triggers
+                .iter()
                 .map(trigger_to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -494,17 +554,36 @@ fn modifier_to_string(m: &ModifierDef) -> String {
 /// Convert action to YAML format (for policy rules).
 fn action_to_yaml(a: &Action) -> String {
     match a {
-        Action::Summarize(target) => format!("      - type: summarize\n        target: {}\n", target),
-        Action::ExtractArtifacts(target) => format!("      - type: extract_artifacts\n        target: {}\n", target),
-        Action::Checkpoint(target) => format!("      - type: checkpoint\n        target: {}\n", target),
+        Action::Summarize(target) => {
+            format!("      - type: summarize\n        target: {}\n", target)
+        }
+        Action::ExtractArtifacts(target) => format!(
+            "      - type: extract_artifacts\n        target: {}\n",
+            target
+        ),
+        Action::Checkpoint(target) => {
+            format!("      - type: checkpoint\n        target: {}\n", target)
+        }
         Action::Prune { target, criteria } => {
-            format!("      - type: prune\n        target: {}\n        criteria: {}\n", target, filter_expr_to_string(criteria))
+            format!(
+                "      - type: prune\n        target: {}\n        criteria: {}\n",
+                target,
+                filter_expr_to_string(criteria)
+            )
         }
         Action::Notify(msg) => format!("      - type: notify\n        target: {}\n", msg),
         Action::Inject { target, mode } => {
-            format!("      - type: inject\n        target: {}\n        mode: {}\n", target, injection_mode_to_string(mode))
+            format!(
+                "      - type: inject\n        target: {}\n        mode: {}\n",
+                target,
+                injection_mode_to_string(mode)
+            )
         }
-        Action::AutoSummarize { source_level, target_level, create_edges } => {
+        Action::AutoSummarize {
+            source_level,
+            target_level,
+            create_edges,
+        } => {
             format!("      - type: auto_summarize\n        source_level: {:?}\n        target_level: {:?}\n        create_edges: {}\n", source_level, target_level, create_edges)
         }
     }
@@ -518,14 +597,29 @@ fn action_to_string(a: &Action) -> String {
         Action::ExtractArtifacts(target) => format!("extract_artifacts({})", target),
         Action::Checkpoint(target) => format!("checkpoint({})", target),
         Action::Prune { target, criteria } => {
-            format!("prune(target: {}, criteria: {})", target, filter_expr_to_string(criteria))
+            format!(
+                "prune(target: {}, criteria: {})",
+                target,
+                filter_expr_to_string(criteria)
+            )
         }
         Action::Notify(msg) => format!("notify({})", msg),
         Action::Inject { target, mode } => {
-            format!("inject(target: {}, mode: {})", target, injection_mode_to_string(mode))
+            format!(
+                "inject(target: {}, mode: {})",
+                target,
+                injection_mode_to_string(mode)
+            )
         }
-        Action::AutoSummarize { source_level, target_level, create_edges } => {
-            format!("auto_summarize(source: {:?}, target: {:?}, edges: {})", source_level, target_level, create_edges)
+        Action::AutoSummarize {
+            source_level,
+            target_level,
+            create_edges,
+        } => {
+            format!(
+                "auto_summarize(source: {:?}, target: {:?}, edges: {})",
+                source_level, target_level, create_edges
+            )
         }
     }
 }
@@ -603,14 +697,16 @@ fn filter_expr_to_string(f: &FilterExpr) -> String {
             format!("{} {} {}", field, op_str, value_str)
         }
         FilterExpr::And(exprs) => {
-            let exprs_str = exprs.iter()
+            let exprs_str = exprs
+                .iter()
                 .map(filter_expr_to_string)
                 .collect::<Vec<_>>()
                 .join(" AND ");
             format!("({})", exprs_str)
         }
         FilterExpr::Or(exprs) => {
-            let exprs_str = exprs.iter()
+            let exprs_str = exprs
+                .iter()
                 .map(filter_expr_to_string)
                 .collect::<Vec<_>>()
                 .join(" OR ");
@@ -655,7 +751,9 @@ fn cache_backend_to_string(b: &CacheBackendType) -> &'static str {
 /// ```
 fn freshness_to_string(f: &FreshnessDef) -> String {
     match f {
-        FreshnessDef::BestEffort { max_staleness } => format!("best_effort(max_staleness: {})", max_staleness),
+        FreshnessDef::BestEffort { max_staleness } => {
+            format!("best_effort(max_staleness: {})", max_staleness)
+        }
         FreshnessDef::Strict => "strict".to_string(),
     }
 }

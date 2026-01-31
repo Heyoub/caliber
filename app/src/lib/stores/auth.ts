@@ -249,9 +249,7 @@ function createAuthStore() {
     redirectToLogin: (returnUrl?: string) => {
       if (!isBrowser) return;
 
-      const loginUrl = returnUrl
-        ? `/login?return_url=${encodeURIComponent(returnUrl)}`
-        : '/login';
+      const loginUrl = returnUrl ? `/login?return_url=${encodeURIComponent(returnUrl)}` : '/login';
       window.location.href = loginUrl;
     },
   };

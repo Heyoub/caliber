@@ -34,15 +34,15 @@ export { default as Accordion } from './Accordion.svelte';
 export { default as PromptButtons } from './PromptButtons.svelte';
 
 // Re-export types for external use
-export type { } from './SearchInput.svelte';
-export type { } from './InputGroup.svelte';
-export type { } from './ButtonGroup.svelte';
-export type { } from './Tabs.svelte';
-export type { } from './Dropdown.svelte';
-export type { } from './Modal.svelte';
-export type { } from './Toast.svelte';
-export type { } from './Breadcrumb.svelte';
-export type { } from './Pagination.svelte';
-export type { } from './FileTreeItem.svelte';
-export type { } from './NestedMenu.svelte';
-export type { } from './ModeSelector.svelte';
+export type {} from './SearchInput.svelte';
+export type {} from './InputGroup.svelte';
+export type {} from './ButtonGroup.svelte';
+export type {} from './Tabs.svelte';
+export type {} from './Dropdown.svelte';
+export type {} from './Modal.svelte';
+export type {} from './Toast.svelte';
+export type {} from './Breadcrumb.svelte';
+export type {} from './Pagination.svelte';
+export type {} from './FileTreeItem.svelte';
+export type {} from './NestedMenu.svelte';
+export type {} from './ModeSelector.svelte';

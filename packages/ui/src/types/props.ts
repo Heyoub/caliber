@@ -142,13 +142,13 @@ export interface AnimationAspects {
  * All aspect flags combined.
  * Use when you need to accept any aspect configuration.
  */
-export interface AspectFlags extends
-  StateAspects,
-  VisibilityAspects,
-  InteractionAspects,
-  ContentAspects,
-  LayoutAspects,
-  AnimationAspects {}
+export interface AspectFlags
+  extends StateAspects,
+    VisibilityAspects,
+    InteractionAspects,
+    ContentAspects,
+    LayoutAspects,
+    AnimationAspects {}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BASE PROPS
@@ -393,12 +393,15 @@ export type ButtonVariantProps =
 /**
  * Conditional type to get props for a specific button variant.
  */
-export type ButtonPropsForVariant<V extends ButtonVariantKind> =
-  V extends 'solid' ? SolidButtonProps :
-  V extends 'outline' ? OutlineButtonProps :
-  V extends 'ghost' ? GhostButtonProps :
-  V extends 'link' ? LinkButtonProps :
-  never;
+export type ButtonPropsForVariant<V extends ButtonVariantKind> = V extends 'solid'
+  ? SolidButtonProps
+  : V extends 'outline'
+    ? OutlineButtonProps
+    : V extends 'ghost'
+      ? GhostButtonProps
+      : V extends 'link'
+        ? LinkButtonProps
+        : never;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENT-SPECIFIC PROPS
@@ -786,7 +789,13 @@ export interface ChatMessageData {
 /**
  * Tool call status type (string literal union).
  */
-export type ToolCallStatusLiteral = 'pending' | 'approved' | 'running' | 'success' | 'error' | 'rejected';
+export type ToolCallStatusLiteral =
+  | 'pending'
+  | 'approved'
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'rejected';
 
 /**
  * Tool call type.

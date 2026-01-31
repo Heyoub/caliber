@@ -230,10 +230,7 @@ export class McpClient {
    * List available prompts
    */
   async listPrompts(cursor?: string): Promise<ListPromptsResult> {
-    return this.request<ListPromptsResult>(
-      McpMethod.ListPrompts,
-      cursor ? { cursor } : undefined
-    );
+    return this.request<ListPromptsResult>(McpMethod.ListPrompts, cursor ? { cursor } : undefined);
   }
 
   /**
@@ -263,10 +260,7 @@ export class McpClient {
   /**
    * Send a JSON-RPC request and wait for response
    */
-  private async request<T>(
-    method: McpMethodName | string,
-    params?: object
-  ): Promise<T> {
+  private async request<T>(method: McpMethodName | string, params?: object): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to MCP server');
     }

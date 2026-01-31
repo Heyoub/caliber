@@ -5,7 +5,8 @@
 
 use caliber_core::{
     CaliberError, CaliberResult, DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect,
-    Event, EventDag, EventFlags, EventId, EventKind, OperationalError, StorageError, UpstreamSignal,
+    Event, EventDag, EventFlags, EventId, EventKind, OperationalError, StorageError,
+    UpstreamSignal,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -590,11 +591,18 @@ mod tests {
     async fn test_append_child() {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
-        let root_id = unwrap_effect(dag.append_root("root".to_string()).await, "append_root should succeed");
+        let root_id = unwrap_effect(
+            dag.append_root("root".to_string()).await,
+            "append_root should succeed",
+        );
         let child_id = dag.append_child(root_id, "child".to_string()).await;
 
         assert!(child_id.is_ok());
-        let child = unwrap_effect(dag.read(unwrap_effect(child_id, "append_child should succeed")).await, "read should succeed");
+        let child = unwrap_effect(
+            dag.read(unwrap_effect(child_id, "append_child should succeed"))
+                .await,
+            "read should succeed",
+        );
         assert_eq!(child.header.position.depth, 1);
     }
 
@@ -603,7 +611,10 @@ mod tests {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
         // Create event requiring ack
-        let position = unwrap_effect(dag.next_position(None, 0).await, "next_position should succeed");
+        let position = unwrap_effect(
+            dag.next_position(None, 0).await,
+            "next_position should succeed",
+        );
         let event_id_val = Uuid::now_v7();
         let header = EventHeader::new(
             event_id_val,
@@ -622,14 +633,23 @@ mod tests {
         let event_id = unwrap_effect(dag.append(event).await, "append should succeed");
 
         // Should appear in unacknowledged
-        let unacked = unwrap_effect(dag.unacknowledged(10).await, "unacknowledged should succeed");
+        let unacked = unwrap_effect(
+            dag.unacknowledged(10).await,
+            "unacknowledged should succeed",
+        );
         assert_eq!(unacked.len(), 1);
 
         // Acknowledge it
-        unwrap_effect(dag.acknowledge(event_id, false).await, "acknowledge should succeed");
+        unwrap_effect(
+            dag.acknowledge(event_id, false).await,
+            "acknowledge should succeed",
+        );
 
         // Should no longer appear
-        let unacked = unwrap_effect(dag.unacknowledged(10).await, "unacknowledged should succeed");
+        let unacked = unwrap_effect(
+            dag.unacknowledged(10).await,
+            "unacknowledged should succeed",
+        );
         assert_eq!(unacked.len(), 0);
     }
 
@@ -638,10 +658,19 @@ mod tests {
         let dag: InMemoryEventDag<String> = InMemoryEventDag::new();
 
         // Create a few events
-        unwrap_effect(dag.append_root("event1".to_string()).await, "append_root should succeed");
-        unwrap_effect(dag.append_root("event2".to_string()).await, "append_root should succeed");
+        unwrap_effect(
+            dag.append_root("event1".to_string()).await,
+            "append_root should succeed",
+        );
+        unwrap_effect(
+            dag.append_root("event2".to_string()).await,
+            "append_root should succeed",
+        );
 
-        let found = unwrap_effect(dag.find_by_kind(EventKind::DATA, 0, 10, 100).await, "find_by_kind should succeed");
+        let found = unwrap_effect(
+            dag.find_by_kind(EventKind::DATA, 0, 10, 100).await,
+            "find_by_kind should succeed",
+        );
         assert_eq!(found.len(), 2);
     }
 }

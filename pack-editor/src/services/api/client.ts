@@ -31,10 +31,7 @@ function getApiKey(): string {
 /**
  * Make an authenticated API request
  */
-export async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${path}`;
 
   const response = await fetch(url, {
@@ -50,11 +47,7 @@ export async function apiRequest<T>(
     const error = await response.json().catch(() => ({
       message: response.statusText,
     }));
-    throw new ApiError(
-      response.status,
-      error.message || 'Request failed',
-      error.code
-    );
+    throw new ApiError(response.status, error.message || 'Request failed', error.code);
   }
 
   return response.json();
@@ -63,10 +56,7 @@ export async function apiRequest<T>(
 /**
  * Make a multipart form request (for file uploads)
  */
-export async function apiMultipart<T>(
-  path: string,
-  formData: FormData
-): Promise<T> {
+export async function apiMultipart<T>(path: string, formData: FormData): Promise<T> {
   const url = `${API_BASE}${path}`;
 
   const response = await fetch(url, {
@@ -82,11 +72,7 @@ export async function apiMultipart<T>(
     const error = await response.json().catch(() => ({
       message: response.statusText,
     }));
-    throw new ApiError(
-      response.status,
-      error.message || 'Request failed',
-      error.code
-    );
+    throw new ApiError(response.status, error.message || 'Request failed', error.code);
   }
 
   return response.json();

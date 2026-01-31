@@ -287,8 +287,8 @@ pub fn parse_adapter_block(
     content: &str,
 ) -> Result<AdapterDef, ConfigError> {
     // Step 1: Deserialize YAML into config struct
-    let config: AdapterConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: AdapterConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     // Step 2: Enforce name precedence rule
     let name = match (header_name, &config.name) {
@@ -355,21 +355,17 @@ pub fn parse_memory_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<MemoryDef, ConfigError> {
-    let config: MemoryConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: MemoryConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
         (Some(header), None) => header,
         (Some(_), Some(_)) => {
-            return Err(ConfigError::NameConflict(
-                "Name conflict".to_string(),
-            ));
+            return Err(ConfigError::NameConflict("Name conflict".to_string()));
         }
         (None, Some(payload_name)) => payload_name.clone(),
         (None, None) => {
-            return Err(ConfigError::MissingName(
-                "Memory requires name".to_string(),
-            ));
+            return Err(ConfigError::MissingName("Memory requires name".to_string()));
         }
     };
 
@@ -444,21 +440,17 @@ pub fn parse_policy_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<PolicyDef, ConfigError> {
-    let config: PolicyConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: PolicyConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
         (Some(header), None) => header,
         (Some(_), Some(_)) => {
-            return Err(ConfigError::NameConflict(
-                "Name conflict".to_string(),
-            ));
+            return Err(ConfigError::NameConflict("Name conflict".to_string()));
         }
         (None, Some(payload_name)) => payload_name.clone(),
         (None, None) => {
-            return Err(ConfigError::MissingName(
-                "Policy requires name".to_string(),
-            ));
+            return Err(ConfigError::MissingName("Policy requires name".to_string()));
         }
     };
 
@@ -495,15 +487,13 @@ pub fn parse_injection_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<InjectionDef, ConfigError> {
-    let config: InjectionConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: InjectionConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     // Note: Injection might not need a name (it's identified by source/target)
     // But we'll enforce name precedence if a name is provided
     if let (Some(_), Some(_)) = (&header_name, &config.name) {
-        return Err(ConfigError::NameConflict(
-            "Name conflict".to_string(),
-        ));
+        return Err(ConfigError::NameConflict("Name conflict".to_string()));
     }
 
     let mode = parse_injection_mode(&config.mode)?;
@@ -547,15 +537,13 @@ pub fn parse_provider_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<ProviderDef, ConfigError> {
-    let config: ProviderConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: ProviderConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
         (Some(header), None) => header,
         (Some(_), Some(_)) => {
-            return Err(ConfigError::NameConflict(
-                "Name conflict".to_string(),
-            ));
+            return Err(ConfigError::NameConflict("Name conflict".to_string()));
         }
         (None, Some(payload_name)) => payload_name.clone(),
         (None, None) => {
@@ -597,14 +585,12 @@ pub fn parse_cache_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<CacheDef, ConfigError> {
-    let config: CacheConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: CacheConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     // Cache might use header name or be singleton
     if let (Some(_), Some(_)) = (&header_name, &config.name) {
-        return Err(ConfigError::NameConflict(
-            "Name conflict".to_string(),
-        ));
+        return Err(ConfigError::NameConflict("Name conflict".to_string()));
     }
 
     let backend = parse_cache_backend(&config.backend)?;
@@ -651,15 +637,13 @@ pub fn parse_trajectory_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<TrajectoryDef, ConfigError> {
-    let config: TrajectoryConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: TrajectoryConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
         (Some(header), None) => header,
         (Some(_), Some(_)) => {
-            return Err(ConfigError::NameConflict(
-                "Name conflict".to_string(),
-            ));
+            return Err(ConfigError::NameConflict("Name conflict".to_string()));
         }
         (None, Some(payload_name)) => payload_name.clone(),
         (None, None) => {
@@ -717,21 +701,17 @@ pub fn parse_agent_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<AgentDef, ConfigError> {
-    let config: AgentConfig = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+    let config: AgentConfig =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
         (Some(header), None) => header,
         (Some(_), Some(_)) => {
-            return Err(ConfigError::NameConflict(
-                "Name conflict".to_string(),
-            ));
+            return Err(ConfigError::NameConflict("Name conflict".to_string()));
         }
         (None, Some(payload_name)) => payload_name.clone(),
         (None, None) => {
-            return Err(ConfigError::MissingName(
-                "Agent requires name".to_string(),
-            ));
+            return Err(ConfigError::MissingName("Agent requires name".to_string()));
         }
     };
 
@@ -1343,7 +1323,9 @@ fn parse_cache_backend(s: &str) -> Result<CacheBackendType, ConfigError> {
 /// ```
 fn parse_freshness_def(config: FreshnessConfig) -> Result<FreshnessDef, ConfigError> {
     match config {
-        FreshnessConfig::BestEffort { max_staleness } => Ok(FreshnessDef::BestEffort { max_staleness }),
+        FreshnessConfig::BestEffort { max_staleness } => {
+            Ok(FreshnessDef::BestEffort { max_staleness })
+        }
         FreshnessConfig::Strict => Ok(FreshnessDef::Strict),
     }
 }
@@ -1363,7 +1345,11 @@ adapter_type: postgres
 connection: "postgresql://localhost/test"
 "#;
         let result = parse_adapter_block(Some("postgres_main".to_string()), yaml);
-        assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to parse adapter: {:?}",
+            result.err()
+        );
 
         let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "postgres_main");
@@ -1379,7 +1365,11 @@ adapter_type: postgres
 connection: "postgresql://localhost/test"
 "#;
         let result = parse_adapter_block(None, yaml);
-        assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to parse adapter: {:?}",
+            result.err()
+        );
 
         let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "postgres_main");
@@ -1398,7 +1388,11 @@ unknown_field: bad
         let err = result.unwrap_err();
         match err {
             ConfigError::YamlParse(msg) => {
-                assert!(msg.contains("unknown field"), "Expected 'unknown field' error, got: {}", msg);
+                assert!(
+                    msg.contains("unknown field"),
+                    "Expected 'unknown field' error, got: {}",
+                    msg
+                );
             }
             _ => panic!("Expected YamlParse error, got: {:?}", err),
         }

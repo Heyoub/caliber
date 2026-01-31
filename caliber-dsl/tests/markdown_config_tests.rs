@@ -107,7 +107,13 @@ connection: "{}"
     ///     .build();
     /// // pack now contains a markdown file with a ```provider MyProvider ... ``` fence
     /// ```
-    fn with_provider(mut self, name: &str, provider_type: &str, api_key: &str, model: &str) -> Self {
+    fn with_provider(
+        mut self,
+        name: &str,
+        provider_type: &str,
+        api_key: &str,
+        model: &str,
+    ) -> Self {
         self.fence_blocks.push(format!(
             r#"```provider {}
 provider_type: {}
@@ -157,59 +163,59 @@ rules:
     }
 
     /// Appends an `injection` fenced block to the builder, representing an injection
-    
+
     /// with the given source, target, mode, and priority.
-    
+
     ///
-    
+
     /// The produced fence block will be formatted as:
-    
+
     /// ```injection
-    
+
     /// source: "<source>"
-    
+
     /// target: "<target>"
-    
+
     /// mode: <mode>
-    
+
     /// priority: <priority>
-    
+
     /// ```
-    
+
     ///
-    
+
     /// # Parameters
-    
+
     ///
-    
+
     /// - `source`: Identifier or path of the injection source.
-    
+
     /// - `target`: Identifier or path of the injection target.
-    
+
     /// - `mode`: Mode string for the injection (e.g., `"TopK"`, `"Relevant"`).
-    
+
     /// - `priority`: Numeric priority for the injection.
-    
+
     ///
-    
+
     /// # Returns
-    
+
     ///
-    
+
     /// The updated builder with the new fence block appended.
-    
+
     ///
-    
+
     /// # Examples
-    
+
     ///
-    
+
     /// ```
-    
+
     /// let builder = TestPackBuilder::new()
-    
+
     ///     .with_injection("serviceA", "serviceB", "TopK", 10);
-    
+
     /// ```
     fn with_injection(mut self, source: &str, target: &str, mode: &str, priority: i32) -> Self {
         self.fence_blocks.push(format!(
@@ -261,10 +267,8 @@ lifecycle: explicit
     /// assert_eq!(pack.markdowns[0].path, PathBuf::from("test.md"));
     /// ```
     fn build(self) -> PackInput {
-        let markdown_content = MARKDOWN_TEMPLATE.replace(
-            "{fence_blocks}",
-            &self.fence_blocks.join("\n\n"),
-        );
+        let markdown_content =
+            MARKDOWN_TEMPLATE.replace("{fence_blocks}", &self.fence_blocks.join("\n\n"));
 
         PackInput {
             root: PathBuf::from("."),
@@ -296,14 +300,30 @@ lifecycle: explicit
 /// assert_adapter_eq(ast, "main", AdapterType::Postgres, "postgres://user:pass");
 /// # }
 /// ```
-fn assert_adapter_eq(ast: &CaliberAst, name: &str, expected_type: AdapterType, expected_conn: &str) {
-    let adapter = ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+fn assert_adapter_eq(
+    ast: &CaliberAst,
+    name: &str,
+    expected_type: AdapterType,
+    expected_conn: &str,
+) {
+    let adapter = ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| panic!("No adapter found in AST"));
 
     assert_eq!(adapter.name, name, "Adapter name mismatch");
     assert_eq!(adapter.adapter_type, expected_type, "Adapter type mismatch");
-    assert_eq!(adapter.connection, expected_conn, "Adapter connection mismatch");
+    assert_eq!(
+        adapter.connection, expected_conn,
+        "Adapter connection mismatch"
+    );
 }
 
 /// Asserts that the AST contains a provider with the given name, type, and model.
@@ -317,13 +337,29 @@ fn assert_adapter_eq(ast: &CaliberAst, name: &str, expected_type: AdapterType, e
 /// // Assume `ast` is a `CaliberAst` parsed from test input.
 /// assert_provider_eq(&ast, "my-provider", ProviderType::OpenAI, "gpt-4");
 /// ```
-fn assert_provider_eq(ast: &CaliberAst, name: &str, expected_type: ProviderType, expected_model: &str) {
-    let provider = ast.definitions.iter()
-        .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
+fn assert_provider_eq(
+    ast: &CaliberAst,
+    name: &str,
+    expected_type: ProviderType,
+    expected_model: &str,
+) {
+    let provider = ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Provider(p) = d {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| panic!("No provider found in AST"));
 
     assert_eq!(provider.name, name, "Provider name mismatch");
-    assert_eq!(provider.provider_type, expected_type, "Provider type mismatch");
+    assert_eq!(
+        provider.provider_type, expected_type,
+        "Provider type mismatch"
+    );
     assert_eq!(provider.model, expected_model, "Provider model mismatch");
 }
 
@@ -339,13 +375,27 @@ fn assert_provider_eq(ast: &CaliberAst, name: &str, expected_type: ProviderType,
 /// assert_policy_trigger(&ast, "my_policy", Trigger::OnEvent);
 /// ```
 fn assert_policy_trigger(ast: &CaliberAst, name: &str, expected_trigger: Trigger) {
-    let policy = ast.definitions.iter()
-        .find_map(|d| if let Definition::Policy(p) = d { Some(p) } else { None })
+    let policy = ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Policy(p) = d {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| panic!("No policy found in AST"));
 
     assert_eq!(policy.name, name, "Policy name mismatch");
-    assert!(!policy.rules.is_empty(), "Policy should have at least one rule");
-    assert_eq!(policy.rules[0].trigger, expected_trigger, "Policy trigger mismatch");
+    assert!(
+        !policy.rules.is_empty(),
+        "Policy should have at least one rule"
+    );
+    assert_eq!(
+        policy.rules[0].trigger, expected_trigger,
+        "Policy trigger mismatch"
+    );
 }
 
 // ============================================================================
@@ -376,7 +426,11 @@ fn assert_policy_trigger(ast: &CaliberAst, name: &str, expected_trigger: Trigger
 #[test]
 fn test_parse_adapter_with_header_name() {
     let input = TestPackBuilder::new()
-        .with_adapter("postgres_main", "postgres", "postgresql://localhost/caliber")
+        .with_adapter(
+            "postgres_main",
+            "postgres",
+            "postgresql://localhost/caliber",
+        )
         .build();
 
     let output = compose_pack(input).expect("Failed to parse pack");
@@ -420,8 +474,17 @@ fn test_parse_provider_with_env_key() {
     assert_provider_eq(&output.ast, "openai_main", ProviderType::OpenAI, "gpt-4");
 
     // Verify env parsing
-    let provider = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
+    let provider = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Provider(p) = d {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
     match &provider.api_key {
@@ -440,8 +503,17 @@ fn test_parse_policy_with_multiple_actions() {
 
     assert_policy_trigger(&output.ast, "cleanup", Trigger::ScopeClose);
 
-    let policy = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Policy(p) = d { Some(p) } else { None })
+    let policy = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Policy(p) = d {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
     assert_eq!(policy.rules[0].actions.len(), 2, "Expected 2 actions");
@@ -450,14 +522,23 @@ fn test_parse_policy_with_multiple_actions() {
 #[test]
 fn test_parse_injection_with_priority() {
     let input = TestPackBuilder::new()
-        .with_memory("memories.notes")  // Add memory for injection to reference
+        .with_memory("memories.notes") // Add memory for injection to reference
         .with_injection("memories.notes", "context.main", "full", 100)
         .build();
 
     let output = compose_pack(input).expect("Failed to parse pack");
 
-    let injection = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Injection(i) = d { Some(i) } else { None })
+    let injection = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Injection(i) = d {
+                Some(i)
+            } else {
+                None
+            }
+        })
         .expect("No injection found in AST");
 
     assert_eq!(injection.source, "memories.notes");
@@ -497,11 +578,23 @@ fn test_case_preserved_in_adapter_name() {
 
     let output = compose_pack(input).expect("Failed to parse pack");
 
-    let adapter = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
-    assert_eq!(adapter.name, "MyAdapter", "Case should be preserved exactly");
+    assert_eq!(
+        adapter.name, "MyAdapter",
+        "Case should be preserved exactly"
+    );
 }
 
 #[test]
@@ -512,13 +605,21 @@ fn test_case_preserved_in_connection_string() {
 
     let output = compose_pack(input).expect("Failed to parse pack");
 
-    let adapter = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
     assert_eq!(
-        adapter.connection,
-        "PostgreSQL://LocalHost:5432/MyDatabase",
+        adapter.connection, "PostgreSQL://LocalHost:5432/MyDatabase",
         "Connection string case should be preserved"
     );
 }
@@ -545,11 +646,23 @@ fn test_case_preserved_in_provider_model() {
 
     let output = compose_pack(input).expect("Failed to parse pack");
 
-    let provider = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
+    let provider = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Provider(p) = d {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
-    assert_eq!(provider.model, "GPT-4-Turbo", "Model case should be preserved");
+    assert_eq!(
+        provider.model, "GPT-4-Turbo",
+        "Model case should be preserved"
+    );
 }
 
 #[test]
@@ -563,15 +676,39 @@ fn test_mixed_case_names() {
     let output = compose_pack(input).expect("Failed to parse pack");
 
     // Verify exact case preservation
-    let adapter = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap();
-    assert_eq!(adapter.name, "oN", "Should preserve 'oN' not normalize to 'on'");
+    assert_eq!(
+        adapter.name, "oN",
+        "Should preserve 'oN' not normalize to 'on'"
+    );
 
-    let provider = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Provider(p) = d { Some(p) } else { None })
+    let provider = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Provider(p) = d {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .unwrap();
-    assert_eq!(provider.name, "OpenAI_Provider", "Should preserve exact case");
+    assert_eq!(
+        provider.name, "OpenAI_Provider",
+        "Should preserve exact case"
+    );
 }
 
 // ============================================================================
@@ -581,11 +718,13 @@ fn test_mixed_case_names() {
 #[test]
 fn test_reject_unknown_field_in_adapter() {
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter test
+        .with_raw_fence(
+            r#"```adapter test
 adapter_type: postgres
 connection: "conn"
 invalid_field: true
-```"#)
+```"#,
+        )
         .build();
 
     let result = compose_pack(input);
@@ -602,11 +741,13 @@ invalid_field: true
 #[test]
 fn test_reject_typo_in_provider_type() {
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```provider test
+        .with_raw_fence(
+            r#"```provider test
 providor_type: openai
 api_key: "key"
 model: "gpt-4"
-```"#)
+```"#,
+        )
         .build();
 
     let result = compose_pack(input);
@@ -621,16 +762,27 @@ model: "gpt-4"
 #[test]
 fn test_name_from_header_only() {
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter my_adapter
+        .with_raw_fence(
+            r#"```adapter my_adapter
 adapter_type: postgres
 connection: "conn"
-```"#)
+```"#,
+        )
         .build();
 
     let output = compose_pack(input).expect("Should parse with header name");
 
-    let adapter = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
     assert_eq!(adapter.name, "my_adapter");
@@ -659,17 +811,28 @@ connection: "conn"
 #[test]
 fn test_name_from_payload_only() {
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter
+        .with_raw_fence(
+            r#"```adapter
 name: my_adapter
 adapter_type: postgres
 connection: "conn"
-```"#)
+```"#,
+        )
         .build();
 
     let output = compose_pack(input).expect("Should parse with payload name");
 
-    let adapter = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
     assert_eq!(adapter.name, "my_adapter");
@@ -679,11 +842,13 @@ connection: "conn"
 fn test_reject_name_conflict() {
     // Name in both header AND payload = error
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter header_name
+        .with_raw_fence(
+            r#"```adapter header_name
 name: payload_name
 adapter_type: postgres
 connection: "conn"
-```"#)
+```"#,
+        )
         .build();
 
     let result = compose_pack(input);
@@ -701,10 +866,12 @@ connection: "conn"
 fn test_reject_missing_name() {
     // No name in header OR payload = error
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter
+        .with_raw_fence(
+            r#"```adapter
 adapter_type: postgres
 connection: "conn"
-```"#)
+```"#,
+        )
         .build();
 
     let result = compose_pack(input);
@@ -749,8 +916,17 @@ fn test_parse_multiple_adapters() {
 
     let output = compose_pack(input).expect("Failed to parse multiple adapters");
 
-    let adapters: Vec<_> = output.ast.definitions.iter()
-        .filter_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapters: Vec<_> = output
+        .ast
+        .definitions
+        .iter()
+        .filter_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .collect();
 
     assert_eq!(adapters.len(), 2, "Should have 2 adapters");
@@ -764,20 +940,32 @@ fn test_parse_mixed_config_types() {
         .with_adapter("db", "postgres", "conn")
         .with_provider("ai", "openai", "env:KEY", "gpt-4")
         .with_policy("cleanup", "scope_close", &["summarize"])
-        .with_memory("notes")  // Add memory for injection to reference
+        .with_memory("notes") // Add memory for injection to reference
         .with_injection("notes", "context", "full", 100)
         .build();
 
     let output = compose_pack(input).expect("Failed to parse mixed configs");
 
     // Verify all 4 types present
-    let has_adapter = output.ast.definitions.iter()
+    let has_adapter = output
+        .ast
+        .definitions
+        .iter()
         .any(|d| matches!(d, Definition::Adapter(_)));
-    let has_provider = output.ast.definitions.iter()
+    let has_provider = output
+        .ast
+        .definitions
+        .iter()
         .any(|d| matches!(d, Definition::Provider(_)));
-    let has_policy = output.ast.definitions.iter()
+    let has_policy = output
+        .ast
+        .definitions
+        .iter()
         .any(|d| matches!(d, Definition::Policy(_)));
-    let has_injection = output.ast.definitions.iter()
+    let has_injection = output
+        .ast
+        .definitions
+        .iter()
         .any(|d| matches!(d, Definition::Injection(_)));
 
     assert!(has_adapter, "Should have adapter");
@@ -801,8 +989,17 @@ fn test_adapter_ordering_deterministic() {
 
     let output = compose_pack(input).expect("Failed to parse");
 
-    let adapter_names: Vec<String> = output.ast.definitions.iter()
-        .filter_map(|d| if let Definition::Adapter(a) = d { Some(a.name.clone()) } else { None })
+    let adapter_names: Vec<String> = output
+        .ast
+        .definitions
+        .iter()
+        .filter_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a.name.clone())
+            } else {
+                None
+            }
+        })
         .collect();
 
     // The output order depends on how they're stored
@@ -822,16 +1019,27 @@ fn test_adapter_ordering_deterministic() {
 fn test_adapter_type_case_insensitive() {
     // adapter_type field is normalized to lowercase during parsing
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter test
+        .with_raw_fence(
+            r#"```adapter test
 adapter_type: PostgreSQL
 connection: "conn"
-```"#)
+```"#,
+        )
         .build();
 
     let output = compose_pack(input).expect("Should parse");
 
-    let adapter = output.ast.definitions.iter()
-        .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
+    let adapter = output
+        .ast
+        .definitions
+        .iter()
+        .find_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a)
+            } else {
+                None
+            }
+        })
         .unwrap();
 
     assert_eq!(adapter.adapter_type, AdapterType::Postgres);
@@ -873,22 +1081,39 @@ fn test_injection_mode_parsing() {
 
     for (mode_str, expected_mode) in modes {
         let input = TestPackBuilder::new()
-            .with_memory("test")  // Add memory for injection to reference
-            .with_raw_fence(&format!(r#"```injection
+            .with_memory("test") // Add memory for injection to reference
+            .with_raw_fence(&format!(
+                r#"```injection
 source: "test"
 target: "test"
 mode: {}
 priority: 100
-```"#, mode_str))
+```"#,
+                mode_str
+            ))
             .build();
 
-        let output = compose_pack(input).unwrap_or_else(|e| panic!("Failed to parse mode '{}': {:?}", mode_str, e));
+        let output = compose_pack(input)
+            .unwrap_or_else(|e| panic!("Failed to parse mode '{}': {:?}", mode_str, e));
 
-        let injection = output.ast.definitions.iter()
-            .find_map(|d| if let Definition::Injection(i) = d { Some(i) } else { None })
+        let injection = output
+            .ast
+            .definitions
+            .iter()
+            .find_map(|d| {
+                if let Definition::Injection(i) = d {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
             .unwrap();
 
-        assert_eq!(injection.mode, expected_mode, "Mode mismatch for {}", mode_str);
+        assert_eq!(
+            injection.mode, expected_mode,
+            "Mode mismatch for {}",
+            mode_str
+        );
     }
 }
 
@@ -917,10 +1142,12 @@ priority: 100
 #[test]
 fn test_malformed_yaml_rejected() {
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```adapter test
+        .with_raw_fence(
+            r#"```adapter test
 adapter_type: postgres
 connection: "unclosed string
-```"#)
+```"#,
+        )
         .build();
 
     let result = compose_pack(input);
@@ -934,9 +1161,11 @@ connection: "unclosed string
 #[test]
 fn test_invalid_fence_kind_rejected() {
     let input = TestPackBuilder::new()
-        .with_raw_fence(r#"```unknown_type test
+        .with_raw_fence(
+            r#"```unknown_type test
 field: value
-```"#)
+```"#,
+        )
         .build();
 
     let result = compose_pack(input);
@@ -955,7 +1184,10 @@ fn test_empty_markdown_valid() {
     let output = compose_pack(input).expect("Empty markdown should be valid");
 
     assert_eq!(output.ast.version, "1.0");
-    assert!(output.ast.definitions.is_empty(), "No configs = empty definitions");
+    assert!(
+        output.ast.definitions.is_empty(),
+        "No configs = empty definitions"
+    );
 }
 
 #[test]
@@ -1002,11 +1234,24 @@ connection: "from_markdown"
 
     let output = compose_pack(input).expect("Should merge TOML and Markdown configs");
 
-    let adapter_names: Vec<String> = output.ast.definitions.iter()
-        .filter_map(|d| if let Definition::Adapter(a) = d { Some(a.name.clone()) } else { None })
+    let adapter_names: Vec<String> = output
+        .ast
+        .definitions
+        .iter()
+        .filter_map(|d| {
+            if let Definition::Adapter(a) = d {
+                Some(a.name.clone())
+            } else {
+                None
+            }
+        })
         .collect();
 
-    assert_eq!(adapter_names.len(), 2, "Should have both TOML and Markdown adapters");
+    assert_eq!(
+        adapter_names.len(),
+        2,
+        "Should have both TOML and Markdown adapters"
+    );
     assert!(adapter_names.contains(&"toml_adapter".to_string()));
     assert!(adapter_names.contains(&"markdown_adapter".to_string()));
 }

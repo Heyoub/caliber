@@ -5,10 +5,7 @@
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    './src/**/*.{html,js,svelte,ts}',
-    '../packages/ui/src/**/*.{svelte,ts}',
-  ],
+  content: ['./src/**/*.{html,js,svelte,ts}', '../packages/ui/src/**/*.{svelte,ts}'],
   darkMode: 'class',
   theme: {
     extend: {
@@ -172,7 +169,7 @@ export default {
         'gradient-x': 'gradient-x 15s ease infinite',
         'gradient-shift': 'gradient-shift 4s linear infinite',
         // Float animations
-        'float': 'float 3s ease-in-out infinite',
+        float: 'float 3s ease-in-out infinite',
         'float-hero': 'float-hero 6s ease-in-out infinite',
         'float-slow': 'float-slow 8s ease-in-out infinite',
         // Spin variations
@@ -188,10 +185,10 @@ export default {
         'spring-in': 'spring-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
         'spring-bounce': 'spring-bounce 0.6s ease-out',
         // Utility animations
-        'shine': 'shine 3s ease-in-out infinite',
-        'shimmer': 'shimmer 2s linear infinite',
-        'wiggle': 'wiggle 0.5s ease-in-out',
-        'shake': 'shake 0.5s ease-in-out',
+        shine: 'shine 3s ease-in-out infinite',
+        shimmer: 'shimmer 2s linear infinite',
+        wiggle: 'wiggle 0.5s ease-in-out',
+        shake: 'shake 0.5s ease-in-out',
         'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
         'typewriter-cursor': 'typewriter-cursor 1s step-end infinite',
       },
@@ -247,7 +244,8 @@ export default {
             textShadow: '0 0 10px var(--glow-color, hsl(175 70% 50%))',
           },
           '50%': {
-            textShadow: '0 0 20px var(--glow-color, hsl(175 70% 50%)), 0 0 40px var(--glow-color, hsl(175 70% 50%))',
+            textShadow:
+              '0 0 20px var(--glow-color, hsl(175 70% 50%)), 0 0 40px var(--glow-color, hsl(175 70% 50%))',
           },
         },
         // Gradient animations
@@ -264,7 +262,7 @@ export default {
           '100%': { backgroundPosition: '100% 100%' },
         },
         // Float animations
-        'float': {
+        float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-10px)' },
         },
@@ -310,20 +308,20 @@ export default {
           '80%': { transform: 'translateY(-2px)' },
         },
         // Utility animations
-        'shine': {
+        shine: {
           '0%': { transform: 'translateX(-100%) skewX(-15deg)' },
           '100%': { transform: 'translateX(200%) skewX(-15deg)' },
         },
-        'shimmer': {
+        shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
-        'wiggle': {
+        wiggle: {
           '0%, 100%': { transform: 'rotate(0deg)' },
           '25%': { transform: 'rotate(-3deg)' },
           '75%': { transform: 'rotate(3deg)' },
         },
-        'shake': {
+        shake: {
           '0%, 100%': { transform: 'translateX(0)' },
           '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-5px)' },
           '20%, 40%, 60%, 80%': { transform: 'translateX(5px)' },
@@ -334,15 +332,15 @@ export default {
         },
       },
       transitionDuration: {
-        '400': '400ms',
-        '600': '600ms',
-        '800': '800ms',
-        '900': '900ms',
+        400: '400ms',
+        600: '600ms',
+        800: '800ms',
+        900: '900ms',
       },
       transitionTimingFunction: {
         'bounce-in': 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
         'bounce-out': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
-        'smooth': 'cubic-bezier(0.4, 0, 0.2, 1)',
+        smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
@@ -354,7 +352,8 @@ export default {
           radial-gradient(at 80% 50%, hsl(165 70% 45% / 0.1) 0px, transparent 50%),
           radial-gradient(at 0% 100%, hsl(270 70% 60% / 0.15) 0px, transparent 50%)
         `,
-        'gradient-brand': 'linear-gradient(135deg, hsl(15 85% 50%), hsl(165 70% 45%), hsl(175 70% 40%), hsl(265 70% 55%))',
+        'gradient-brand':
+          'linear-gradient(135deg, hsl(15 85% 50%), hsl(165 70% 45%), hsl(175 70% 40%), hsl(265 70% 55%))',
         'gradient-calm': 'linear-gradient(135deg, hsl(220 30% 15%), hsl(225 35% 10%))',
       },
       zIndex: {

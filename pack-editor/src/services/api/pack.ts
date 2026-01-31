@@ -32,9 +32,7 @@ export const packApi = {
    * NOTE: Endpoint pending backend implementation
    */
   async getHistory(name: string, limit = 50): Promise<PackHistoryResponse> {
-    return apiRequest(
-      `/api/v1/pack/history?name=${encodeURIComponent(name)}&limit=${limit}`
-    );
+    return apiRequest(`/api/v1/pack/history?name=${encodeURIComponent(name)}&limit=${limit}`);
   },
 
   /**
@@ -50,9 +48,7 @@ export const packApi = {
    * NOTE: Endpoint pending backend implementation
    */
   async diff(fromConfigId: string, toConfigId: string): Promise<PackDiffResponse> {
-    return apiRequest(
-      `/api/v1/pack/diff?from=${fromConfigId}&to=${toConfigId}`
-    );
+    return apiRequest(`/api/v1/pack/diff?from=${fromConfigId}&to=${toConfigId}`);
   },
 
   /**
@@ -78,10 +74,7 @@ export const packApi = {
    * Compose a pack (validate without saving)
    * (Uses existing endpoint)
    */
-  async compose(
-    manifest: string,
-    files: PackSourceFile[]
-  ): Promise<ComposePackResponse> {
+  async compose(manifest: string, files: PackSourceFile[]): Promise<ComposePackResponse> {
     const formData = new FormData();
     formData.append('cal_toml', manifest);
     files.forEach((f) => {

@@ -268,8 +268,10 @@ export function detectFromContent(content: string): FormatInfo {
   }
 
   // Check for JSON
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-      (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
     try {
       JSON.parse(trimmed);
       return { format: 'json', confidence: 0.95, hasFrontmatter: false };
@@ -279,8 +281,10 @@ export function detectFromContent(content: string): FormatInfo {
   }
 
   // Check for XML
-  if (trimmed.startsWith('<?xml') ||
-      (trimmed.startsWith('<') && trimmed.includes('</') && /<\w+[^>]*>/.test(trimmed))) {
+  if (
+    trimmed.startsWith('<?xml') ||
+    (trimmed.startsWith('<') && trimmed.includes('</') && /<\w+[^>]*>/.test(trimmed))
+  ) {
     // Additional checks for XML
     if (trimmed.includes('<!DOCTYPE html') || /<html[\s>]/i.test(trimmed)) {
       return { format: 'html', confidence: 0.95, hasFrontmatter: false };
@@ -290,8 +294,10 @@ export function detectFromContent(content: string): FormatInfo {
 
   // Check for TOML
   // TOML has section headers [section] and key = value pairs
-  if (/^\[[\w.-]+\]\s*$/m.test(trimmed) ||
-      /^[\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|true|false|\d+|\[[\s\S]*?\]|\{[\s\S]*?\})/m.test(trimmed)) {
+  if (
+    /^\[[\w.-]+\]\s*$/m.test(trimmed) ||
+    /^[\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|true|false|\d+|\[[\s\S]*?\]|\{[\s\S]*?\})/m.test(trimmed)
+  ) {
     // Make sure it's not INI (INI has = but usually no typed values)
     const hasTypedValues = /=\s*(?:true|false|\d+\.\d+|\[\s*[^\]]*\]|\{[^}]*\})/m.test(trimmed);
     if (hasTypedValues || /^\[[\w.-]+\]$/m.test(trimmed)) {
@@ -348,26 +354,28 @@ export function detectFromContent(content: string): FormatInfo {
   }
 
   // Check for LaTeX
-  if (trimmed.includes('\\documentclass') ||
-      trimmed.includes('\\begin{document}') ||
-      /\\(?:section|chapter|subsection)\{/.test(trimmed)) {
+  if (
+    trimmed.includes('\\documentclass') ||
+    trimmed.includes('\\begin{document}') ||
+    /\\(?:section|chapter|subsection)\{/.test(trimmed)
+  ) {
     return { format: 'latex', confidence: 0.95, hasFrontmatter: false };
   }
 
   // Check for Markdown indicators
   const markdownIndicators = [
-    /^#{1,6}\s+/m,           // Headers
-    /\*\*[^*]+\*\*/,         // Bold
-    /\*[^*]+\*/,             // Italic
-    /\[[^\]]+\]\([^)]+\)/,   // Links
-    /```[\s\S]*?```/,        // Code blocks
-    /^\s*[-*+]\s+/m,         // Unordered lists
-    /^\s*\d+\.\s+/m,         // Ordered lists
-    /^>\s+/m,                // Blockquotes
-    /!\[[^\]]*\]\([^)]+\)/,  // Images
+    /^#{1,6}\s+/m, // Headers
+    /\*\*[^*]+\*\*/, // Bold
+    /\*[^*]+\*/, // Italic
+    /\[[^\]]+\]\([^)]+\)/, // Links
+    /```[\s\S]*?```/, // Code blocks
+    /^\s*[-*+]\s+/m, // Unordered lists
+    /^\s*\d+\.\s+/m, // Ordered lists
+    /^>\s+/m, // Blockquotes
+    /!\[[^\]]*\]\([^)]+\)/, // Images
   ];
 
-  const markdownMatches = markdownIndicators.filter(pattern => pattern.test(trimmed)).length;
+  const markdownMatches = markdownIndicators.filter((pattern) => pattern.test(trimmed)).length;
   if (markdownMatches >= 2) {
     return { format: 'markdown', confidence: 0.8, hasFrontmatter: false };
   } else if (markdownMatches === 1) {

@@ -190,9 +190,10 @@ expect.extend({
     const pass = received.classList.contains(className);
     return {
       pass,
-      message: () => pass
-        ? `Expected element not to have class "${className}"`
-        : `Expected element to have class "${className}", but it has: ${Array.from(received.classList).join(', ')}`,
+      message: () =>
+        pass
+          ? `Expected element not to have class "${className}"`
+          : `Expected element to have class "${className}", but it has: ${Array.from(received.classList).join(', ')}`,
     };
   },
 
@@ -209,9 +210,10 @@ expect.extend({
 
     return {
       pass: mismatches.length === 0,
-      message: () => mismatches.length === 0
-        ? 'Expected element not to have the specified styles'
-        : `Style mismatches:\n${mismatches.join('\n')}`,
+      message: () =>
+        mismatches.length === 0
+          ? 'Expected element not to have the specified styles'
+          : `Style mismatches:\n${mismatches.join('\n')}`,
     };
   },
 
@@ -219,8 +221,12 @@ expect.extend({
     const issues: string[] = [];
 
     // Check for role
-    if (received.tagName !== 'BUTTON' && received.tagName !== 'A' &&
-        received.tagName !== 'INPUT' && !received.getAttribute('role')) {
+    if (
+      received.tagName !== 'BUTTON' &&
+      received.tagName !== 'A' &&
+      received.tagName !== 'INPUT' &&
+      !received.getAttribute('role')
+    ) {
       issues.push('Missing role attribute');
     }
 
@@ -236,9 +242,10 @@ expect.extend({
 
     return {
       pass: issues.length === 0,
-      message: () => issues.length === 0
-        ? 'Expected element not to be accessible'
-        : `Accessibility issues:\n${issues.join('\n')}`,
+      message: () =>
+        issues.length === 0
+          ? 'Expected element not to be accessible'
+          : `Accessibility issues:\n${issues.join('\n')}`,
     };
   },
 
@@ -246,9 +253,10 @@ expect.extend({
     const ariaLabel = received.getAttribute('aria-label');
     return {
       pass: ariaLabel === label,
-      message: () => ariaLabel === label
-        ? `Expected element not to have aria-label "${label}"`
-        : `Expected aria-label "${label}", got "${ariaLabel}"`,
+      message: () =>
+        ariaLabel === label
+          ? `Expected element not to have aria-label "${label}"`
+          : `Expected aria-label "${label}", got "${ariaLabel}"`,
     };
   },
 
@@ -256,31 +264,33 @@ expect.extend({
     const isFocused = document.activeElement === received;
     return {
       pass: isFocused,
-      message: () => isFocused
-        ? 'Expected element not to be focused'
-        : 'Expected element to be focused',
+      message: () =>
+        isFocused ? 'Expected element not to be focused' : 'Expected element to be focused',
     };
   },
 
   toHaveGlowEffect(received: Element) {
     const classList = Array.from(received.classList);
-    const hasGlow = classList.some(c => c.includes('glow') || c.includes('shadow'));
+    const hasGlow = classList.some((c) => c.includes('glow') || c.includes('shadow'));
     return {
       pass: hasGlow,
-      message: () => hasGlow
-        ? 'Expected element not to have glow effect'
-        : 'Expected element to have glow effect (glow-* or shadow-* class)',
+      message: () =>
+        hasGlow
+          ? 'Expected element not to have glow effect'
+          : 'Expected element to have glow effect (glow-* or shadow-* class)',
     };
   },
 
   toBeInteractive(received: Element) {
-    const isDisabled = received.getAttribute('disabled') !== null ||
-                       received.getAttribute('aria-disabled') === 'true';
+    const isDisabled =
+      received.getAttribute('disabled') !== null ||
+      received.getAttribute('aria-disabled') === 'true';
     return {
       pass: !isDisabled,
-      message: () => !isDisabled
-        ? 'Expected element to be disabled'
-        : 'Expected element to be interactive (not disabled)',
+      message: () =>
+        !isDisabled
+          ? 'Expected element to be disabled'
+          : 'Expected element to be interactive (not disabled)',
     };
   },
 });
@@ -302,11 +312,11 @@ export function mockStore<T>(initialValue: T) {
     }),
     set: vi.fn((newValue: T) => {
       value = newValue;
-      subscribers.forEach(cb => cb(value));
+      subscribers.forEach((cb) => cb(value));
     }),
     update: vi.fn((updater: (v: T) => T) => {
       value = updater(value);
-      subscribers.forEach(cb => cb(value));
+      subscribers.forEach((cb) => cb(value));
     }),
     get: () => value,
   };
@@ -352,11 +362,15 @@ export function mockTimer() {
 
 /** Wait for component to update after state change */
 export async function tick(): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /** Simulate keyboard event */
-export function simulateKeyboard(element: Element, key: string, options?: Partial<KeyboardEventInit>) {
+export function simulateKeyboard(
+  element: Element,
+  key: string,
+  options?: Partial<KeyboardEventInit>
+) {
   const event = new KeyboardEvent('keydown', {
     key,
     bubbles: true,

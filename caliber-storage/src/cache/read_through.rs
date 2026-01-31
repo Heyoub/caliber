@@ -385,7 +385,10 @@ mod tests {
             _tenant_id: Uuid,
         ) -> CaliberResult<Option<(T, chrono::DateTime<Utc>)>> {
             // For testing, always return None (cache miss)
-            let mut stats = self.stats.write().expect("test lock should not be poisoned");
+            let mut stats = self
+                .stats
+                .write()
+                .expect("test lock should not be poisoned");
             stats.misses += 1;
             Ok(None)
         }
@@ -428,7 +431,11 @@ mod tests {
         }
 
         async fn stats(&self) -> CaliberResult<super::super::traits::CacheStats> {
-            Ok(self.stats.read().expect("test lock should not be poisoned").clone())
+            Ok(self
+                .stats
+                .read()
+                .expect("test lock should not be poisoned")
+                .clone())
         }
     }
 
@@ -459,7 +466,12 @@ mod tests {
             entity_id: Uuid,
             _tenant_id: Uuid,
         ) -> CaliberResult<Option<Artifact>> {
-            Ok(self.artifacts.read().expect("test lock should not be poisoned").get(&entity_id).cloned())
+            Ok(self
+                .artifacts
+                .read()
+                .expect("test lock should not be poisoned")
+                .get(&entity_id)
+                .cloned())
         }
     }
 

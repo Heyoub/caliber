@@ -761,4 +761,3 @@ impl ErrorCollector {
         })
     }
 }
-

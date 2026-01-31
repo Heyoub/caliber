@@ -3,12 +3,12 @@ export default {
   darkMode: 'class',
   content: [
     './src/**/*.{astro,html,js,jsx,md,mdx,svelte,ts,tsx,vue}',
-    './node_modules/@astrojs/*/dist/**/*.astro'
+    './node_modules/@astrojs/*/dist/**/*.astro',
   ],
   theme: {
     screens: {
-      'sm': '640px',
-      'md': '768px',
+      sm: '640px',
+      md: '768px',
       '2xl': '1536px',
     },
     extend: {
@@ -105,16 +105,18 @@ export default {
         },
         // Emi App Theme Colors
         'emi-primary': '#4FD1C5', // Matches dropdown border color (bright teal)
-        'emi-accent': '#5ad5c0',  // Existing accent
+        'emi-accent': '#5ad5c0', // Existing accent
         'emi-bg-dark': '#1a2e35', // Matches dropdown background (dark desaturated cyan)
       },
       backgroundImage: {
         'gradient-brand': 'linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))',
-        'gradient-calm': 'linear-gradient(135deg, hsl(240, 6%, 96%), hsl(280, 60%, 91%) 65%, hsl(0, 60%, 91%) 100%)',
+        'gradient-calm':
+          'linear-gradient(135deg, hsl(240, 6%, 96%), hsl(280, 60%, 91%) 65%, hsl(0, 60%, 91%) 100%)',
         'gradient-focus': 'linear-gradient(135deg, hsl(215, 50%, 96%), hsl(190, 90%, 94%) 100%)',
         'gradient-ownership': 'linear-gradient(135deg, hsl(215, 50%, 96%), hsl(0, 100%, 97%) 100%)',
         'gradient-mint': 'linear-gradient(135deg, hsl(215, 50%, 96%), hsl(165, 65%, 95%) 100%)',
-        'radial-brand': 'radial-gradient(circle, hsl(0, 90%, 75%) 0%, hsl(165, 65%, 65%) 50%, hsl(190, 92%, 45%) 75%, hsl(280, 45%, 65%) 100%)',
+        'radial-brand':
+          'radial-gradient(circle, hsl(0, 90%, 75%) 0%, hsl(165, 65%, 65%) 50%, hsl(190, 92%, 45%) 75%, hsl(280, 45%, 65%) 100%)',
       },
       textShadow: {
         none: 'none',
@@ -130,10 +132,14 @@ export default {
       },
       backgroundImage: {
         'gradient-brand': 'linear-gradient(90deg, var(--tw-gradient-from), var(--tw-gradient-to))',
-        'gradient-calm': 'linear-gradient(135deg, theme("colors.calm.gray"), theme("colors.calm.lavender") 65%, theme("colors.calm.coral") 100%)',
-        'gradient-focus': 'linear-gradient(135deg, theme("colors.navy.50"), theme("colors.teal.50") 100%)',
-        'gradient-ownership': 'linear-gradient(135deg, theme("colors.navy.50"), theme("colors.coral.50") 100%)',
-        'gradient-mint': 'linear-gradient(135deg, theme("colors.navy.50"), theme("colors.mint.50") 100%)',
+        'gradient-calm':
+          'linear-gradient(135deg, theme("colors.calm.gray"), theme("colors.calm.lavender") 65%, theme("colors.calm.coral") 100%)',
+        'gradient-focus':
+          'linear-gradient(135deg, theme("colors.navy.50"), theme("colors.teal.50") 100%)',
+        'gradient-ownership':
+          'linear-gradient(135deg, theme("colors.navy.50"), theme("colors.coral.50") 100%)',
+        'gradient-mint':
+          'linear-gradient(135deg, theme("colors.navy.50"), theme("colors.mint.50") 100%)',
       },
       animation: {
         'gradient-shift': 'gradientShift 15s ease infinite',
@@ -146,27 +152,27 @@ export default {
           '50%': { backgroundPosition: '100% 50%' },
         },
         blobMove: {
-          '0%, 100%': { 
+          '0%, 100%': {
             backgroundPosition: '0% 50%',
             transform: 'scale(1)',
           },
-          '50%': { 
+          '50%': {
             backgroundPosition: '100% 50%',
             transform: 'scale(1.2)',
           },
         },
         pulseGlow: {
-          '0%, 100%': { 
+          '0%, 100%': {
             boxShadow: 'var(--tw-shadow)',
             transform: 'scale(1)',
           },
-          '50%': { 
+          '50%': {
             boxShadow: 'var(--tw-shadow-colored)',
             transform: 'scale(1.02)',
           },
         },
       },
-    }
+    },
   },
   plugins: [],
 };

@@ -15,11 +15,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html', 'lcov'],
       reportsDirectory: './coverage',
       include: ['src/**/*.{ts,svelte}'],
-      exclude: [
-        'src/**/*.d.ts',
-        'src/**/index.ts',
-        'node_modules/**',
-      ],
+      exclude: ['src/**/*.d.ts', 'src/**/index.ts', 'node_modules/**'],
       thresholds: {
         lines: 80,
         functions: 80,
@@ -45,7 +41,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '$lib': resolve('./src/lib'),
+      $lib: resolve('./src/lib'),
       '@caliber/ui': resolve('../packages/ui/src'),
     },
   },

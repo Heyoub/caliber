@@ -559,7 +559,10 @@ pub fn create_api_router_unauthenticated(
     webhooks::start_webhook_delivery_task(webhook_state.clone());
 
     let graphql_schema = graphql::create_schema(db.clone(), ws.clone());
-    let billing_state = Arc::new(billing::BillingState::new(db.clone(), endpoints_config.clone()));
+    let billing_state = Arc::new(billing::BillingState::new(
+        db.clone(),
+        endpoints_config.clone(),
+    ));
     let mcp_state = Arc::new(mcp::McpState::new(db.clone(), ws.clone()));
     let event_dag = Arc::new(caliber_storage::InMemoryEventDag::new());
 

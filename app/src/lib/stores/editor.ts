@@ -51,7 +51,10 @@ function createEditorStore() {
     /**
      * Open a file in the editor
      */
-    openFile: (file: Omit<FileDescriptor, 'isDirty' | 'isLoading'> & Partial<Pick<FileDescriptor, 'isDirty' | 'isLoading'>>) => {
+    openFile: (
+      file: Omit<FileDescriptor, 'isDirty' | 'isLoading'> &
+        Partial<Pick<FileDescriptor, 'isDirty' | 'isLoading'>>
+    ) => {
       update((state) => {
         // Check if file is already open
         const existingIndex = state.openFiles.findIndex((f) => f.path === file.path);
@@ -127,9 +130,7 @@ function createEditorStore() {
         return {
           ...state,
           activeFile: updatedFile,
-          openFiles: state.openFiles.map((f) =>
-            f.path === updatedFile.path ? updatedFile : f
-          ),
+          openFiles: state.openFiles.map((f) => (f.path === updatedFile.path ? updatedFile : f)),
         };
       });
     },
@@ -294,6 +295,7 @@ export const viewMode = derived(editorStore, ($editor) => $editor.viewMode);
 export const hasDirtyFiles = derived(editorStore, ($editor) =>
   $editor.openFiles.some((f) => f.isDirty)
 );
-export const dirtyFileCount = derived(editorStore, ($editor) =>
-  $editor.openFiles.filter((f) => f.isDirty).length
+export const dirtyFileCount = derived(
+  editorStore,
+  ($editor) => $editor.openFiles.filter((f) => f.isDirty).length
 );

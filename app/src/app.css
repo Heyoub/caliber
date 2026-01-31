@@ -4,7 +4,7 @@
  */
 
 /* Import design tokens from shared UI package */
-@import '@caliber/ui/tokens';
+@import "@caliber/ui/tokens";
 
 /* Base reset and app styles */
 *,

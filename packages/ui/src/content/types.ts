@@ -92,12 +92,15 @@ export type CommonContentPath =
 /**
  * Full content path with namespace
  */
-export type ContentPath<N extends ContentNamespace = ContentNamespace> =
-  N extends 'landing' ? `landing.${LandingContentPath}` :
-  N extends 'dashboard' ? `dashboard.${DashboardContentPath}` :
-  N extends 'editor' ? `editor.${EditorContentPath}` :
-  N extends 'common' ? `common.${CommonContentPath}` :
-  never;
+export type ContentPath<N extends ContentNamespace = ContentNamespace> = N extends 'landing'
+  ? `landing.${LandingContentPath}`
+  : N extends 'dashboard'
+    ? `dashboard.${DashboardContentPath}`
+    : N extends 'editor'
+      ? `editor.${EditorContentPath}`
+      : N extends 'common'
+        ? `common.${CommonContentPath}`
+        : never;
 
 // ============================================================================
 // ASSET TYPES
@@ -421,24 +424,26 @@ export interface ContentStore {
 /**
  * Extract the type at a given path in an object
  */
-export type PathValue<T, P extends string> =
-  P extends `${infer K}.${infer Rest}`
-    ? K extends keyof T
-      ? PathValue<T[K], Rest>
-      : never
-    : P extends keyof T
-      ? T[P]
-      : never;
+export type PathValue<T, P extends string> = P extends `${infer K}.${infer Rest}`
+  ? K extends keyof T
+    ? PathValue<T[K], Rest>
+    : never
+  : P extends keyof T
+    ? T[P]
+    : never;
 
 /**
  * Get content value type for a given path
  */
-export type ContentValue<P extends string> =
-  P extends `landing.${infer Rest}` ? PathValue<LandingContent, Rest> :
-  P extends `dashboard.${infer Rest}` ? PathValue<DashboardContent, Rest> :
-  P extends `editor.${infer Rest}` ? PathValue<EditorContent, Rest> :
-  P extends `common.${infer Rest}` ? PathValue<CommonContent, Rest> :
-  never;
+export type ContentValue<P extends string> = P extends `landing.${infer Rest}`
+  ? PathValue<LandingContent, Rest>
+  : P extends `dashboard.${infer Rest}`
+    ? PathValue<DashboardContent, Rest>
+    : P extends `editor.${infer Rest}`
+      ? PathValue<EditorContent, Rest>
+      : P extends `common.${infer Rest}`
+        ? PathValue<CommonContent, Rest>
+        : never;
 
 /**
  * Type guard for content key validation
