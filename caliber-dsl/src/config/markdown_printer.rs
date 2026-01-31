@@ -280,13 +280,6 @@ fn lifecycle_to_string(l: &Lifecycle) -> String {
     }
 }
 
-fn trigger_to_string(t: &Trigger) -> &'static str {
-    match t {
-        Trigger::TaskStart => "task_start",
-        Trigger::TaskEnd => "task_end",
-        Trigger::ScopeClose => "scope_close",
-        Trigger::TurnEnd => "turn_end",
-        Trigger::Manual => "manual",
 fn trigger_to_string(t: &Trigger) -> String {
     match t {
         Trigger::TaskStart => "task_start".to_string(),
@@ -295,8 +288,6 @@ fn trigger_to_string(t: &Trigger) -> String {
         Trigger::TurnEnd => "turn_end".to_string(),
         Trigger::Manual => "manual".to_string(),
         Trigger::Schedule(s) => format!("schedule:{}", s),
-    }
-}
     }
 }
 

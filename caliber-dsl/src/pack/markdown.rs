@@ -156,7 +156,7 @@ fn parse_markdown(
         if let Some(block) = &mut in_block {
             if line.trim_start().starts_with("```") {
                 // close
-                let finished = in_block.take().unwrap();
+                let finished = in_block.take().expect("in_block verified as Some above");
                 if let Section::User = section {
                     if let Some(u) = &mut current_user {
                         u.blocks.push(finished);

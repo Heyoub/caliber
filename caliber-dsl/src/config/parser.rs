@@ -770,7 +770,7 @@ connection: "postgresql://localhost/test"
         let result = parse_adapter_block(Some("postgres_main".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
 
-        let adapter = result.unwrap();
+        let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "postgres_main");
         assert_eq!(adapter.adapter_type, AdapterType::Postgres);
         assert_eq!(adapter.connection, "postgresql://localhost/test");
@@ -786,7 +786,7 @@ connection: "postgresql://localhost/test"
         let result = parse_adapter_block(None, yaml);
         assert!(result.is_ok(), "Failed to parse adapter: {:?}", result.err());
 
-        let adapter = result.unwrap();
+        let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "postgres_main");
     }
 
@@ -855,7 +855,7 @@ connection: "PostgreSQL://LocalHost/Test"
         let result = parse_adapter_block(Some("MyAdapter".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let adapter = result.unwrap();
+        let adapter = result.expect("adapter parsing verified above");
         assert_eq!(adapter.name, "MyAdapter");
         // Note: adapter_type is normalized to lowercase in parsing, but connection preserves case
         assert_eq!(adapter.connection, "PostgreSQL://LocalHost/Test");
@@ -871,7 +871,7 @@ model: "gpt-4"
         let result = parse_provider_block(Some("my_provider".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let provider = result.unwrap();
+        let provider = result.expect("provider parsing verified above");
         assert_eq!(provider.name, "my_provider");
         assert_eq!(provider.provider_type, ProviderType::OpenAI);
         match provider.api_key {
@@ -903,7 +903,7 @@ priority: 100
         let result = parse_injection_block(None, yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let injection = result.unwrap();
+        let injection = result.expect("injection parsing verified above");
         assert_eq!(injection.mode, InjectionMode::Full);
         assert_eq!(injection.priority, 100);
     }
@@ -921,7 +921,7 @@ default_freshness:
         let result = parse_cache_block(Some("main".to_string()), yaml);
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 
-        let cache = result.unwrap();
+        let cache = result.expect("cache parsing verified above");
         match cache.default_freshness {
             FreshnessDef::BestEffort { max_staleness } => {
                 assert_eq!(max_staleness, "60s");

@@ -28,6 +28,7 @@ use caliber_core::{
     Edge, EdgeType, EmbeddingVector, EntityIdType, EntityType, Note, NoteId, Scope, StorageError,
     Trajectory, TrajectoryStatus, Turn,
 };
+// CaliberError and StorageError are used for proper error handling of lock operations
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -218,38 +219,77 @@ impl MockStorage {
     }
 
     /// Clear all stored data.
-    pub fn clear(&self) {
-        self.trajectories.write().unwrap().clear();
-        self.scopes.write().unwrap().clear();
-        self.artifacts.write().unwrap().clear();
-        self.notes.write().unwrap().clear();
-        self.turns.write().unwrap().clear();
-        self.edges.write().unwrap().clear();
+    pub fn clear(&self) -> CaliberResult<()> {
+        self.trajectories
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        self.scopes
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        self.artifacts
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        self.notes
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        self.turns
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        self.edges
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        Ok(())
     }
 
     /// Get count of stored trajectories.
-    pub fn trajectory_count(&self) -> usize {
-        self.trajectories.read().unwrap().len()
+    pub fn trajectory_count(&self) -> CaliberResult<usize> {
+        Ok(self
+            .trajectories
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .len())
     }
 
     /// Get count of stored scopes.
-    pub fn scope_count(&self) -> usize {
-        self.scopes.read().unwrap().len()
+    pub fn scope_count(&self) -> CaliberResult<usize> {
+        Ok(self
+            .scopes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .len())
     }
 
     /// Get count of stored artifacts.
-    pub fn artifact_count(&self) -> usize {
-        self.artifacts.read().unwrap().len()
+    pub fn artifact_count(&self) -> CaliberResult<usize> {
+        Ok(self
+            .artifacts
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .len())
     }
 
     /// Get count of stored notes.
-    pub fn note_count(&self) -> usize {
-        self.notes.read().unwrap().len()
+    pub fn note_count(&self) -> CaliberResult<usize> {
+        Ok(self
+            .notes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .len())
     }
 
     /// Get count of stored edges (Battle Intel Feature 1).
-    pub fn edge_count(&self) -> usize {
-        self.edges.read().unwrap().len()
+    pub fn edge_count(&self) -> CaliberResult<usize> {
+        Ok(self
+            .edges
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .len())
     }
 }
 
@@ -257,7 +297,10 @@ impl StorageTrait for MockStorage {
     // === Trajectory Operations ===
 
     fn trajectory_insert(&self, t: &Trajectory) -> CaliberResult<()> {
-        let mut trajectories = self.trajectories.write().unwrap();
+        let mut trajectories = self
+            .trajectories
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         if trajectories.contains_key(&t.trajectory_id.as_uuid()) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Trajectory,
@@ -269,12 +312,18 @@ impl StorageTrait for MockStorage {
     }
 
     fn trajectory_get(&self, id: Uuid) -> CaliberResult<Option<Trajectory>> {
-        let trajectories = self.trajectories.read().unwrap();
+        let trajectories = self
+            .trajectories
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(trajectories.get(&id).cloned())
     }
 
     fn trajectory_update(&self, id: Uuid, update: TrajectoryUpdate) -> CaliberResult<()> {
-        let mut trajectories = self.trajectories.write().unwrap();
+        let mut trajectories = self
+            .trajectories
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         let trajectory =
             trajectories
                 .get_mut(&id)
@@ -298,7 +347,10 @@ impl StorageTrait for MockStorage {
         &self,
         status: TrajectoryStatus,
     ) -> CaliberResult<Vec<Trajectory>> {
-        let trajectories = self.trajectories.read().unwrap();
+        let trajectories = self
+            .trajectories
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(trajectories
             .values()
             .filter(|t| t.status == status)
@@ -309,7 +361,10 @@ impl StorageTrait for MockStorage {
     // === Scope Operations ===
 
     fn scope_insert(&self, s: &Scope) -> CaliberResult<()> {
-        let mut scopes = self.scopes.write().unwrap();
+        let mut scopes = self
+            .scopes
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         if scopes.contains_key(&s.scope_id.as_uuid()) {
             return Err(CaliberError::Storage(StorageError::InsertFailed {
                 entity_type: EntityType::Scope,
@@ -321,12 +376,18 @@ impl StorageTrait for MockStorage {
     }
 
     fn scope_get(&self, id: Uuid) -> CaliberResult<Option<Scope>> {
-        let scopes = self.scopes.read().unwrap();
+        let scopes = self
+            .scopes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(scopes.get(&id).cloned())
     }
 
     fn scope_get_current(&self, trajectory_id: Uuid) -> CaliberResult<Option<Scope>> {
-        let scopes = self.scopes.read().unwrap();
+        let scopes = self
+            .scopes
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         Ok(scopes
             .values()
             .filter(|s| s.trajectory_id.as_uuid() == trajectory_id && s.is_active)
@@ -335,7 +396,10 @@ impl StorageTrait for MockStorage {
     }
 
     fn scope_update(&self, id: Uuid, update: ScopeUpdate) -> CaliberResult<()> {
-        let mut scopes = self.scopes.write().unwrap();
+        let mut scopes = self
+            .scopes
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
         let scope = scopes
             .get_mut(&id)
             .ok_or(CaliberError::Storage(StorageError::NotFound {

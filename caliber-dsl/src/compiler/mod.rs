@@ -1439,23 +1439,23 @@ mod tests {
     #[test]
     fn test_parse_duration() {
         assert_eq!(
-            DslCompiler::parse_duration("30s").unwrap(),
+            DslCompiler::parse_duration("30s").expect("valid duration '30s'"),
             Duration::from_secs(30)
         );
         assert_eq!(
-            DslCompiler::parse_duration("5m").unwrap(),
+            DslCompiler::parse_duration("5m").expect("valid duration '5m'"),
             Duration::from_secs(300)
         );
         assert_eq!(
-            DslCompiler::parse_duration("1h").unwrap(),
+            DslCompiler::parse_duration("1h").expect("valid duration '1h'"),
             Duration::from_secs(3600)
         );
         assert_eq!(
-            DslCompiler::parse_duration("100ms").unwrap(),
+            DslCompiler::parse_duration("100ms").expect("valid duration '100ms'"),
             Duration::from_millis(100)
         );
         assert_eq!(
-            DslCompiler::parse_duration("1d").unwrap(),
+            DslCompiler::parse_duration("1d").expect("valid duration '1d'"),
             Duration::from_secs(86400)
         );
     }
@@ -1463,7 +1463,7 @@ mod tests {
     #[test]
     fn test_duplicate_detection() {
         let mut registry = NameRegistry::default();
-        registry.register("adapter", "pg").unwrap();
+        registry.register("adapter", "pg").expect("first registration should succeed");
         let err = registry.register("adapter", "pg").unwrap_err();
         assert!(matches!(err, CompileError::DuplicateDefinition { .. }));
     }

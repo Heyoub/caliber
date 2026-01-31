@@ -690,80 +690,90 @@ mod tests {
     #[test]
     fn test_ttl_persistent_serde_roundtrip() {
         let original = TTL::Persistent;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_session_serde_roundtrip() {
         let original = TTL::Session;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_scope_serde_roundtrip() {
         let original = TTL::Scope;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_duration_serde_roundtrip() {
         let original = TTL::Duration(3600000);
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_ephemeral_serde_roundtrip() {
         let original = TTL::Ephemeral;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_max_serde_roundtrip() {
         let original = TTL::Max(1000);
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_short_term_serde_roundtrip() {
         let original = TTL::ShortTerm;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_medium_term_serde_roundtrip() {
         let original = TTL::MediumTerm;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_long_term_serde_roundtrip() {
         let original = TTL::LongTerm;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_ttl_permanent_serde_roundtrip() {
         let original = TTL::Permanent;
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: TTL = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: TTL =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
@@ -791,8 +801,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: EntityType = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: EntityType =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored, "Failed for {:?}", original);
         }
     }
@@ -811,8 +823,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: TrajectoryStatus = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: TrajectoryStatus =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -832,8 +846,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: AgentStatus = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: AgentStatus =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -866,8 +882,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: ArtifactType = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: ArtifactType =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -890,8 +908,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: ExtractionMethod = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: ExtractionMethod =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -917,8 +937,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: NoteType = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: NoteType =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -943,8 +965,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: EdgeType = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: EdgeType =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -962,8 +986,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: AbstractionLevel = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: AbstractionLevel =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -981,8 +1007,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: EvolutionPhase = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: EvolutionPhase =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1002,8 +1030,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: SummarizationTrigger = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: SummarizationTrigger =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1024,8 +1054,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: MemoryCategory = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: MemoryCategory =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1044,8 +1076,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: TurnRole = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: TurnRole =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1063,8 +1097,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: OutcomeStatus = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: OutcomeStatus =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1086,8 +1122,10 @@ mod tests {
         ];
 
         for original in variants {
-            let json = serde_json::to_string(&original).unwrap();
-            let restored: FieldType = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&original).expect("JSON serialization should succeed");
+            let restored: FieldType =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(original, restored);
         }
     }
@@ -1097,8 +1135,9 @@ mod tests {
         let original = FieldType::Embedding {
             dimensions: Some(1536),
         };
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: FieldType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: FieldType =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
@@ -1107,16 +1146,18 @@ mod tests {
         let original = FieldType::Enum {
             variants: vec!["A".to_string(), "B".to_string(), "C".to_string()],
         };
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: FieldType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: FieldType =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 
     #[test]
     fn test_field_type_array_serde_roundtrip() {
         let original = FieldType::Array(Box::new(FieldType::Text));
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: FieldType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+        let restored: FieldType =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(original, restored);
     }
 

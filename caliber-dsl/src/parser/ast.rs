@@ -711,7 +711,12 @@ impl ErrorCollector {
         }
 
         if self.errors.len() == 1 {
-            return Some(self.errors.into_iter().next().unwrap());
+            return Some(
+                self.errors
+                    .into_iter()
+                    .next()
+                    .expect("length verified as 1"),
+            );
         }
 
         // Multiple errors: create combined message

@@ -4,8 +4,8 @@
 //! suitable for unit tests and development scenarios.
 
 use caliber_core::{
-    DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect, Event, EventDag, EventFlags,
-    EventId, EventKind, UpstreamSignal,
+    CaliberError, CaliberResult, DagPosition, DomainError, DomainErrorContext, Effect, ErrorEffect,
+    Event, EventDag, EventFlags, EventId, EventKind, OperationalError, StorageError, UpstreamSignal,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -44,20 +44,38 @@ impl<P: Clone + Send + Sync> InMemoryEventDag<P> {
     }
 
     /// Get the number of events in the DAG.
-    pub fn len(&self) -> usize {
-        self.events.read().unwrap().len()
+    pub fn len(&self) -> CaliberResult<usize> {
+        let events = self
+            .events
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
+        Ok(events.len())
     }
 
     /// Check if the DAG is empty.
-    pub fn is_empty(&self) -> bool {
-        self.events.read().unwrap().is_empty()
+    pub fn is_empty(&self) -> CaliberResult<bool> {
+        let events = self
+            .events
+            .read()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?;
+        Ok(events.is_empty())
     }
 
     /// Clear all events from the DAG.
-    pub fn clear(&self) {
-        self.events.write().unwrap().clear();
-        self.acknowledged.write().unwrap().clear();
-        *self.next_sequence.write().unwrap() = 0;
+    pub fn clear(&self) -> CaliberResult<()> {
+        self.events
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        self.acknowledged
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))?
+            .clear();
+        *self
+            .next_sequence
+            .write()
+            .map_err(|_| CaliberError::Storage(StorageError::LockPoisoned))? = 0;
+        Ok(())
     }
 }
 
@@ -82,8 +100,22 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     type Payload = P;
 
     async fn append(&self, mut event: Event<Self::Payload>) -> Effect<EventId> {
-        let mut events = self.events.write().unwrap();
-        let mut seq = self.next_sequence.write().unwrap();
+        let mut events = match self.events.write() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
+        let mut seq = match self.next_sequence.write() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: next_sequence".to_string(),
+                }))
+            }
+        };
 
         // Assign a new ID if not already set (ID is zero)
         if event.header.event_id == Uuid::nil() {
@@ -100,7 +132,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
     }
 
     async fn read(&self, event_id: EventId) -> Effect<Event<Self::Payload>> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
         match events.get(&event_id) {
             Some(event) => Effect::Ok(event.clone()),
             None => Effect::Err(ErrorEffect::Domain(Box::new(DomainErrorContext {
@@ -120,7 +159,14 @@ impl<P: Clone + Send + Sync + 'static> EventDag for InMemoryEventDag<P> {
         from: EventId,
         limit: usize,
     ) -> Effect<Vec<Event<Self::Payload>>> {
-        let events = self.events.read().unwrap();
+        let events = match self.events.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return Effect::Err(ErrorEffect::Operational(OperationalError::Internal {
+                    message: "Lock poisoned: events".to_string(),
+                }))
+            }
+        };
 
         // First verify the starting event exists
         if !events.contains_key(&from) {
