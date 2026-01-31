@@ -270,17 +270,16 @@ pub struct PermissionMatrixConfig {
 /// # Examples
 ///
 /// ```
-/// #[test]
-/// fn parse_with_header_name() {
-///     let header = Some("my_adapter".to_string());
-///     let yaml = r#"
+/// use caliber_dsl::config::parser::parse_adapter_block;
+///
+/// let header = Some("my_adapter".to_string());
+/// let yaml = r#"
 /// adapter_type: "postgres"
 /// connection: "postgres://user:pass@localhost/db"
 /// options: []
 /// "#;
-///     let def = parse_adapter_block(header, yaml).expect("should parse");
-///     assert_eq!(def.name, "my_adapter");
-/// }
+/// let def = parse_adapter_block(header, yaml).expect("should parse");
+/// assert_eq!(def.name, "my_adapter");
 /// ```
 pub fn parse_adapter_block(
     header_name: Option<String>,
