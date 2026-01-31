@@ -23,7 +23,6 @@ use crate::{
 };
 use caliber_dsl::pack::{compose_pack as compose_pack_internal, PackInput, PackMarkdownFile};
 use caliber_dsl::pretty_printer::pretty_print;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 // Use shared parse_markdown_source from utils

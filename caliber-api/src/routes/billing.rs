@@ -309,7 +309,7 @@ pub async fn create_checkout(
     // Call LemonSqueezy API to create checkout
     let response = state
         .http_client
-        .post(&state.checkouts_url())
+        .post(state.checkouts_url())
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/vnd.api+json")
         .json(&checkout_data)
@@ -381,7 +381,7 @@ pub async fn get_portal_url(
     // Get customer portal URL from LemonSqueezy
     let response = state
         .http_client
-        .get(&state.customer_url(&customer_id))
+        .get(state.customer_url(&customer_id))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await

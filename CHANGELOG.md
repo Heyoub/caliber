@@ -8,6 +8,26 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 ## [Unreleased] (pre-0.6.0)
 
+### Changed
+
+#### Technical Debt Cleanup (v0.4.7)
+- **unwrap() conversion**: Converted 400+ unwrap() calls to proper error handling
+  - caliber-storage: 136 unwraps → proper Result propagation with StorageError::LockPoisoned
+  - caliber-core: Lock/conversion unwraps → CaliberError variants
+  - caliber-dsl: Parser safety improvements with expect() messages
+  - caliber-pg: Verified all 208 unwraps are in test code only (0 in production)
+- **Property test generators fixed**: Updated markdown_property_tests.rs to match new schema formats
+  - Action printing now uses YAML format (`type: summarize, target: X`)
+  - Injection mode uses colon format (`topk:5` vs `topk(5)`)
+  - Memory-injection pairing ensures valid ASTs (injections reference existing memories)
+  - Definition comparison by name instead of order for deterministic round-trips
+- **Config refactor**: Made hardcoded values configurable via environment variables
+  - EndpointsConfig: API base URL, domain, docs URL, third-party service URLs
+  - ContextConfig: Token budgets, max notes/artifacts/turns/summaries
+  - WebhookConfig: Signature tolerance settings
+  - IdempotencySettings: TTL, max body size, require key
+  - All with sensible defaults and from_env() constructors
+
 ### Removed
 
 #### TUI Removal (v0.4.6)

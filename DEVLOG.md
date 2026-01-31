@@ -72,6 +72,66 @@ The Markdown refactor replaces a custom parser with standard tooling:
 - `docs/TUI_ENDPOINT_COVERAGE.md`
 - DSL lexer/parser modules (~3,762 lines, replaced by Markdown)
 
+### January 31, 2026 — Technical Debt Cleanup (v0.4.7)
+
+**Completed:**
+
+- ✅ **unwrap() conversion**: Converted 400+ unwrap() calls to proper error handling
+  - caliber-storage: 136 unwraps → Result propagation with StorageError::LockPoisoned
+  - caliber-core: Lock/conversion unwraps → CaliberError variants
+  - caliber-dsl: Parser safety with expect() messages for clarity
+  - caliber-pg: Audited all 208 unwraps — ALL in test code (#[pg_test] or #[test])
+  - Production heap functions verified to have 0 unwraps
+
+- ✅ **Property test generators fixed**: Updated markdown_property_tests.rs
+  - Action printing now uses YAML format (`type: summarize, target: X`)
+  - Injection mode format: `topk:5` instead of `topk(5)`
+  - Added memory-injection pairing (injections must reference existing memories)
+  - Definition comparison by name instead of positional order
+  - All 7 property tests now passing
+
+- ✅ **Config refactor**: Hardcoded values → environment variables
+  - EndpointsConfig: CALIBER_API_BASE_URL, CALIBER_DOMAIN, CALIBER_DOCS_URL
+  - ContextConfig: Token budgets, max notes/artifacts/turns/summaries
+  - WebhookConfig: Signature tolerance settings
+  - IdempotencySettings: TTL, max body size, require key
+  - constants.rs: Centralized defaults for all magic numbers
+  - All configs have from_env() constructors with sensible defaults
+
+- ✅ **Manifest wiring fixes**: Pack agent config now propagates all fields
+  - profile, adapter, format, token_budget, enabled fields wired through
+  - Validation for adapter/format references against manifest
+  - Profile inheritance for format when not specified on agent
+
+**Files Modified:**
+
+| File | Changes |
+|------|---------|
+| caliber-storage/src/lib.rs | 102 unwraps → proper error handling |
+| caliber-storage/src/event_dag.rs | 34 unwraps converted |
+| caliber-core/src/lock.rs | Lock unwraps → Result |
+| caliber-dsl/src/config/markdown_printer.rs | action_to_yaml(), injection_mode fixes |
+| caliber-dsl/tests/markdown_property_tests.rs | Generator updates, memory pairing |
+| caliber-api/src/config.rs | EndpointsConfig, ContextConfig, WebhookConfig |
+| caliber-api/src/constants.rs | Centralized default values |
+| caliber-api/src/routes/mod.rs | Config loading and AppState wiring |
+
+**Commits:**
+
+- `19afc67` - fix: property test generators and markdown printer
+- `fbc8a05` - fix: unwrap conversion, parser safety, memory extraction
+- `40d1e71` - refactor: convert unwrap() calls to proper error handling (partial)
+- `805d226` - refactor: manifest wiring, code quality, and debt cleanup
+- `87de248` - refactor: make hardcoded config values configurable (Tier 1-3)
+
+**Testing:**
+
+- All core tests passing (74 tests)
+- All DSL tests passing (31+ tests)
+- All PCP tests passing (21 tests)
+- Property tests passing (7/7)
+- Clippy clean (--workspace --exclude caliber-pg)
+
 ### January 29, 2026 — Production Hardening (v0.4.5)
 
 **Completed:**

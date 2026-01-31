@@ -328,9 +328,17 @@ impl SecureRouterBuilder {
         webhooks::start_webhook_delivery_task(webhook_state.clone());
 
         let graphql_schema = graphql::create_schema(self.db.clone(), self.ws.clone());
-        let billing_state = Arc::new(billing::BillingState::new(self.db.clone()));
+        let endpoints_config = crate::config::EndpointsConfig::from_env();
+        let billing_state = Arc::new(billing::BillingState::new(
+            self.db.clone(),
+            endpoints_config,
+        ));
         let mcp_state = Arc::new(mcp::McpState::new(self.db.clone(), self.ws.clone()));
         let event_dag = Arc::new(caliber_storage::InMemoryEventDag::new());
+
+        // Load context and webhook configuration from environment
+        let context_config = crate::config::ContextConfig::from_env();
+        let webhook_config = crate::config::WebhookConfig::from_env();
 
         // Initialize the read-through cache (Three Dragons architecture)
         let cache = initialize_cache()?;
@@ -353,6 +361,8 @@ impl SecureRouterBuilder {
             start_time: std::time::Instant::now(),
             event_dag,
             cache,
+            context_config,
+            webhook_config,
             #[cfg(feature = "workos")]
             workos_config,
         };

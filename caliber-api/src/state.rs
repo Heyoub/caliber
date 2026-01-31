@@ -8,7 +8,7 @@ use caliber_storage::{
 };
 
 use crate::cached_db::CachedDbClient;
-use crate::config::{ContextConfig, EndpointsConfig, WebhookConfig};
+use crate::config::{ContextConfig, WebhookConfig};
 use crate::db::DbClient;
 use crate::routes::billing::BillingState;
 use crate::routes::graphql::CaliberSchema;
