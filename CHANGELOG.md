@@ -37,6 +37,7 @@ This release represents a major consolidation and simplification of the CALIBER 
 - **Dead code**: Removed duplicate `parse_markdown_source` from db.rs (shared version in utils)
 - **Unused imports**: Cleaned up leftover imports in db.rs from removed code
 - **Clippy lint**: Fixed needless borrow in workos_auth.rs
+- **CI**: Pin bun to 1.3.6, fix scorecard-action version (v1.15.0 → v2.4.0)
 
 ### Changed
 - **CI Pipeline**: Optimized from 22+ jobs to 12 jobs (~1h 30m → ~20min for PRs)
