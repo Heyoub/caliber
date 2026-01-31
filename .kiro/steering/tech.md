@@ -20,14 +20,33 @@ See `.kiro/steering/dev-philosophy.md` for full rationale.
 ## Multi-Crate Architecture
 
 ```text
-caliber-core/        # ENTITIES: Data structures + context module
-caliber-storage/     # COMPONENT: Storage trait + pgrx
+caliber-core/        # ENTITIES + LOGIC: Data structures, context assembly, agent coordination, VAL traits
+caliber-storage/     # COMPONENT: Storage trait + event DAG + cache invalidation
 caliber-pcp/         # COMPONENT: Validation, checkpoints, recovery
-caliber-llm/         # COMPONENT: VAL (Vector Abstraction Layer)
-caliber-agents/      # COMPONENT: Multi-agent coordination
-caliber-dsl/         # SYSTEM: DSL parser → CaliberConfig
+caliber-dsl/         # SYSTEM: Markdown+YAML config parser
 caliber-pg/          # SYSTEM: pgrx extension (runtime)
+caliber-api/         # SYSTEM: REST/gRPC/WebSocket server
+caliber-test-utils/  # TESTING: Fixtures, generators, assertions
 ```
+
+## Architecture Evolution
+
+### Crate Consolidation (v0.4.x)
+Originally designed as 8 separate crates (core, llm, agents, context, storage, pcp, dsl, pg).
+Consolidated to 7 crates by absorbing llm/agents/context into caliber-core.
+
+**Why:** Reduced build complexity, clearer ownership, fewer inter-crate dependencies.
+
+### DSL Simplification (v0.4.6)
+Replaced 3,762-line custom lexer/parser with Markdown + serde_yaml (~100 lines).
+
+**Why:** Standard tooling, IDE support, simpler maintenance, better error messages.
+
+### UI Shift (v0.4.6 → v0.5.0)
+- Removed caliber-tui (4,500 lines of ratatui terminal UI)
+- Added SvelteKit Pack Editor (web UI with 45+ Svelte 5 components)
+
+**Why:** Web UI better for memory visualization, modern component patterns.
 
 ## Code Standards
 

@@ -14,16 +14,27 @@ This repo is designed for agent-driven iteration with CI as the source of truth.
 - Trigger CI manually via `make ci-cloud` (downloads logs into `.github/.logs/`).
 - CI artifacts and logs are the canonical build signal.
 
-## Repo Structure
-- API: `caliber-api/` (REST/gRPC/WebSocket server)
-- Core primitives: `caliber-core/` (entities, events, effects)
-- Storage: `caliber-storage/` (EventDag, cache, hybrid LMDB+cold storage)
-- PostgreSQL extension: `caliber-pg/` (pgrx-based extension)
-- DSL: `caliber-dsl/` (parser for .caliber config files)
-- Test utils: `caliber-test-utils/` (fixtures, generators)
-- Landing site: `landing/` (Astro + Svelte marketing site)
+## Repo Structure (7 Rust Crates)
+- **Core:** `caliber-core/` (entities, context assembly, agent coordination, VAL traits)
+- **Storage:** `caliber-storage/` (EventDag, cache invalidation, hybrid LMDB+cold storage)
+- **PCP:** `caliber-pcp/` (validation, checkpoints, harm reduction)
+- **DSL:** `caliber-dsl/` (Markdown+YAML config parser)
+- **PostgreSQL:** `caliber-pg/` (pgrx extension for direct heap access)
+- **API:** `caliber-api/` (REST/gRPC/WebSocket server with multi-tenant isolation)
+- **Test Utils:** `caliber-test-utils/` (fixtures, generators, property test helpers)
+
+## Frontend (TypeScript/Bun)
+- **SDK:** `caliber-sdk/` (TypeScript client with WebSocket streaming)
+- **Pack Editor:** `app/` (SvelteKit app with 45+ Svelte 5 components)
+- **UI Library:** `packages/ui/` (Svelte 5 component library)
+- **Landing:** `landing/` (Astro marketing site)
 
 ## Key Architecture Patterns
+
+### Crate Consolidation (v0.4.x → v0.5.0)
+Originally 8 crates (core, llm, agents, context, storage, pcp, dsl, pg).
+Consolidated to 7 by absorbing llm/agents/context into caliber-core.
+**Why:** Simpler dependency graph, faster builds, clearer ownership.
 
 ### Event System (caliber-core/src/event.rs)
 - Events have 64-byte aligned headers + arbitrary payload
@@ -41,6 +52,16 @@ This repo is designed for agent-driven iteration with CI as the source of truth.
 - InMemoryEventDag for testing
 - HybridDag with LMDB hot cache + cold storage fallback
 - All storage operations use Effect<T> for algebraic error handling
+
+### DSL Evolution (v0.4.6+)
+- Replaced 3,762-line custom lexer/parser with Markdown+YAML (~100 lines)
+- Config files are now Markdown with YAML fenced blocks
+- Standard tooling (serde_yaml), IDE support, better error messages
+
+### UI Evolution (v0.5.0)
+- Removed caliber-tui (4,500 lines of terminal UI)
+- Added SvelteKit Pack Editor (web UI with 45+ Svelte 5 components)
+- Modern component patterns with Svelte 5 runes
 
 ## Secrets
 - `.env` is local-only and ignored by Git.

@@ -14,9 +14,28 @@ _No unreleased changes._
 
 ## [0.5.0] - 2025-01-31
 
+### Architecture Evolution
+
+This release represents a major consolidation and simplification of the CALIBER architecture:
+
+**Crate Consolidation (8 → 7):**
+- Absorbed `caliber-llm`, `caliber-agents`, and `caliber-context` into `caliber-core`
+- Rationale: Domain logic belongs together, simpler dependency graph, faster builds
+
+**DSL Simplification (3,762 lines → ~100 lines):**
+- Replaced custom lexer/parser with Markdown + serde_yaml
+- Rationale: Standard tooling, IDE support, better error messages, 97% code reduction
+
+**UI Shift (Terminal → Web):**
+- Removed `caliber-tui` (4,500 lines of ratatui terminal UI)
+- Added SvelteKit Pack Editor (45+ Svelte 5 components)
+- Rationale: Web UI better for memory visualization, modern component patterns
+
 ### Fixed
 - **Workspace versions**: All internal crate dependencies now correctly reference 0.5.0
 - **Doctest lint**: Removed invalid `#[test]` attribute from parser docstring
+- **Dead code**: Removed duplicate `parse_markdown_source` from db.rs (shared version in utils)
+- **Clippy lint**: Fixed needless borrow in workos_auth.rs
 
 ### Added
 
@@ -114,11 +133,11 @@ _No unreleased changes._
 
 ### Removed
 
-#### Vue Migration Complete (v0.5.0)
-- **47 Vue files deleted**: Fully migrated to Svelte 5 components
-  - `docs/*.vue` (44 reference files)
-  - `pack-editor/src/components/ui/*.vue` (3 component files)
-- **`.gitignore` updated**: `*.vue` now blocked to prevent future Vue imports
+#### Design Reference Cleanup (v0.5.0)
+- **47 design reference files deleted**: Cleaned up agent overfitting artifacts
+  - `docs/*.vue` (44 design reference files)
+  - `pack-editor/src/components/ui/*.vue` (3 reference files)
+- **`.gitignore` updated**: `*.vue` now blocked to prevent future reference file accumulation
 
 #### TUI Removal (v0.4.6)
 - **caliber-tui crate deleted**: Terminal UI was a thin wrapper (~4,500 lines) with zero unique business logic

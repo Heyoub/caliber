@@ -279,7 +279,7 @@ pub async fn exchange_code_for_profile(
     let client = reqwest::Client::new();
 
     let response = client
-        .post(&config.sso_token_url())
+        .post(config.sso_token_url())
         .header("Content-Type", "application/x-www-form-urlencoded")
         .basic_auth(&config.client_id, Some(&config.api_key))
         .form(&[

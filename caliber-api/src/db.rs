@@ -2002,53 +2002,6 @@ impl DbClient {
         }
     }
 
-    /// Parses Markdown DSL source into a Caliber AST by composing a minimal pack manifest and invoking the pack composer.
-    ///
-    /// Returns `Ok(CaliberAst)` when parsing succeeds, or `Err(String)` containing an error message when parsing fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// // Given a `DbClient` instance `client`, parse a simple Markdown DSL source:
-    /// // let client: DbClient = ...;
-    /// let ast = client.parse_markdown_source("# Example DSL").expect("failed to parse DSL");
-    /// ```
-    fn parse_markdown_source(&self, source: &str) -> Result<CaliberAst, String> {
-        // Create minimal manifest for standalone DSL parsing
-        let manifest = r#"
-[meta]
-name = "api-request"
-version = "1.0"
-
-[tools]
-bin = {}
-prompts = {}
-
-[profiles]
-[agents]
-[toolsets]
-[adapters]
-[providers]
-[policies]
-[injections]
-"#;
-
-        let input = PackInput {
-            root: PathBuf::from("."),
-            manifest: manifest.to_string(),
-            markdowns: vec![PackMarkdownFile {
-                path: PathBuf::from("input.md"),
-                content: source.to_string(),
-            }],
-            contracts: HashMap::new(),
-        };
-
-        match caliber_dsl::compose_pack(input) {
-            Ok(output) => Ok(output.ast),
-            Err(e) => Err(e.to_string()),
-        }
-    }
-
     /// Parse DSL source into an abstract syntax tree (AST) and validate it.
     ///
     /// This is equivalent to validation but with the intent focused on parsing the provided source.

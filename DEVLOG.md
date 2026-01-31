@@ -19,6 +19,76 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### January 31, 2026 — Architecture Delta Analysis & Documentation Sync
+
+**Completed:**
+
+- ✅ **Architecture Delta Analysis**: Comprehensive comparison of original Kiro specs vs current implementation
+  - Documented crate consolidation (8 → 7 crates)
+  - Analyzed DSL evolution (3,762 lines → ~100 lines)
+  - Tracked UI shift (TUI → SvelteKit Pack Editor)
+  - Identified documentation drift and update needs
+  - Created `.scratch/ARCHITECTURE-DELTA-ANALYSIS.md` (full analysis)
+
+- ✅ **Kiro Steering Updates**: Synchronized steering files with current architecture
+  - Updated `.kiro/steering/structure.md` with 7-crate layout
+  - Added architecture evolution section (v0.1 → v0.5)
+  - Updated `.kiro/steering/tech.md` with crate consolidation rationale
+  - Documented DSL simplification and UI shift decisions
+
+- ✅ **AGENTS.md Updates**: Accurate repo structure for AI agents
+  - Updated crate list (7 Rust crates + 4 TypeScript packages)
+  - Added crate consolidation notes
+  - Added DSL evolution notes (Markdown+YAML)
+  - Added UI evolution notes (Svelte 5)
+
+**Key Findings:**
+
+| Metric | Original | Current | Change |
+|--------|----------|---------|--------|
+| Rust Crates | 8 | 7 | -12.5% |
+| DSL Parser LOC | 3,762 | ~100 | -97% |
+| TUI LOC | 4,500 | 0 | -100% |
+| Frontend | None | Svelte 5 | New |
+| Version | v0.1.0 | v0.5.0 | Production |
+
+**Architecture Decisions Validated:**
+
+1. **Crate Consolidation:** Domain logic (llm, agents, context) belongs in caliber-core
+2. **Standard Tooling:** Markdown+YAML > custom parser (97% code reduction)
+3. **Remove Demo Features:** TUI was beautiful but useless (4,500 lines removed)
+4. **Web UI:** SvelteKit Pack Editor for memory visualization
+5. **Svelte 5:** Runes provide simpler reactivity patterns
+
+**Documentation Status:**
+
+| Document | Status | Action Needed |
+|----------|--------|---------------|
+| .kiro/steering/*.md | ✅ UPDATED | None |
+| AGENTS.md | ✅ UPDATED | None |
+| README.md | ✅ CURRENT | None |
+| CHANGELOG.md | ✅ CURRENT | None |
+| DEVLOG.md | ✅ UPDATED | None |
+| docs/DSL_PARSER.md | ⚠️ STALE | Archive or rewrite for Markdown |
+| docs/LLM_SERVICES.md | ⚠️ STALE | Update for caliber-core |
+| docs/MULTI_AGENT_COORDINATION.md | ⚠️ STALE | Update for caliber-core |
+| docs/DEPENDENCY_GRAPH.md | ⚠️ PARTIAL | Update for 7-crate structure |
+
+**Files Created:**
+
+- `.scratch/ARCHITECTURE-DELTA-ANALYSIS.md` - 500+ lines, comprehensive delta analysis
+
+**Files Modified:**
+
+- `.kiro/steering/structure.md` - Added architecture evolution section
+- `.kiro/steering/tech.md` - Updated crate list and consolidation rationale
+- `AGENTS.md` - Updated repo structure and architecture patterns
+- `DEVLOG.md` - This entry
+
+---
+
+## Timeline
+
 ### January 31, 2026 — Pack Editor Production Build (v0.5.0)
 
 **Front-end Completed:**
@@ -52,8 +122,8 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 **Architecture Decision:**
 
-Svelte 5 chosen over Vue 3 for Pack Editor because:
-1. Runes provide simpler reactivity than Composition API
+Svelte 5 chosen for Pack Editor because:
+1. Runes provide simpler reactivity than alternatives
 2. Better TypeScript inference with `$props()` interface pattern
 3. Smaller bundle size for component library
 4. SvelteKit's file-based routing aligns with memory browser UX
@@ -75,8 +145,8 @@ The Pack Editor will be the primary UI for:
 
 **Files Deleted:**
 
-- `docs/*.vue` - 44 Vue reference files
-- `pack-editor/src/components/ui/*.vue` - 3 Vue files
+- `docs/*.vue` - 44 design reference files (agent overfitting)
+- `pack-editor/src/components/ui/*.vue` - 3 reference files
 
 ---
 
