@@ -103,6 +103,35 @@ The Markdown refactor replaces a custom parser with standard tooling:
   - Validation for adapter/format references against manifest
   - Profile inheritance for format when not specified on agent
 
+- ✅ **Stale reference cleanup**: Removed caliber-tui references from build artifacts
+  - Docker files (Dockerfile.pg, Dockerfile.api): removed COPY commands that would fail builds
+  - docs/graphs/type-signatures.json: removed 178 stale entries (1672 → 1494)
+  - docs/graphs/deps.json: removed caliber-tui from crates and edges
+  - docs/SPEC_CRATE_ABSORPTION_FINAL.md: updated crate count to 7
+  - .kiro/specs/caliber-pg-hot-path/requirements.md: removed stale reference
+  - fuzz/Cargo.toml: removed missing lexer_fuzz target declaration
+  - README.md: fixed openapi.json claim (now on-demand generation)
+
+- ✅ **Type system improvements**: SendMessageRequest enum conversion
+  - message_type: String → MessageType enum
+  - priority: String → MessagePriority enum
+  - Updated db.rs, components/message.rs, routes/message.rs
+  - Updated tests to use enum variants
+  - Serde now validates message types automatically during deserialization
+
+- ✅ **Context package extension**: Added fields for full context assembly
+  - Added conversation_turns: Vec<Turn> to ContextPackage
+  - Added trajectory_hierarchy: Vec<Trajectory> to ContextPackage
+  - Added with_turns() and with_hierarchy() builder methods
+  - Implemented turn_response_to_core() and trajectory_response_to_core() conversions
+  - Removed TODOs from caliber-api/src/routes/context.rs
+
+- ✅ **Security enhancement**: JWT secret validation warning in development
+  - Added development mode warning for insecure default secret
+  - Added warning for short secrets (< 32 chars) in development
+  - Production errors remain unchanged (fail-fast)
+  - Helps developers identify security issues before deployment
+
 **Files Modified:**
 
 | File | Changes |
@@ -110,11 +139,25 @@ The Markdown refactor replaces a custom parser with standard tooling:
 | caliber-storage/src/lib.rs | 102 unwraps → proper error handling |
 | caliber-storage/src/event_dag.rs | 34 unwraps converted |
 | caliber-core/src/lock.rs | Lock unwraps → Result |
+| caliber-core/src/context.rs | Added conversation_turns, trajectory_hierarchy fields |
 | caliber-dsl/src/config/markdown_printer.rs | action_to_yaml(), injection_mode fixes |
 | caliber-dsl/tests/markdown_property_tests.rs | Generator updates, memory pairing |
 | caliber-api/src/config.rs | EndpointsConfig, ContextConfig, WebhookConfig |
 | caliber-api/src/constants.rs | Centralized default values |
 | caliber-api/src/routes/mod.rs | Config loading and AppState wiring |
+| caliber-api/src/routes/context.rs | Context assembly with turns/hierarchy |
+| caliber-api/src/types/message.rs | SendMessageRequest enum conversion |
+| caliber-api/src/routes/message.rs | Removed TODO, updated tests |
+| caliber-api/src/components/message.rs | as_db_str() for enum serialization |
+| caliber-api/src/db.rs | message_send uses as_db_str() |
+| caliber-api/src/auth.rs | JWT secret development warnings |
+| caliber-api/tests/broadcast_property_tests.rs | Updated for enum types |
+| docker/Dockerfile.pg | Removed stale caliber-tui COPY |
+| docker/Dockerfile.api | Removed stale caliber-tui COPY |
+| docs/graphs/type-signatures.json | Removed 178 stale entries |
+| docs/graphs/deps.json | Removed caliber-tui |
+| fuzz/Cargo.toml | Removed missing lexer_fuzz target |
+| README.md | Version sync, openapi.json fix |
 
 **Commits:**
 

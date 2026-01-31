@@ -10,7 +10,7 @@
 ## CURRENT STATE SUMMARY
 
 ```
-Crates:        8 (down from 11)
+Crates:        7 (down from 11)
   - caliber-core
   - caliber-dsl
   - caliber-pcp
@@ -18,9 +18,8 @@ Crates:        8 (down from 11)
   - caliber-pg
   - caliber-api
   - caliber-test-utils
-  - caliber-tui
 
-Deleted:       caliber-agents (~1,654 LOC), caliber-llm (~1,145 LOC), caliber-context, caliber-events
+Deleted:       caliber-agents (~1,654 LOC), caliber-llm (~1,145 LOC), caliber-context, caliber-events, caliber-tui (~4,500 LOC)
 ```
 
 ---

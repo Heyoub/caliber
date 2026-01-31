@@ -313,30 +313,50 @@ impl AuthConfig {
     ///
     /// This function should be called at server startup to ensure that
     /// insecure defaults are not being used in production environments.
+    /// In development mode, warnings are logged but the server continues.
     pub fn validate_for_production(&self) -> ApiResult<()> {
         // Check if running in production environment
         let environment = std::env::var("CALIBER_ENVIRONMENT")
             .unwrap_or_else(|_| "development".to_string())
             .to_lowercase();
 
-        if environment == "production" || environment == "prod" {
-            // Verify JWT secret is not the insecure default
-            if self.jwt_secret.is_insecure_default() {
+        let is_production = environment == "production" || environment == "prod";
+
+        // Check for insecure default secret
+        if self.jwt_secret.is_insecure_default() {
+            if is_production {
                 return Err(ApiError::invalid_input(format!(
                     "Cannot start server in production with insecure JWT secret. \
                      Set CALIBER_JWT_SECRET to a secure value. \
                      CALIBER_ENVIRONMENT={}",
                     environment
                 )));
+            } else {
+                tracing::warn!(
+                    "⚠️  SECURITY WARNING: Using insecure default JWT secret. \
+                     This is acceptable for local development but MUST be changed \
+                     before deploying. Set CALIBER_JWT_SECRET environment variable \
+                     to a secure random value (minimum 32 characters)."
+                );
             }
+        }
 
-            // Additional production checks
-            if self.jwt_secret.len() < 32 {
+        // Check for short secret
+        if self.jwt_secret.len() < 32 {
+            if is_production {
                 return Err(ApiError::invalid_input(format!(
                     "JWT secret is too short for production use ({} chars). \
                      It must be at least 32 characters long.",
                     self.jwt_secret.len()
                 )));
+            } else if !self.jwt_secret.is_insecure_default() {
+                // Only warn if not already warned about insecure default
+                tracing::warn!(
+                    "⚠️  SECURITY WARNING: JWT secret is short ({} chars). \
+                     For production, use at least 32 characters. \
+                     Set CALIBER_JWT_SECRET to a longer secure value.",
+                    self.jwt_secret.len()
+                );
             }
         }
 

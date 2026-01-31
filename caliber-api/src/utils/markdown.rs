@@ -41,8 +41,8 @@ pub fn parse_markdown_source(source: &str) -> Result<CaliberAst, String> {
     // Minimal manifest for standalone DSL parsing
     let manifest = r#"
 [meta]
-name = "standalone"
 version = "1.0"
+project = "standalone"
 
 [tools]
 bin = {}
@@ -77,13 +77,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_empty_source() {
+    fn test_parse_empty_source_requires_sections() {
+        // Empty source should fail because compose_pack requires proper markdown structure
         let result = parse_markdown_source("");
-        assert!(result.is_ok());
+        assert!(
+            result.is_err(),
+            "Empty source should fail - requires agent prompt structure"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("missing required sections"),
+            "Error should mention missing required sections"
+        );
     }
 
     #[test]
-    fn test_parse_adapter_block() {
+    fn test_parse_adapter_block_requires_sections() {
+        // Standalone adapter blocks should fail because compose_pack requires full structure
         let source = r#"
 ```adapter test_db
 adapter_type: postgres
@@ -91,8 +101,32 @@ connection: "postgresql://localhost/test"
 ```
 "#;
         let result = parse_markdown_source(source);
-        assert!(result.is_ok());
-        let ast = result.expect("adapter block should parse successfully");
-        assert!(!ast.definitions.is_empty());
+        assert!(
+            result.is_err(),
+            "Standalone adapter block should fail - requires agent prompt structure"
+        );
+    }
+
+    #[test]
+    fn test_parse_full_agent_prompt() {
+        // Full agent prompt with required sections should succeed
+        let source = r#"# System
+
+You are a helpful assistant.
+
+## PCP
+
+- Follow user instructions carefully.
+
+### User
+
+The user wants help with tasks.
+"#;
+        let result = parse_markdown_source(source);
+        assert!(
+            result.is_ok(),
+            "Full agent prompt with required sections should parse: {:?}",
+            result.err()
+        );
     }
 }

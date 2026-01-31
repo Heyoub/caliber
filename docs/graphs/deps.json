@@ -122,21 +122,6 @@
       "from": "caliber-test-utils",
       "to": "caliber-storage",
       "kind": "normal"
-    },
-    {
-      "from": "caliber-tui",
-      "to": "caliber-api",
-      "kind": "normal"
-    },
-    {
-      "from": "caliber-tui",
-      "to": "caliber-core",
-      "kind": "normal"
-    },
-    {
-      "from": "caliber-tui",
-      "to": "caliber-dsl",
-      "kind": "normal"
     }
   ]
 }

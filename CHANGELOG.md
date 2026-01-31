@@ -27,6 +27,22 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
   - WebhookConfig: Signature tolerance settings
   - IdempotencySettings: TTL, max body size, require key
   - All with sensible defaults and from_env() constructors
+- **Stale reference cleanup**: Removed caliber-tui references from build artifacts
+  - Docker files: removed COPY commands that would fail builds
+  - docs/graphs/*.json: removed 178 stale type signature entries
+  - Updated crate counts in spec documentation
+- **Type system improvements**:
+  - SendMessageRequest now uses `MessageType` and `MessagePriority` enums (was String)
+  - Serde automatically validates message types during deserialization
+  - Consistent with MessageResponse which already used enums
+- **Context package extension**: Added conversation_turns and trajectory_hierarchy fields
+  - with_turns() and with_hierarchy() builder methods
+  - Conversion functions for API response types to core types
+  - Enables full context assembly for LLM interactions
+- **Security enhancement**: JWT secret validation warning in development mode
+  - Logs warning when using insecure default secret
+  - Warns about short secrets (< 32 chars)
+  - Errors remain for production environment
 
 ### Removed
 

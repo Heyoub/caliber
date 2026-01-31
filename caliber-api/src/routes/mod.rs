@@ -548,13 +548,18 @@ pub fn create_api_router_unauthenticated(
     use crate::telemetry::{metrics_handler, middleware::observability_middleware};
     use axum::middleware::from_fn;
 
+    // Load config from environment or use defaults
+    let endpoints_config = crate::config::EndpointsConfig::from_env();
+    let context_config = crate::config::ContextConfig::from_env();
+    let webhook_config = crate::config::WebhookConfig::from_env();
+
     let webhook_state = Arc::new(webhooks::WebhookState::new(db.clone(), ws.clone()).map_err(
         |e| ApiError::internal_error(format!("Failed to initialize webhook state: {}", e)),
     )?);
     webhooks::start_webhook_delivery_task(webhook_state.clone());
 
     let graphql_schema = graphql::create_schema(db.clone(), ws.clone());
-    let billing_state = Arc::new(billing::BillingState::new(db.clone()));
+    let billing_state = Arc::new(billing::BillingState::new(db.clone(), endpoints_config.clone()));
     let mcp_state = Arc::new(mcp::McpState::new(db.clone(), ws.clone()));
     let event_dag = Arc::new(caliber_storage::InMemoryEventDag::new());
 
@@ -577,6 +582,8 @@ pub fn create_api_router_unauthenticated(
         billing_state,
         mcp_state,
         start_time: std::time::Instant::now(),
+        context_config,
+        webhook_config,
         event_dag,
         cache,
         #[cfg(feature = "workos")]
