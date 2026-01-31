@@ -176,20 +176,38 @@ impl ListenerChain {
     }
 
     pub async fn emit_request(&self, event: RequestEvent) {
-        for listener in &self.listeners {
-            let _ = listener.on_request(event.clone()).await;
+        for (idx, listener) in self.listeners.iter().enumerate() {
+            if let Err(e) = listener.on_request(event.clone()).await {
+                tracing::warn!(
+                    listener_index = idx,
+                    error = %e,
+                    "Provider request listener failed"
+                );
+            }
         }
     }
 
     pub async fn emit_response(&self, event: ResponseEvent) {
-        for listener in &self.listeners {
-            let _ = listener.on_response(event.clone()).await;
+        for (idx, listener) in self.listeners.iter().enumerate() {
+            if let Err(e) = listener.on_response(event.clone()).await {
+                tracing::warn!(
+                    listener_index = idx,
+                    error = %e,
+                    "Provider response listener failed"
+                );
+            }
         }
     }
 
     pub async fn emit_error(&self, event: ErrorEvent) {
-        for listener in &self.listeners {
-            let _ = listener.on_error(event.clone()).await;
+        for (idx, listener) in self.listeners.iter().enumerate() {
+            if let Err(e) = listener.on_error(event.clone()).await {
+                tracing::warn!(
+                    listener_index = idx,
+                    error = %e,
+                    "Provider error listener failed"
+                );
+            }
         }
     }
 }

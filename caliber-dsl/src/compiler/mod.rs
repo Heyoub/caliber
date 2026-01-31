@@ -477,9 +477,33 @@ pub struct CompiledToolsetConfig {
 }
 
 /// Pack agent-to-toolset bindings with extracted markdown metadata.
+///
+/// This struct represents the fully-compiled agent configuration, combining
+/// manifest settings with extracted markdown metadata. All reference fields
+/// (profile, adapter, format) have been validated during compilation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompiledPackAgentConfig {
+    /// Agent identifier (key from [agents.NAME] in manifest).
     pub name: String,
+    /// Whether agent is enabled. Defaults to true.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Profile reference (validated to exist in manifest.profiles).
+    pub profile: String,
+    /// Adapter override. Falls back to profile's adapter if None.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<String>,
+    /// Format override. Falls back to profile's format if None.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// Resolved format (from agent or profile). Always populated.
+    pub resolved_format: String,
+    /// Token budget override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<i32>,
+    /// Path to agent prompt markdown.
+    pub prompt_md: String,
+    /// Toolset references (validated to exist in manifest.toolsets).
     pub toolsets: Vec<String>,
     /// Constraints extracted from ```constraints block in agent markdown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -490,6 +514,11 @@ pub struct CompiledPackAgentConfig {
     /// RAG configuration extracted from ```rag block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extracted_rag_config: Option<String>,
+}
+
+/// Default value for enabled field (true).
+fn default_true() -> bool {
+    true
 }
 
 /// Pack injection metadata for runtime RAG wiring.

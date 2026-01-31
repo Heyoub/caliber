@@ -30,6 +30,7 @@ pub mod state;
 pub mod telemetry;
 pub mod traits;
 pub mod types;
+pub mod utils;
 pub mod validation;
 pub mod ws;
 

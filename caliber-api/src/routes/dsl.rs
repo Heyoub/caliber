@@ -23,50 +23,11 @@ use crate::{
 };
 use caliber_dsl::pack::{compose_pack as compose_pack_internal, PackInput, PackMarkdownFile};
 use caliber_dsl::pretty_printer::pretty_print;
-use caliber_dsl::CaliberAst;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/// Parse Markdown source to AST using the new compose_pack system
-fn parse_markdown_source(source: &str) -> Result<CaliberAst, String> {
-    // Create minimal manifest for standalone DSL parsing
-    let manifest = r#"
-[meta]
-name = "api-request"
-version = "1.0"
-
-[tools]
-bin = {}
-prompts = {}
-
-[profiles]
-[agents]
-[toolsets]
-[adapters]
-[providers]
-[policies]
-[injections]
-"#;
-
-    let input = PackInput {
-        root: PathBuf::from("."),
-        manifest: manifest.to_string(),
-        markdowns: vec![PackMarkdownFile {
-            path: PathBuf::from("input.md"),
-            content: source.to_string(),
-        }],
-        contracts: HashMap::new(),
-    };
-
-    match compose_pack_internal(input) {
-        Ok(output) => Ok(output.ast),
-        Err(e) => Err(e.to_string()),
-    }
-}
+// Use shared parse_markdown_source from utils
+use crate::utils::parse_markdown_source;
 
 // ============================================================================
 // ROUTE HANDLERS

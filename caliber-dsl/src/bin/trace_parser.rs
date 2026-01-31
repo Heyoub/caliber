@@ -98,7 +98,8 @@ prompts = {}
             println!("✅ Parse succeeded!");
         }
         Err(e) => {
-            println!("❌ Parse error: {:?}", e);
+            eprintln!("❌ Parse error: {:?}", e);
+            std::process::exit(1);
         }
     }
 }

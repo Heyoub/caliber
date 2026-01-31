@@ -81,6 +81,8 @@ pub struct MemoryConfig {
 #[serde(deny_unknown_fields)]
 pub struct FieldConfig {
     pub name: String,
+    /// Field type (accepts both "field_type" and "type" for compatibility)
+    #[serde(alias = "type")]
     pub field_type: String,
     #[serde(default)]
     pub nullable: bool,
@@ -92,6 +94,8 @@ pub struct FieldConfig {
 #[serde(deny_unknown_fields)]
 pub struct IndexConfig {
     pub field: String,
+    /// Index type (accepts both "index_type" and "type" for compatibility)
+    #[serde(alias = "type")]
     pub index_type: String,
     #[serde(default)]
     pub options: Vec<(String, String)>,

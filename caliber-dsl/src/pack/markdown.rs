@@ -53,7 +53,8 @@ impl FromStr for FenceKind {
     type Err = PackError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        // Case-insensitive matching for fence types
+        match s.to_lowercase().as_str() {
             "adapter" => Ok(FenceKind::Adapter),
             "memory" => Ok(FenceKind::Memory),
             "policy" => Ok(FenceKind::Policy),
