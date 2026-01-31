@@ -140,7 +140,6 @@ caliber/
 ├── caliber-dsl/         # DSL parser → CaliberConfig
 ├── caliber-pg/          # pgrx extension (requires PostgreSQL)
 ├── caliber-api/         # REST/gRPC/WebSocket API server
-├── caliber-tui/         # Terminal user interface
 ├── caliber-test-utils/  # Test generators, fixtures, assertions
 ├── caliber-sdk/         # TypeScript SDK for REST/WebSocket APIs
 ├── examples/            # Example programs and usage patterns

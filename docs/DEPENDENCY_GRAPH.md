@@ -21,10 +21,10 @@ Updated for the typed ID refactor and current workspace layout.
          │                   │                     │
          ├──────────────┬────┴──────────────┬──────┘
          ▼              ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│   caliber-api   │ │   caliber-pg    │ │   caliber-tui   │
-│ REST/WS/gRPC    │ │ pgrx extension  │ │ terminal client │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+┌─────────────────┐ ┌─────────────────┐
+│   caliber-api   │ │   caliber-pg    │
+│ REST/WS/gRPC    │ │ pgrx extension  │
+└─────────────────┘ └─────────────────┘
 ```
 
 Notes:

@@ -8,7 +8,28 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 ## [Unreleased] (pre-0.6.0)
 
+### Removed
+
+#### TUI Removal (v0.4.6)
+- **caliber-tui crate deleted**: Terminal UI was a thin wrapper (~4,500 lines) with zero unique business logic
+  - All TUI functionality was just rendering API responses in ratatui
+  - No features lost: TypeScript SDK provides complete programmatic access
+  - Reduces CI time by eliminating TUI tests and property tests
+  - Removes ~4,500 lines of maintenance burden
+  - Dependencies removed: ratatui, crossterm, tui-textarea, reqwest, tokio-tungstenite
+- **Documentation cleaned**: Removed TUI references from README, AGENTS.md, DEPENDENCY_GRAPH.md, issue templates, and PR template
+
 ### Added
+
+#### Markdown-Based Configuration (v0.4.6)
+- **Custom DSL replaced with Markdown**: Config files now use YAML frontmatter in fenced code blocks
+  - All 8 config types supported: Agent, Adapter, Memory, Policy, Injection, Tool, Prompt, Pack
+  - `markdown_printer.rs` for pretty-printing configs back to Markdown format
+  - Duplicate detection with detailed error messages
+  - Comprehensive test suites: `markdown_config_tests.rs`, `markdown_property_tests.rs`
+- **3,762 lines of custom DSL parser deleted**: Replaced with battle-tested `serde_yaml` + Markdown fence parsing
+- **API integration**: DSL routes updated to parse/validate/deploy Markdown configs
+- **Round-trip property tests**: Ensure parse → print → parse produces identical ASTs
 
 #### Production Hardening (v0.4.5)
 - **Hash Chain Verification**: Event tamper-evidence using Blake3
@@ -54,7 +75,7 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 
 #### API & HATEOAS
 - HATEOAS links added to trajectory/scope/artifact/note responses and tests
-- TUI API client link following via `follow_link`, with link handling tests
+- API client link following via `follow_link`, with link handling tests
 - Unified links field on API responses for consistent navigation
 
 #### DSL & Pack
@@ -75,7 +96,6 @@ Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entri
 - cargo-deny licenses include AGPL-3.0-or-later and MIT-0; unmaintained advisories downgraded to warnings
 - Clippy priority sorting warnings resolved using `sort_by_key` with `Reverse`
 - WorkOS webhook signature verification endpoint (feature-gated)
-- TUI error reporting enhanced with color-eyre
 - Hardened SDK WebSocket logging to avoid format-string issues
 
 #### Documentation
