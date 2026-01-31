@@ -11,6 +11,7 @@
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./tokens": "./src/styles/tokens.css",
     "./styles/*": "./src/styles/*"
   },
   "scripts": {

@@ -1,0 +1,250 @@
+/**
+ * CALIBER Design Tokens
+ * CSS custom properties for the design system
+ */
+
+:root {
+  /* ============================================
+   * Color Palette (HSL values without hsl())
+   * Usage: hsl(var(--teal-500))
+   * ============================================ */
+
+  /* Teal - Primary brand color */
+  --teal-50: 175 70% 95%;
+  --teal-100: 175 70% 88%;
+  --teal-200: 175 70% 75%;
+  --teal-300: 175 70% 60%;
+  --teal-400: 175 70% 50%;
+  --teal-500: 175 70% 40%;
+  --teal-600: 175 70% 32%;
+  --teal-700: 175 70% 25%;
+  --teal-800: 175 70% 18%;
+  --teal-900: 175 70% 12%;
+  --teal-950: 175 70% 8%;
+
+  /* Coral - Accent color */
+  --coral-50: 15 85% 96%;
+  --coral-100: 15 85% 90%;
+  --coral-200: 15 85% 80%;
+  --coral-300: 15 85% 68%;
+  --coral-400: 15 85% 58%;
+  --coral-500: 15 85% 50%;
+  --coral-600: 15 85% 42%;
+  --coral-700: 15 85% 34%;
+  --coral-800: 15 85% 26%;
+  --coral-900: 15 85% 18%;
+  --coral-950: 15 85% 10%;
+
+  /* Mint */
+  --mint-50: 165 70% 96%;
+  --mint-100: 165 70% 90%;
+  --mint-200: 165 70% 78%;
+  --mint-300: 165 70% 62%;
+  --mint-400: 165 70% 52%;
+  --mint-500: 165 70% 45%;
+  --mint-600: 165 70% 36%;
+  --mint-700: 165 70% 28%;
+  --mint-800: 165 70% 20%;
+  --mint-900: 165 70% 14%;
+  --mint-950: 165 70% 8%;
+
+  /* Lavender */
+  --lavender-50: 265 70% 97%;
+  --lavender-100: 265 70% 92%;
+  --lavender-200: 265 70% 82%;
+  --lavender-300: 265 70% 70%;
+  --lavender-400: 265 70% 62%;
+  --lavender-500: 265 70% 55%;
+  --lavender-600: 265 70% 46%;
+  --lavender-700: 265 70% 38%;
+  --lavender-800: 265 70% 28%;
+  --lavender-900: 265 70% 18%;
+  --lavender-950: 265 70% 10%;
+
+  /* Purple */
+  --purple-50: 270 70% 97%;
+  --purple-100: 270 70% 92%;
+  --purple-200: 270 70% 82%;
+  --purple-300: 270 70% 72%;
+  --purple-400: 270 70% 65%;
+  --purple-500: 270 70% 60%;
+  --purple-600: 270 70% 50%;
+  --purple-700: 270 70% 40%;
+  --purple-800: 270 70% 30%;
+  --purple-900: 270 70% 20%;
+  --purple-950: 270 70% 12%;
+
+  /* Slate - Neutrals */
+  --slate-50: 210 20% 98%;
+  --slate-100: 214 20% 94%;
+  --slate-200: 218 18% 86%;
+  --slate-300: 220 16% 72%;
+  --slate-400: 220 14% 54%;
+  --slate-500: 220 14% 40%;
+  --slate-600: 222 16% 30%;
+  --slate-700: 222 18% 22%;
+  --slate-800: 222 18% 20%;
+  --slate-900: 225 20% 10%;
+  --slate-950: 228 22% 6%;
+
+  /* Navy */
+  --navy-700: 220 30% 18%;
+  --navy-800: 220 30% 15%;
+  --navy-900: 225 35% 10%;
+  --navy-950: 228 40% 6%;
+
+  /* Amber */
+  --amber-50: 38 92% 96%;
+  --amber-100: 38 92% 90%;
+  --amber-200: 38 92% 78%;
+  --amber-300: 38 92% 65%;
+  --amber-400: 38 92% 55%;
+  --amber-500: 38 92% 50%;
+  --amber-600: 38 92% 42%;
+  --amber-700: 38 92% 34%;
+  --amber-800: 38 92% 26%;
+  --amber-900: 38 92% 18%;
+  --amber-950: 38 92% 10%;
+
+  /* Pink */
+  --pink-50: 330 80% 97%;
+  --pink-100: 330 80% 92%;
+  --pink-200: 330 80% 82%;
+  --pink-300: 330 80% 72%;
+  --pink-400: 330 80% 62%;
+  --pink-500: 330 80% 52%;
+  --pink-600: 330 80% 44%;
+  --pink-700: 330 80% 36%;
+  --pink-800: 330 80% 26%;
+  --pink-900: 330 80% 18%;
+  --pink-950: 330 80% 10%;
+
+  /* ============================================
+   * Semantic Colors
+   * ============================================ */
+
+  /* Backgrounds */
+  --bg-primary: var(--slate-900);
+  --bg-secondary: var(--slate-800);
+  --bg-tertiary: var(--slate-700);
+  --bg-elevated: var(--navy-800);
+  --bg-surface: var(--navy-900);
+
+  /* Text */
+  --text-primary: var(--slate-50);
+  --text-secondary: var(--slate-300);
+  --text-tertiary: var(--slate-400);
+  --text-muted: var(--slate-500);
+
+  /* Borders */
+  --border-default: var(--slate-700);
+  --border-subtle: var(--slate-800);
+  --border-strong: var(--slate-600);
+
+  /* Status colors */
+  --success: var(--mint-500);
+  --warning: var(--amber-500);
+  --error: var(--coral-500);
+  --info: var(--teal-500);
+
+  /* ============================================
+   * Typography
+   * ============================================ */
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-title: 'Cal Sans', 'Space Grotesk', 'Inter', sans-serif;
+
+  /* Font sizes */
+  --text-2xs: 0.625rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+
+  /* Line heights */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* ============================================
+   * Spacing
+   * ============================================ */
+
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* ============================================
+   * Border Radius
+   * ============================================ */
+
+  --radius-none: 0;
+  --radius-sm: 0.125rem;
+  --radius-default: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* ============================================
+   * Shadows
+   * ============================================ */
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-default: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-glow: 0 0 20px rgba(79, 209, 197, 0.25);
+  --shadow-glow-lg: 0 0 40px rgba(79, 209, 197, 0.35);
+
+  /* ============================================
+   * Transitions
+   * ============================================ */
+
+  --duration-fast: 150ms;
+  --duration-default: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* ============================================
+   * Z-Index Scale
+   * ============================================ */
+
+  --z-dropdown: 50;
+  --z-sticky: 100;
+  --z-fixed: 200;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
+}
