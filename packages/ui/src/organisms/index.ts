@@ -51,6 +51,22 @@ export { default as CommandPalette } from './CommandPalette.svelte';
 // Features: Collapsible sections, footer, laser effect on hover
 export { default as Sidebar } from './Sidebar.svelte';
 
+// Canvas-based neural network particle animation
+// Features: Floating particles, connection lines, mouse interaction
+export { default as NeuralAnimation } from './NeuralAnimation.svelte';
+
+// Multi-layer parallax scrolling hero section
+// Features: Scroll-responsive layers, mouse parallax, gradient overlays
+export { default as ParallaxHero } from './ParallaxHero.svelte';
+
+// Retro/cyberpunk animated grid background
+// Features: Perspective lines, horizon glow, pulse animation
+export { default as GridAnimation } from './GridAnimation.svelte';
+
+// Three.js 3D rotating icosahedron
+// Features: Vertex coloring, wireframe mode, mouse interaction
+export { default as IcosahedronAnimation } from './IcosahedronAnimation.svelte';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Type Re-exports (for convenience)
 // ═══════════════════════════════════════════════════════════════════════════

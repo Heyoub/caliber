@@ -63,62 +63,139 @@
   let focusedIndex = $state(-1);
   let menuStyle = $state('');
 
-  // Position the menu using basic JS (in real app would use @floating-ui/dom)
+  // Position the menu using Floating UI middleware patterns
+  // Implements offset, flip (collision detection), and shift (viewport boundary)
   function updatePosition() {
     if (!triggerRef || !menuRef || !open) return;
 
     const triggerRect = triggerRef.getBoundingClientRect();
     const menuRect = menuRef.getBoundingClientRect();
+    const viewport = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
 
+    let currentPlacement = placement;
     let top = 0;
     let left = 0;
 
-    // Basic positioning based on placement
-    switch (placement) {
-      case 'bottom':
-      case 'bottom-start':
-        top = triggerRect.bottom + offsetValue;
-        left = placement === 'bottom'
-          ? triggerRect.left + (triggerRect.width - menuRect.width) / 2
-          : triggerRect.left;
-        break;
-      case 'bottom-end':
-        top = triggerRect.bottom + offsetValue;
-        left = triggerRect.right - menuRect.width;
-        break;
-      case 'top':
-      case 'top-start':
-        top = triggerRect.top - menuRect.height - offsetValue;
-        left = placement === 'top'
-          ? triggerRect.left + (triggerRect.width - menuRect.width) / 2
-          : triggerRect.left;
-        break;
-      case 'top-end':
-        top = triggerRect.top - menuRect.height - offsetValue;
-        left = triggerRect.right - menuRect.width;
-        break;
-      case 'right':
-      case 'right-start':
-        top = placement === 'right'
-          ? triggerRect.top + (triggerRect.height - menuRect.height) / 2
-          : triggerRect.top;
-        left = triggerRect.right + offsetValue;
-        break;
-      case 'right-end':
-        top = triggerRect.bottom - menuRect.height;
-        left = triggerRect.right + offsetValue;
-        break;
-      case 'left':
-      case 'left-start':
-        top = placement === 'left'
-          ? triggerRect.top + (triggerRect.height - menuRect.height) / 2
-          : triggerRect.top;
-        left = triggerRect.left - menuRect.width - offsetValue;
-        break;
-      case 'left-end':
-        top = triggerRect.bottom - menuRect.height;
-        left = triggerRect.left - menuRect.width - offsetValue;
-        break;
+    // Calculate initial position based on placement
+    function calculatePosition(pl: Placement): { top: number; left: number } {
+      let t = 0;
+      let l = 0;
+
+      switch (pl) {
+        case 'bottom':
+        case 'bottom-start':
+          t = triggerRect.bottom + offsetValue;
+          l = pl === 'bottom'
+            ? triggerRect.left + (triggerRect.width - menuRect.width) / 2
+            : triggerRect.left;
+          break;
+        case 'bottom-end':
+          t = triggerRect.bottom + offsetValue;
+          l = triggerRect.right - menuRect.width;
+          break;
+        case 'top':
+        case 'top-start':
+          t = triggerRect.top - menuRect.height - offsetValue;
+          l = pl === 'top'
+            ? triggerRect.left + (triggerRect.width - menuRect.width) / 2
+            : triggerRect.left;
+          break;
+        case 'top-end':
+          t = triggerRect.top - menuRect.height - offsetValue;
+          l = triggerRect.right - menuRect.width;
+          break;
+        case 'right':
+        case 'right-start':
+          t = pl === 'right'
+            ? triggerRect.top + (triggerRect.height - menuRect.height) / 2
+            : triggerRect.top;
+          l = triggerRect.right + offsetValue;
+          break;
+        case 'right-end':
+          t = triggerRect.bottom - menuRect.height;
+          l = triggerRect.right + offsetValue;
+          break;
+        case 'left':
+        case 'left-start':
+          t = pl === 'left'
+            ? triggerRect.top + (triggerRect.height - menuRect.height) / 2
+            : triggerRect.top;
+          l = triggerRect.left - menuRect.width - offsetValue;
+          break;
+        case 'left-end':
+          t = triggerRect.bottom - menuRect.height;
+          l = triggerRect.left - menuRect.width - offsetValue;
+          break;
+      }
+      return { top: t, left: l };
+    }
+
+    // Get opposite placement for flip
+    function getOppositePlacement(pl: Placement): Placement {
+      const opposites: Record<string, Placement> = {
+        'top': 'bottom',
+        'top-start': 'bottom-start',
+        'top-end': 'bottom-end',
+        'bottom': 'top',
+        'bottom-start': 'top-start',
+        'bottom-end': 'top-end',
+        'left': 'right',
+        'left-start': 'right-start',
+        'left-end': 'right-end',
+        'right': 'left',
+        'right-start': 'left-start',
+        'right-end': 'left-end',
+      };
+      return opposites[pl] || pl;
+    }
+
+    // Calculate initial position
+    let pos = calculatePosition(currentPlacement);
+    top = pos.top;
+    left = pos.left;
+
+    // Flip middleware: check if menu overflows viewport and flip if needed
+    const overflowsBottom = top + menuRect.height > viewport.height - 10;
+    const overflowsTop = top < 10;
+    const overflowsRight = left + menuRect.width > viewport.width - 10;
+    const overflowsLeft = left < 10;
+
+    // Flip vertically if needed
+    if ((currentPlacement.startsWith('bottom') && overflowsBottom) ||
+        (currentPlacement.startsWith('top') && overflowsTop)) {
+      currentPlacement = getOppositePlacement(currentPlacement);
+      pos = calculatePosition(currentPlacement);
+      top = pos.top;
+      left = pos.left;
+    }
+
+    // Flip horizontally if needed
+    if ((currentPlacement.startsWith('right') && overflowsRight) ||
+        (currentPlacement.startsWith('left') && overflowsLeft)) {
+      currentPlacement = getOppositePlacement(currentPlacement);
+      pos = calculatePosition(currentPlacement);
+      top = pos.top;
+      left = pos.left;
+    }
+
+    // Shift middleware: keep menu within viewport bounds
+    const padding = 10;
+
+    // Shift horizontally
+    if (left < padding) {
+      left = padding;
+    } else if (left + menuRect.width > viewport.width - padding) {
+      left = viewport.width - menuRect.width - padding;
+    }
+
+    // Shift vertically
+    if (top < padding) {
+      top = padding;
+    } else if (top + menuRect.height > viewport.height - padding) {
+      top = viewport.height - menuRect.height - padding;
     }
 
     menuStyle = `top: ${top}px; left: ${left}px;`;

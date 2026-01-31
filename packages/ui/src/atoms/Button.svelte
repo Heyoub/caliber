@@ -34,6 +34,8 @@
     hamburger?: boolean;
     /** Hamburger open state */
     hamburgerOpen?: boolean;
+    /** Enable blob/lava lamp animation */
+    blob?: boolean;
     /** Additional CSS classes */
     class?: string;
     /** Click handler */
@@ -57,6 +59,7 @@
     href,
     hamburger = false,
     hamburgerOpen = false,
+    blob = false,
     class: className = '',
     onclick,
     children,
@@ -301,6 +304,17 @@
       <!-- Outer glow effect -->
       <div class="absolute -inset-px rounded-lg opacity-15 transition-all duration-500 ease-out -z-10 outer-glow-effect" class:forced-glow={forcePressed}></div>
 
+      <!-- Blob/Lava lamp animation -->
+      {#if blob}
+        <div class="absolute inset-0 overflow-hidden rounded-lg z-[2] pointer-events-none">
+          <div class="blob-container">
+            <div class="blob blob-1" style="--blob-color: {colorConfig.glow};"></div>
+            <div class="blob blob-2" style="--blob-color: {colorConfig.glow};"></div>
+            <div class="blob blob-3" style="--blob-color: {colorConfig.glow};"></div>
+          </div>
+        </div>
+      {/if}
+
       <!-- Border highlight -->
       <div class="absolute inset-0 border border-white/20 hover:border-white/50 rounded-lg transition-all duration-300 z-[1]" class:border-white/60={forcePressed}></div>
 
@@ -413,5 +427,69 @@
   a:focus-visible {
     outline: 2px solid var(--glow-color);
     outline-offset: 2px;
+  }
+
+  /* Blob/Lava lamp animation */
+  .blob-container {
+    position: absolute;
+    inset: -50%;
+    width: 200%;
+    height: 200%;
+    filter: blur(20px);
+    opacity: 0.6;
+  }
+
+  .blob {
+    position: absolute;
+    width: 40%;
+    height: 40%;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--blob-color) 0%, transparent 70%);
+    animation: blob-float 8s ease-in-out infinite;
+  }
+
+  .blob-1 {
+    top: 20%;
+    left: 20%;
+    animation-delay: 0s;
+  }
+
+  .blob-2 {
+    top: 40%;
+    right: 20%;
+    animation-delay: -2.5s;
+    animation-duration: 10s;
+  }
+
+  .blob-3 {
+    bottom: 20%;
+    left: 40%;
+    animation-delay: -5s;
+    animation-duration: 12s;
+  }
+
+  @keyframes blob-float {
+    0%, 100% {
+      transform: translate(0, 0) scale(1);
+    }
+    25% {
+      transform: translate(20%, -20%) scale(1.1);
+    }
+    50% {
+      transform: translate(-10%, 20%) scale(0.9);
+    }
+    75% {
+      transform: translate(-20%, -10%) scale(1.05);
+    }
+  }
+
+  button:hover .blob-container,
+  a:hover .blob-container {
+    opacity: 0.8;
+  }
+
+  button:active .blob-container,
+  a:active .blob-container {
+    opacity: 1;
   }
 </style>

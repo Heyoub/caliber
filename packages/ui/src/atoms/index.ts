@@ -8,6 +8,7 @@
 // Button components
 export { default as Button } from './Button.svelte';
 export { default as IconButton } from './IconButton.svelte';
+export { default as HamburgerButton } from './HamburgerButton.svelte';
 
 // Form components
 export { default as Input } from './Input.svelte';
@@ -28,6 +29,7 @@ export { default as Tooltip } from './Tooltip.svelte';
 
 // Typography components
 export { default as Kbd } from './Kbd.svelte';
+export { default as StyledHeading } from './StyledHeading.svelte';
 
 // Re-export types
 export type {
