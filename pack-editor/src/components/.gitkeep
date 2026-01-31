@@ -1,0 +1,11 @@
+# Vue components will be added here
+#
+# Expected structure:
+# - layout/         (AppShell, Sidebar, StatusBar)
+# - explorer/       (PackTree, DependencyGraph)
+# - editor/         (CodeEditor, EditorTabs, StructuredView)
+# - structured/     (AgentsTable, ProvidersTable, etc.)
+# - history/        (HistoryPanel, VersionItem, DiffViewer)
+# - validation/     (ValidationBar, DiagnosticList)
+#
+# Upload old Vue files here as reference
