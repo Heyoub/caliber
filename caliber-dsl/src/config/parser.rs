@@ -1,7 +1,7 @@
 //! Config parser for Markdown fence blocks
 //! Uses serde_yaml for ALL parsing (no custom mini-syntax)
 
-use crate::pack::ir::PackError;
+use crate::pack::PackError;
 use crate::parser::ast::*;
 use serde::{Deserialize, Serialize};
 
@@ -231,7 +231,7 @@ pub fn parse_adapter_block(
     content: &str,
 ) -> Result<AdapterDef, ConfigError> {
     // Step 1: Deserialize YAML into config struct
-    let mut config: AdapterConfig = serde_yaml::from_str(content)
+    let config: AdapterConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     // Step 2: Enforce name precedence rule
@@ -267,7 +267,7 @@ pub fn parse_memory_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<MemoryDef, ConfigError> {
-    let mut config: MemoryConfig = serde_yaml::from_str(content)
+    let config: MemoryConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
@@ -328,7 +328,7 @@ pub fn parse_policy_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<PolicyDef, ConfigError> {
-    let mut config: PolicyConfig = serde_yaml::from_str(content)
+    let config: PolicyConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
@@ -359,7 +359,7 @@ pub fn parse_injection_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<InjectionDef, ConfigError> {
-    let mut config: InjectionConfig = serde_yaml::from_str(content)
+    let config: InjectionConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     // Note: Injection might not need a name (it's identified by source/target)
@@ -386,7 +386,7 @@ pub fn parse_provider_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<ProviderDef, ConfigError> {
-    let mut config: ProviderConfig = serde_yaml::from_str(content)
+    let config: ProviderConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
@@ -420,7 +420,7 @@ pub fn parse_cache_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<CacheDef, ConfigError> {
-    let mut config: CacheConfig = serde_yaml::from_str(content)
+    let config: CacheConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     // Cache might use header name or be singleton
@@ -447,7 +447,7 @@ pub fn parse_trajectory_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<TrajectoryDef, ConfigError> {
-    let mut config: TrajectoryConfig = serde_yaml::from_str(content)
+    let config: TrajectoryConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
@@ -479,7 +479,7 @@ pub fn parse_agent_block(
     header_name: Option<String>,
     content: &str,
 ) -> Result<AgentDef, ConfigError> {
-    let mut config: AgentConfig = serde_yaml::from_str(content)
+    let config: AgentConfig = serde_yaml::from_str(content)
         .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
 
     let name = match (header_name, &config.name) {
@@ -660,7 +660,9 @@ fn parse_index_type(s: &str) -> Result<IndexType, ConfigError> {
 
 fn parse_modifier(s: String) -> Result<ModifierDef, ConfigError> {
     // Placeholder - proper parsing needed
-    Ok(ModifierDef::Embeddable)
+    Ok(ModifierDef::Embeddable {
+        provider: s,
+    })
 }
 
 fn parse_policy_rule(config: PolicyRuleConfig) -> Result<PolicyRule, ConfigError> {

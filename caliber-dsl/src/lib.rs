@@ -26,6 +26,10 @@ pub mod pretty_printer;
 
 // Re-export key types for convenience
 pub use compiler::*;
-pub use config::*;
+pub use config::{
+    ast_to_markdown, parse_adapter_block, parse_agent_block, parse_cache_block,
+    parse_injection_block, parse_memory_block, parse_policy_block, parse_provider_block,
+    parse_trajectory_block, ConfigError,
+};
 pub use pack::{compose_pack, PackError, PackInput, PackMarkdownFile, PackOutput};
 pub use parser::*;
