@@ -185,3 +185,107 @@ export interface SendMessageRequest {
   trajectoryId?: string;
   scopeId?: string;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STREAMING TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Stream event types for WebSocket communication.
+ */
+export type StreamEventType =
+  | 'chunk'
+  | 'tool_call'
+  | 'tool_result'
+  | 'complete'
+  | 'error'
+  | 'heartbeat';
+
+/**
+ * Generic stream event wrapper.
+ */
+export interface StreamEvent {
+  type: StreamEventType;
+  data: unknown;
+  timestamp?: string;
+}
+
+/**
+ * Text chunk stream event.
+ */
+export interface ChunkEvent {
+  type: 'chunk';
+  data: string;
+}
+
+/**
+ * Tool call stream event.
+ */
+export interface ToolCallStreamEvent {
+  type: 'tool_call';
+  data: {
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+}
+
+/**
+ * Tool result stream event.
+ */
+export interface ToolResultStreamEvent {
+  type: 'tool_result';
+  data: {
+    toolCallId: string;
+    content: string | Record<string, unknown>;
+    isError: boolean;
+  };
+}
+
+/**
+ * Stream complete event.
+ */
+export interface CompleteEvent {
+  type: 'complete';
+  data: AssistantResponse;
+}
+
+/**
+ * Stream error event.
+ */
+export interface StreamErrorEvent {
+  type: 'error';
+  data: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TREE NODE TYPES (for FileTree component)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Tree node type for memory browser.
+ */
+export type TreeNodeType = 'trajectory' | 'scope' | 'event' | 'file' | 'folder';
+
+/**
+ * Tree node for FileTree/memory browser.
+ */
+export interface TreeNode {
+  id: string;
+  label: string;
+  type: TreeNodeType;
+  expanded?: boolean;
+  selected?: boolean;
+  icon?: string;
+  children?: TreeNode[];
+  metadata?: {
+    path?: string;
+    mimeType?: string;
+    eventCount?: number;
+    timestamp?: string;
+  };
+}
