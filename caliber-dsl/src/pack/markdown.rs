@@ -477,7 +477,7 @@ fn validate_blocks(
 /// - "kind name" (e.g., "adapter postgres_main") -> (Adapter, Some("postgres_main"))
 /// - "kind" only (e.g., "adapter") -> (Adapter, None)
 fn parse_fence_info(info: &str) -> Result<(FenceKind, Option<String>), PackError> {
-    let parts: Vec<&str> = info.trim().split_whitespace().collect();
+    let parts: Vec<&str> = info.split_whitespace().collect();
 
     match parts.as_slice() {
         [] => Err(PackError::Validation(

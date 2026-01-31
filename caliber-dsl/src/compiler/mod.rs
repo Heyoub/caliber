@@ -1406,7 +1406,6 @@ impl Default for DslCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::ast::*;
 
     #[test]
     fn test_parse_duration() {

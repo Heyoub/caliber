@@ -132,7 +132,7 @@ pub fn ast_to_markdown(ast: &CaliberAst) -> String {
     }
 
     for injection in injections {
-        output.push_str(&format!("```injection\n"));
+        output.push_str("```injection\n");
         output.push_str(&format!("source: {}\n", injection.source));
         output.push_str(&format!("target: {}\n", injection.target));
         output.push_str(&format!("mode: {}\n", injection_mode_to_string(&injection.mode)));
