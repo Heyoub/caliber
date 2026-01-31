@@ -19,6 +19,73 @@ Tracking starts on 2026-01-13 (prior usage not recorded).
 
 ## Timeline
 
+### January 31, 2026 — Pack Editor Production Build (v0.5.0)
+
+**Completed:**
+
+- ✅ **Vue to Svelte Migration Complete**: Removed all 47 Vue files from codebase
+  - Migrated 44 Vue components to 45+ Svelte 5 components
+  - 6 Opus agents built initial component library (atoms, molecules, organisms)
+  - 6 Sonnet agents audited Vue vs Svelte implementations
+  - Components use Svelte 5 runes: `$props()`, `$state()`, `$derived()`, `$effect()`
+
+- ✅ **UI Component Library** (`packages/ui`):
+  - **Atoms**: Button, Badge, Spinner, Toggle, Avatar, Input, Label, Checkbox, Card, CircularRings, HamburgerButton, StyledHeading
+  - **Molecules**: Dropdown, Tabs, Tooltip, SearchInput, Accordion, PromptButtons
+  - **Organisms**: NeuralAnimation, ParallaxHero, GridAnimation, IcosahedronAnimation, HexScroll
+  - Added `animations.css` with 25+ keyframes (glow, pulse, shimmer, float, etc.)
+  - Three.js integration for 3D icosahedron with vertex coloring
+
+- ✅ **SvelteKit App** (`app/`):
+  - Root layout with auth loading state
+  - Memory store with full CRUD (trajectories, scopes, events)
+  - API client with typed errors (`CaliberApiError`), retry logic, interceptors
+  - WebSocket streaming for AI chat responses
+  - Format detection utilities (markdown, yaml, json, xml, csv, toml, latex, mermaid)
+  - KaTeX utilities for LaTeX math rendering
+
+- ✅ **Test Infrastructure**:
+  - Vitest config with 80% coverage thresholds
+  - Custom matchers: `toHaveGlowEffect()`, `toBeAccessible()`, `toHaveAriaLabel()`
+  - Mock utilities for stores, API client, MCP client
+  - JSDOM polyfills (ResizeObserver, IntersectionObserver, matchMedia)
+
+- ✅ **Monorepo Structure**:
+  - Updated workspaces: `packages/*`, `app`, `caliber-sdk`, `landing`
+  - Central `node_modules` via bun workspaces
+  - Updated `.gitignore` for SvelteKit (`.svelte-kit/`, `*.vue`)
+  - Added scripts: `dev:app`, `dev:ui`, `build:app`, `build:ui`, `test:app`, `test:ui`
+
+**Architecture Decision:**
+
+Svelte 5 chosen over Vue 3 for Pack Editor because:
+1. Runes provide simpler reactivity than Composition API
+2. Better TypeScript inference with `$props()` interface pattern
+3. Smaller bundle size for component library
+4. SvelteKit's file-based routing aligns with memory browser UX
+
+The Pack Editor will be the primary UI for:
+- Viewing/editing agent memory trajectories
+- Managing scopes and events
+- AI assistant chat interface
+- Memory graph visualization
+
+**Files Created:**
+
+- `packages/ui/` - 45+ Svelte components
+- `app/src/lib/api/client.ts` - 788 lines, production API client
+- `app/src/lib/stores/memory.ts` - Full memory state management
+- `app/tests/setup.ts` - 418 lines, test infrastructure
+- `pack-editor/BUILD_PLAN.md` - 1,096 lines, implementation roadmap
+- `packages/ui/STRUCTURE_PATTERNS.md` - 488 lines, design system DNA
+
+**Files Deleted:**
+
+- `docs/*.vue` - 44 Vue reference files
+- `pack-editor/src/components/ui/*.vue` - 3 Vue files
+
+---
+
 ### January 31, 2026 — TUI Removal + Markdown DSL Refactor (v0.4.6)
 
 **Completed:**

@@ -406,8 +406,7 @@ export type {
   KeyboardHandlers,
   EventHandler,
   DragHandler,
-  // Button variants
-  ButtonVariantKind,
+  // Button variant props (ButtonVariantKind exported from unions)
   SolidButtonProps,
   OutlineButtonProps,
   GhostButtonProps,
@@ -440,6 +439,14 @@ export type {
   WithSlots,
   ComponentPropMap,
   PropsFor,
+  // Application types
+  CMSContent,
+  ChatMessage,
+  ToolCall,
+  ToolResult,
+  EditorTab,
+  EditorPosition,
+  FileFormat,
 } from './props';
 
 // ═══════════════════════════════════════════════════════════════════════════

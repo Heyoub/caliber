@@ -265,7 +265,7 @@ export class McpClient {
    */
   private async request<T>(
     method: McpMethodName | string,
-    params?: Record<string, unknown>
+    params?: object
   ): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to MCP server');
@@ -277,7 +277,7 @@ export class McpClient {
       jsonrpc: '2.0',
       id,
       method,
-      params,
+      params: params as Record<string, unknown> | undefined,
     };
 
     return new Promise((resolve, reject) => {

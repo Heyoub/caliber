@@ -462,11 +462,11 @@ export interface DocumentWorkflow<S> extends StateMachine<S, { content: string }
  * Creates a new document in draft state.
  */
 export function createDocument(content: string): DocumentWorkflow<DocumentDraft> {
-  return {
+  const workflow: DocumentWorkflow<DocumentDraft> = {
     data: { content },
     stateName: 'draft',
     submitForReview() {
-      return { ...this, stateName: 'review' } as DocumentWorkflow<DocumentReview>;
+      return { ...workflow, stateName: 'review' } as unknown as DocumentWorkflow<DocumentReview>;
     },
     approve: undefined as never,
     reject: undefined as never,
@@ -474,6 +474,7 @@ export function createDocument(content: string): DocumentWorkflow<DocumentDraft>
     archive: undefined as never,
     edit: undefined as never,
   };
+  return workflow;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -537,6 +538,6 @@ export function protect<C, T>(data: T): ProtectedResource<C, T> {
       protect<C, T>({ ...data, ...partial })) as ProtectedResource<C, T>['write'],
     delete: (() => {}) as ProtectedResource<C, T>['delete'],
     grantAccess: (<NewC>() =>
-      protect<NewC, T>(data)) as ProtectedResource<C, T>['grantAccess'],
+      protect<NewC, T>(data)) as unknown as ProtectedResource<C, T>['grantAccess'],
   };
 }

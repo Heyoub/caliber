@@ -63,17 +63,17 @@ import type {
  */
 export interface StateAspects {
   /** Component is loading data or processing */
-  readonly loading?: boolean;
+  loading?: boolean;
   /** Component is disabled and not interactive */
-  readonly disabled?: boolean;
+  disabled?: boolean;
   /** Component has an error state */
-  readonly error?: boolean;
+  error?: boolean;
   /** Component shows success state */
-  readonly success?: boolean;
+  success?: boolean;
   /** Component is selected */
-  readonly selected?: boolean;
+  selected?: boolean;
   /** Component is in active state */
-  readonly active?: boolean;
+  active?: boolean;
 }
 
 /**
@@ -81,11 +81,11 @@ export interface StateAspects {
  */
 export interface VisibilityAspects {
   /** Component is hidden (display: none) */
-  readonly hidden?: boolean;
+  hidden?: boolean;
   /** Component is collapsed */
-  readonly collapsed?: boolean;
+  collapsed?: boolean;
   /** Component is expanded */
-  readonly expanded?: boolean;
+  expanded?: boolean;
 }
 
 /**
@@ -93,13 +93,13 @@ export interface VisibilityAspects {
  */
 export interface InteractionAspects {
   /** Component responds to click/hover */
-  readonly interactive?: boolean;
+  interactive?: boolean;
   /** Component can be dragged */
-  readonly draggable?: boolean;
+  draggable?: boolean;
   /** Component accepts drops */
-  readonly droppable?: boolean;
+  droppable?: boolean;
   /** Component can be resized */
-  readonly resizable?: boolean;
+  resizable?: boolean;
 }
 
 /**
@@ -107,11 +107,11 @@ export interface InteractionAspects {
  */
 export interface ContentAspects {
   /** Truncate text with ellipsis */
-  readonly truncate?: boolean;
+  truncate?: boolean;
   /** Allow text wrapping */
-  readonly wrap?: boolean;
+  wrap?: boolean;
   /** Enable scrolling */
-  readonly scrollable?: boolean;
+  scrollable?: boolean;
 }
 
 /**
@@ -119,11 +119,11 @@ export interface ContentAspects {
  */
 export interface LayoutAspects {
   /** Take full width of container */
-  readonly fullWidth?: boolean;
+  fullWidth?: boolean;
   /** Take full height of container */
-  readonly fullHeight?: boolean;
+  fullHeight?: boolean;
   /** Center content */
-  readonly centered?: boolean;
+  centered?: boolean;
 }
 
 /**
@@ -131,11 +131,11 @@ export interface LayoutAspects {
  */
 export interface AnimationAspects {
   /** Enable animations */
-  readonly animate?: boolean;
+  animate?: boolean;
   /** Entry animation type */
-  readonly animateIn?: AnimateIn;
+  animateIn?: AnimateIn;
   /** Exit animation type */
-  readonly animateOut?: AnimateOut;
+  animateOut?: AnimateOut;
 }
 
 /**
@@ -213,7 +213,7 @@ export interface StyledProps extends InteractiveProps {
   /** Border radius */
   rounded?: RoundedSize;
   /** Shadow depth */
-  shadow?: ShadowSize;
+  shadow?: Shadow;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -691,3 +691,165 @@ export interface ComponentPropMap {
  * Get props type for a component by name.
  */
 export type PropsFor<K extends keyof ComponentPropMap> = ComponentPropMap[K];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APPLICATION TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * CMS content strings for internationalization.
+ */
+export interface CMSContent {
+  /** Title text */
+  title?: string;
+  /** Subtitle text */
+  subtitle?: string;
+  /** Description text */
+  description?: string;
+  /** Placeholder text */
+  placeholder?: string;
+  /** Input placeholder */
+  inputPlaceholder?: string;
+  /** View placeholder */
+  viewPlaceholder?: string;
+  /** Submit button label */
+  submitLabel?: string;
+  /** Cancel button label */
+  cancelLabel?: string;
+  /** Error message */
+  errorLabel?: string;
+  /** Success message */
+  successLabel?: string;
+  /** Loading message */
+  loadingLabel?: string;
+  /** Chat label */
+  chatLabel?: string;
+  /** Prompts label */
+  promptsLabel?: string;
+  /** Templates label */
+  templatesLabel?: string;
+  /** History label */
+  historyLabel?: string;
+  /** Send message label */
+  sendLabel?: string;
+  /** Sending message label */
+  sendingLabel?: string;
+  /** Dismiss label */
+  dismissLabel?: string;
+  /** Drop label */
+  dropLabel?: string;
+  /** Tool calls label */
+  toolCallsLabel?: string;
+  /** Processing label */
+  processingLabel?: string;
+  /** User label */
+  userLabel?: string;
+  /** Assistant label */
+  assistantLabel?: string;
+  /** Copying label */
+  copyingLabel?: string;
+  /** Copy label */
+  copyLabel?: string;
+  /** Pending label */
+  pendingLabel?: string;
+  /** Approved label */
+  approvedLabel?: string;
+  /** Running label */
+  runningLabel?: string;
+  /** Index signature for any additional labels */
+  [key: string]: string | undefined;
+}
+
+/**
+ * Chat message type.
+ */
+export interface ChatMessage {
+  /** Message ID */
+  id: string;
+  /** Message role */
+  role: 'user' | 'assistant' | 'system';
+  /** Message content */
+  content: string;
+  /** Timestamp */
+  timestamp: Date;
+  /** Tool calls in this message */
+  toolCalls?: ToolCall[];
+  /** Whether message is streaming */
+  isStreaming?: boolean;
+  /** Whether assistant is typing */
+  typing?: boolean;
+  /** Model used for this message */
+  model?: string;
+}
+
+/**
+ * Tool call type.
+ */
+export interface ToolCall {
+  /** Tool call ID */
+  id: string;
+  /** Tool name */
+  name: string;
+  /** Tool arguments */
+  arguments: Record<string, unknown>;
+  /** Tool call status */
+  status: 'pending' | 'approved' | 'running' | 'success' | 'error' | 'rejected';
+  /** Result if completed */
+  result?: ToolResult;
+}
+
+/**
+ * Tool result type.
+ */
+export interface ToolResult {
+  /** Whether tool succeeded */
+  success: boolean;
+  /** Result data */
+  data?: unknown;
+  /** Error message if failed */
+  error?: string;
+}
+
+/**
+ * Editor tab type.
+ */
+export interface EditorTab {
+  /** Tab ID */
+  id: string;
+  /** File path or title */
+  path: string;
+  /** Tab label */
+  label: string;
+  /** Content */
+  content: string;
+  /** Language for syntax highlighting */
+  language?: string;
+  /** Whether file is modified */
+  isDirty?: boolean;
+  /** Whether tab is active */
+  isActive?: boolean;
+}
+
+/**
+ * Editor cursor position.
+ */
+export interface EditorPosition {
+  /** Line number (1-indexed) */
+  line: number;
+  /** Column number (1-indexed) */
+  column: number;
+}
+
+/**
+ * File format detection result.
+ */
+export interface FileFormat {
+  /** Format name */
+  name: string;
+  /** MIME type */
+  mimeType: string;
+  /** File extension */
+  extension: string;
+  /** Language for syntax highlighting */
+  language?: string;
+}

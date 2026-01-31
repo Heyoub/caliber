@@ -186,14 +186,14 @@
   <!-- Glow layer (before pseudo-element equivalent) -->
   {#if glow && glow !== 'pulse'}
     <div
-      class="absolute -inset-1 rounded-full opacity-50 blur-3xl -z-10 pointer-events-none"
-      class:bg-teal-500/30={color === 'teal'}
-      class:bg-coral-500/30={color === 'coral'}
-      class:bg-purple-500/30={color === 'purple'}
-      class:bg-pink-500/30={color === 'pink'}
-      class:bg-mint-500/30={color === 'mint'}
-      class:bg-amber-500/30={color === 'amber'}
-      class:bg-slate-500/30={color === 'slate'}
+      class="absolute -inset-1 rounded-full opacity-50 blur-3xl -z-10 pointer-events-none
+        {color === 'teal' ? 'bg-teal-500/30' : ''}
+        {color === 'coral' ? 'bg-coral-500/30' : ''}
+        {color === 'purple' ? 'bg-purple-500/30' : ''}
+        {color === 'pink' ? 'bg-pink-500/30' : ''}
+        {color === 'mint' ? 'bg-mint-500/30' : ''}
+        {color === 'amber' ? 'bg-amber-500/30' : ''}
+        {color === 'slate' ? 'bg-slate-500/30' : ''}"
     ></div>
   {/if}
 
