@@ -21,6 +21,18 @@ connection: "postgresql://localhost/caliber"
 ```
 "#;
 
+/// Registers a Criterion benchmark that measures composing a pack from a minimal manifest and a single markdown file.
+///
+/// The benchmark named "markdown/parse_compile_min" constructs a PackInput containing an inlined minimal manifest and one markdown file (MARKDOWN_MIN) and measures the cost of calling `compose_pack`.
+///
+/// # Examples
+///
+/// ```
+/// use criterion::Criterion;
+/// // In a real benchmark harness Criterion is provided by the test runner.
+/// let mut c = Criterion::default();
+/// bench_parse_compile(&mut c);
+/// ```
 fn bench_parse_compile(c: &mut Criterion) {
     c.bench_function("markdown/parse_compile_min", |b| {
         let manifest_toml = r#"

@@ -20,6 +20,18 @@ pub enum ConfigError {
 }
 
 impl std::fmt::Display for ConfigError {
+    /// Formats a ConfigError into a human-readable message.
+    ///
+    /// Each variant is rendered as "<prefix>: <message>", for example
+    /// "YAML parse error: ..." or "Missing name: ...".
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::fmt::Display;
+    /// let err = crate::ConfigError::MissingName("memory".into());
+    /// assert_eq!(format!("{}", err), "Missing name: memory");
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigError::YamlParse(msg) => write!(f, "YAML parse error: {}", msg),
@@ -35,6 +47,16 @@ impl std::fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl From<ConfigError> for PackError {
+    /// Convert a `ConfigError` into a `PackError` by mapping it to `PackError::Validation`
+    /// containing the error's string representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let cfg_err = ConfigError::MissingName("adapter".into());
+    /// let pack_err: PackError = cfg_err.into();
+    /// assert!(matches!(pack_err, PackError::Validation(_)));
+    /// ```
     fn from(err: ConfigError) -> Self {
         PackError::Validation(err.to_string())
     }
@@ -226,6 +248,36 @@ pub struct PermissionMatrixConfig {
 // PARSER FUNCTIONS (serde_yaml does the heavy lifting)
 // ============================================================================
 
+/// Parses an adapter YAML fence block into an `AdapterDef`.
+///
+/// The function deserializes `content` as YAML, determines the adapter name using
+/// the fence header if present (erroring on conflicts or absence), validates the
+/// adapter configuration, and converts it into an `AdapterDef`.
+///
+/// # Errors
+///
+/// Returns a `ConfigError` when:
+/// - YAML deserialization fails (`ConfigError::YamlParse`),
+/// - both a header name and a payload name are provided (`ConfigError::NameConflict`),
+/// - no name is provided (`ConfigError::MissingName`),
+/// - the adapter type is unrecognized (`ConfigError::UnknownAdapter`),
+/// - or other validation failures occur.
+///
+/// # Examples
+///
+/// ```
+/// #[test]
+/// fn parse_with_header_name() {
+///     let header = Some("my_adapter".to_string());
+///     let yaml = r#"
+/// adapter_type: "postgres"
+/// connection: "postgres://user:pass@localhost/db"
+/// options: []
+/// "#;
+///     let def = parse_adapter_block(header, yaml).expect("should parse");
+///     assert_eq!(def.name, "my_adapter");
+/// }
+/// ```
 pub fn parse_adapter_block(
     header_name: Option<String>,
     content: &str,
@@ -263,6 +315,38 @@ pub fn parse_adapter_block(
     })
 }
 
+/// Parses a YAML memory block (fence content) into a MemoryDef.
+///
+/// The header-provided name takes precedence when the payload omits a name.
+/// If both header and payload provide names, or if neither provides a name, an error is returned.
+/// Returns an error for invalid YAML or any invalid/unknown values found during conversion.
+///
+/// # Errors
+///
+/// Returns `ConfigError::YamlParse` if the content is not valid YAML; `ConfigError::NameConflict`
+/// if both header and payload specify different names; `ConfigError::MissingName` if no name is provided;
+/// or other `ConfigError` variants produced by value parsing helpers when fields contain invalid values.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// memory_type: episodic
+/// retention: persistent
+/// lifecycle: explicit
+/// schema:
+///   - name: id
+///     field_type: uuid
+///   - name: content
+///     field_type: text
+/// indexes: []
+/// inject_on: []
+/// modifiers: []
+/// "#;
+///
+/// let def = parse_memory_block(Some("my_memory".to_string()), yaml).unwrap();
+/// assert_eq!(def.name, "my_memory");
+/// ```
 pub fn parse_memory_block(
     header_name: Option<String>,
     content: &str,
@@ -324,6 +408,34 @@ pub fn parse_memory_block(
     })
 }
 
+/// Parses a policy YAML block from a Markdown fence into a PolicyDef.
+///
+/// The function deserializes `content` as YAML into a PolicyConfig, applies name precedence
+/// (the fence `header_name` is used when present; an explicit payload name conflicts with the
+/// header; an absent name in both locations is an error), converts each policy rule into the
+/// AST via `parse_policy_rule`, and returns a `PolicyDef` with the resolved name and rules.
+///
+/// # Errors
+///
+/// Returns a `ConfigError::YamlParse` if YAML deserialization fails, `ConfigError::NameConflict`
+/// if both header and payload provide different names, `ConfigError::MissingName` if no name is
+/// supplied, or any `ConfigError` produced while parsing policy rules.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// name: example-policy
+/// rules:
+///   - trigger: task_end
+///     actions:
+///       - summarize:
+///           target: "summary-target"
+/// "#;
+/// let def = parse_policy_block(None, yaml).unwrap();
+/// assert_eq!(def.name, "example-policy");
+/// assert_eq!(def.rules.len(), 1);
+/// ```
 pub fn parse_policy_block(
     header_name: Option<String>,
     content: &str,
@@ -355,6 +467,26 @@ pub fn parse_policy_block(
     Ok(PolicyDef { name, rules })
 }
 
+/// Parses an InjectionConfig YAML block and converts it into an InjectionDef.
+///
+/// If both a header name and a `name` field in the YAML payload are present, this returns
+/// a `ConfigError::NameConflict`. The returned `InjectionDef` contains the parsed
+/// source, target, injection mode, priority, and optional max_tokens. `filter` is unset.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// source: "memory_a"
+/// target: "agent_b"
+/// mode: "full"
+/// priority: 10
+/// "#;
+/// let def = parse_injection_block(None, yaml).unwrap();
+/// assert_eq!(def.source, "memory_a");
+/// assert_eq!(def.target, "agent_b");
+/// assert_eq!(def.priority, 10);
+/// ```
 pub fn parse_injection_block(
     header_name: Option<String>,
     content: &str,
@@ -382,6 +514,31 @@ pub fn parse_injection_block(
     })
 }
 
+/// Parse a provider fence block from YAML content into a ProviderDef.
+///
+/// Parses `content` as YAML into a `ProviderConfig`, applies name precedence between
+/// the optional `header_name` and the payload `name` (header wins; conflict is an error),
+/// resolves the `provider_type`, and converts `api_key` into an environment-aware `EnvValue`.
+///
+/// # Errors
+///
+/// Returns `ConfigError::YamlParse` if the YAML is invalid, `ConfigError::NameConflict` if
+/// both header and payload names are provided, `ConfigError::MissingName` if no name is present,
+/// or other `ConfigError` variants produced while parsing `provider_type` or `api_key`.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// provider_type: openai
+/// api_key: env:OPENAI_KEY
+/// model: gpt-4
+/// options: []
+/// "#;
+///
+/// let def = parse_provider_block(Some("my-provider".to_string()), yaml).unwrap();
+/// assert_eq!(def.name, "my-provider");
+/// ```
 pub fn parse_provider_block(
     header_name: Option<String>,
     content: &str,
@@ -416,6 +573,22 @@ pub fn parse_provider_block(
     })
 }
 
+/// Parses a cache configuration YAML block and converts it into a CacheDef.
+///
+/// Returns an error if YAML parsing fails, if the header and payload both provide a name,
+/// or if backend/freshness values are invalid.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// backend: memory
+/// size_mb: 100
+/// default_freshness: Strict
+/// "#;
+/// let def = parse_cache_block(None, yaml).unwrap();
+/// assert_eq!(def.size_mb, 100);
+/// ```
 pub fn parse_cache_block(
     header_name: Option<String>,
     content: &str,
@@ -443,6 +616,33 @@ pub fn parse_cache_block(
     })
 }
 
+/// Parse a Markdown fence trajectory YAML block into a TrajectoryDef, resolving the block name from the header or payload.
+///
+/// The resulting `TrajectoryDef` is populated from the deserialized YAML payload. The trajectory `name` is taken from `header_name` when provided; if `header_name` is `None`, the payload `name` is used. If both are present the function returns an error, and if neither is present it returns an error.
+///
+/// # Errors
+///
+/// Returns `ConfigError::YamlParse` if the YAML cannot be deserialized, `ConfigError::NameConflict` if both a header name and a payload name are supplied, or `ConfigError::MissingName` if no name is provided.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// name: my_trajectory
+/// description: "A sample trajectory"
+/// agent_type: "assistant"
+/// token_budget: 1000
+/// memory_refs:
+///   - mem1
+///   - mem2
+/// "#;
+///
+/// let def = parse_trajectory_block(None, yaml).expect("parse");
+/// assert_eq!(def.name, "my_trajectory");
+/// assert_eq!(def.agent_type, "assistant");
+/// assert_eq!(def.token_budget, 1000);
+/// assert_eq!(def.memory_refs.len(), 2);
+/// ```
 pub fn parse_trajectory_block(
     header_name: Option<String>,
     content: &str,
@@ -475,6 +675,40 @@ pub fn parse_trajectory_block(
     })
 }
 
+/// Parses an agent YAML block and converts it into an AgentDef.
+///
+/// The function deserializes `content` as an `AgentConfig`, resolves the agent name by
+/// preferring `header_name` when present (and returns an error on conflict), and maps
+/// capabilities, constraints, and permissions into an `AgentDef`.
+///
+/// # Errors
+///
+/// Returns `ConfigError::YamlParse` if the YAML cannot be deserialized,
+/// `ConfigError::NameConflict` if both `header_name` and the payload specify a name,
+/// and `ConfigError::MissingName` if no name is provided in either place.
+///
+/// # Examples
+///
+/// ```
+/// let yaml = r#"
+/// name: my-agent
+/// capabilities:
+///   - read
+///   - write
+/// constraints:
+///   max_concurrent: 4
+///   timeout_ms: 10000
+/// permissions:
+///   read: [ "resource_a" ]
+///   write: [ "resource_b" ]
+///   lock: []
+/// "#;
+///
+/// let def = parse_agent_block(None, yaml).unwrap();
+/// assert_eq!(def.name, "my-agent");
+/// assert_eq!(def.capabilities, vec!["read".into(), "write".into()]);
+/// assert_eq!(def.constraints.max_concurrent, 4);
+/// ```
 pub fn parse_agent_block(
     header_name: Option<String>,
     content: &str,
@@ -516,6 +750,26 @@ pub fn parse_agent_block(
 // VALIDATION LAYER (refinement types via runtime checks)
 // ============================================================================
 
+/// Validates that the adapter configuration specifies a known adapter type.
+///
+/// This checks the `adapter_type` field of the provided `AdapterConfig` and
+/// returns an error if it does not map to a supported adapter.
+///
+/// # Returns
+///
+/// `Err(ConfigError::UnknownAdapter)` if `adapter_type` is not recognized, `Ok(())` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = AdapterConfig {
+///     name: Some("main".into()),
+///     adapter_type: "postgres".into(),
+///     connection: "postgres://user:pass@localhost/db".into(),
+///     options: vec![],
+/// };
+/// assert!(validate_adapter_config(&cfg).is_ok());
+/// ```
 fn validate_adapter_config(config: &AdapterConfig) -> Result<(), ConfigError> {
     // Validate adapter_type is known
     parse_adapter_type(&config.adapter_type)?;
@@ -526,6 +780,20 @@ fn validate_adapter_config(config: &AdapterConfig) -> Result<(), ConfigError> {
 // TYPE CONVERSION HELPERS
 // ============================================================================
 
+/// Parse a string into an AdapterType.
+///
+/// # Returns
+///
+/// `Ok(AdapterType)` corresponding to the input string (case-insensitive), or
+/// `Err(ConfigError::UnknownAdapter(_))` if the input does not match a known adapter.
+///
+/// # Examples
+///
+/// ```
+/// let a = parse_adapter_type("Postgres").unwrap();
+/// assert_eq!(a, AdapterType::Postgres);
+/// assert!(matches!(parse_adapter_type("unknown"), Err(ConfigError::UnknownAdapter(_))));
+/// ```
 fn parse_adapter_type(s: &str) -> Result<AdapterType, ConfigError> {
     match s.to_lowercase().as_str() {
         "postgres" => Ok(AdapterType::Postgres),
@@ -535,6 +803,22 @@ fn parse_adapter_type(s: &str) -> Result<AdapterType, ConfigError> {
     }
 }
 
+/// Parse a memory type name into its corresponding MemoryType.
+///
+/// Accepts a case-insensitive string and returns the matching MemoryType variant.
+/// If the input does not match a known memory type, returns `ConfigError::InvalidValue`.
+///
+/// # Examples
+///
+/// ```
+/// let t = parse_memory_type("Ephemeral").unwrap();
+/// assert_eq!(t, MemoryType::Ephemeral);
+///
+/// assert!(matches!(
+///     parse_memory_type("unknown"),
+///     Err(ConfigError::InvalidValue(_))
+/// ));
+/// ```
 fn parse_memory_type(s: &str) -> Result<MemoryType, ConfigError> {
     match s.to_lowercase().as_str() {
         "ephemeral" => Ok(MemoryType::Ephemeral),
@@ -550,6 +834,20 @@ fn parse_memory_type(s: &str) -> Result<MemoryType, ConfigError> {
     }
 }
 
+/// Parse a retention specifier string into a `Retention` value.
+///
+/// Recognizes the literals `persistent`, `session`, and `scope`, the
+/// `duration:<value>` form which yields `Retention::Duration(<value>)`,
+/// and the `max:<n>` form which yields `Retention::Max(n)`.
+/// If `max:<n>` contains a non-integer `n`, returns `ConfigError::InvalidValue`.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(parse_retention("persistent").unwrap(), Retention::Persistent);
+/// assert_eq!(parse_retention("duration:7d").unwrap(), Retention::Duration("7d".into()));
+/// assert_eq!(parse_retention("max:5").unwrap(), Retention::Max(5));
+/// ```
 fn parse_retention(s: &str) -> Result<Retention, ConfigError> {
     match s.to_lowercase().as_str() {
         "persistent" => Ok(Retention::Persistent),
@@ -571,6 +869,28 @@ fn parse_retention(s: &str) -> Result<Retention, ConfigError> {
     }
 }
 
+/// Parse a lifecycle descriptor string into a `Lifecycle`.
+///
+/// Accepts the literal "explicit" or the form "autoclose:<trigger-expression>"; the latter produces
+/// `Lifecycle::AutoClose(trigger)` where `<trigger-expression>` is parsed into a `Trigger`.
+///
+/// # Returns
+///
+/// `Lifecycle::Explicit` for "explicit", `Lifecycle::AutoClose(...)` for "autoclose:<...>", or a
+/// `ConfigError::InvalidValue` if the input does not match a known lifecycle.
+///
+/// # Examples
+///
+/// ```
+/// let explicit = parse_lifecycle("explicit").unwrap();
+/// assert_eq!(explicit, Lifecycle::Explicit);
+///
+/// let auto = parse_lifecycle("autoclose: task_end").unwrap();
+/// match auto {
+///     Lifecycle::AutoClose(_) => {}
+///     _ => panic!("expected AutoClose"),
+/// }
+/// ```
 fn parse_lifecycle(s: &str) -> Result<Lifecycle, ConfigError> {
     match s.to_lowercase().as_str() {
         "explicit" => Ok(Lifecycle::Explicit),
@@ -585,6 +905,24 @@ fn parse_lifecycle(s: &str) -> Result<Lifecycle, ConfigError> {
     }
 }
 
+/// Parses a trigger specifier string into a `Trigger`.
+///
+/// Recognizes the literal values `task_start`, `task_end`, `scope_close`, `turn_end`, and `manual` (case-insensitive),
+/// and `schedule:<expr>` which produces `Trigger::Schedule` with `<expr>` as its payload.
+///
+/// # Examples
+///
+/// ```
+/// let t = parse_trigger("task_start").unwrap();
+/// assert!(matches!(t, Trigger::TaskStart));
+///
+/// let s = parse_trigger("schedule:0 0 * * *").unwrap();
+/// assert!(matches!(s, Trigger::Schedule(expr) if expr == "0 0 * * *"));
+/// ```
+///
+/// # Returns
+///
+/// `Ok(Trigger)` when the input matches a known trigger; `Err(ConfigError::InvalidValue)` when it does not.
 fn parse_trigger(s: &str) -> Result<Trigger, ConfigError> {
     match s.to_lowercase().as_str() {
         "task_start" => Ok(Trigger::TaskStart),
@@ -602,6 +940,28 @@ fn parse_trigger(s: &str) -> Result<Trigger, ConfigError> {
     }
 }
 
+/// Converts a YAML-deserialized FieldConfig into the internal FieldDef.
+///
+/// The function parses the textual `field_type` into a `FieldType` and
+/// constructs a `FieldDef` preserving `name`, `nullable`, and `default`.
+/// The `security` field is set to `None` because YAML-based security is not supported yet.
+///
+/// # Returns
+///
+/// `FieldDef` built from the given config; `Err(ConfigError)` if the `field_type` is invalid.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = FieldConfig {
+///     name: "id".to_string(),
+///     field_type: "uuid".to_string(),
+///     nullable: false,
+///     default: None,
+/// };
+/// let def = parse_field_def(cfg).unwrap();
+/// assert_eq!(def.name, "id");
+/// ```
 fn parse_field_def(config: FieldConfig) -> Result<FieldDef, ConfigError> {
     let field_type = parse_field_type(&config.field_type)?;
     Ok(FieldDef {
@@ -613,6 +973,22 @@ fn parse_field_def(config: FieldConfig) -> Result<FieldDef, ConfigError> {
     })
 }
 
+/// Parses a field type identifier into a `FieldType`.
+///
+/// Accepts case-insensitive names: `uuid`, `text`, `int`, `float`, `bool`,
+/// `timestamp`, and `json`. Recognizes `embedding:<dim>` where `<dim>` is an
+/// integer; if the dimension fails to parse the embedding's dimension will be
+/// `None` (the embedding type is still returned). Returns `Err(ConfigError::InvalidValue(_))`
+/// for unknown type strings.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(parse_field_type("text").unwrap(), FieldType::Text);
+/// assert_eq!(parse_field_type("EMBEDDING:128").unwrap(), FieldType::Embedding(Some(128)));
+/// assert_eq!(parse_field_type("embedding:bad").unwrap(), FieldType::Embedding(None));
+/// assert!(matches!(parse_field_type("unknown"), Err(ConfigError::InvalidValue(_))));
+/// ```
 fn parse_field_type(s: &str) -> Result<FieldType, ConfigError> {
     match s.to_lowercase().as_str() {
         "uuid" => Ok(FieldType::Uuid),
@@ -635,6 +1011,26 @@ fn parse_field_type(s: &str) -> Result<FieldType, ConfigError> {
     }
 }
 
+/// Converts an IndexConfig into an IndexDef by parsing the configured index type.
+///
+/// Parses the `index_type` string and returns an `IndexDef` preserving the `field` and `options` from the input config.
+///
+/// # Returns
+///
+/// `Ok(IndexDef)` on success; `Err(ConfigError::InvalidValue)` if the `index_type` text is not a known index type.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = IndexConfig {
+///     field: "title".into(),
+///     index_type: "btree".into(),
+///     options: vec![],
+/// };
+/// let def = parse_index_def(cfg).unwrap();
+/// assert_eq!(def.field, "title");
+/// assert_eq!(def.options.len(), 0);
+/// ```
 fn parse_index_def(config: IndexConfig) -> Result<IndexDef, ConfigError> {
     let index_type = parse_index_type(&config.index_type)?;
     Ok(IndexDef {
@@ -644,6 +1040,20 @@ fn parse_index_def(config: IndexConfig) -> Result<IndexDef, ConfigError> {
     })
 }
 
+/// Parses a string representation of an index type into an `IndexType`.
+///
+/// Recognized values (case-insensitive): `"btree"`, `"hash"`, `"gin"`, `"hnsw"`, `"ivfflat"`.
+///
+/// # Returns
+///
+/// `Ok(IndexType)` for a recognized value, or `Err(ConfigError::InvalidValue)` if the value is unknown.
+///
+/// # Examples
+///
+/// ```
+/// let t = parse_index_type("hnsw").unwrap();
+/// assert_eq!(t, IndexType::Hnsw);
+/// ```
 fn parse_index_type(s: &str) -> Result<IndexType, ConfigError> {
     match s.to_lowercase().as_str() {
         "btree" => Ok(IndexType::Btree),
@@ -658,6 +1068,29 @@ fn parse_index_type(s: &str) -> Result<IndexType, ConfigError> {
     }
 }
 
+/// Parses a modifier specification string into a `ModifierDef`.
+///
+/// Currently this is a placeholder implementation that treats the entire input
+/// string as the name of an embeddable provider.
+///
+/// # Parameters
+///
+/// - `s`: Modifier specification string.
+///
+/// # Returns
+///
+/// `Ok(ModifierDef::Embeddable { provider })` where `provider` is the original
+/// input string.
+///
+/// # Examples
+///
+/// ```
+/// let def = parse_modifier("openai".to_string()).unwrap();
+/// match def {
+///     ModifierDef::Embeddable { provider } => assert_eq!(provider, "openai"),
+///     _ => panic!("unexpected modifier variant"),
+/// }
+/// ```
 fn parse_modifier(s: String) -> Result<ModifierDef, ConfigError> {
     // Placeholder - proper parsing needed
     Ok(ModifierDef::Embeddable {
@@ -665,6 +1098,21 @@ fn parse_modifier(s: String) -> Result<ModifierDef, ConfigError> {
     })
 }
 
+/// Converts a deserialized PolicyRuleConfig into a validated PolicyRule.
+///
+/// Returns an error if the rule's trigger or any contained action is invalid.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = PolicyRuleConfig {
+///     trigger: "task_end".to_string(),
+///     actions: vec![ActionConfig::Summarize { target: "log".to_string() }],
+/// };
+/// let rule = parse_policy_rule(cfg).expect("valid policy rule");
+/// assert_eq!(rule.trigger.to_string(), "task_end");
+/// assert_eq!(rule.actions.len(), 1);
+/// ```
 fn parse_policy_rule(config: PolicyRuleConfig) -> Result<PolicyRule, ConfigError> {
     let trigger = parse_trigger(&config.trigger)?;
     let actions = config
@@ -675,6 +1123,19 @@ fn parse_policy_rule(config: PolicyRuleConfig) -> Result<PolicyRule, ConfigError
     Ok(PolicyRule { trigger, actions })
 }
 
+/// Converts an ActionConfig (parsed from YAML) into the corresponding internal Action.
+///
+/// # Returns
+///
+/// `Ok(Action)` when conversion succeeds; `Err(ConfigError)` if a value is invalid (for example, an unrecognized injection mode).
+///
+/// # Examples
+///
+/// ```
+/// let cfg = ActionConfig::Summarize { target: String::from("doc") };
+/// let action = parse_action(cfg).unwrap();
+/// assert_eq!(action, Action::Summarize(String::from("doc")));
+/// ```
 fn parse_action(config: ActionConfig) -> Result<Action, ConfigError> {
     match config {
         ActionConfig::Summarize { target } => Ok(Action::Summarize(target)),
@@ -691,6 +1152,20 @@ fn parse_action(config: ActionConfig) -> Result<Action, ConfigError> {
     }
 }
 
+/// Parses an injection mode string into an InjectionMode.
+///
+/// Accepts (case-insensitive) "full", "summary", "topk:<n>" and "relevant:<n>".
+/// Returns `Err(ConfigError::InvalidValue(_))` for unknown modes or invalid numeric arguments.
+///
+/// # Examples
+///
+/// ```
+/// let m = parse_injection_mode("full").unwrap();
+/// assert_eq!(m, InjectionMode::Full);
+///
+/// let m = parse_injection_mode("TopK:3").unwrap();
+/// assert_eq!(m, InjectionMode::TopK(3));
+/// ```
 fn parse_injection_mode(s: &str) -> Result<InjectionMode, ConfigError> {
     match s.to_lowercase().as_str() {
         "full" => Ok(InjectionMode::Full),
@@ -714,6 +1189,19 @@ fn parse_injection_mode(s: &str) -> Result<InjectionMode, ConfigError> {
     }
 }
 
+/// Parse a provider identifier string into the corresponding ProviderType.
+///
+/// # Returns
+///
+/// `Ok(ProviderType::OpenAI | ProviderType::Anthropic | ProviderType::Custom)` on recognized input,
+/// `Err(ConfigError::UnknownProvider(_))` if the input is not a known provider.
+///
+/// # Examples
+///
+/// ```
+/// let p = parse_provider_type("OpenAI").unwrap();
+/// assert_eq!(p, ProviderType::OpenAI);
+/// ```
 fn parse_provider_type(s: &str) -> Result<ProviderType, ConfigError> {
     match s.to_lowercase().as_str() {
         "openai" => Ok(ProviderType::OpenAI),
@@ -723,6 +1211,20 @@ fn parse_provider_type(s: &str) -> Result<ProviderType, ConfigError> {
     }
 }
 
+/// Parses a string into an EnvValue, interpreting values that start with `env:` as environment variable references.
+///
+/// The prefix `env:` (case-sensitive) is removed and the remainder is trimmed; if the prefix is present the result is `EnvValue::Env(var)`, otherwise the original string is returned as `EnvValue::Literal`.
+///
+/// # Examples
+///
+/// ```
+/// // env reference
+/// assert_eq!(parse_env_value("env:API_KEY"), EnvValue::Env("API_KEY".to_string()));
+/// // with whitespace after prefix
+/// assert_eq!(parse_env_value("env:  VAR  "), EnvValue::Env("VAR".to_string()));
+/// // literal value
+/// assert_eq!(parse_env_value("plain"), EnvValue::Literal("plain".to_string()));
+/// ```
 fn parse_env_value(s: &str) -> EnvValue {
     if let Some(rest) = s.strip_prefix("env:") {
         EnvValue::Env(rest.trim().to_string())
@@ -731,6 +1233,23 @@ fn parse_env_value(s: &str) -> EnvValue {
     }
 }
 
+/// Parse a string into a CacheBackendType.
+///
+/// Accepts case-insensitive names for supported cache backends and fails for unknown values.
+///
+/// # Returns
+///
+/// `CacheBackendType::Lmdb` for "lmdb", `CacheBackendType::Memory` for "memory", or a `ConfigError::InvalidValue` for any other input.
+///
+/// # Examples
+///
+/// ```
+/// let be = parse_cache_backend("LMDB").unwrap();
+/// assert_eq!(be, CacheBackendType::Lmdb);
+/// let mem = parse_cache_backend("memory").unwrap();
+/// assert_eq!(mem, CacheBackendType::Memory);
+/// assert!(parse_cache_backend("unknown").is_err());
+/// ```
 fn parse_cache_backend(s: &str) -> Result<CacheBackendType, ConfigError> {
     match s.to_lowercase().as_str() {
         "lmdb" => Ok(CacheBackendType::Lmdb),
@@ -742,6 +1261,22 @@ fn parse_cache_backend(s: &str) -> Result<CacheBackendType, ConfigError> {
     }
 }
 
+/// Convert a freshness configuration into its AST representation.
+///
+/// # Returns
+///
+/// `Ok(FreshnessDef::BestEffort { max_staleness })` when the input is `BestEffort`, `Ok(FreshnessDef::Strict)` when the input is `Strict`.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = FreshnessConfig::BestEffort { max_staleness: "5m".into() };
+/// let def = parse_freshness_def(cfg).unwrap();
+/// match def {
+///     FreshnessDef::BestEffort { max_staleness } => assert_eq!(max_staleness, "5m"),
+///     _ => panic!("unexpected variant"),
+/// }
+/// ```
 fn parse_freshness_def(config: FreshnessConfig) -> Result<FreshnessDef, ConfigError> {
     match config {
         FreshnessConfig::BestEffort { max_staleness } => Ok(FreshnessDef::BestEffort { max_staleness }),
