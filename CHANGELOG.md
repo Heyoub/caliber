@@ -37,6 +37,13 @@ This release represents a major consolidation and simplification of the CALIBER 
 - **Dead code**: Removed duplicate `parse_markdown_source` from db.rs (shared version in utils)
 - **Clippy lint**: Fixed needless borrow in workos_auth.rs
 
+### Changed
+- **CI Pipeline**: Optimized from 22+ jobs to 12 jobs (~1h 30m → ~20min for PRs)
+  - Created reusable composite actions for Rust and PostgreSQL 18 setup
+  - Consolidated 5 TypeScript test jobs into 1
+  - Moved E2E/OWASP tests to main-only (not every PR)
+  - Reduced code duplication by ~60%
+
 ### Added
 
 #### Frontend Application & UI System

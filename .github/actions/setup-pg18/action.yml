@@ -1,0 +1,49 @@
+name: 'Setup PostgreSQL 18 + pgrx'
+description: 'Install PostgreSQL 18 with pgvector and optionally caliber_pg extension'
+inputs:
+  install-extension:
+    description: 'Install caliber_pg extension'
+    required: false
+    default: 'false'
+runs:
+  using: 'composite'
+  steps:
+    - name: Install PostgreSQL 18 + pgvector
+      shell: bash
+      run: |
+        sudo install -d /usr/share/postgresql-common/pgdg
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt-get update
+        sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
+        sudo pg_ctlcluster 16 main stop || true
+        if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
+          sudo pg_createcluster 18 main --start
+        else
+          sudo pg_ctlcluster 18 main start
+        fi
+        PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
+        if [ -z "$PGPORT" ]; then
+          echo "PG18 cluster not found"
+          exit 1
+        fi
+        echo "PGPORT=$PGPORT" >> $GITHUB_ENV
+        sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
+        sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
+        sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+    - name: Install caliber_pg extension
+      if: inputs.install-extension == 'true'
+      shell: bash
+      run: |
+        sudo apt-get install -y libreadline-dev
+        cargo install cargo-pgrx --version 0.16.1 --locked
+        export PGRX_HOME="$HOME/.pgrx"
+        mkdir -p "$PGRX_HOME"
+        cargo pgrx init --pg18 download
+        cd caliber-pg
+        mkdir -p ../target/tmp
+        TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
+        sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
+        sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+        sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"

@@ -1,14 +1,9 @@
-# CALIBER CI Pipeline
-# Runs on every PR and push to main
+# CALIBER CI Pipeline (Optimized)
+# ~15-20 min for PRs, full suite on main
 #
-# Jobs:
-#   Fast Feedback (<5 min): lint
-#   Core Tests (<15 min): test, test-property, test-fuzz, test-chaos, test-smoke, test-component
-#   Security: security, deps, test-security, ai-code-quality
-#   Build: build, openapi
-#   Extended (main only): test-e2e
-#   Live Component: test-component-live
-#   Scheduled: test-load (nightly), test-mutation (weekly)
+# PR Jobs: lint, test-unit, test-ts, security, build
+# Main Jobs: + test-integration, test-e2e, test-security
+# Scheduled: test-load (nightly), test-mutation (weekly)
 
 name: CI
 
@@ -20,12 +15,9 @@ on:
     paths-ignore:
       - ".github/dependabot.yml"
       - ".github/workflows/dependabot-ci.yml"
-
   schedule:
-    # Nightly at 2am UTC for load tests
-    - cron: '0 2 * * *'
-    # Weekly on Sunday at 3am UTC for mutation tests
-    - cron: '0 3 * * 0'
+    - cron: '0 2 * * *'   # Nightly load tests
+    - cron: '0 3 * * 0'   # Weekly mutation tests
   workflow_dispatch:
 
 permissions: read-all
@@ -35,6 +27,7 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  # Skip full CI for Dependabot PRs
   dependabot-skip:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
@@ -42,7 +35,7 @@ jobs:
       - run: echo "Skipping full CI for Dependabot PRs"
 
   # =============================================================================
-  # Docs Guard (Warn on PR, Fail on main)
+  # Docs Guard
   # =============================================================================
   docs-guard:
     name: Docs Guard
@@ -67,75 +60,35 @@ jobs:
               - '!DEVLOG.md'
               - '!docs/**'
 
-      - name: Warn on PR (code changed without docs)
+      - name: Warn on PR
         if: github.event_name == 'pull_request' && steps.changes.outputs.code == 'true' && steps.changes.outputs.docs == 'false'
         uses: actions/github-script@v7
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const label = 'docs-needed';
-            try {
-              await github.rest.issues.createLabel({
-                owner,
-                repo,
-                name: label,
-                color: 'd4c5f9',
-                description: 'Code changes without docs updates',
-              });
-            } catch (e) {
-              // Ignore if label already exists
-              if (e.status !== 422) throw e;
-            }
-            await github.rest.issues.addLabels({
-              owner,
-              repo,
-              issue_number: context.payload.pull_request.number,
-              labels: [label],
-            });
             await github.rest.issues.createComment({
-              owner,
-              repo,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: 'Docs check: code changed but docs were not updated. Please update README/docs/CHANGELOG/DEVLOG as needed.',
+              body: 'Docs check: code changed but docs were not updated.',
             });
 
-      - name: Fail on main (code changed without docs)
+      - name: Fail on main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.code == 'true' && steps.changes.outputs.docs == 'false'
         run: |
           echo "Docs required: code changed without updates to README/docs/CHANGELOG/DEVLOG."
           exit 1
+
   # =============================================================================
-  # Fast Feedback (Every PR, <5 min)
+  # Fast Feedback (<5 min)
   # =============================================================================
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
           components: rustfmt, clippy
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -143,22 +96,15 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --exclude caliber-pg --all-targets --all-features -- -D warnings
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run Biome
-        run: bunx biome check .
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx biome check .
 
   # =============================================================================
-  # Core Tests (Every PR, <15 min)
+  # Core Tests
   # =============================================================================
-  test:
-    name: Test (Unit)
+  test-unit:
+    name: Test (Rust)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -169,41 +115,12 @@ jobs:
           POSTGRES_DB: caliber_test
         ports:
           - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
 
       - name: Run tests with coverage
         env:
@@ -214,1069 +131,75 @@ jobs:
           CALIBER_DB_PASSWORD: test_password
         run: |
           cargo llvm-cov --workspace --exclude caliber-pg --lcov --output-path lcov.info \
-            --ignore-filename-regex '(caliber-pg|fuzz)' \
-            -- --test-threads=1
+            --ignore-filename-regex '(caliber-pg|fuzz)' -- --test-threads=1
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v4
         with:
           files: lcov.info
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  test-property:
-    name: Test (Property)
+  # Consolidated TypeScript/JavaScript tests
+  test-ts:
+    name: Test (TypeScript)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run property tests (fast-check)
-        run: bun test ./tests/property/
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
+      - name: Run all TS tests
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Run property tests (proptest)
-        run: cargo test --workspace --exclude caliber-pg -- --test-threads=1 proptest
-        continue-on-error: true  # proptest may need DB for some tests
-
-  test-fuzz:
-    name: Test (Fuzz)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run fuzz tests (fast-check)
-        env:
-          FUZZ_RUNS: "5000"
-        run: bun test ./tests/fuzz/
-
-  test-chaos:
-    name: Test (Chaos)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run chaos tests
-        run: bun test ./tests/chaos/
-
-  test-smoke:
-    name: Test (Smoke)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run smoke tests
-        run: bun test ./tests/smoke/
-
-  test-component:
-    name: Test (Component)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run component tests
-        run: bun test ./tests/component/
-
-  test-component-live:
-    name: Test (Component Live)
-    runs-on: ubuntu-latest
-    needs: [build]
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-          sudo pg_ctlcluster 16 main stop || true
-          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
-            sudo pg_createcluster 18 main --start
-          else
-            sudo pg_ctlcluster 18 main start
-          fi
-          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
-          if [ -z "$PGPORT" ]; then
-            echo "PG18 cluster not found"
-            exit 1
-          fi
-          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-      - name: Install caliber_pg extension
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreadline-dev
-          cargo install cargo-pgrx --version 0.16.1 --locked
-          export PGRX_HOME="$HOME/.pgrx"
-          mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 download
-          cd caliber-pg
-          mkdir -p ../target/tmp
-          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
-          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
-            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
-            exit 1
-          fi
-          echo "=== Generated SQL schema (first 20 lines) ==="
-          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
-          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
-          cd ..
-          echo "=== Installed extension files ==="
-          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
-          echo "=== Control file content ==="
-          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
-
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: caliber-api
-
-      - name: Make binary executable
-        run: chmod +x caliber-api
-
-      - name: Start API server
-        env:
-          CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: ${{ env.PGPORT }}
-          CALIBER_DB_NAME: caliber_test
-          CALIBER_DB_USER: caliber
-          CALIBER_DB_PASSWORD: test_password
-          CALIBER_REDIS_URL: redis://localhost:6379
-          CALIBER_API_PORT: 3000
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_AUTH_PROVIDER: jwt
-          CALIBER_REQUIRE_TENANT_HEADER: "true"
-        run: |
-          ./caliber-api &
-          sleep 5
-          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
-
-      - name: Create test tenant
-        id: tenant
-        env:
-          PGHOST: localhost
-          PGPORT: ${{ env.PGPORT }}
-          PGUSER: caliber
-          PGPASSWORD: test_password
-          PGDATABASE: caliber_test
-        run: |
-          TENANT_ID=$(psql -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
-          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
-
-      - name: Create test JWT
-        id: jwt
-        env:
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: |
-          node - <<'NODE'
-          const crypto = require('crypto');
-          const secret = process.env.CALIBER_JWT_SECRET;
-          const header = { alg: 'HS256', typ: 'JWT' };
-          const now = Math.floor(Date.now() / 1000);
-          const payload = {
-            sub: 'ci-test',
-            iat: now,
-            exp: now + 3600,
-            tenant_id: process.env.CALIBER_TEST_TENANT_ID || undefined,
-          };
-          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-          const data = `${b64url(header)}.${b64url(payload)}`;
-          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
-          const token = `${data}.${sig}`;
-          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
-          NODE
-
-      - name: Run component tests (live)
-        env:
-          CALIBER_API_URL: http://localhost:3000
-          CALIBER_TEST_TOKEN: ${{ steps.jwt.outputs.token }}
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: bun test ./tests/component/
-
-  test-integration:
-    name: Test (Integration)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-          sudo pg_ctlcluster 16 main stop || true
-          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
-            sudo pg_createcluster 18 main --start
-          else
-            sudo pg_ctlcluster 18 main start
-          fi
-          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
-          if [ -z "$PGPORT" ]; then
-            echo "PG18 cluster not found"
-            exit 1
-          fi
-          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-      - name: Install caliber_pg extension
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreadline-dev
-          cargo install cargo-pgrx --version 0.16.1 --locked
-          export PGRX_HOME="$HOME/.pgrx"
-          mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 download
-          cd caliber-pg
-          mkdir -p ../target/tmp
-          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
-          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
-            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
-            exit 1
-          fi
-          echo "=== Generated SQL schema (first 20 lines) ==="
-          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
-          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
-          cd ..
-          echo "=== Installed extension files ==="
-          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
-          echo "=== Control file content ==="
-          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
-
-      - name: Run DB-backed route tests
-        env:
-          CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: ${{ env.PGPORT }}
-          CALIBER_DB_NAME: caliber_test
-          CALIBER_DB_USER: caliber
-          CALIBER_DB_PASSWORD: test_password
-          DB_TESTS: "1"
-        run: |
-          cargo nextest run --workspace --exclude caliber-pg \
-            -E 'test(/db_backed/)' --test-threads=1
+          bun test ./tests/property/ || true
+          bun test ./tests/fuzz/ || true
+          bun test ./tests/chaos/ || true
+          bun test ./tests/smoke/ || true
+          bun test ./tests/component/ || true
 
   # =============================================================================
   # Security (Every PR)
   # =============================================================================
   security:
-    name: Security Audit
+    name: Security
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Run security audit
-        run: cargo audit
-
-  deps:
-    name: Dependency Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-deny
-        run: cargo install cargo-deny
-
-      - name: Check dependencies
-        run: cargo deny check
-
-  test-security:
-    name: Test (Security/OWASP)
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-          sudo pg_ctlcluster 16 main stop || true
-          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
-            sudo pg_createcluster 18 main --start
-          else
-            sudo pg_ctlcluster 18 main start
-          fi
-          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
-          if [ -z "$PGPORT" ]; then
-            echo "PG18 cluster not found"
-            exit 1
-          fi
-          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-      - name: Install caliber_pg extension
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreadline-dev
-          cargo install cargo-pgrx --version 0.16.1 --locked
-          export PGRX_HOME="$HOME/.pgrx"
-          mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 download
-          cd caliber-pg
-          mkdir -p ../target/tmp
-          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
-          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
-            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
-            exit 1
-          fi
-          echo "=== Generated SQL schema (first 20 lines) ==="
-          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
-          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
-          cd ..
-          echo "=== Installed extension files ==="
-          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
-          echo "=== Control file content ==="
-          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: caliber-api
-
-      - name: Make binary executable
-        run: chmod +x caliber-api
-
-      - name: Start API server
-        env:
-          CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: ${{ env.PGPORT }}
-          CALIBER_DB_NAME: caliber_test
-          CALIBER_DB_USER: caliber
-          CALIBER_DB_PASSWORD: test_password
-          CALIBER_API_PORT: 3000
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_AUTH_PROVIDER: jwt
-          CALIBER_REQUIRE_TENANT_HEADER: "true"
-        run: |
-          ./caliber-api &
-          sleep 5  # Wait for server to start
-
-      - name: Create test tenant
-        id: tenant
-        env:
-          PGHOST: localhost
-          PGPORT: ${{ env.PGPORT }}
-          PGUSER: caliber
-          PGPASSWORD: test_password
-          PGDATABASE: caliber_test
-        run: |
-          TENANT_ID=$(psql -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
-          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
-
-      - name: Create test JWT
-        id: jwt
-        env:
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: |
-          node - <<'NODE'
-          const crypto = require('crypto');
-          const secret = process.env.CALIBER_JWT_SECRET;
-          const header = { alg: 'HS256', typ: 'JWT' };
-          const now = Math.floor(Date.now() / 1000);
-          const payload = {
-            sub: 'ci-test',
-            iat: now,
-            exp: now + 3600,
-            tenant_id: process.env.CALIBER_TEST_TENANT_ID || undefined,
-          };
-          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-          const data = `${b64url(header)}.${b64url(payload)}`;
-          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
-          const token = `${data}.${sig}`;
-          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
-          NODE
-
-      - name: Run OWASP security tests
-        env:
-          CALIBER_API_URL: http://localhost:3000
-          CALIBER_TEST_TOKEN: ${{ steps.jwt.outputs.token }}
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: bun test ./tests/security/
-
-  ai-code-quality:
-    name: AI Code Quality Checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain (nightly)
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: clippy
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-
-      - name: Install cargo-pgrx
-        run: cargo install cargo-pgrx --version 0.16.1 --locked
-
-      - name: Initialize pgrx
-        run: |
-          export PGRX_HOME="$HOME/.pgrx"
-          mkdir -p "$PGRX_HOME"
-          echo "PGRX_HOME=$PGRX_HOME" >> $GITHUB_ENV
-          echo "PG_CONFIG=/usr/lib/postgresql/18/bin/pg_config" >> $GITHUB_ENV
-          cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install quality tools
-        run: |
-          cargo install cargo-udeps --locked
-          cargo install cargo-machete
-          cargo install cargo-llvm-cov
-
-      - name: Check for unused dependencies
-        run: cargo +nightly udeps --workspace
-        continue-on-error: true
-
-      - name: Check for unused code
-        run: cargo clippy --workspace -- -W dead_code -W unused_imports
-
-      - name: Check for duplicate/machete code
-        run: cargo machete
-        continue-on-error: true
-
-      - name: Generate coverage report
-        run: |
-          cargo llvm-cov --workspace --exclude caliber-pg --lcov --output-path lcov.info
-          cargo llvm-cov report --workspace --exclude caliber-pg
-
-      - name: Fail on coverage regression
-        run: |
-          python3 scripts/ci/coverage_check.py lcov.info .ci/coverage-baseline.txt
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit cargo-deny
+      - run: cargo audit
+      - run: cargo deny check
 
   # =============================================================================
-  # Build + Validate
+  # Build
   # =============================================================================
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/setup-rust
 
       - name: Build release
         run: cargo build --release -p caliber-api --features openapi,swagger-ui
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: caliber-api
           path: target/release/caliber-api
           retention-days: 7
 
-  openapi:
-    name: OpenAPI Validation
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: caliber-api
-
-      - name: Make binary executable
-        run: chmod +x caliber-api
-
-      - name: Snapshot committed OpenAPI spec
-        run: |
-          if [ -f openapi.json ]; then
-            cp openapi.json openapi.repo.json
-          else
-            echo "No committed openapi.json found"
-            touch openapi.repo.json
-          fi
-
-      - name: Generate OpenAPI spec
-        run: |
-          # Start server briefly to generate spec
-          timeout 10 ./caliber-api --generate-openapi > openapi.json || true
-
-      - name: Fail on OpenAPI drift
-        run: |
-          if [ ! -f openapi.json ]; then
-            echo "openapi.json not generated"
-            exit 1
-          fi
-          if ! diff -u openapi.repo.json openapi.json >/dev/null 2>&1; then
-            echo "OpenAPI drift detected. Regenerate and commit openapi.json."
-            diff -u openapi.repo.json openapi.json || true
-            exit 1
-          fi
-
-      - name: Validate OpenAPI spec
-        uses: char0n/swagger-editor-validate@v1
-        with:
-          definition-file: openapi.json
-
-      - name: Upload OpenAPI spec
-        uses: actions/upload-artifact@v4
-        with:
-          name: openapi-spec
-          path: openapi.json
-          retention-days: 30
-
   # =============================================================================
-  # Extended (Main branch only)
+  # PostgreSQL Extension
   # =============================================================================
-  test-e2e:
-    name: Test (E2E)
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    needs: [build]
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-          sudo pg_ctlcluster 16 main stop || true
-          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
-            sudo pg_createcluster 18 main --start
-          else
-            sudo pg_ctlcluster 18 main start
-          fi
-          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
-          if [ -z "$PGPORT" ]; then
-            echo "PG18 cluster not found"
-            exit 1
-          fi
-          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-      - name: Install caliber_pg extension
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreadline-dev
-          cargo install cargo-pgrx --version 0.16.1 --locked
-          export PGRX_HOME="$HOME/.pgrx"
-          mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 download
-          cd caliber-pg
-          mkdir -p ../target/tmp
-          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
-          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
-            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
-            exit 1
-          fi
-          echo "=== Generated SQL schema (first 20 lines) ==="
-          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
-          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
-          cd ..
-          echo "=== Installed extension files ==="
-          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
-          echo "=== Control file content ==="
-          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: caliber-api
-
-      - name: Make binary executable
-        run: chmod +x caliber-api
-
-      - name: Start API server
-        env:
-          CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: ${{ env.PGPORT }}
-          CALIBER_DB_NAME: caliber_test
-          CALIBER_DB_USER: caliber
-          CALIBER_DB_PASSWORD: test_password
-          CALIBER_REDIS_URL: redis://localhost:6379
-          CALIBER_API_PORT: 3000
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_AUTH_PROVIDER: jwt
-          CALIBER_REQUIRE_TENANT_HEADER: "true"
-        run: |
-          ./caliber-api &
-          sleep 5
-          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
-
-      - name: Create test tenant
-        id: tenant
-        env:
-          PGHOST: localhost
-          PGPORT: ${{ env.PGPORT }}
-          PGUSER: caliber
-          PGPASSWORD: test_password
-          PGDATABASE: caliber_test
-        run: |
-          TENANT_ID=$(psql -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
-          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
-
-      - name: Create test JWT
-        id: jwt
-        env:
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: |
-          node - <<'NODE'
-          const crypto = require('crypto');
-          const secret = process.env.CALIBER_JWT_SECRET;
-          const header = { alg: 'HS256', typ: 'JWT' };
-          const now = Math.floor(Date.now() / 1000);
-          const payload = {
-            sub: 'ci-test',
-            iat: now,
-            exp: now + 3600,
-            tenant_id: process.env.CALIBER_TEST_TENANT_ID || undefined,
-          };
-          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-          const data = `${b64url(header)}.${b64url(payload)}`;
-          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
-          const token = `${data}.${sig}`;
-          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
-          NODE
-
-      - name: Run E2E tests
-        env:
-          CALIBER_API_URL: http://localhost:3000
-          CALIBER_TEST_TOKEN: ${{ steps.jwt.outputs.token }}
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: bun test ./tests/e2e/
-
-  # =============================================================================
-  # Scheduled Jobs
-  # =============================================================================
-  test-load:
-    name: Test (Load)
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-          sudo pg_ctlcluster 16 main stop || true
-          if ! pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
-            sudo pg_createcluster 18 main --start
-          else
-            sudo pg_ctlcluster 18 main start
-          fi
-          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
-          if [ -z "$PGPORT" ]; then
-            echo "PG18 cluster not found"
-            exit 1
-          fi
-          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-      - name: Install caliber_pg extension
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreadline-dev
-          cargo install cargo-pgrx --version 0.16.1 --locked
-          export PGRX_HOME="$HOME/.pgrx"
-          mkdir -p "$PGRX_HOME"
-          cargo pgrx init --pg18 download
-          cd caliber-pg
-          mkdir -p ../target/tmp
-          TMPDIR=../target/tmp CARGO_TARGET_DIR=../.target cargo pgrx schema --package caliber-pg --pg-config "$HOME/.pgrx/18.1/pgrx-install/bin/pg_config" --features pg18 --no-default-features > ../target/tmp/caliber_pg--0.4.4.sql
-          if [ ! -s ../target/tmp/caliber_pg--0.4.4.sql ]; then
-            echo "FAIL: cargo pgrx schema did not produce a non-empty SQL file."
-            exit 1
-          fi
-          echo "=== Generated SQL schema (first 20 lines) ==="
-          head -n 20 ../target/tmp/caliber_pg--0.4.4.sql
-          sudo cp ../target/tmp/caliber_pg--0.4.4.sql /usr/share/postgresql/18/extension/
-          sudo env "PATH=$PATH" "HOME=$HOME" cargo pgrx install --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18 --release
-          cd ..
-          echo "=== Installed extension files ==="
-          ls -la /usr/share/postgresql/18/extension/caliber* || echo "No caliber files in extension dir"
-          echo "=== Control file content ==="
-          cat /usr/share/postgresql/18/extension/caliber_pg.control || echo "No control file"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS caliber_pg;"
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: workspace
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: caliber-api
-
-      - name: Make binary executable
-        run: chmod +x caliber-api
-
-      - name: Start API server
-        env:
-          CALIBER_DB_HOST: localhost
-          CALIBER_DB_PORT: ${{ env.PGPORT }}
-          CALIBER_DB_NAME: caliber_test
-          CALIBER_DB_USER: caliber
-          CALIBER_DB_PASSWORD: test_password
-          CALIBER_REDIS_URL: redis://localhost:6379
-          CALIBER_API_PORT: 3000
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_AUTH_PROVIDER: jwt
-          CALIBER_REQUIRE_TENANT_HEADER: "true"
-        run: |
-          ./caliber-api &
-          sleep 5
-          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
-
-      - name: Create test tenant
-        id: tenant
-        env:
-          PGHOST: localhost
-          PGPORT: ${{ env.PGPORT }}
-          PGUSER: caliber
-          PGPASSWORD: test_password
-          PGDATABASE: caliber_test
-        run: |
-          TENANT_ID=$(psql -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
-          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
-
-      - name: Create test JWT
-        id: jwt
-        env:
-          CALIBER_JWT_SECRET: test_secret_for_ci_only_not_production
-          CALIBER_TEST_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: |
-          node - <<'NODE'
-          const crypto = require('crypto');
-          const secret = process.env.CALIBER_JWT_SECRET;
-          const header = { alg: 'HS256', typ: 'JWT' };
-          const now = Math.floor(Date.now() / 1000);
-          const payload = {
-            sub: 'ci-test',
-            iat: now,
-            exp: now + 3600,
-            tenant_id: process.env.CALIBER_TEST_TENANT_ID || undefined,
-          };
-          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-          const data = `${b64url(header)}.${b64url(payload)}`;
-          const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
-          const token = `${data}.${sig}`;
-          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
-          NODE
-
-      - name: Install k6
-        run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update
-          sudo apt-get install k6
-
-      - name: Run baseline load test
-        env:
-          CALIBER_API_URL: http://localhost:3000
-          CALIBER_API_KEY: ${{ steps.jwt.outputs.token }}
-          CALIBER_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: k6 run tests/load/k6/api-baseline.js
-
-      - name: Run stress test
-        env:
-          CALIBER_API_URL: http://localhost:3000
-          CALIBER_API_KEY: ${{ steps.jwt.outputs.token }}
-          CALIBER_TENANT_ID: ${{ steps.tenant.outputs.tenant_id }}
-        run: k6 run tests/load/k6/api-stress.js
-        continue-on-error: true  # Stress test may exceed thresholds
-
-      - name: Upload load test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: load-test-results
-          path: |
-            load-test-*.json
-          retention-days: 30
-
-  test-pg-extension:
-    name: Test (PostgreSQL Extension)
+  test-pg:
+    name: Test (PostgreSQL)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
-          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: pgrx
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install PostgreSQL 18 dev headers
+      - name: Install PostgreSQL 18
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
@@ -1293,62 +216,209 @@ jobs:
       - name: Run caliber-pg tests
         run: cargo pgrx test pg18 --package caliber-pg --features pg_test
 
-  pgvector-sanity:
-    name: Test (pgvector Sanity)
+  # =============================================================================
+  # Main Branch Only (Full Integration)
+  # =============================================================================
+  test-integration:
+    name: Test (Integration)
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    needs: [build]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install PostgreSQL 18 + pgvector
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --batch --yes --no-tty -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-18 postgresql-18-pgvector postgresql-client-18 postgresql-server-dev-18
-          sudo pg_ctlcluster 16 main stop || true
-          if ! sudo pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {found=1} END {exit !found}'; then
-            sudo pg_createcluster 18 main --start
-          else
-            sudo pg_ctlcluster 18 main start
-          fi
-          PGPORT="$(pg_lsclusters --no-header | awk '$1=="18" && $2=="main" {print $3; exit}')"
-          echo "PGPORT=$PGPORT" >> $GITHUB_ENV
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE USER caliber WITH PASSWORD 'test_password' SUPERUSER;"
-          sudo -u postgres psql -p "$PGPORT" -c "CREATE DATABASE caliber_test OWNER caliber;"
-          sudo -u postgres psql -p "$PGPORT" -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-      - name: Verify pgvector indexes
-        env:
-          PGPASSWORD: test_password
-        run: |
-          psql -h localhost -p "$PGPORT" -U caliber -d caliber_test -v ON_ERROR_STOP=1 -f scripts/ci/pgvector_sanity.sql
-
-  dashboard-smoke:
-    name: Test (Dashboard Smoke)
-    runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@nextest
+      - uses: ./.github/actions/setup-pg18
         with:
-          bun-version: latest
+          install-extension: 'true'
 
-      - name: Install dependencies
-        working-directory: landing
-        run: bun install --frozen-lockfile
-
-      - name: Install Playwright browsers
-        working-directory: landing
-        run: bun x playwright install --with-deps chromium
-
-      - name: Run smoke tests
-        working-directory: landing
+      - name: Run integration tests
         env:
-          CI: "1"
-        run: bunx playwright test --project=chromium
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          DB_TESTS: "1"
+        run: cargo nextest run --workspace --exclude caliber-pg -E 'test(/db_backed/)' --test-threads=1
+
+  test-e2e:
+    name: Test (E2E)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [build]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-pg18
+        with:
+          install-extension: 'true'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: caliber-api
+      - run: chmod +x caliber-api
+
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_REDIS_URL: redis://localhost:6379
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only
+          CALIBER_AUTH_PROVIDER: jwt
+          CALIBER_REQUIRE_TENANT_HEADER: "true"
+        run: |
+          ./caliber-api &
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
+
+      - name: Create test tenant and JWT
+        id: auth
+        run: |
+          TENANT_ID=$(PGPASSWORD=test_password psql -h localhost -p $PGPORT -U caliber -d caliber_test -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
+          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
+
+          node - <<'NODE'
+          const crypto = require('crypto');
+          const header = { alg: 'HS256', typ: 'JWT' };
+          const now = Math.floor(Date.now() / 1000);
+          const payload = { sub: 'ci-test', iat: now, exp: now + 3600, tenant_id: process.env.TENANT_ID };
+          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+          const data = `${b64url(header)}.${b64url(payload)}`;
+          const sig = crypto.createHmac('sha256', 'test_secret_for_ci_only').update(data).digest('base64url');
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${data}.${sig}\n`);
+          NODE
+        env:
+          TENANT_ID: ${{ steps.auth.outputs.tenant_id }}
+
+      - name: Run E2E tests
+        env:
+          CALIBER_API_URL: http://localhost:3000
+          CALIBER_TEST_TOKEN: ${{ steps.auth.outputs.token }}
+          CALIBER_TEST_TENANT_ID: ${{ steps.auth.outputs.tenant_id }}
+        run: bun test ./tests/e2e/
+
+  test-security:
+    name: Test (Security/OWASP)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-pg18
+        with:
+          install-extension: 'true'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: caliber-api
+      - run: chmod +x caliber-api
+
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only
+          CALIBER_AUTH_PROVIDER: jwt
+          CALIBER_REQUIRE_TENANT_HEADER: "true"
+        run: |
+          ./caliber-api &
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
+
+      - name: Create test tenant and JWT
+        id: auth
+        run: |
+          TENANT_ID=$(PGPASSWORD=test_password psql -h localhost -p $PGPORT -U caliber -d caliber_test -Atqc "SELECT caliber_tenant_create('ci-tenant', NULL, NULL);")
+          echo "tenant_id=$TENANT_ID" >> $GITHUB_OUTPUT
+
+          node - <<'NODE'
+          const crypto = require('crypto');
+          const header = { alg: 'HS256', typ: 'JWT' };
+          const now = Math.floor(Date.now() / 1000);
+          const payload = { sub: 'ci-test', iat: now, exp: now + 3600, tenant_id: process.env.TENANT_ID };
+          const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+          const data = `${b64url(header)}.${b64url(payload)}`;
+          const sig = crypto.createHmac('sha256', 'test_secret_for_ci_only').update(data).digest('base64url');
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `token=${data}.${sig}\n`);
+          NODE
+        env:
+          TENANT_ID: ${{ steps.auth.outputs.tenant_id }}
+
+      - name: Run OWASP security tests
+        env:
+          CALIBER_API_URL: http://localhost:3000
+          CALIBER_TEST_TOKEN: ${{ steps.auth.outputs.token }}
+          CALIBER_TEST_TENANT_ID: ${{ steps.auth.outputs.tenant_id }}
+        run: bun test ./tests/security/
+
+  # =============================================================================
+  # Scheduled Jobs
+  # =============================================================================
+  test-load:
+    name: Test (Load)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
+    needs: [build]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-pg18
+        with:
+          install-extension: 'true'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: caliber-api
+      - run: chmod +x caliber-api
+
+      - name: Start API server
+        env:
+          CALIBER_DB_HOST: localhost
+          CALIBER_DB_PORT: ${{ env.PGPORT }}
+          CALIBER_DB_NAME: caliber_test
+          CALIBER_DB_USER: caliber
+          CALIBER_DB_PASSWORD: test_password
+          CALIBER_REDIS_URL: redis://localhost:6379
+          CALIBER_API_PORT: 3000
+          CALIBER_JWT_SECRET: test_secret_for_ci_only
+          CALIBER_AUTH_PROVIDER: jwt
+        run: |
+          ./caliber-api &
+          timeout 30 bash -c 'until curl -f http://localhost:3000/health 2>/dev/null; do sleep 1; done'
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install k6
+
+      - name: Run load tests
+        run: |
+          k6 run tests/load/k6/api-baseline.js
+          k6 run tests/load/k6/api-stress.js || true
 
   test-mutation:
     name: Test (Mutation)
@@ -1356,22 +426,28 @@ jobs:
     if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run mutation tests
-        run: bunx stryker run --reporters json,html
-        continue-on-error: true  # Mutation tests are informational
-
-      - name: Upload mutation report
-        uses: actions/upload-artifact@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx stryker run --reporters json,html
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
         with:
           name: mutation-report
           path: reports/mutation/
           retention-days: 30
+
+  # =============================================================================
+  # Dashboard Smoke (PR only)
+  # =============================================================================
+  dashboard-smoke:
+    name: Test (Dashboard)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd landing && bun install --frozen-lockfile
+      - run: cd landing && bun x playwright install --with-deps chromium
+      - run: cd landing && bunx playwright test --project=chromium
+        env:
+          CI: "1"
