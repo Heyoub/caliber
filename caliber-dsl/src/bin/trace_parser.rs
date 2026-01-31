@@ -1,9 +1,10 @@
-/// Pack Markdown Tracer - Shows the flow through Markdown → Config → AST
-///
-/// Usage: cargo run --bin trace_parser <markdown-file>
+//! Pack Markdown Tracer - Shows the flow through Markdown → Config → AST
+//!
+//! Usage: cargo run --bin trace_parser <markdown-file>
 
 use caliber_dsl::pack::{compose_pack, PackInput, PackMarkdownFile};
 use caliber_dsl::config::ast_to_markdown;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -62,24 +63,23 @@ prompts = {}
 [injections]
 "#;
 
-    let manifest_path = PathBuf::from("/tmp/test-manifest.toml");
-    fs::write(&manifest_path, manifest_toml).expect("Failed to write temp manifest");
-
     let input = PackInput {
-        manifest: manifest_path.clone(),
+        root: PathBuf::from("."),
+        manifest: manifest_toml.to_string(),
         markdowns: vec![PackMarkdownFile {
             path: PathBuf::from(md_path),
             content,
         }],
+        contracts: HashMap::new(),
     };
 
-    // Step 1: Parse markdown → PackIr
+    // Step 1: Parse markdown → AST
     println!("🔍 PACK PARSER OUTPUT:");
     println!("─────────────────────────────────────────────────────────────");
     match compose_pack(input) {
         Ok(output) => {
-            println!("Pack: {}", output.pack.meta.name);
-            println!("Version: {}", output.pack.meta.version.as_ref().unwrap_or(&"1.0".to_string()));
+            println!("AST version: {}", output.ast.version);
+            println!("Definitions count: {}", output.ast.definitions.len());
             println!();
 
             println!("🌳 AST:");
@@ -101,7 +101,4 @@ prompts = {}
             println!("❌ Parse error: {:?}", e);
         }
     }
-
-    // Cleanup
-    let _ = fs::remove_file(manifest_path);
 }

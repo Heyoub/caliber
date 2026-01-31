@@ -55,7 +55,7 @@ fn arb_injection_mode() -> impl Strategy<Value = InjectionMode> {
         Just(InjectionMode::Full),
         Just(InjectionMode::Summary),
         (1..100usize).prop_map(InjectionMode::TopK),
-        (0.0..1.0f64).prop_map(InjectionMode::Relevant),
+        (0.0..1.0f32).prop_map(InjectionMode::Relevant),
     ]
 }
 
@@ -233,23 +233,23 @@ proptest! {
         for (original, reparsed) in ast.definitions.iter().zip(ast_prime.definitions.iter()) {
             match (original, reparsed) {
                 (Definition::Adapter(a1), Definition::Adapter(a2)) => {
-                    prop_assert_eq!(a1.name, a2.name, "Adapter name should be preserved");
+                    prop_assert_eq!(&a1.name, &a2.name, "Adapter name should be preserved");
                     prop_assert_eq!(a1.adapter_type, a2.adapter_type, "Adapter type should be preserved");
-                    prop_assert_eq!(a1.connection, a2.connection, "Adapter connection should be preserved");
+                    prop_assert_eq!(&a1.connection, &a2.connection, "Adapter connection should be preserved");
                 }
                 (Definition::Provider(p1), Definition::Provider(p2)) => {
-                    prop_assert_eq!(p1.name, p2.name, "Provider name should be preserved");
+                    prop_assert_eq!(&p1.name, &p2.name, "Provider name should be preserved");
                     prop_assert_eq!(p1.provider_type, p2.provider_type, "Provider type should be preserved");
-                    prop_assert_eq!(p1.model, p2.model, "Provider model should be preserved");
+                    prop_assert_eq!(&p1.model, &p2.model, "Provider model should be preserved");
                 }
                 (Definition::Policy(pol1), Definition::Policy(pol2)) => {
-                    prop_assert_eq!(pol1.name, pol2.name, "Policy name should be preserved");
+                    prop_assert_eq!(&pol1.name, &pol2.name, "Policy name should be preserved");
                     prop_assert_eq!(pol1.rules.len(), pol2.rules.len(), "Policy rules count should match");
                 }
                 (Definition::Injection(i1), Definition::Injection(i2)) => {
-                    prop_assert_eq!(i1.source, i2.source, "Injection source should be preserved");
-                    prop_assert_eq!(i1.target, i2.target, "Injection target should be preserved");
-                    prop_assert_eq!(i1.mode, i2.mode, "Injection mode should be preserved");
+                    prop_assert_eq!(&i1.source, &i2.source, "Injection source should be preserved");
+                    prop_assert_eq!(&i1.target, &i2.target, "Injection target should be preserved");
+                    prop_assert_eq!(&i1.mode, &i2.mode, "Injection mode should be preserved");
                     prop_assert_eq!(i1.priority, i2.priority, "Injection priority should be preserved");
                 }
                 _ => {
@@ -272,7 +272,7 @@ proptest! {
         let canonical2 = ast_to_markdown(&ast);
 
         // Should be byte-identical
-        prop_assert_eq!(canonical1, canonical2, "Canonical printer should be deterministic");
+        prop_assert_eq!(&canonical1, &canonical2, "Canonical printer should be deterministic");
 
         // Parse → regenerate → should still be identical
         let full_markdown = MARKDOWN_TEMPLATE.replace("{content}", &canonical1);
@@ -281,7 +281,7 @@ proptest! {
 
         let canonical3 = ast_to_markdown(&ast_prime);
 
-        prop_assert_eq!(canonical1, canonical3, "Round-trip should preserve canonical form");
+        prop_assert_eq!(&canonical1, &canonical3, "Round-trip should preserve canonical form");
     }
 
     /// Property: Case preservation in names
@@ -314,7 +314,7 @@ proptest! {
             .find_map(|d| if let Definition::Adapter(a) = d { Some(a) } else { None })
             .ok_or_else(|| TestCaseError::fail("No adapter found"))?;
 
-        prop_assert_eq!(adapter.name, name, "Case should be preserved exactly");
+        prop_assert_eq!(&adapter.name, &name, "Case should be preserved exactly");
     }
 
     /// Property: Unknown fields are rejected

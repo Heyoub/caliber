@@ -574,7 +574,7 @@ priority: 100
 ```"#, mode_str))
             .build();
 
-        let output = compose_pack(input).expect(&format!("Failed to parse mode: {}", mode_str));
+        let output = compose_pack(input).unwrap_or_else(|_| panic!("Failed to parse mode: {}", mode_str));
 
         let injection = output.ast.definitions.iter()
             .find_map(|d| if let Definition::Injection(i) = d { Some(i) } else { None })
