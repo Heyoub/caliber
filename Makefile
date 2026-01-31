@@ -1,9 +1,20 @@
-# CALIBER Unified Test Makefile
+# CALIBER Unified Development Makefile
 # Run `make help` for available targets
+#
+# This is the SINGLE source of truth for all dev commands.
+# Prefer `make <target>` over raw cargo/bun commands.
+#
+# Build cache location (if on slow drive, set in .cargo/config.toml):
+#   [build]
+#   target-dir = "/mnt/d/wsl-cache/target/caliber"
 
 .PHONY: help test test-unit test-property test-fuzz test-chaos \
         test-integration test-e2e test-load test-security test-component \
-        test-all test-llm llm-graphs journey-map llm-all bench lint ci ci-cloud clean dev setup
+        test-all test-llm llm-graphs journey-map llm-all bench lint ci ci-cloud clean dev setup \
+        dev-api dev-frontend dev-all dev-watch \
+        db-start db-stop db-status db-reset db-setup \
+        pg-build pg-install pg-test pg-schema \
+        check-deps
 
 # Default target
 .DEFAULT_GOAL := help
@@ -26,15 +37,26 @@ CI_RUN_ID ?=
 #==============================================================================
 
 help: ## Show this help message
-	@echo "$(CYAN)CALIBER Test Infrastructure$(RESET)"
+	@echo "$(CYAN)CALIBER Development$(RESET)"
 	@echo ""
 	@echo "$(GREEN)Usage:$(RESET) make [target]"
 	@echo ""
-	@echo "$(GREEN)Quick Start:$(RESET)"
-	@echo "  make test          Run core tests (unit + property)"
-	@echo "  make test-all      Run ALL tests (comprehensive)"
-	@echo "  make ci            Full CI pipeline (lint + test + build)"
-	@echo "  make ci-cloud      Run CI in GitHub Actions and fetch logs"
+	@echo "$(GREEN)🚀 Getting Started (first time):$(RESET)"
+	@echo "  make setup         Install all dependencies"
+	@echo "  make db-setup      Start DB + install extension"
+	@echo "  make dev-api       Start API server (terminal 1)"
+	@echo "  make dev-frontend  Start frontend (terminal 2)"
+	@echo ""
+	@echo "$(GREEN)🔧 Daily Development:$(RESET)"
+	@echo "  make dev-api       Start API on :3000"
+	@echo "  make dev-frontend  Start frontend on :5173"
+	@echo "  make test          Run core tests"
+	@echo "  make lint          Check code style"
+	@echo "  make fmt           Auto-fix formatting"
+	@echo ""
+	@echo "$(GREEN)📦 After Rust Changes:$(RESET)"
+	@echo "  make build         Build release binary"
+	@echo "  make pg-install    Rebuild & install PG extension"
 	@echo ""
 	@echo "$(GREEN)Available Targets:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-18s$(RESET) %s\n", $$1, $$2}'
@@ -43,14 +65,27 @@ help: ## Show this help message
 # Setup
 #==============================================================================
 
-setup: ## Install all development dependencies
+setup: check-deps ## Install all development dependencies
 	@echo "$(CYAN)Installing Rust tools...$(RESET)"
-	cargo install cargo-nextest cargo-llvm-cov cargo-audit cargo-deny
+	cargo install cargo-nextest cargo-llvm-cov cargo-audit cargo-deny cargo-pgrx --version 0.16.1 --locked || true
 	@echo "$(CYAN)Installing Node tools...$(RESET)"
 	bun install
+	cd app && bun install
 	@echo "$(CYAN)Installing pre-commit hooks...$(RESET)"
 	command -v lefthook >/dev/null 2>&1 && lefthook install || echo "Install lefthook: cargo install lefthook"
 	@echo "$(GREEN)Setup complete!$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Next steps:$(RESET)"
+	@echo "  1. make db-setup     # Start DB + install extension"
+	@echo "  2. make dev-api      # Terminal 1: API server"
+	@echo "  3. make dev-frontend # Terminal 2: Frontend"
+
+check-deps: ## Check required dependencies are installed
+	@echo "$(CYAN)Checking dependencies...$(RESET)"
+	@command -v cargo >/dev/null 2>&1 || (echo "$(YELLOW)Missing: cargo (install Rust)$(RESET)" && exit 1)
+	@command -v bun >/dev/null 2>&1 || (echo "$(YELLOW)Missing: bun (curl -fsSL https://bun.sh/install | bash)$(RESET)" && exit 1)
+	@command -v psql >/dev/null 2>&1 || (echo "$(YELLOW)Missing: psql (install postgresql-client)$(RESET)" && exit 1)
+	@echo "$(GREEN)All dependencies OK$(RESET)"
 
 #==============================================================================
 # Core Tests
@@ -247,17 +282,31 @@ build-dev: ## Build debug binary
 	cargo build -p caliber-api
 
 #==============================================================================
-# Development
+# Development (PRIMARY ENTRY POINTS)
 #==============================================================================
 
-dev: ## Start development server
-	cargo run -p caliber-api
+dev: dev-api ## Alias for dev-api
 
-dev-watch: ## Start development server with auto-reload
-	cargo watch -x 'run -p caliber-api'
+dev-api: ## Start API server (port 3000)
+	@echo "$(CYAN)Starting API server on http://localhost:3000...$(RESET)"
+	cargo run -p caliber-api --bin caliber-api
+
+dev-frontend: ## Start frontend dev server (port 5173)
+	@echo "$(CYAN)Starting frontend on http://localhost:5173...$(RESET)"
+	cd app && bun run dev
+
+dev-all: ## Start both API and frontend (requires 2 terminals)
+	@echo "$(YELLOW)Run in separate terminals:$(RESET)"
+	@echo "  Terminal 1: make dev-api"
+	@echo "  Terminal 2: make dev-frontend"
+	@echo ""
+	@echo "Or use: make dev-api & make dev-frontend"
+
+dev-watch: ## Start API with auto-reload on changes
+	cargo watch -x 'run -p caliber-api --bin caliber-api'
 
 #==============================================================================
-# Database
+# Database & PostgreSQL Extension
 #==============================================================================
 
 db-start: ## Start PostgreSQL (WSL)
@@ -266,11 +315,36 @@ db-start: ## Start PostgreSQL (WSL)
 db-stop: ## Stop PostgreSQL (WSL)
 	sudo service postgresql stop
 
+db-status: ## Check PostgreSQL status
+	@pg_isready -h localhost -p 5432 && echo "$(GREEN)PostgreSQL is running$(RESET)" || echo "$(YELLOW)PostgreSQL is not running$(RESET)"
+
 db-reset: ## Reset test database
 	@echo "$(CYAN)Resetting test database...$(RESET)"
 	psql -U caliber -d postgres -c "DROP DATABASE IF EXISTS caliber_test;"
 	psql -U caliber -d postgres -c "CREATE DATABASE caliber_test;"
 	psql -U caliber -d caliber_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+db-setup: db-start pg-install ## Full database setup (start + install extension)
+	@echo "$(GREEN)Database ready!$(RESET)"
+
+pg-build: ## Build caliber-pg extension
+	@echo "$(CYAN)Building caliber-pg extension...$(RESET)"
+	cd caliber-pg && cargo build --features pg18 --release
+
+pg-install: ## Install caliber-pg extension to PostgreSQL 18
+	@echo "$(CYAN)Installing caliber-pg extension...$(RESET)"
+	cd caliber-pg && cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --features pg18 --release
+	@echo "$(CYAN)Recreating extension in database...$(RESET)"
+	sudo -u postgres psql -d caliber -c "DROP EXTENSION IF EXISTS caliber_pg CASCADE; CREATE EXTENSION caliber_pg;"
+	@echo "$(GREEN)Extension installed!$(RESET)"
+
+pg-test: ## Run caliber-pg tests
+	@echo "$(CYAN)Running caliber-pg tests...$(RESET)"
+	cd caliber-pg && cargo pgrx test pg18 --features pg_test
+
+pg-schema: ## Generate SQL schema from extension
+	@echo "$(CYAN)Generating extension schema...$(RESET)"
+	cd caliber-pg && cargo pgrx schema --features pg18
 
 #==============================================================================
 # Cleanup
