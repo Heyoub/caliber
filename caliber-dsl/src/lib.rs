@@ -33,32 +33,3 @@ pub use config::{
 };
 pub use pack::{compose_pack, PackError, PackInput, PackMarkdownFile, PackOutput};
 pub use parser::*;
-
-/// DEPRECATED: Custom DSL parser has been removed in favor of Markdown-based configuration.
-///
-/// Use `compose_pack()` with Markdown fence blocks instead.
-///
-/// Migration guide:
-/// ```text
-/// OLD (removed):
-///   let ast = caliber_dsl::parse(dsl_source)?;
-///
-/// NEW:
-///   use caliber_dsl::{PackInput, PackMarkdownFile, compose_pack};
-///
-///   let input = PackInput {
-///       root: PathBuf::from("."),
-///       manifest: manifest_toml,
-///       markdowns: vec![PackMarkdownFile { path, content }],
-///       contracts: HashMap::new(),
-///   };
-///   let output = compose_pack(input)?;
-///   let ast = output.ast;
-/// ```
-#[deprecated(
-    since = "0.4.4",
-    note = "Use `compose_pack()` with Markdown configurations instead of DSL strings"
-)]
-pub fn parse(_source: &str) -> Result<CaliberAst, String> {
-    Err("DSL parser removed. Use compose_pack() with Markdown fence blocks instead. See docs/MARKDOWN_CONFIG.md".to_string())
-}

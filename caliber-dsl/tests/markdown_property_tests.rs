@@ -45,7 +45,7 @@ fn arb_trigger() -> impl Strategy<Value = Trigger> {
         Just(Trigger::ScopeClose),
         Just(Trigger::TurnEnd),
         Just(Trigger::Manual),
-        "[a-z0-9_]+".prop_map(|s| Trigger::Schedule(s)),
+        "[a-z0-9_]+".prop_map(Trigger::Schedule),
     ]
 }
 
@@ -428,8 +428,6 @@ fn test_camel_case_name() {
 trait DefinitionExt {
     fn as_adapter(&self) -> Option<&AdapterDef>;
     fn as_provider(&self) -> Option<&ProviderDef>;
-    fn as_policy(&self) -> Option<&PolicyDef>;
-    fn as_injection(&self) -> Option<&InjectionDef>;
 }
 
 impl DefinitionExt for Definition {
@@ -444,22 +442,6 @@ impl DefinitionExt for Definition {
     fn as_provider(&self) -> Option<&ProviderDef> {
         if let Definition::Provider(p) = self {
             Some(p)
-        } else {
-            None
-        }
-    }
-
-    fn as_policy(&self) -> Option<&PolicyDef> {
-        if let Definition::Policy(p) = self {
-            Some(p)
-        } else {
-            None
-        }
-    }
-
-    fn as_injection(&self) -> Option<&InjectionDef> {
-        if let Definition::Injection(i) = self {
-            Some(i)
         } else {
             None
         }

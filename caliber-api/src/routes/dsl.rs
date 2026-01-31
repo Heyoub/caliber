@@ -23,7 +23,50 @@ use crate::{
 };
 use caliber_dsl::pack::{compose_pack as compose_pack_internal, PackInput, PackMarkdownFile};
 use caliber_dsl::pretty_printer::pretty_print;
+use caliber_dsl::CaliberAst;
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Parse Markdown source to AST using the new compose_pack system
+fn parse_markdown_source(source: &str) -> Result<CaliberAst, String> {
+    // Create minimal manifest for standalone DSL parsing
+    let manifest = r#"
+[meta]
+name = "api-request"
+version = "1.0"
+
+[tools]
+bin = {}
+prompts = {}
+
+[profiles]
+[agents]
+[toolsets]
+[adapters]
+[providers]
+[policies]
+[injections]
+"#;
+
+    let input = PackInput {
+        root: PathBuf::from("."),
+        manifest: manifest.to_string(),
+        markdowns: vec![PackMarkdownFile {
+            path: PathBuf::from("input.md"),
+            content: source.to_string(),
+        }],
+        contracts: HashMap::new(),
+    };
+
+    match compose_pack_internal(input) {
+        Ok(output) => Ok(output.ast),
+        Err(e) => Err(e.to_string()),
+    }
+}
 
 // ============================================================================
 // ROUTE HANDLERS
@@ -56,7 +99,7 @@ pub async fn validate_dsl(
         return Err(ApiError::missing_field("source"));
     }
 
-    match caliber_dsl::parse(&req.source) {
+    match parse_markdown_source(&req.source) {
         Ok(ast) => {
             let ast_json = serde_json::to_value(&ast)
                 .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
@@ -69,13 +112,13 @@ pub async fn validate_dsl(
 
             Ok(Json(response))
         }
-        Err(err) => {
+        Err(err_msg) => {
             let response = ValidateDslResponse {
                 valid: false,
                 errors: vec![ParseErrorResponse {
-                    line: err.line,
-                    column: err.column,
-                    message: err.message,
+                    line: 0,
+                    column: 0,
+                    message: err_msg,
                 }],
                 ast: None,
             };
@@ -112,7 +155,7 @@ pub async fn parse_dsl(
         return Err(ApiError::missing_field("source"));
     }
 
-    match caliber_dsl::parse(&req.source) {
+    match parse_markdown_source(&req.source) {
         Ok(ast) => {
             let ast_json = serde_json::to_value(&ast)
                 .map_err(|e| ApiError::internal_error(format!("Failed to serialize AST: {}", e)))?;
@@ -125,13 +168,13 @@ pub async fn parse_dsl(
 
             Ok(Json(response))
         }
-        Err(err) => {
+        Err(err_msg) => {
             let response = ValidateDslResponse {
                 valid: false,
                 errors: vec![ParseErrorResponse {
-                    line: err.line,
-                    column: err.column,
-                    message: err.message,
+                    line: 0,
+                    column: 0,
+                    message: err_msg,
                 }],
                 ast: None,
             };
@@ -168,15 +211,15 @@ pub async fn compile_dsl(
         return Err(ApiError::missing_field("source"));
     }
 
-    // Step 1: Parse the DSL
-    let ast = match caliber_dsl::parse(&req.source) {
+    // Step 1: Parse the Markdown DSL
+    let ast = match parse_markdown_source(&req.source) {
         Ok(ast) => ast,
-        Err(err) => {
+        Err(err_msg) => {
             let response = CompileDslResponse {
                 success: false,
                 errors: vec![CompileErrorResponse {
                     error_type: "ParseError".to_string(),
-                    message: format!("Line {}, Column {}: {}", err.line, err.column, err.message),
+                    message: err_msg,
                 }],
                 compiled: None,
             };
@@ -402,12 +445,8 @@ pub async fn deploy_dsl(
         let dsl_source = pretty_print(&output.ast);
         (dsl_source, output.ast, output.compiled)
     } else {
-        let ast = caliber_dsl::parse(&req.source).map_err(|err| {
-            ApiError::invalid_input(format!(
-                "Parse error at line {}, column {}: {}",
-                err.line, err.column, err.message
-            ))
-        })?;
+        let ast = parse_markdown_source(&req.source)
+            .map_err(|err_msg| ApiError::invalid_input(format!("Parse error: {}", err_msg)))?;
 
         let compiled = caliber_dsl::DslCompiler::compile(&ast)
             .map_err(|err| ApiError::invalid_input(format!("Compilation error: {}", err)))?;

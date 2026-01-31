@@ -17,8 +17,12 @@ use caliber_core::{
     TenantId, Timestamp, TrajectoryId,
 };
 use caliber_dsl::compiler::CompiledConfig as DslCompiledConfig;
+use caliber_dsl::pack::{PackInput, PackMarkdownFile};
+use caliber_dsl::CaliberAst;
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_postgres::NoTls;
@@ -1955,8 +1959,8 @@ impl DbClient {
 
     /// Validate DSL source.
     pub async fn dsl_validate(&self, req: &ValidateDslRequest) -> ApiResult<ValidateDslResponse> {
-        // Use caliber_dsl to validate the source
-        let parse_result = caliber_dsl::parse(&req.source);
+        // Use caliber_dsl to validate the Markdown source
+        let parse_result = self.parse_markdown_source(&req.source);
 
         match parse_result {
             Ok(ast) => {
@@ -1967,15 +1971,52 @@ impl DbClient {
                     ast: Some(ast_json),
                 })
             }
-            Err(e) => Ok(ValidateDslResponse {
+            Err(err_msg) => Ok(ValidateDslResponse {
                 valid: false,
                 errors: vec![ParseErrorResponse {
                     line: 0,
                     column: 0,
-                    message: e.to_string(),
+                    message: err_msg,
                 }],
                 ast: None,
             }),
+        }
+    }
+
+    /// Parse Markdown source to AST using the new compose_pack system
+    fn parse_markdown_source(&self, source: &str) -> Result<CaliberAst, String> {
+        // Create minimal manifest for standalone DSL parsing
+        let manifest = r#"
+[meta]
+name = "api-request"
+version = "1.0"
+
+[tools]
+bin = {}
+prompts = {}
+
+[profiles]
+[agents]
+[toolsets]
+[adapters]
+[providers]
+[policies]
+[injections]
+"#;
+
+        let input = PackInput {
+            root: PathBuf::from("."),
+            manifest: manifest.to_string(),
+            markdowns: vec![PackMarkdownFile {
+                path: PathBuf::from("input.md"),
+                content: source.to_string(),
+            }],
+            contracts: HashMap::new(),
+        };
+
+        match caliber_dsl::compose_pack(input) {
+            Ok(output) => Ok(output.ast),
+            Err(e) => Err(e.to_string()),
         }
     }
 
