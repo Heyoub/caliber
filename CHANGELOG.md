@@ -6,22 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Note: Everything prior to 0.6.0 remains under Unreleased; strict versioned entries begin at 0.6.0.
 
-## [Unreleased] (pre-0.6.0)
+## [Unreleased]
+
+_No unreleased changes._
+
+---
+
+## [0.5.0] - 2025-01-31
 
 ### Added
 
-#### UI Package Completion (v0.4.8)
-- **Design tokens**: Added `@caliber/ui/tokens` CSS custom properties export
+#### Frontend Application & UI System
+- **SvelteKit App** (`app/`): Full-featured frontend application
+  - Login page with WorkOS SSO integration and dev bypass
+  - Auth callback handling with token management
+  - Dashboard, Editor, and Playground routes
+  - API client with typed errors, retry logic, WebSocket streaming
+- **Design Tokens** (`@caliber/ui/tokens`): CSS custom properties export
   - Complete color palette (teal, coral, mint, lavender, purple, slate, navy, amber, pink)
   - Semantic color aliases (bg-primary, text-primary, border-default, etc.)
   - Typography tokens (font families, sizes, line heights)
   - Spacing, border radius, shadows, transitions, and z-index scales
-- **Atoms export**: Enabled atoms components (Button, Badge, Spinner, Icon, Input, Toggle, Avatar, etc.)
-- **Molecules export**: Enabled molecules components (Dropdown, Modal, Accordion, Breadcrumb, etc.)
+- **UI Components**: Enabled full component library
+  - Atoms: Button, Badge, Spinner, Icon, Input, Toggle, Avatar, etc.
+  - Molecules: Dropdown, Modal, Accordion, Breadcrumb, etc.
+  - Organisms: Sidebar, TreeView, MemoryGraph, FileTree, etc.
+
+#### Markdown-Based DSL (Breaking Change)
+- **New parser**: Replaced custom DSL with Markdown fenced code blocks
+  - 3,762 lines of custom parser deleted
+  - Uses standard YAML inside fenced blocks
+  - Better tooling support (syntax highlighting, linting)
+- **Config types**: adapter, provider, memory, policy, injection, cache, trajectory, agent
+- **Round-trip support**: AST → Markdown → AST preserves all data
 
 ### Changed
 
-#### Technical Debt Cleanup (v0.4.7)
+#### Technical Debt Cleanup
 - **unwrap() conversion**: Converted 400+ unwrap() calls to proper error handling
   - caliber-storage: 136 unwraps → proper Result propagation with StorageError::LockPoisoned
   - caliber-core: Lock/conversion unwraps → CaliberError variants
