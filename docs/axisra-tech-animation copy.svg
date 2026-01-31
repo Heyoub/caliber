@@ -1,0 +1,26 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Definitions -->
+  <defs>
+    <!-- Digital noise pattern -->
+    <pattern id="techPattern" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M1,1h1v1h-1v-1" fill="#40E0D0" opacity="0.1">
+        <animate attributeName="opacity"
+                 values="0.1;0.3;0.1"
+                 dur="2s"
+                 repeatCount="indefinite"/>
+      </path>
+    </pattern>
+    
+    <!-- Glowing filter -->
+    <filter id="techGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite operator="over" in="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <!-- Background with tech pattern -->
+  <rect width="400" height="400" fill="url(#techPattern)"/>
+
+  
+
+</svg>

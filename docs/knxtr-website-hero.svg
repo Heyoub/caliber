@@ -1,0 +1,60 @@
+<svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hero-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f0ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0066ff;stop-opacity:1" />
+    </linearGradient>
+    
+    <filter id="hero-glow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background Pattern -->
+  <g class="grid-pattern">
+    <path d="M0,200 H800 M400,0 V400" 
+          stroke="#1a1a1a" 
+          stroke-width="0.5" 
+          opacity="0.2"/>
+    <!-- Add more grid lines as needed -->
+  </g>
+
+  <!-- Dynamic Elements -->
+  <g transform="translate(400,200)">
+    <!-- Central Hub -->
+    <circle r="80" 
+            fill="none" 
+            stroke="url(#hero-gradient)" 
+            stroke-width="2"
+            opacity="0.3">
+      <animate attributeName="r"
+               values="80;90;80"
+               dur="4s"
+               repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Orbiting Elements -->
+    <g>
+      <circle r="10" fill="#00f0ff" opacity="0.8">
+        <animateMotion
+          path="M0,0 A120,120 0 1,1 0,0 A120,120 0 1,1 0,0"
+          dur="8s"
+          repeatCount="indefinite"/>
+      </circle>
+      
+      <!-- Add more orbiting elements -->
+    </g>
+
+    <!-- Data Streams -->
+    <path d="M-150,-150 L150,150" 
+          stroke="url(#hero-gradient)" 
+          stroke-width="1"
+          opacity="0.5">
+      <animate attributeName="stroke-dashoffset"
+               values="0;1000"
+               dur="10s"
+               repeatCount="indefinite"/>
+    </path>
+  </g>
+</svg>

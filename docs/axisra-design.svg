@@ -1,0 +1,118 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Definitions -->
+  <defs>
+    <!-- Digital noise pattern -->
+    <pattern id="techPattern" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M1,1h1v1h-1v-1" fill="#f1f1f1" opacity="0.01">
+        <animate attributeName="opacity"
+                 values="0.1;0.3;0.1"
+                 dur="2s"
+                 repeatCount="indefinite"/>
+      </path>
+    </pattern>
+    
+    <!-- Glowing filter -->
+    <filter id="techGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite operator="over" in="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <!-- Background with tech pattern -->
+  <rect width="400" height="400" fill="url(#techPattern)"/>
+
+  <!-- Main X structure with data flow -->
+  <g transform="translate(200,200)">
+    <!-- Digital stream lines -->
+    <g>
+      <line x1="-150" y1="-150" x2="150" y2="150" 
+            stroke="#f1f1f1" stroke-width="2" opacity="0.01">
+        <animate attributeName="stroke-dasharray"
+                 values="0,20;20,0"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </line>
+      <line x1="150" y1="-150" x2="-150" y2="150" 
+            stroke="#f1f1f1" stroke-width="2" opacity="0.01">
+        <animate attributeName="stroke-dasharray"
+                 values="20,0;0,20"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </line>
+    </g>
+
+    <!-- Main X bars with data pulses -->
+    <g filter="url(#techGlow)">
+      <!-- Left diagonal -->
+      <path d="M-120,-120 L120,120" 
+            stroke="#f1f1f1" stroke-width="30" fill="none">
+        <animate attributeName="stroke-dashoffset"
+                 values="300;-300"
+                 dur="3s"
+                 repeatCount="indefinite"/>
+        <animate attributeName="stroke-dasharray"
+                 values="30,150;150,30"
+                 dur="3s"
+                 repeatCount="indefinite"/>
+      </path>
+      
+      <!-- Right diagonal -->
+      <path d="M120,-120 L-120,120" 
+            stroke="#f1f1f1" stroke-width="30" fill="none">
+        <animate attributeName="stroke-dashoffset"
+                 values="-300;300"
+                 dur="3s"
+                 repeatCount="indefinite"/>
+        <animate attributeName="stroke-dasharray"
+                 values="150,30;30,150"
+                 dur="3s"
+                 repeatCount="indefinite"/>
+      </path>
+    </g>
+
+    <!-- Binary particles -->
+    <g>
+      <circle cx="0" cy="0" r="2" fill="#f1f1f1">
+        <animate attributeName="r"
+                 values="2;4;2"
+                 dur="0.5s"
+                 repeatCount="indefinite"/>
+      </circle>
+      <text x="10" y="0" font-family="monospace" fill="#f1f1f1" font-size="8">
+        01
+        <animate attributeName="opacity"
+                 values="1;0;1"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </text>
+    </g>
+
+    <!-- Energy nodes -->
+    <g>
+      <circle cx="150" cy="0" r="5" fill="#f1f1f1">
+        <animate attributeName="r"
+                 values="5;8;5"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </circle>
+      <circle cx="-150" cy="0" r="5" fill="#f1f1f1">
+        <animate attributeName="r"
+                 values="8;5;8"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </circle>
+      <circle cx="0" cy="150" r="5" fill="#f1f1f1">
+        <animate attributeName="r"
+                 values="5;8;5"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </circle>
+      <circle cx="0" cy="-150" r="5" fill="#f1f1f1">
+        <animate attributeName="r"
+                 values="8;5;8"
+                 dur="1s"
+                 repeatCount="indefinite"/>
+      </circle>
+    </g>
+  </g>
+</svg>
