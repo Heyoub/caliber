@@ -696,3 +696,601 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside));
 | **Data** | ChatHistory, Accordion, ChatPanel | Pattern documented |
 
 All 44 Vue files have been analyzed. The design system is now fully documented for pack-editor integration.
+
+---
+
+## 19. Mobile Menu Pattern (Hamburger → X Animation)
+
+### 19.1 AuthLayout Mobile Button (docs/AuthLayout.vue:4-23)
+Fixed position button with animated hamburger lines:
+
+```vue
+<button
+  @click="toggleMobileMenu"
+  :class="['w-[3rem] h-[3rem] flex flex-col items-center justify-center gap-[0.5rem]',
+           'bg-emi-primary/20 hover:bg-emi-primary/30',
+           'border border-transparent hover:border-emi-primary/50',
+           'rounded-lg',
+           'shadow-[0_0.25rem_0.75rem_rgba(79,209,197,0.25)]',
+           'transition-all duration-300 group relative overflow-hidden']"
+  :aria-expanded="isMobileMenuOpen"
+>
+  <!-- Hover glow overlay -->
+  <div class="absolute inset-0 bg-gradient-to-r from-emi-primary/0 via-emi-primary/10 to-emi-primary/0
+              opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl pointer-events-none"></div>
+
+  <!-- Hamburger lines with transform animation -->
+  <span :style="mobileMenuLine1Style" class="block w-5 h-[0.125rem] bg-slate-100 transition-transform duration-300 origin-center"></span>
+  <span :style="mobileMenuLine2Style" class="block w-5 h-[0.125rem] bg-slate-100 transition-transform duration-300 origin-center"></span>
+</button>
+```
+
+### 19.2 Hamburger → X Transform Logic
+```typescript
+const mobileMenuLine1Style = computed(() => ({
+  transform: isMobileMenuOpen.value ? 'rotate(45deg) translateY(0.375rem)' : 'none',
+}));
+
+const mobileMenuLine2Style = computed(() => ({
+  transform: isMobileMenuOpen.value ? 'rotate(-45deg) translateY(-0.375rem)' : 'none',
+}));
+```
+
+**Key Values:**
+- Rotation: ±45 degrees
+- TranslateY: ±0.375rem (6px) to meet at center
+- Duration: 300ms
+- Origin: center
+
+### 19.3 Mobile Menu Overlay
+```vue
+<div :class="['fixed inset-0 bg-emi-bg-dark/95 backdrop-blur-md z-50 transition-opacity duration-300',
+              isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none']">
+  <nav class="flex flex-col items-center justify-center h-full px-6">
+    <!-- Centered navigation links -->
+  </nav>
+</div>
+```
+
+**Pattern:** Body scroll lock with `overflow: hidden` on `body.mobile-menu-active`
+
+---
+
+## 20. Floating UI Dropdown with Laser Effect
+
+### 20.1 Floating UI Setup (docs/AuthNav.vue:141-149)
+```typescript
+import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/vue';
+
+const { floatingStyles, update } = useFloating(buttonRef, dropdownRef, {
+  placement: 'right-start',
+  middleware: [
+    offset(25),           // Gap from trigger
+    flip(),               // Flip if overflows
+    shift({ padding: 25 }) // Stay in viewport with padding
+  ],
+  whileElementsMounted: autoUpdate, // Keep position synced
+});
+```
+
+### 20.2 Laser/Spotlight Mouse Effect (docs/AuthNav.vue:260-297)
+```typescript
+const handleMouseMove = (e: MouseEvent) => {
+  if (!laserEffectRef.value || !dropdownRef.value) return;
+
+  const rect = dropdownRef.value.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const linkElement = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement;
+  const linkTarget = linkElement?.tagName === 'A' ? linkElement : linkElement?.closest('a');
+
+  if (linkTarget) {
+    // Stronger glow when hovering a link
+    laserEffectRef.value.style.background = `
+      radial-gradient(
+        circle at ${x}px ${y}px,
+        rgba(79, 209, 197, 0.2) 0%,
+        transparent 40%
+      )
+    `;
+    laserEffectRef.value.style.opacity = '0.8';
+  } else {
+    // Subtle glow when not on a link
+    laserEffectRef.value.style.background = `
+      radial-gradient(
+        circle at ${x}px ${y}px,
+        rgba(79, 209, 197, 0.1) 0%,
+        transparent 40%
+      )
+    `;
+    laserEffectRef.value.style.opacity = '0.2';
+  }
+};
+
+// Add/remove listener when menu opens/closes
+document.addEventListener('mousemove', handleMouseMove);
+document.removeEventListener('mousemove', handleMouseMove);
+```
+
+### 20.3 Laser Effect Layer HTML
+```html
+<div ref="laserEffectRef"
+     class="absolute inset-0 pointer-events-none opacity-10 mix-blend-plus-lighter
+            transform-gpu hover:opacity-20 transition-opacity duration-500">
+</div>
+```
+
+### 20.4 Dropdown State Transitions (CSS)
+```css
+#forgestack-dropdown {
+  position: fixed;
+  transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 0 1px 1px rgba(41, 171, 226, 0.1),
+              0 0 1px 1px rgba(23, 32, 51, 0.5),
+              0 0 5px 1px rgba(166, 109, 196, 0.1);
+}
+
+#forgestack-dropdown[data-state='closed'] {
+  opacity: 0;
+  transform: translateX(0.5rem);
+  pointer-events: none;
+}
+
+#forgestack-dropdown[data-state='open'] {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+```
+
+---
+
+## 21. Nested Menu Structure
+
+### 21.1 Menu Data Structure (docs/SidebarNav.vue:179-229)
+```typescript
+interface MenuItem {
+  text: string;           // Category header text
+  href: string;          // Parent link (usually '#')
+  icon: Component;       // Lucide icon component
+  children: {
+    text: string;        // Child link text
+    href: string;        // Route path
+  }[];
+}
+
+const forgestackLinks: MenuItem[] = [
+  {
+    text: 'Menu',
+    href: '#',
+    icon: Home,
+    children: [
+      { text: 'Home: ForgeStack', href: '/' },
+      { text: 'ChatFS: Business Ai', href: '/ai'},
+      { text: 'Strategy: Fractional CTO', href: '/cto'},
+      { text: 'Modules', href: '/modules' },
+    ]
+  },
+  {
+    text: 'Log-in',
+    href: '#',
+    icon: Lock,
+    children: [
+      { text: 'Log-in', href: '/forgestack.app/auth' }
+    ]
+  }
+];
+```
+
+### 21.2 Nested Menu Template (docs/SidebarNav.vue:42-75)
+```vue
+<div v-for="(parentLink, index) in forgestackLinks" :key="parentLink.text" class="category-block">
+  <!-- Separator between categories (not first) -->
+  <hr v-if="index > 0" class="border-t border-white/10 border-solid my-1 mx-4" />
+
+  <!-- Category Header with Icon -->
+  <div v-if="parentLink.children?.length"
+       class="flex items-center gap-2 px-[1rem] pt-[0.75rem] pb-[0.25rem]
+              text-xs font-semibold text-white/60 uppercase tracking-wider">
+    <component :is="parentLink.icon" class="w-4 h-4 opacity-70" />
+    <span>{{ parentLink.text }}</span>
+  </div>
+
+  <!-- Child Links -->
+  <template v-if="parentLink.children">
+    <a v-for="childLink in parentLink.children"
+       :key="childLink.href"
+       :href="childLink.href"
+       class="block px-[1rem] py-[0.5rem] text-white/80 hover:text-white text-left
+              hover:bg-blue-400/5 transition-all duration-300
+              relative group/link text-sm"
+       @mousemove="handleMouseMove">
+      <span class="relative z-10">{{ childLink.text }}</span>
+
+      <!-- Animated underline on hover -->
+      <span class="absolute bottom-0 left-1/2 right-1/2 h-px bg-white/80
+                   group-hover/link:left-[1rem] group-hover/link:right-[1rem]
+                   transition-all duration-300
+                   shadow-[0_0.5rem_1.5rem_rgba(79,209,197,0.5)]">
+      </span>
+    </a>
+  </template>
+</div>
+```
+
+---
+
+## 22. Footer Section Pattern in Sidebar
+
+### 22.1 Full Footer (docs/SidebarNav.vue:81-140)
+```vue
+<div class="mt-auto px-0 space-y-3 flex-shrink-0 relative bottom-0 z-10 w-full">
+  <!-- About Card -->
+  <div class="px-2 py-3 rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 border-solid mb-3">
+    <h3 class="text-s font-semibold mb-2 text-forgestack-teal flex items-center">
+      About:
+    </h3>
+    <p class="text-xs text-white/70 mb-3">
+      ForgeStack is small business technology with human-centered design.
+    </p>
+    <p class="text-xs text-white/70 mb-1">
+      Built by entrepreneurs, for entrepreneurs—with full data control.
+    </p>
+  </div>
+
+  <!-- Contact Card -->
+  <div class="px-2 py-2 rounded-lg flex flex-col items-center bg-white/5 backdrop-blur-sm border border-white/10 border-solid">
+    <h3 class="text-s font-semibold mb-2 text-forgestack-teal">
+      Let's Connect:
+    </h3>
+    <a href="mailto:info@forgestack.com" class="hover:text-forgestack-primary transition-colors text-xs">
+      info@forgestack.com
+    </a>
+
+    <!-- Social Icons -->
+    <div class="flex gap-3 px-1 mt-2">
+      <a href="#" class="text-white/60 hover:text-forgestack-teal transition-colors">
+        <!-- Twitter SVG -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/>
+        </svg>
+      </a>
+      <!-- LinkedIn, GitHub SVGs... -->
+    </div>
+  </div>
+
+  <!-- Legal Links -->
+  <div class="px-1 pb-4">
+    <div class="flex justify-center gap-4 text-xs mb-6">
+      <a href="#" class="text-white/60 hover:text-forgestack-teal transition-colors">Privacy</a>
+      <a href="#" class="text-white/60 hover:text-forgestack-teal transition-colors">Terms</a>
+      <a href="#" class="text-white/60 hover:text-forgestack-teal transition-colors">Data</a>
+    </div>
+    <div class="flex justify-center text-xs text-white/50">
+      {{ new Date().getFullYear() }} ForgeStack
+    </div>
+  </div>
+</div>
+```
+
+### 22.2 Compact Footer (docs/AuthNav.vue:88-102)
+```vue
+<div class="mt-auto pt-4 px-2 pb-4 text-center">
+  <div class="px-2 py-3 rounded-lg bg-slate-800/50 backdrop-blur-sm border border-[#4fd1c54d] border-solid">
+    <h3 class="text-xs font-semibold mb-2 text-[#4FD1C5] uppercase tracking-wider">
+      Hi, {{ user.name }}
+    </h3>
+    <div class="text-xs text-slate-300/70 space-y-1">
+      <div class="flex justify-center gap-3">
+        <router-link to="/s" class="hover:text-[#4FD1C5] transition-colors">Support</router-link>
+        <span>&bull;</span>
+        <a href="/terms" target="_blank" class="hover:text-[#4FD1C5] transition-colors">Terms</a>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## 23. CTA Section with Gradient Backgrounds
+
+### 23.1 Final CTA Pattern (docs/cto.vue:332-361)
+```vue
+<section class="w-full bg-slate-700 backdrop-blur-sm border-t border-white/5 border-solid py-12 rounded-t-3xl">
+  <div class="container mx-auto max-w-8xl z-20 relative px-0
+              bg-gradient-to-br from-[#a855f7]/30 via-[#06b6d4]/20 to-[#f59e42]/30
+              dark:from-[#a855f7]/50 dark:via-[#06b6d4]/30 dark:to-[#f59e42]/50
+              rounded-3xl">
+    <div class="relative flex flex-col items-center bg-transparent backdrop-blur-xl p-0
+                rounded-[1.5rem] border border-[#34D3EE]/20 shadow-lg overflow-hidden"
+         style="box-shadow: 0 0 25px rgba(52, 211, 238, 0.1), 0 0 15px rgba(52, 211, 238, 0.05);">
+
+      <!-- Decorative Background SVG -->
+      <div class="absolute inset-0 opacity-[0.5] z-[-1]">
+        <img src="/IMG/axisra-tech-animation copy.svg"
+             alt="Decorative background"
+             class="w-full h-full object-cover scale-[1.1] sm:scale-100"
+             loading="lazy" />
+      </div>
+
+      <!-- CTA Content -->
+      <div class="max-w-3xl mx-auto text-center relative z-10 py-4 md:py-8 px-4">
+        <h2 class="text-4xl md:text-5xl font-bold text-slate-50 mb-8 leading-tight">
+          Ready to Build a <span class="text-gradient-animated">Smarter, Simpler Business?</span>
+        </h2>
+        <p class="text-lg md:text-xl text-slate-300 mb-10 max-w-2xl mx-auto opacity-90">
+          Stop wrestling with tech and start leveraging it.
+        </p>
+        <GlowPressButton href="mailto:contact@forgestack.com" size="lg" color="teal" class="px-10 py-4 text-lg">
+          Schedule Your Free Strategy Call
+          <ChevronRight class="ml-2 h-5 w-5"/>
+        </GlowPressButton>
+        <p class="text-sm text-slate-300 mt-6">No obligation, just a conversation about your future.</p>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+### 23.2 Animated Text Gradient
+```css
+.text-gradient-animated {
+  background-size: 200% auto;
+  background-image: linear-gradient(
+    to right,
+    theme('colors.teal.300') 0%,
+    theme('colors.purple.300') 50%,
+    theme('colors.coral.300') 100%
+  );
+  animation: shine 5s linear infinite;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes shine {
+  to { background-position: 200% center; }
+}
+```
+
+---
+
+## 24. SVG Decoration Patterns
+
+### 24.1 Inline Social Icons (docs/SidebarNav.vue:110-118)
+```html
+<!-- Twitter -->
+<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/>
+</svg>
+
+<!-- LinkedIn -->
+<svg ...>
+  <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+  <rect width="4" height="12" x="2" y="9"/>
+  <circle cx="4" cy="4" r="2"/>
+</svg>
+
+<!-- GitHub -->
+<svg ...>
+  <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/>
+  <path d="M9 18c-4.51 2-5-2-7-2"/>
+</svg>
+```
+
+### 24.2 Decorative Background SVG (docs/cto.vue:79-81)
+```html
+<div class="absolute inset-0 opacity-5 pointer-events-none">
+  <img src="/IMG/axisra-tech-animation.svg"
+       alt="Tech Background"
+       class="w-full h-full object-cover opacity-10 mix-blend-overlay"/>
+</div>
+```
+
+**Mix-blend modes used:**
+- `mix-blend-overlay` - Subtle texture
+- `mix-blend-screen` - Lighter integration
+- `mix-blend-plus-lighter` - Additive glow
+
+### 24.3 Hero Spinning SVG (docs/cto.vue:19-36)
+```html
+<svg class="absolute inset-0 w-full h-full animate-spin-very-slow opacity-50 text-white/70"
+     viewBox="0 0 64 64" fill="none">
+  <defs>
+    <clipPath id="heroSvgLaserClip">
+      <rect width="100%" height="100%" rx="24" ry="24"/>
+    </clipPath>
+    <filter id="ctoHeroGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#ctoHeroGlow)" clip-path="url(#heroSvgLaserClip)">
+    <path d="M32 4 L32 60" stroke="currentColor" stroke-width="1" opacity="0.7"/>
+    <path d="M4 32 L60 32" stroke="currentColor" stroke-width="1" opacity="0.7"/>
+    <path d="M12 12 L52 52" stroke="currentColor" stroke-width="0.75" opacity="0.5"/>
+    <path d="M12 52 L52 12" stroke="currentColor" stroke-width="0.75" opacity="0.5"/>
+    <circle cx="32" cy="32" r="2.5" fill="currentColor" opacity="0.9"/>
+    <circle cx="32" cy="32" r="5" stroke="currentColor" stroke-width="0.5" opacity="0.6"/>
+  </g>
+</svg>
+```
+
+```css
+@keyframes spin-very-slow { to { transform: rotate(360deg); } }
+.animate-spin-very-slow { animation: spin-very-slow 60s linear infinite; }
+```
+
+---
+
+## 25. Intersection Observer Pattern
+
+### 25.1 Scroll-Triggered Fade-In (docs/cto.vue:372-380)
+```typescript
+onMounted(() => {
+  const observerOptions = {
+    root: null,           // Viewport as root
+    rootMargin: "0px",
+    threshold: 0.1         // Trigger at 10% visibility
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("visible");
+      }
+    });
+  }, observerOptions);
+
+  document.querySelectorAll('.fade-in-late').forEach(el => observer.observe(el));
+});
+```
+
+### 25.2 CSS for Fade-In Animation
+```css
+.fade-in-late {
+  opacity: 0;
+  transform: translateY(25px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.fade-in-late.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+---
+
+## 26. markRaw() Icon Optimization
+
+### 26.1 Pattern (docs/Journey.vue:1-46)
+```typescript
+import { ref, markRaw } from 'vue';
+import {
+  Sun as SunIcon,
+  Clock as ClockIcon,
+  Sparkles as SparklesIcon,
+  // ... more icons
+} from 'lucide-vue-next';
+
+// Mark icons as raw to prevent Vue reactivity overhead
+const Sun = markRaw(SunIcon);
+const Clock = markRaw(ClockIcon);
+const Sparkles = markRaw(SparklesIcon);
+// ... use in template
+```
+
+**Why markRaw()?**
+- Lucide icons are stateless components
+- Vue's reactivity system adds overhead for tracking
+- `markRaw()` tells Vue to skip making them reactive
+- Improves performance with many icon instances
+
+### 26.2 Usage in Data Structures
+```typescript
+interface TimelineItem {
+  icon: any;  // markRaw'd component
+  iconColorClass: string;
+  // ...
+}
+
+const timelineItems: TimelineItem[] = [
+  {
+    icon: Sun,  // Already marked raw
+    iconColorClass: "text-[hsl(var(--coral-400))]",
+    // ...
+  },
+];
+```
+
+---
+
+## 27. Additional Animation Patterns
+
+### 27.1 Hover Lift Effect (docs/cto.vue:493-499)
+```css
+.hover-lift {
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+}
+.hover-lift:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 15px 30px hsla(var(--slate-900), 0.2),
+              0 8px 15px hsla(var(--slate-900), 0.15);
+}
+```
+
+### 27.2 Hero Float Animation (docs/cto.vue:448-453)
+```css
+@keyframes float-hero {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-15px); }
+}
+.animate-float-hero { animation: float-hero 7s ease-in-out infinite; }
+```
+
+### 27.3 Pulse Orb Animation (docs/cto.vue:455-459)
+```css
+@keyframes pulse-orb {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+.animate-pulse-orb { animation: pulse-orb 3s ease-in-out infinite; }
+```
+
+### 27.4 Subtle Float for Background Elements
+```css
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0px) translateX(0px) rotate(0deg); }
+  25% { transform: translateY(-10px) translateX(5px) rotate(15deg); }
+  50% { transform: translateY(5px) translateX(-10px) rotate(-10deg); }
+  75% { transform: translateY(-5px) translateX(10px) rotate(5deg); }
+}
+.animate-float-subtle { animation: float-subtle 15s ease-in-out infinite; }
+```
+
+---
+
+## 28. Link Hover Effects
+
+### 28.1 Expanding Underline (docs/SidebarNav.vue:67-72)
+```html
+<span class="absolute bottom-0 left-1/2 right-1/2 h-px bg-white/80
+             group-hover/link:left-[1rem] group-hover/link:right-[1rem]
+             transition-all duration-300
+             shadow-[0_0.5rem_1.5rem_rgba(79,209,197,0.5)]
+             after:absolute after:inset-0 after:bg-white/20 after:blur-sm
+             after:opacity-0 after:group-hover/link:opacity-100 after:transition-opacity">
+</span>
+```
+
+**Pattern:**
+- Start: `left-1/2 right-1/2` (0 width, centered)
+- Hover: `left-[1rem] right-[1rem]` (expands to full width with padding)
+- Shadow creates glow effect
+- Pseudo-element adds blur overlay
+
+---
+
+## Summary: Complete Pattern Coverage
+
+| Pattern | Files | Section |
+|---------|-------|---------|
+| **Mobile Menu (hamburger→X)** | AuthLayout.vue | §19 |
+| **Floating UI Dropdown** | AuthNav.vue, SidebarNav.vue | §20 |
+| **Laser/Spotlight Effect** | AuthNav.vue, SidebarNav.vue | §20.2 |
+| **Nested Menu Structure** | AuthNav.vue, SidebarNav.vue | §21 |
+| **Footer Section** | AuthNav.vue, SidebarNav.vue | §22 |
+| **CTA Gradient Section** | cto.vue | §23 |
+| **SVG Decorations** | cto.vue, SidebarNav.vue | §24 |
+| **Intersection Observer** | cto.vue | §25 |
+| **markRaw() Optimization** | Journey.vue | §26 |
+| **Animation Patterns** | cto.vue | §27 |
+| **Link Hover Effects** | SidebarNav.vue | §28 |
+
+All critical patterns from the 44 Vue files are now documented for pack-editor integration.
